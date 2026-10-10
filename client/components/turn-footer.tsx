@@ -90,14 +90,14 @@ export function AssistantFooter({ text, at, tokens }: AssistantFooterProps) {
         },
         copyLabel: {
           fontFamily: tokens.fontUi,
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           fontWeight: "500",
           color: copied ? tokens.success : tokens.foregroundMuted,
           ...unselectable,
         },
         time: {
           fontFamily: tokens.fontUi,
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           color: tokens.foregroundSubtle,
           ...unselectable,
         },

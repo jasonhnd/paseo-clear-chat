@@ -552,8 +552,8 @@ export function SyntaxHighlightBlock({
           minWidth: 0,
         },
         filename: {
-          fontSize: 12,
-          lineHeight: 17,
+          fontSize: tokens.fs(12),
+          lineHeight: tokens.fs(17),
           fontFamily: tokens.fontUi,
           fontWeight: "600",
           color: tokens.foregroundMuted,
@@ -570,7 +570,7 @@ export function SyntaxHighlightBlock({
         },
         langBadge: {
           fontFamily: tokens.fontUi,
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           fontWeight: "500",
           textTransform: "uppercase",
           letterSpacing: 0.5,
@@ -592,7 +592,7 @@ export function SyntaxHighlightBlock({
         },
         copyText: {
           fontFamily: tokens.fontUi,
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           color: copied ? tokens.success : tokens.foregroundMuted,
           fontWeight: "500",
           ...unselectable,
@@ -606,7 +606,7 @@ export function SyntaxHighlightBlock({
         },
         lineNumber: {
           width: 32,
-          fontSize: 12,
+          fontSize: tokens.fs(12),
           fontFamily: tokens.fontMono,
           color: tokens.foregroundSubtle,
           textAlign: "right",
@@ -615,8 +615,8 @@ export function SyntaxHighlightBlock({
         },
         lineContent: {
           flex: 1,
-          fontSize: 12,
-          lineHeight: 18,
+          fontSize: tokens.fs(12),
+          lineHeight: tokens.fs(18),
           fontFamily: tokens.fontCode,
           color: tokens.foreground,
         },

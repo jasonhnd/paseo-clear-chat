@@ -5,6 +5,7 @@ import { hostFontEscape } from "./components/host-font-escape";
 import { radius, buildThemeTokens, type ExtendedThemeTokens } from "./components/theme-tokens";
 import {
   ACCENT_PRESETS,
+  TEXT_SIZE_OPTIONS,
   resetEnhancerPreferences,
   updateEnhancerPreferences,
   useEnhancerPreferences,
@@ -318,6 +319,15 @@ export function BeautifulChatSettingsPage({ theme }: PluginSurfaceProps) {
             { value: "plain", label: "Literal" },
           ]}
           onChange={(codeFont) => updateEnhancerPreferences({ codeFont })}
+          tokens={tokens}
+        />
+
+        <ChoiceRow
+          title="Text size"
+          description="Scales the text this plugin draws, from replies and code blocks to callouts and badges. Saved on this host for all your devices."
+          value={String(preferences.textScale)}
+          options={TEXT_SIZE_OPTIONS}
+          onChange={(textScale) => updateEnhancerPreferences({ textScale: Number(textScale) })}
           tokens={tokens}
         />
 

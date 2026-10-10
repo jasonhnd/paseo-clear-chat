@@ -34,6 +34,15 @@ export interface ExtendedThemeTokens {
   fontCode: string;
   fontUi: string;
 
+  /** The user's text size multiplier; 1 renders the authored sizes. */
+  textScale: number;
+  /**
+   * Scales a font size or text line height by `textScale`, snapped to half
+   * points so derived line-height math stays tidy. Layout dimensions (chip
+   * heights, gutters) do not go through this: only what a reader reads.
+   */
+  fs(base: number): number;
+
   // Surfaces
   surface0: string;
   surface1: string;
@@ -174,12 +183,16 @@ export function buildThemeTokens(
   const danger = colors.statusDanger;
   const tint = isDark ? 0.1 : 0.08;
   const edge = isDark ? 0.22 : 0.18;
+  const textScale = preferences.textScale;
 
   return {
     isDark,
     fontMono,
     fontCode: preferences.codeFont === "plain" ? fontMono : fontCode,
     fontUi: preferences.uiFont === "system" ? "System" : fontUi,
+
+    textScale,
+    fs: (base) => Math.round(base * textScale * 2) / 2,
 
     surface0: colors.surface0,
     surface1: withAlpha(fg, isDark ? 0.03 : 0.025),

@@ -1,12 +1,13 @@
 import { defineSettings, settingsRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 
-// Store explicit choices only: defaults for the two text renderers depend on
-// the client platform, even though the SDK stores settings on the host.
+// Store explicit choices only so resets can restore defaults without replaying
+// legacy browser settings. Text size is shared by all clients of this host.
 export const preferenceOverridesSchema = z.object({
   accent: z.enum(["host", "jade", "violet", "amber", "rose"]).optional(),
   uiFont: z.enum(["inter", "system"]).optional(),
   codeFont: z.enum(["code", "plain"]).optional(),
+  textScale: z.number().transform((value) => Math.min(1.35, Math.max(0.85, value))).optional(),
   frostedGlass: z.boolean().optional(),
   pointerGlow: z.boolean().optional(),
   enhancedUserBubble: z.boolean().optional(),

@@ -195,12 +195,49 @@ interface RenderContext {
   metrics: VariantMetrics;
 }
 
+/**
+ * Scales every metric by the text-size preference. Spacing joins the type
+ * sizes: a body drawn a size larger inside the authored gaps reads cramped,
+ * and column estimates below already derive from `bodySize`.
+ */
+function scaleMetrics(metrics: VariantMetrics, scale: number): VariantMetrics {
+  if (scale === 1) return metrics;
+  return {
+    bodySize: metrics.bodySize * scale,
+    bodyLineHeight: metrics.bodyLineHeight * scale,
+    mono: metrics.mono,
+    blockGap: metrics.blockGap * scale,
+    headingSizes: metrics.headingSizes.map((size) => size * scale) as [
+      number,
+      number,
+      number,
+      number,
+    ],
+    headingGap: metrics.headingGap * scale,
+    headingRule: metrics.headingRule,
+    headingHash: metrics.headingHash,
+    markerWidth: metrics.markerWidth * scale,
+    itemGap: metrics.itemGap * scale,
+    indentStep: metrics.indentStep * scale,
+    tableGap: metrics.tableGap * scale,
+    columnMin: metrics.columnMin * scale,
+    columnMax: metrics.columnMax * scale,
+    glyphSize: metrics.glyphSize,
+    codeCompact: metrics.codeCompact,
+    codeLineNumbers: metrics.codeLineNumbers,
+  };
+}
+
 export function MarkdownView({ text, tokens, variant }: MarkdownViewProps) {
   const blocks = useMemo(() => parseMarkdown(text), [text]);
-  const styles = useMemo(() => buildStyles(tokens, variant), [tokens, variant]);
+  const metrics = useMemo(
+    () => scaleMetrics(VARIANT_METRICS[variant], tokens.textScale),
+    [variant, tokens],
+  );
+  const styles = useMemo(() => buildStyles(tokens, variant, metrics), [tokens, variant, metrics]);
   const context = useMemo<RenderContext>(
-    () => ({ styles, tokens, metrics: VARIANT_METRICS[variant] }),
-    [styles, tokens, variant],
+    () => ({ styles, tokens, metrics }),
+    [styles, tokens, metrics],
   );
 
   return (
@@ -527,8 +564,11 @@ function columnWidths(block: MdTableBlock, metrics: VariantMetrics): number[] {
   return widths;
 }
 
-function buildStyles(tokens: ExtendedThemeTokens, variant: MarkdownVariant): MarkdownStyles {
-  const metrics = VARIANT_METRICS[variant];
+function buildStyles(
+  tokens: ExtendedThemeTokens,
+  variant: MarkdownVariant,
+  metrics: VariantMetrics,
+): MarkdownStyles {
   const bodyFont = metrics.mono ? tokens.fontMono : tokens.fontUi;
   const [size1, size2, size3, size4] = metrics.headingSizes;
   // The terminal variant's headings sit within a point of body size, so the

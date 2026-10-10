@@ -22,10 +22,20 @@ export type UiFontPreference = "inter" | "system";
 export type CodeFontPreference = "code" | "plain";
 export type MarkdownVariantPreference = "document" | "compact" | "terminal";
 
+/** Multiplier applied to every font size the plugin draws. */
+export const TEXT_SIZE_OPTIONS = [
+  { value: "0.9", label: "Small" },
+  { value: "1", label: "Default" },
+  { value: "1.15", label: "Large" },
+  { value: "1.3", label: "XL" },
+] as const;
+
 export interface EnhancerPreferences {
   accent: AccentPreset;
   uiFont: UiFontPreference;
   codeFont: CodeFontPreference;
+  /** Scales every text style the plugin renders; 1 is the authored size. */
+  textScale: number;
   frostedGlass: boolean;
   /**
    * A light that follows the pointer across a card. Web and desktop only:
@@ -62,6 +72,7 @@ export const DEFAULT_PREFERENCES: Readonly<EnhancerPreferences> = {
   accent: "host",
   uiFont: "inter",
   codeFont: "code",
+  textScale: 1,
   frostedGlass: true,
   pointerGlow: true,
   enhancedUserBubble: Platform.OS !== "ios",
@@ -87,6 +98,8 @@ function loadLegacyPreferences(): PreferenceOverrides | undefined {
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return {};
     const valid: Record<string, unknown> = {};
     for (const [key, schema] of Object.entries(preferenceOverridesSchema.shape)) {
+      // Text size is a new host-only preference; never import it from localStorage.
+      if (key === "textScale") continue;
       const parsed = schema.safeParse((candidate as Record<string, unknown>)[key]);
       if (parsed.success && parsed.data !== undefined) valid[key] = parsed.data;
     }

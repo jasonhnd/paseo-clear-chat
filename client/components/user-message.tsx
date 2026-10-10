@@ -128,7 +128,7 @@ export function UserMessage({
         },
         label: {
           fontFamily: tokens.fontUi,
-          fontSize: 10,
+          fontSize: tokens.fs(10),
           fontWeight: "600",
           letterSpacing: 0.4,
           textTransform: "uppercase",
@@ -140,13 +140,13 @@ export function UserMessage({
         },
         clock: {
           fontFamily: tokens.fontUi,
-          fontSize: 10,
+          fontSize: tokens.fs(10),
           color: tokens.userTextMuted,
         },
         text: {
           fontFamily: tokens.fontUi,
-          fontSize: 13.5,
-          lineHeight: 20,
+          fontSize: tokens.fs(13.5),
+          lineHeight: tokens.fs(20),
           color: tokens.userText,
         },
         imageRow: {
@@ -174,12 +174,12 @@ export function UserMessage({
         },
         usageKey: {
           fontFamily: tokens.fontUi,
-          fontSize: 10,
+          fontSize: tokens.fs(10),
           color: tokens.userTextMuted,
         },
         usageValue: {
           fontFamily: tokens.fontUi,
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           fontWeight: "600",
           color: tokens.userText,
         },
