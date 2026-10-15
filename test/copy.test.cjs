@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { readFileSync, existsSync } = require("node:fs");
+const { readFileSync } = require("node:fs");
 const { createRequire } = require("node:module");
 const { resolve, dirname } = require("node:path");
 const { runInThisContext } = require("node:vm");
@@ -27,7 +27,7 @@ function harness(file, name, copyText, platform = "ios") {
   const sdk = {
     copyText(text) { calls.push(text); return copyText(text); },
     useToast: () => ({ show: (message, options) => toasts.push({ message, ...options }), error: message => toasts.push({ message, variant: "error" }) }),
-    Modal: Object.assign("Modal", { Content: "Modal.Content" }), TextInput: "SDK.TextInput",
+    Modal: Object.assign(props => ({ type: "Modal", props }), { Content: "Modal.Content" }), TextInput: "SDK.TextInput",
   };
   const cache = new Map();
   function load(path) {

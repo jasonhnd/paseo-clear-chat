@@ -349,7 +349,7 @@ export function BeautifulChatSettingsPage({ theme }: PluginSurfaceProps) {
 
         <ToggleRow
           title="Enhanced prompt bubble"
-          description="Paseo removes pasted images before a plugin sees the message, so the enhanced bubble cannot show them. Turn this off for Paseo's own bubble with image previews. New prompts follow the change. On iOS, enabling this prevents selecting or copying text."
+          description="Paseo removes pasted images before a plugin sees the message, so the enhanced bubble cannot show them. Turn this off for Paseo's own bubble with image previews. New prompts follow the change. On iOS, text cannot be selected by dragging when this is enabled. Use the Copy button to copy text."
           value={preferences.enhancedUserBubble}
           onChange={(enhancedUserBubble) => updateEnhancerPreferences({ enhancedUserBubble })}
           tokens={tokens}
@@ -365,7 +365,7 @@ export function BeautifulChatSettingsPage({ theme }: PluginSurfaceProps) {
 
         <ToggleRow
           title="Assistant markdown"
-          description="Draws the reply with the plugin's own headings, lists and syntax-highlighted code blocks. The plugin cannot reach Paseo's markdown pipeline, so its version is a subset: turn this off for mermaid diagrams, images, and the host's file-path links. On iOS, enabling this prevents selecting or copying text."
+          description="Draws the reply with the plugin's own headings, lists and syntax-highlighted code blocks. The plugin cannot reach Paseo's markdown pipeline, so its version is a subset: turn this off for mermaid diagrams, images, and the host's file-path links. On iOS, text cannot be selected by dragging when this is enabled. Use the Copy button to copy text."
           value={preferences.assistantMarkdown}
           onChange={(assistantMarkdown) => updateEnhancerPreferences({ assistantMarkdown })}
           tokens={tokens}

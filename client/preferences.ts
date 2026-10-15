@@ -1,5 +1,4 @@
 import { useSyncExternalStore } from "react";
-import { Platform } from "react-native";
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import {
   preferenceOverridesSchema,
@@ -75,9 +74,9 @@ export const DEFAULT_PREFERENCES: Readonly<EnhancerPreferences> = {
   textScale: 1,
   frostedGlass: true,
   pointerGlow: true,
-  enhancedUserBubble: Platform.OS !== "ios",
+  enhancedUserBubble: true,
   selectionActions: true,
-  assistantMarkdown: Platform.OS !== "ios",
+  assistantMarkdown: true,
   markdownVariant: "document",
 };
 

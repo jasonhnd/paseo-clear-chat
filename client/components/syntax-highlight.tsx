@@ -1,5 +1,6 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useMemo } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
+import { CopyFallbackDialog, copyTouchTarget, useCopyText } from "./copy-feedback";
 import { Glyph } from "./glyph";
 import { frosted } from "./frosted";
 import { surfaceProps } from "./view-props";
@@ -472,15 +473,7 @@ export function SyntaxHighlightBlock({
   compact = false,
   onRevealFile,
 }: SyntaxHighlightProps) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = useCallback(() => {
-    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(code).catch(() => {});
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
-  }, [code]);
+  const { copied, handleCopy, fallbackText, setFallbackText } = useCopyText(code);
 
   const lines = useMemo(() => code.trimEnd().split("\n"), [code]);
   // A diff is a diff whatever the label says, and everything below reads this
@@ -581,6 +574,7 @@ export function SyntaxHighlightBlock({
           borderRadius: radius.chip,
         },
         copyButton: {
+          ...copyTouchTarget,
           flexDirection: "row",
           alignItems: "center",
           gap: 4,
@@ -628,6 +622,7 @@ export function SyntaxHighlightBlock({
     // No pointer glow here: a code block is an inner surface, and lighting it
     // separately from the card that holds it reads as two hovers at once.
     <View {...surfaceProps(frosted, selectionSurface)} style={styles.container}>
+      <CopyFallbackDialog text={fallbackText} onClose={() => setFallbackText(null)} tokens={tokens} />
       {(filename || language) && (
         <View style={styles.header}>
           <View style={styles.headerLeft}>
@@ -659,7 +654,12 @@ export function SyntaxHighlightBlock({
               </Text>
             ) : null}
           </View>
-          <Pressable onPress={handleCopy} style={styles.copyButton}>
+          <Pressable
+            onPress={handleCopy}
+            accessibilityRole="button"
+            accessibilityLabel={copied ? "Code copied" : "Copy code"}
+            style={styles.copyButton}
+          >
             <Pop trigger={copied}>
               <Glyph
                 name={copied ? "Check" : "Copy"}

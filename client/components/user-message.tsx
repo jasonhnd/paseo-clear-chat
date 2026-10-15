@@ -1,6 +1,6 @@
-import React, { useMemo, useCallback, useState } from "react";
+import React, { useMemo } from "react";
 import { View, Text, Pressable, StyleSheet, Image } from "react-native";
-import { copyText } from "@getpaseo/plugin/client/react-native";
+import { CopyFallbackDialog, copyTouchTarget, useCopyText } from "./copy-feedback";
 import { Glyph } from "./glyph";
 import { Pop } from "./motion";
 import { radius } from "./theme-tokens";
@@ -87,17 +87,7 @@ export function UserMessage({
   usage,
   pending = false,
 }: UserMessageProps) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = useCallback(() => {
-    // The host owns clipboard access. Reaching for navigator directly would
-    // only work on web and would bypass its permission handling.
-    copyText(text)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1600);
-      })
-      .catch(() => {});
-  }, [text]);
+  const { copied, handleCopy, fallbackText, setFallbackText } = useCopyText(text);
 
   const styles = useMemo(
     () =>
@@ -135,6 +125,7 @@ export function UserMessage({
           color: tokens.userTextMuted,
         },
         copyButton: {
+          ...copyTouchTarget,
           paddingHorizontal: 4,
           paddingVertical: 2,
         },
@@ -189,6 +180,7 @@ export function UserMessage({
 
   return (
     <View {...selectionSurface} style={styles.container}>
+      <CopyFallbackDialog text={fallbackText} onClose={() => setFallbackText(null)} tokens={tokens} />
       <View style={styles.body}>
         <View style={styles.metaRow}>
           <Text selectable style={styles.label}>

@@ -173,8 +173,8 @@ test("partial legacy data uses platform defaults for missing or invalid fields",
   await p.initializeEnhancerPreferences(server.rpc);
   assert.equal(p.getEnhancerPreferences().accent, "host");
   assert.equal(p.getEnhancerPreferences().uiFont, "system");
-  assert.equal(p.getEnhancerPreferences().assistantMarkdown, false);
-  assert.equal(p.getEnhancerPreferences().enhancedUserBubble, false);
+  assert.equal(p.getEnhancerPreferences().assistantMarkdown, true);
+  assert.equal(p.getEnhancerPreferences().enhancedUserBubble, true);
 });
 
 for (const legacy of ["{broken", "null", "[]", new Error("Storage disabled")]) {
@@ -193,11 +193,11 @@ test("reset restores platform defaults durably without replaying legacy data", a
   const { preferences: p } = harness("ios", legacy);
   await p.initializeEnhancerPreferences(server.rpc);
   await p.resetEnhancerPreferences();
-  assert.equal(p.getEnhancerPreferences().assistantMarkdown, false);
+  assert.equal(p.getEnhancerPreferences().assistantMarkdown, true);
   assert.equal(server.values.legacyMigrated, true);
   const next = harness("ios", legacy).preferences;
   await next.initializeEnhancerPreferences(server.rpc);
-  assert.equal(next.getEnhancerPreferences().assistantMarkdown, false);
+  assert.equal(next.getEnhancerPreferences().assistantMarkdown, true);
   assert.equal(next.getEnhancerPreferences().accent, "host");
 });
 
@@ -347,7 +347,7 @@ test("text size has four reading presets and scales fonts in half points", () =>
     { value: "1.3", label: "XL" },
   ]);
   const { buildThemeTokens } = h.load("client/components/theme-tokens.ts");
-  const colors = { surface0: "#111111", foreground: "#eeeeee", foregroundMuted: "#aaaaaa", accent: "#00ff00" };
+  const colors = { surface0: "#111111", foreground: "#eeeeee", foregroundMuted: "#aaaaaa", accent: "#00ff00", statusDanger: "#ff0000" };
   for (const scale of [0.85, 0.9, 1, 1.15, 1.3, 1.35]) {
     const tokens = buildThemeTokens(colors, { ...p.DEFAULT_PREFERENCES, textScale: scale });
     assert.equal(tokens.textScale, scale);
