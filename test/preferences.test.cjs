@@ -96,10 +96,10 @@ function host(initial = {}) {
   return state;
 }
 
-test("iOS defaults preserve native text selection", () => {
+test("iOS defaults enable both styled text renderers", () => {
   const { preferences: p } = harness("ios");
-  assert.equal(p.getEnhancerPreferences().assistantMarkdown, false);
-  assert.equal(p.getEnhancerPreferences().enhancedUserBubble, false);
+  assert.equal(p.getEnhancerPreferences().assistantMarkdown, true);
+  assert.equal(p.getEnhancerPreferences().enhancedUserBubble, true);
   assert.equal(p.getEnhancerPreferences().frostedGlass, true);
 });
 
@@ -237,7 +237,7 @@ test("edits made before initial storage load are saved", async () => {
   assert.equal(p.getEnhancerPreferences().accent, "amber");
 });
 
-test("contribution loads preferences and iOS transformers honor explicit opt-in", async () => {
+test("contribution loads preferences and iOS transformers honor explicit opt-out", async () => {
   const server = host();
   const h = harness();
   const cleanup = h.contribute(server.rpc);
@@ -247,11 +247,11 @@ test("contribution loads preferences and iOS transformers honor explicit opt-in"
   const user = h.transformers.get("omp-enhanced-user-message");
   const reply = { item: { type: "assistant_message", text: "Hello" } };
   const prompt = { item: { type: "user_message", text: "Hi" } };
-  assert.equal(assistant.transform(reply), undefined);
-  assert.equal(user.transform(prompt), undefined);
-  await h.preferences.updateEnhancerPreferences({ assistantMarkdown: true, enhancedUserBubble: true });
   assert.equal(assistant.transform(reply).items[0].kind, "omp-assistant");
   assert.equal(user.transform(prompt).items[0].kind, "omp-user-message");
+  await h.preferences.updateEnhancerPreferences({ assistantMarkdown: false, enhancedUserBubble: false });
+  assert.equal(assistant.transform(reply), undefined);
+  assert.equal(user.transform(prompt), undefined);
   cleanup();
 });
 
@@ -334,4 +334,54 @@ test("invalid SDK settings stay visible as an error and do not take over text ro
   await p.initializeEnhancerPreferences(async () => ({ status: "invalid", revision: "0", error: "Invalid settings" }));
   assert.equal(p.areEnhancerPreferencesReady(), false);
   assert.match(p.getEnhancerPreferencesError(), /Invalid settings/);
+});
+
+
+test("text size has four reading presets and scales fonts in half points", () => {
+  const h = harness();
+  const p = h.preferences;
+  assert.deepEqual(p.TEXT_SIZE_OPTIONS, [
+    { value: "0.9", label: "Small" },
+    { value: "1", label: "Default" },
+    { value: "1.15", label: "Large" },
+    { value: "1.3", label: "XL" },
+  ]);
+  const { buildThemeTokens } = h.load("client/components/theme-tokens.ts");
+  const colors = { surface0: "#111111", foreground: "#eeeeee", foregroundMuted: "#aaaaaa", accent: "#00ff00" };
+  for (const scale of [0.85, 0.9, 1, 1.15, 1.3, 1.35]) {
+    const tokens = buildThemeTokens(colors, { ...p.DEFAULT_PREFERENCES, textScale: scale });
+    assert.equal(tokens.textScale, scale);
+    assert.equal(tokens.fs(13.5), Math.round(13.5 * scale * 2) / 2);
+    assert.equal(tokens.fs(20), Math.round(20 * scale * 2) / 2);
+  }
+});
+
+test("text size clamps finite values and persists across iOS and web host clients", async () => {
+  const server = host();
+  const p = harness("ios").preferences;
+  await p.initializeEnhancerPreferences(server.rpc);
+  assert.equal(p.getEnhancerPreferences().textScale, 1);
+  for (const [input, expected] of [[0.1, 0.85], [4, 1.35], [1.15, 1.15], [1.3, 1.3]]) {
+    await p.updateEnhancerPreferences({ textScale: input });
+    assert.equal(p.getEnhancerPreferences().textScale, expected);
+    assert.equal(server.values.preferences.textScale, expected);
+    const web = harness("web").preferences;
+    await web.initializeEnhancerPreferences(server.rpc);
+    assert.equal(web.getEnhancerPreferences().textScale, expected);
+  }
+  for (const input of [NaN, Infinity, -Infinity]) {
+    assert.throws(() => p.updateEnhancerPreferences({ textScale: input }));
+  }
+  await p.resetEnhancerPreferences();
+  assert.equal(p.getEnhancerPreferences().textScale, 1);
+  assert.deepEqual(server.values.preferences, {});
+});
+
+test("text size ignores legacy localStorage and clamps host values", async () => {
+  const p = harness("web", JSON.stringify({ textScale: 1.3 })).preferences;
+  await p.initializeEnhancerPreferences(host().rpc);
+  assert.equal(p.getEnhancerPreferences().textScale, 1);
+  const native = harness().preferences;
+  await native.initializeEnhancerPreferences(host({ preferences: { textScale: 10 } }).rpc);
+  assert.equal(native.getEnhancerPreferences().textScale, 1.35);
 });
