@@ -254,3 +254,72 @@ test("text transformers defer to the host while saved preferences are unavailabl
   assert.match(h.preferences.getEnhancerPreferencesError(), /Host unavailable/);
   cleanup();
 });
+
+for (const platform of ["android", "web"]) {
+  test(`${platform} transformers keep rendering by default and honor explicit opt-out`, async () => {
+    const server = host();
+    const h = harness(platform);
+    const cleanup = h.contribute(server.rpc);
+    await new Promise(setImmediate);
+    const assistant = h.transformers.get("omp-enhanced-assistant");
+    const user = h.transformers.get("omp-enhanced-user-message");
+    const reply = { item: { type: "assistant_message", text: "Hello" } };
+    const prompt = { item: { type: "user_message", text: "Hi" } };
+    assert.equal(assistant.transform(reply).items[0].kind, "omp-assistant");
+    assert.equal(user.transform(prompt).items[0].kind, "omp-user-message");
+    await h.preferences.updateEnhancerPreferences({ assistantMarkdown: false, enhancedUserBubble: false });
+    assert.equal(assistant.transform(reply), undefined);
+    assert.equal(user.transform(prompt), undefined);
+    cleanup();
+  });
+}
+
+test("server registers an SDK settings schema without platform-dependent defaults", () => {
+  const h = harness();
+  let definition;
+  const cleanup = h.load("index.server.ts").default({
+    registerSettings(value) { definition = value; },
+    handle() {},
+  });
+  assert.equal(definition.id, "presentation");
+  assert.equal(definition.scope, "host");
+  assert.deepEqual(definition.schema.parse({}), { preferences: {}, legacyMigrated: false });
+  assert.equal(definition.schema.safeParse({ preferences: { assistantMarkdown: "true" } }).success, false);
+  cleanup();
+});
+
+test("failed migration is retried rather than marked complete", async () => {
+  const server = host();
+  server.failWrites = true;
+  const { preferences: p } = harness("web", JSON.stringify({ assistantMarkdown: false }));
+  await p.initializeEnhancerPreferences(server.rpc);
+  assert.equal(server.values.legacyMigrated, false);
+  assert.equal(p.areEnhancerPreferencesReady(), false);
+  assert.match(p.getEnhancerPreferencesError(), /Host unavailable/);
+  server.failWrites = false;
+  await p.initializeEnhancerPreferences(server.rpc);
+  assert.equal(server.values.legacyMigrated, true);
+  assert.equal(p.getEnhancerPreferences().assistantMarkdown, false);
+});
+
+test("repeated revision conflicts stop with a visible error", async () => {
+  const server = host({ legacyMigrated: true });
+  const { preferences: p } = harness();
+  await p.initializeEnhancerPreferences(server.rpc);
+  await p.initializeEnhancerPreferences(async (contract, input) => {
+    if (contract.name.endsWith(".write")) return { status: "conflict", error: "Changed elsewhere" };
+    return server.rpc(contract, input);
+  });
+  const readsBefore = server.calls.length;
+  await p.updateEnhancerPreferences({ assistantMarkdown: true });
+  assert.equal(server.calls.length - readsBefore, 3);
+  assert.match(p.getEnhancerPreferencesError(), /another client/);
+  assert.equal(server.values.preferences.assistantMarkdown, undefined);
+});
+
+test("invalid SDK settings stay visible as an error and do not take over text rows", async () => {
+  const { preferences: p } = harness("web");
+  await p.initializeEnhancerPreferences(async () => ({ status: "invalid", revision: "0", error: "Invalid settings" }));
+  assert.equal(p.areEnhancerPreferencesReady(), false);
+  assert.match(p.getEnhancerPreferencesError(), /Invalid settings/);
+});

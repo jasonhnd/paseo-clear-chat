@@ -153,6 +153,19 @@ Devicon brand marks, and the file-manager link.
 | Enhanced prompt bubble | Off hands prompts back to Paseo, whose bubble shows pasted images. |
 | Assistant markdown     | Off hands replies back to Paseo's own markdown renderer.           |
 
+On iOS and iPadOS, **Assistant markdown** and **Enhanced prompt bubble** default to off so
+Paseo keeps its native text selection. You can explicitly enable either one, but text rendered
+by it cannot be selected or copied on iOS. Android and web keep both enabled by default.
+
+Preferences are saved with the plugin SDK on the selected host and shared by clients connected
+to that host. Explicit choices override platform defaults. Existing browser preferences are
+imported once when that host's settings are first loaded; saved host choices take precedence.
+After that, browser storage is ignored, including after **Reset defaults**. Open the existing
+web client first to migrate its preferences before connecting a native client to a new host.
+Changes affect new messages; reload the chat to update rows already on screen. While settings
+are loading or unavailable, text rows stay with Paseo's renderer. Storage errors appear in the
+settings screen; try changing the setting again after the host reconnects.
+
 ---
 
 ## Finding text
@@ -246,8 +259,9 @@ timestamp, item}`, and plugin navigation offers only `openSettings`, `openSurfac
     GIF, and WebP but never SVG, so a data-URI SVG renders on web and stays blank on iOS and
     Android. Those marks ship as PNG rasters in `client/components/mark-bitmaps.ts`.
 13. **Settings are host-scoped only.** `defineSettings` rejects any scope other than `host`, so
-    per-workspace or per-agent presentation settings are impossible. This plugin keeps presentation
-    preferences in client storage instead.
+    per-workspace or per-agent presentation settings are impossible. This plugin stores explicit
+    presentation choices with the SDK's host settings; unset text-renderer choices use the client
+    platform's defaults.
 14. **Paseo's chat find cannot reach replaced rows.** Paseo 0.9.1 finds a match by its original
     message id, then waits for a row carrying that id. A transformed row always carries
     `<pluginId>/<itemId>` instead, so Ctrl+F on a styled prompt or reply never reveals the match.
@@ -268,7 +282,7 @@ beautiful-chat/
   client/
     live-renderers.tsx       # Timeline item to component mapping
     settings-page.tsx        # Settings screen
-    preferences.ts           # Client-side presentation preferences
+    preferences.ts           # Presentation preferences backed by host settings
     components/              # Cards, syntax block, glyphs, motion, theme tokens
       mark-bitmaps.ts        # GENERATED PNG rasters of every brand mark
       devicon-data.ts        # Vendor SVG sources, read only by the generator
@@ -281,6 +295,7 @@ beautiful-chat/
 
 ```bash
 npm install
+npm test
 npm run typecheck
 paseo plugin reload beautiful-chat
 ```
