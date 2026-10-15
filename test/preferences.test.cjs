@@ -155,6 +155,18 @@ test("legacy web settings migrate once, preserving explicit booleans and stored 
   assert.equal(next.getEnhancerPreferences().uiFont, "inter");
 });
 
+test("a native first load leaves legacy migration available to the web client", async () => {
+  const server = host();
+  const native = harness("ios").preferences;
+  await native.initializeEnhancerPreferences(server.rpc);
+  assert.equal(server.values.legacyMigrated, false);
+  const web = harness("web", JSON.stringify({ accent: "jade", assistantMarkdown: false })).preferences;
+  await web.initializeEnhancerPreferences(server.rpc);
+  assert.equal(server.values.legacyMigrated, true);
+  assert.equal(web.getEnhancerPreferences().accent, "jade");
+  assert.equal(web.getEnhancerPreferences().assistantMarkdown, false);
+});
+
 test("partial legacy data uses platform defaults for missing or invalid fields", async () => {
   const server = host();
   const { preferences: p } = harness("ios", JSON.stringify({ accent: "constructor", uiFont: "system", assistantMarkdown: "true" }));
