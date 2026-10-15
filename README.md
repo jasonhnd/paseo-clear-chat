@@ -159,9 +159,11 @@ by it cannot be selected or copied on iOS. Android and web keep both enabled by 
 
 Preferences are saved with the plugin SDK on the selected host and shared by clients connected
 to that host. Explicit choices override platform defaults. Existing browser preferences are
-imported once when that host's settings are first loaded; saved host choices take precedence.
+imported once when a client with browser storage first loads the host's settings; saved host
+choices take precedence. A native client's first load leaves that migration available.
 After that, browser storage is ignored, including after **Reset defaults**. Open the existing
-web client first to migrate its preferences before connecting a native client to a new host.
+web client before editing or resetting settings on native if you want to import its preferences;
+an explicit edit or reset makes the SDK settings authoritative immediately.
 Changes affect new messages; reload the chat to update rows already on screen. While settings
 are loading or unavailable, text rows stay with Paseo's renderer. Storage errors appear in the
 settings screen; try changing the setting again after the host reconnects.

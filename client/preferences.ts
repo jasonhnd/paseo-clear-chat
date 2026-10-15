@@ -77,9 +77,11 @@ function storage(): Storage | undefined {
   return candidate.localStorage;
 }
 
-function loadLegacyPreferences(): PreferenceOverrides {
+function loadLegacyPreferences(): PreferenceOverrides | undefined {
   try {
-    const stored = storage()?.getItem(STORAGE_KEY);
+    const legacyStorage = storage();
+    if (!legacyStorage) return undefined;
+    const stored = legacyStorage.getItem(STORAGE_KEY);
     if (!stored) return {};
     const candidate: unknown = JSON.parse(stored);
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return {};
@@ -157,11 +159,18 @@ function enqueue(change: (values: PresentationSettings) => PresentationSettings)
 
 export function initializeEnhancerPreferences(rpc: PluginClientContext["rpc"]): Promise<void> {
   invoke = rpc;
-  return enqueue((values) => values.legacyMigrated ? values : {
+  return enqueue((values) => {
+    if (values.legacyMigrated) return values;
+    const legacy = loadLegacyPreferences();
+    // Native has no browser storage. Leave migration available until a web
+    // client connects, or an explicit edit/reset makes SDK settings authoritative.
+    if (legacy === undefined) return values;
     // Existing SDK choices win over legacy values. The host marker prevents
     // stale localStorage from restoring settings after an edit or reset.
-    preferences: { ...loadLegacyPreferences(), ...values.preferences },
-    legacyMigrated: true,
+    return {
+      preferences: { ...legacy, ...values.preferences },
+      legacyMigrated: true,
+    };
   });
 }
 
