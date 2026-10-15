@@ -8,6 +8,7 @@ import {
   resetEnhancerPreferences,
   updateEnhancerPreferences,
   useEnhancerPreferences,
+  useEnhancerPreferencesError,
   type AccentPreset,
   type CodeFontPreference,
   type UiFontPreference,
@@ -210,6 +211,7 @@ function ChoiceRow<T extends string>({
 /** Settings content mounted by Paseo under the selected host's Plugin settings. */
 export function BeautifulChatSettingsPage({ theme }: PluginSurfaceProps) {
   const preferences = useEnhancerPreferences();
+  const storageError = useEnhancerPreferencesError();
   const tokens = useMemo(
     () => buildThemeTokens(theme.colors, preferences),
     [preferences, theme.colors],
@@ -229,10 +231,16 @@ export function BeautifulChatSettingsPage({ theme }: PluginSurfaceProps) {
         <Text
           style={[styles.description, { color: tokens.foregroundMuted, fontFamily: tokens.fontUi }]}
         >
-          Changes apply to every enhanced tool call, reasoning trace, checklist, and prompt in this
-          client.
+          Changes are saved on the selected host and shared by its clients. New messages follow
+          rendering changes; reload the chat to update existing messages.
         </Text>
       </View>
+
+      {storageError ? (
+        <Text accessibilityRole="alert" style={[styles.description, { color: tokens.foreground }]}>
+          Preferences could not be saved or loaded: {storageError} Try changing the setting again.
+        </Text>
+      ) : null}
 
       <View
         style={[
@@ -331,7 +339,7 @@ export function BeautifulChatSettingsPage({ theme }: PluginSurfaceProps) {
 
         <ToggleRow
           title="Enhanced prompt bubble"
-          description="Paseo removes pasted images before a plugin sees the message, so the enhanced bubble cannot show them. Turn this off for Paseo's own bubble with image previews. New prompts follow the change."
+          description="Paseo removes pasted images before a plugin sees the message, so the enhanced bubble cannot show them. Turn this off for Paseo's own bubble with image previews. New prompts follow the change. On iOS, enabling this prevents selecting or copying text."
           value={preferences.enhancedUserBubble}
           onChange={(enhancedUserBubble) => updateEnhancerPreferences({ enhancedUserBubble })}
           tokens={tokens}
@@ -347,7 +355,7 @@ export function BeautifulChatSettingsPage({ theme }: PluginSurfaceProps) {
 
         <ToggleRow
           title="Assistant markdown"
-          description="Draws the reply with the plugin's own headings, lists and syntax-highlighted code blocks. The plugin cannot reach Paseo's markdown pipeline, so its version is a subset: turn this off for mermaid diagrams, images, and the host's file-path links."
+          description="Draws the reply with the plugin's own headings, lists and syntax-highlighted code blocks. The plugin cannot reach Paseo's markdown pipeline, so its version is a subset: turn this off for mermaid diagrams, images, and the host's file-path links. On iOS, enabling this prevents selecting or copying text."
           value={preferences.assistantMarkdown}
           onChange={(assistantMarkdown) => updateEnhancerPreferences({ assistantMarkdown })}
           tokens={tokens}

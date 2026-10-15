@@ -1,4 +1,13 @@
 import { useSyncExternalStore } from "react";
+import { Platform } from "react-native";
+import type { PluginClientContext } from "@getpaseo/plugin/client";
+import {
+  preferenceOverridesSchema,
+  presentationSettings,
+  presentationSettingsRpc,
+  type PresentationSettings,
+  type PreferenceOverrides,
+} from "../shared/settings";
 
 export const ACCENT_PRESETS = {
   host: undefined,
@@ -55,9 +64,9 @@ export const DEFAULT_PREFERENCES: Readonly<EnhancerPreferences> = {
   codeFont: "code",
   frostedGlass: true,
   pointerGlow: true,
-  enhancedUserBubble: true,
+  enhancedUserBubble: Platform.OS !== "ios",
   selectionActions: true,
-  assistantMarkdown: true,
+  assistantMarkdown: Platform.OS !== "ios",
   markdownVariant: "document",
 };
 
@@ -68,50 +77,29 @@ function storage(): Storage | undefined {
   return candidate.localStorage;
 }
 
-function isAccentPreset(value: unknown): value is AccentPreset {
-  return typeof value === "string" && value in ACCENT_PRESETS;
-}
-
-function loadPreferences(): EnhancerPreferences {
+function loadLegacyPreferences(): PreferenceOverrides {
   try {
     const stored = storage()?.getItem(STORAGE_KEY);
-    if (!stored) return { ...DEFAULT_PREFERENCES };
-    const candidate = JSON.parse(stored) as Partial<EnhancerPreferences>;
-    return {
-      accent: isAccentPreset(candidate.accent) ? candidate.accent : DEFAULT_PREFERENCES.accent,
-      uiFont: candidate.uiFont === "system" ? "system" : DEFAULT_PREFERENCES.uiFont,
-      codeFont: candidate.codeFont === "plain" ? "plain" : DEFAULT_PREFERENCES.codeFont,
-      frostedGlass:
-        typeof candidate.frostedGlass === "boolean"
-          ? candidate.frostedGlass
-          : DEFAULT_PREFERENCES.frostedGlass,
-      pointerGlow:
-        typeof candidate.pointerGlow === "boolean"
-          ? candidate.pointerGlow
-          : DEFAULT_PREFERENCES.pointerGlow,
-      enhancedUserBubble:
-        typeof candidate.enhancedUserBubble === "boolean"
-          ? candidate.enhancedUserBubble
-          : DEFAULT_PREFERENCES.enhancedUserBubble,
-      selectionActions:
-        typeof candidate.selectionActions === "boolean"
-          ? candidate.selectionActions
-          : DEFAULT_PREFERENCES.selectionActions,
-      assistantMarkdown:
-        typeof candidate.assistantMarkdown === "boolean"
-          ? candidate.assistantMarkdown
-          : DEFAULT_PREFERENCES.assistantMarkdown,
-      markdownVariant:
-        candidate.markdownVariant === "compact" || candidate.markdownVariant === "terminal"
-          ? candidate.markdownVariant
-          : DEFAULT_PREFERENCES.markdownVariant,
-    };
+    if (!stored) return {};
+    const candidate: unknown = JSON.parse(stored);
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return {};
+    const valid: Record<string, unknown> = {};
+    for (const [key, schema] of Object.entries(preferenceOverridesSchema.shape)) {
+      const parsed = schema.safeParse((candidate as Record<string, unknown>)[key]);
+      if (parsed.success && parsed.data !== undefined) valid[key] = parsed.data;
+    }
+    return preferenceOverridesSchema.parse(valid);
   } catch {
-    return { ...DEFAULT_PREFERENCES };
+    return {};
   }
 }
 
-let preferences = loadPreferences();
+let preferences: EnhancerPreferences = { ...DEFAULT_PREFERENCES };
+let invoke: PluginClientContext["rpc"] | undefined;
+let pending = Promise.resolve();
+let localVersion = 0;
+let ready = false;
+let storageError: string | null = null;
 
 function publish(): void {
   for (const listener of listeners) listener();
@@ -121,33 +109,91 @@ export function getEnhancerPreferences(): EnhancerPreferences {
   return preferences;
 }
 
-export function updateEnhancerPreferences(update: Partial<EnhancerPreferences>): void {
-  preferences = { ...preferences, ...update };
-  try {
-    storage()?.setItem(STORAGE_KEY, JSON.stringify(preferences));
-  } catch {
-    // Browser storage can be disabled. Keep the change alive for this session.
-  }
-  publish();
+export function areEnhancerPreferencesReady(): boolean {
+  return ready;
 }
 
-export function resetEnhancerPreferences(): void {
-  preferences = { ...DEFAULT_PREFERENCES };
-  try {
-    storage()?.removeItem(STORAGE_KEY);
-  } catch {
-    // Keep the default session value if storage is unavailable.
+export function getEnhancerPreferencesError(): string | null {
+  return storageError;
+}
+
+async function savePreferences(
+  change: (values: PresentationSettings) => PresentationSettings,
+): Promise<PresentationSettings> {
+  if (!invoke) throw new Error("Preference storage is not connected to a host.");
+  // Every write merges against a fresh revision. Retry bounded conflicts so
+  // another client's unrelated changes are retained rather than overwritten.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const result = await invoke(presentationSettingsRpc.read, {});
+    if (result.status !== "ready") throw new Error(result.error);
+    const current = presentationSettings.schema.parse(result.values);
+    const next = change(current);
+    if (next === current) return current;
+    const saved = await invoke(presentationSettingsRpc.write, {
+      revision: result.revision,
+      values: next,
+    });
+    if (saved.status === "saved") return presentationSettings.schema.parse(saved.values);
+    if (saved.status === "invalid") throw new Error(saved.error);
   }
+  throw new Error("Preferences changed in another client. Please try again.");
+}
+
+function enqueue(change: (values: PresentationSettings) => PresentationSettings): Promise<void> {
+  const version = localVersion;
+  pending = pending.then(async () => {
+    const values = await savePreferences(change);
+    // A queued edit must not be replaced by an older read/write response.
+    if (version === localVersion) preferences = { ...DEFAULT_PREFERENCES, ...values.preferences };
+    ready = true;
+    storageError = null;
+    publish();
+  }).catch((error: unknown) => {
+    storageError = error instanceof Error ? error.message : String(error);
+    publish();
+  });
+  return pending;
+}
+
+export function initializeEnhancerPreferences(rpc: PluginClientContext["rpc"]): Promise<void> {
+  invoke = rpc;
+  return enqueue((values) => values.legacyMigrated ? values : {
+    // Existing SDK choices win over legacy values. The host marker prevents
+    // stale localStorage from restoring settings after an edit or reset.
+    preferences: { ...loadLegacyPreferences(), ...values.preferences },
+    legacyMigrated: true,
+  });
+}
+
+export function updateEnhancerPreferences(update: Partial<EnhancerPreferences>): Promise<void> {
+  const patch = preferenceOverridesSchema.parse(update);
+  localVersion += 1;
+  preferences = { ...preferences, ...patch };
   publish();
+  return enqueue((values) => ({
+    preferences: { ...values.preferences, ...patch },
+    legacyMigrated: true,
+  }));
+}
+
+export function resetEnhancerPreferences(): Promise<void> {
+  localVersion += 1;
+  preferences = { ...DEFAULT_PREFERENCES };
+  publish();
+  // SDK reset would also clear the migration marker, so write an empty set of
+  // explicit choices instead. Each platform then uses its own defaults.
+  return enqueue(() => ({ preferences: {}, legacyMigrated: true }));
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
 }
 
 export function useEnhancerPreferences(): EnhancerPreferences {
-  return useSyncExternalStore(
-    (listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-    getEnhancerPreferences,
-    getEnhancerPreferences,
-  );
+  return useSyncExternalStore(subscribe, getEnhancerPreferences, getEnhancerPreferences);
+}
+
+export function useEnhancerPreferencesError(): string | null {
+  return useSyncExternalStore(subscribe, getEnhancerPreferencesError, getEnhancerPreferencesError);
 }

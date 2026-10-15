@@ -5,6 +5,7 @@ import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { revealPathRpc } from "./shared/file-rpc";
 import { type HighlightLine, type HighlightToken, highlightRpc } from "./shared/highlight-rpc";
 import { imageRpc } from "./shared/image-rpc";
+import { presentationSettings } from "./shared/settings";
 
 /**
  * Image types worth inlining, and the mime each one needs in its data URI.
@@ -447,6 +448,8 @@ function tokenize(
 }
 
 export default function contribute(server: PluginServerContext) {
+  server.registerSettings(presentationSettings);
+
   server.handle(revealPathRpc, async (input) => {
     const requested = stripSelector(input.path);
     if (!requested) return { revealed: null, error: "No path" };
