@@ -93,9 +93,12 @@ function migrateBrowserPreferences(): string | null | undefined {
     const browserStorage = storage();
     if (!browserStorage) return undefined;
     const current = browserStorage.getItem(STORAGE_KEY);
-    // Even an empty or invalid new value is an existing choice. Never replace it.
+    // Even an empty or invalid new value is an existing choice and takes precedence.
     if (current !== null) return current;
     const legacy = browserStorage.getItem(LEGACY_STORAGE_KEY);
+    // localStorage has no cross-tab compare-and-swap: this best-effort snapshot
+    // copy can race another tab's first write. Host settings remain authoritative,
+    // with revision-checked writes; this snapshot cannot replace saved host choices.
     if (legacy !== null) browserStorage.setItem(STORAGE_KEY, legacy);
     return legacy;
   } catch {
