@@ -1,9 +1,9 @@
 import { getEnhancerPreferences } from "../preferences";
 
-const STYLE_ELEMENT_ID = "beautiful-chat-find-style";
-const BAR_ID = "beautiful-chat-find";
-const MATCHES = "beautiful-chat-find";
-const CURRENT = "beautiful-chat-find-current";
+const STYLE_ELEMENT_ID = "clear-chat-find-style";
+const BAR_ID = "clear-chat-find";
+const MATCHES = "clear-chat-find";
+const CURRENT = "clear-chat-find-current";
 const CHAT = '[data-testid="agent-chat-scroll"]';
 const IGNORED =
   'button, [role="button"], [aria-hidden="true"], input, textarea, svg, script, style';

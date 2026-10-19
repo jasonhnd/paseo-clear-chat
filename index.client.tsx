@@ -1,6 +1,6 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { z } from "zod";
-import { BeautifulChatSettingsPage } from "./client/settings-page";
+import { ClearChatSettingsPage } from "./client/settings-page";
 import { embedFonts } from "./client/components/embed-fonts";
 import { installFrostedGlass } from "./client/components/frosted";
 import { installShimmer } from "./client/components/shimmer";
@@ -46,7 +46,7 @@ export default function contribute(client: PluginClientContext) {
     id: "chat-presentation",
     title: "Chat presentation",
     icon: "Blocks",
-    Component: BeautifulChatSettingsPage,
+    Component: ClearChatSettingsPage,
   });
 
   // Live chat timeline interception: render real tool calls, reasoning, and todos with enhanced UI.

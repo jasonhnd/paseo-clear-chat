@@ -20,7 +20,7 @@ import { UserMessage } from "../client/components/user-message";
 import { HubCallout } from "../client/components/hub-callout";
 import { PaseoToolCallout } from "../client/components/paseo-tool-callouts";
 import { SyntaxHighlightBlock } from "../client/components/syntax-highlight";
-import { BeautifulChatSettingsPage } from "../client/settings-page";
+import { ClearChatSettingsPage } from "../client/settings-page";
 import { buildHubData } from "../client/hub-details";
 import { NoticeCallout } from "../client/components/notice-callout";
 import { SystemCard } from "../client/components/system-card";
@@ -64,9 +64,9 @@ const bash: ToolCalloutData = {
   command: "npm run typecheck",
   shell: {
     command: "npm run typecheck",
-    cwd: "~/code/beautiful-chat",
+    cwd: "~/code/clear-chat",
     exitCode: 0,
-    stdout: "> beautiful-chat@0.1.0 typecheck\n> tsc --noEmit\n\nChecked 34 files in 4.2s",
+    stdout: "> clear-chat@0.1.0 typecheck\n> tsc --noEmit\n\nChecked 34 files in 4.2s",
   },
 };
 
@@ -158,18 +158,18 @@ const githubCalls: ToolCalloutData[] = [
   {
     id: "gh-pr",
     tool: "github",
-    title: "pr_create paseo-cafe/paseo-cafe Add beautiful-chat",
+    title: "pr_create paseo-cafe/paseo-cafe Add clear-chat",
     status: "completed",
     durationMs: 2430,
     github: {
       op: "pr_create",
       repo: "paseo-cafe/paseo-cafe",
-      subject: "Add beautiful-chat",
+      subject: "Add clear-chat",
       request:
-        '{"op":"pr_create","repo":"paseo-cafe/paseo-cafe","base":"main","head":"ABorakati:add-beautiful-chat","title":"Add beautiful-chat"}',
+        '{"op":"pr_create","repo":"paseo-cafe/paseo-cafe","base":"main","head":"ABorakati:add-clear-chat","title":"Add clear-chat"}',
       rows: [
-        { label: "pull request", value: "#125 Add beautiful-chat" },
-        { label: "base", value: "main ← ABorakati:add-beautiful-chat" },
+        { label: "pull request", value: "#125 Add clear-chat" },
+        { label: "base", value: "main ← ABorakati:add-clear-chat" },
       ],
       link: "https://github.com/paseo-cafe/paseo-cafe/pull/125",
     },
@@ -456,7 +456,7 @@ const paseoTool = {
     title: "Screenshot builder",
     provider: "claude",
     model: "claude-opus-5",
-    initialPrompt: "Capture every component of the Beautiful Chat plugin.",
+    initialPrompt: "Capture every component of the Clear Chat plugin.",
     agentId: "agent-8f21",
     status: "running" as const,
   },
@@ -512,7 +512,7 @@ const tasks = {
   tasks: [
     {
       id: "t1",
-      title: "Rename plugin to Beautiful Chat",
+      title: "Rename plugin to Clear Chat",
       phase: "Rename",
       status: "completed" as const,
       duration: "6m",
@@ -546,8 +546,8 @@ const approval = {
   riskLevel: "high" as const,
   rationale: "The command removes a directory that is not tracked by Git.",
   command: "rm -rf dist",
-  targetPath: "~/code/beautiful-chat/dist",
-  cwd: "~/code/beautiful-chat",
+  targetPath: "~/code/clear-chat/dist",
+  cwd: "~/code/clear-chat",
   timeoutSeconds: 60,
   status: "pending" as const,
   timestamp: new Date("2026-09-14T10:24:29Z").toISOString(),
@@ -795,7 +795,7 @@ function Showcase() {
       </Shot>
       <Shot id="shot-settings" width={760}>
         <View style={{ height: 880 }}>
-          <BeautifulChatSettingsPage
+          <ClearChatSettingsPage
             theme={{ colors: DARK }}
             host={{ id: "local", label: "Local" }}
             layout={{ compact: false, platform: "web" }}

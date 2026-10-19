@@ -65,7 +65,7 @@ export interface EnhancerPreferences {
   markdownVariant: MarkdownVariantPreference;
 }
 
-const STORAGE_KEY = "paseo/beautiful-chat/preferences/v1";
+const STORAGE_KEY = "paseo/clear-chat/preferences/v1";
 
 export const DEFAULT_PREFERENCES: Readonly<EnhancerPreferences> = {
   accent: "host",

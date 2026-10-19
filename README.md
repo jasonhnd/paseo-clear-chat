@@ -1,8 +1,10 @@
-# Beautiful Chat
+# Clear Chat
 
-A Paseo plugin that redraws the Oh My Pi (OMP) chat stream: tool calls, reasoning, prompts, approvals,
-and checklists. It replaces the host rendering of OMP timeline items with typed, syntax-aware cards
-that follow the active Paseo theme.
+Clear Chat is a Paseo plugin that redraws the Oh My Pi (OMP) chat stream: tool calls, reasoning,
+prompts, approvals, and checklists. It replaces the host rendering of OMP timeline items with typed,
+syntax-aware cards that follow the active Paseo theme.
+
+Clear Chat is based on Beautiful Chat by ABorakati (https://github.com/ABorakati/beautiful-chat).
 
 ![A prompt, a tool call, a finished background job, and the reply that closes the turn](images/hero.png)
 
@@ -13,10 +15,10 @@ them.
 ## Install
 
 ```bash
-paseo plugin install ABorakati/beautiful-chat
+paseo plugin install git:https://github.com/jasonhnd/beautiful-chat.git
 ```
 
-The manifest requires Paseo `>=0.8.0`. Open **Settings → Plugins → Beautiful Chat** for the
+The manifest requires Paseo `>=0.8.0`. Open **Settings → Plugins → Clear Chat** for the
 accent, fonts, frosted glass, and prompt bubble options.
 
 ---
@@ -191,7 +193,7 @@ to the previous one, and Escape closes the bar.
 The bar searches only messages the chat has loaded. Scroll up first to include older history.
 
 To keep Paseo's native search, which also searches unloaded history, turn off **Assistant
-markdown** and **Enhanced prompt bubble** in **Settings -> Plugins -> Beautiful Chat**. Paseo then
+markdown** and **Enhanced prompt bubble** in **Settings -> Plugins -> Clear Chat**. Paseo then
 draws replies and prompts itself, and Ctrl/Cmd+F opens Paseo's find instead of the plugin's bar.
 New messages follow the change.
 Tool, reasoning, and checklist cards keep the plugin's styling, so Paseo's find still cannot reveal a
@@ -283,7 +285,7 @@ timestamp, item}`, and plugin navigation offers only `openSettings`, `openSurfac
 ## Project structure
 
 ```text
-beautiful-chat/
+clear-chat/
   paseo-plugin.json          # Manifest: id and Paseo requirement
   index.client.tsx           # Timeline transformers, renderers, settings screen
   index.server.ts            # Daemon-side RPCs (file.reveal)
@@ -308,7 +310,7 @@ beautiful-chat/
 npm install
 npm test
 npm run typecheck
-paseo plugin reload beautiful-chat
+paseo plugin reload clear-chat
 ```
 
 Rebuild the screenshots after a visual change:

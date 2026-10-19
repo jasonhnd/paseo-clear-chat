@@ -1,7 +1,7 @@
 import { EMBEDDED_FONTS } from "./font-data";
 import { fontMono, fontUi } from "./theme-tokens";
 
-const STYLE_ELEMENT_ID = "beautiful-chat-fonts";
+const STYLE_ELEMENT_ID = "clear-chat-fonts";
 
 /**
  * Host faces to try if the embedded bytes ever fail to decode. These belong in

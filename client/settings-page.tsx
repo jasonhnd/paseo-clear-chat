@@ -210,7 +210,7 @@ function ChoiceRow<T extends string>({
 }
 
 /** Settings content mounted by Paseo under the selected host's Plugin settings. */
-export function BeautifulChatSettingsPage({ theme }: PluginSurfaceProps) {
+export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
   const preferences = useEnhancerPreferences();
   const storageError = useEnhancerPreferencesError();
   const tokens = useMemo(
