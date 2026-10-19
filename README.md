@@ -14,8 +14,13 @@ them.
 
 ## Install
 
+If Beautiful Chat is already installed, follow [Upgrading to Clear Chat](#upgrading-to-clear-chat)
+before installing or removing either plugin.
+
+Install from the local checkout whose `main` includes Clear Chat:
+
 ```bash
-paseo plugin install git:https://github.com/jasonhnd/beautiful-chat.git
+paseo plugin install "git:file://$HOME/AgenticCoder/beautiful-chat" --ref main
 ```
 
 The manifest requires Paseo `>=0.8.0`. Open **Settings → Plugins → Clear Chat** for the
@@ -182,12 +187,49 @@ settings screen; try changing the setting again after the host reconnects.
 
 ### Upgrading to Clear Chat
 
+Paseo 0.12's `paseo plugin remove <id>` also deletes `~/.paseo/plugin-settings/<id>`.
+Back up first, install Clear Chat while the old settings still exist, verify the migrated file,
+and only then remove Beautiful Chat. The commands below assume the default daemon home and IDs;
+adjust paths for a custom home. Stop if a backup or verification fails.
+
+1. Back up the old host settings and record the backup path for rollback:
+
+   ```bash
+   legacy_backup="$HOME/.paseo/backups/plugin-settings-beautiful-chat-$(date +%Y%m%d-%H%M%S)"
+   mkdir -p "$HOME/.paseo/backups"
+   cp -a "$HOME/.paseo/plugin-settings/beautiful-chat" "$legacy_backup"
+   ```
+
+2. Install Clear Chat from the local `main` that contains the rename:
+
+   ```bash
+   paseo plugin install "git:file://$HOME/AgenticCoder/beautiful-chat" --ref main
+   ```
+
+3. Confirm that `~/.paseo/plugin-settings/clear-chat/presentation.json` was generated and that
+   Clear Chat loads with the expected settings. For a fresh migration, compare the file with
+   `$legacy_backup/presentation.json`; an existing Clear Chat document intentionally wins.
+   If the file is missing or settings differ unexpectedly, keep Beautiful Chat and the backup,
+   check the migration error log, and resolve the failure before proceeding.
+
+4. Only after verification, uninstall the old plugin:
+
+   ```bash
+   paseo plugin remove beautiful-chat
+   ```
+
+Keep the backup after removal. Before any rollback, also back up Clear Chat's current settings;
+see [Rollback](docs/STATUS.md#rollback) for the pinned version and restoration order.
+
 The first server start copies the previous plugin's `presentation.json` into
 `plugin-settings/clear-chat/presentation.json` when the new document is absent. It preserves the
 complete SDK envelope, including text size and the browser-import marker. Existing new documents,
 including empty or invalid ones, are left untouched. The copy is published atomically without
-replacing a destination created concurrently. A filesystem error stops startup so defaults cannot
-silently replace settings that could not be copied; a later start retries.
+replacing a destination created concurrently. A filesystem error is logged with both paths and
+the original error; settings and RPC registration continue, using SDK defaults when no new
+document exists. Migration does not delete or overwrite either document. The old directory stays
+available for a later retry after the filesystem issue is resolved; an existing new document
+still takes precedence on subsequent starts.
 
 Paseo keys host settings by **installation ID**, then **settings ID**. `registerSettings` and
 `settingsRpc` expose only the current installation's documents, with no directory or cross-plugin
@@ -200,13 +242,16 @@ located through this SDK; its settings need to be copied to the corresponding in
 directory separately.
 
 On the first browser load, an absent `paseo/clear-chat/preferences/v1` key is copied from the legacy
-key defined in [`client/preferences.ts`](client/preferences.ts). Any existing new key takes
+key defined in [`client/preferences.ts`](client/preferences.ts). An observed existing new key takes
 precedence, even if empty or invalid. This copy also runs when saved host settings are already
 authoritative, without changing those host settings. Failed browser copies leave the host import
 marker available for a later attempt. Native clients without localStorage continue to use host
 settings and leave browser import available as described above.
+The browser check and copy are best effort: localStorage has no cross-tab compare-and-swap,
+so concurrent first writes can race. Saved host settings remain authoritative.
 
-Both migrations retain the original data for rollback. These are independent snapshots; later
+The migrations themselves retain the original data for rollback; uninstalling a plugin can delete
+its host settings, so keep the backups described above. These are independent snapshots; later
 changes in Clear Chat are saved through the host SDK and do not sync back to the previous plugin.
 
 ---
