@@ -8,7 +8,11 @@ import { installPointerGlow } from "./client/components/glow";
 import { installHostNoticeStyle } from "./client/components/host-notice";
 import { installChatFind } from "./client/components/chat-find";
 import { extractPromptImages } from "./client/prompt-images";
-import { getEnhancerPreferences } from "./client/preferences";
+import {
+  areEnhancerPreferencesReady,
+  getEnhancerPreferences,
+  initializeEnhancerPreferences,
+} from "./client/preferences";
 import {
   LiveToolCallRenderer,
   LiveReasoningRenderer,
@@ -25,6 +29,7 @@ function toJsonValue(value: unknown): JsonValue {
 }
 
 export default function contribute(client: PluginClientContext) {
+  void initializeEnhancerPreferences((contract, input) => client.rpc(contract, input));
   // Install the bundled faces before any surface paints.
   const removeFonts = embedFonts();
   const removeFrost = installFrostedGlass();
@@ -154,7 +159,7 @@ export default function contribute(client: PluginClientContext) {
       // The host strips images while mapping the stream item, so an enhanced
       // bubble would silently swallow a pasted screenshot. The preference lets
       // the reader trade the bubble for the host's image previews.
-      if (!getEnhancerPreferences().enhancedUserBubble) return undefined;
+      if (!areEnhancerPreferencesReady() || !getEnhancerPreferences().enhancedUserBubble) return undefined;
       const images = extractPromptImages(item);
       // Replacing the item drops whatever this renderer does not carry, so a
       // message with an attachment it cannot show is left to the host.
@@ -198,7 +203,7 @@ export default function contribute(client: PluginClientContext) {
     query: { itemType: "assistant_message" },
     transform({ item }) {
       if (item.type !== "assistant_message") return undefined;
-      if (!getEnhancerPreferences().assistantMarkdown) return undefined;
+      if (!areEnhancerPreferencesReady() || !getEnhancerPreferences().assistantMarkdown) return undefined;
       if (!item.text.trim()) return undefined;
       return {
         items: [

@@ -5,9 +5,11 @@ import { hostFontEscape } from "./components/host-font-escape";
 import { radius, buildThemeTokens, type ExtendedThemeTokens } from "./components/theme-tokens";
 import {
   ACCENT_PRESETS,
+  TEXT_SIZE_OPTIONS,
   resetEnhancerPreferences,
   updateEnhancerPreferences,
   useEnhancerPreferences,
+  useEnhancerPreferencesError,
   type AccentPreset,
   type CodeFontPreference,
   type UiFontPreference,
@@ -210,6 +212,7 @@ function ChoiceRow<T extends string>({
 /** Settings content mounted by Paseo under the selected host's Plugin settings. */
 export function BeautifulChatSettingsPage({ theme }: PluginSurfaceProps) {
   const preferences = useEnhancerPreferences();
+  const storageError = useEnhancerPreferencesError();
   const tokens = useMemo(
     () => buildThemeTokens(theme.colors, preferences),
     [preferences, theme.colors],
@@ -229,10 +232,16 @@ export function BeautifulChatSettingsPage({ theme }: PluginSurfaceProps) {
         <Text
           style={[styles.description, { color: tokens.foregroundMuted, fontFamily: tokens.fontUi }]}
         >
-          Changes apply to every enhanced tool call, reasoning trace, checklist, and prompt in this
-          client.
+          Changes are saved on the selected host and shared by its clients. New messages follow
+          rendering changes; reload the chat to update existing messages.
         </Text>
       </View>
+
+      {storageError ? (
+        <Text accessibilityRole="alert" style={[styles.description, { color: tokens.foreground }]}>
+          Preferences could not be saved or loaded: {storageError} Try changing the setting again.
+        </Text>
+      ) : null}
 
       <View
         style={[
@@ -313,6 +322,15 @@ export function BeautifulChatSettingsPage({ theme }: PluginSurfaceProps) {
           tokens={tokens}
         />
 
+        <ChoiceRow
+          title="Text size"
+          description="Scales the text this plugin draws, from replies and code blocks to callouts and badges. Saved on this host for all your devices."
+          value={String(preferences.textScale)}
+          options={TEXT_SIZE_OPTIONS}
+          onChange={(textScale) => updateEnhancerPreferences({ textScale: Number(textScale) })}
+          tokens={tokens}
+        />
+
         <ToggleRow
           title="Frosted glass"
           description="Blur surfaces where the host supports it, or use solid surfaces instead."
@@ -331,7 +349,7 @@ export function BeautifulChatSettingsPage({ theme }: PluginSurfaceProps) {
 
         <ToggleRow
           title="Enhanced prompt bubble"
-          description="Paseo removes pasted images before a plugin sees the message, so the enhanced bubble cannot show them. Turn this off for Paseo's own bubble with image previews. New prompts follow the change."
+          description="Paseo removes pasted images before a plugin sees the message, so the enhanced bubble cannot show them. Turn this off for Paseo's own bubble with image previews. New prompts follow the change. On iOS, text cannot be selected by dragging when this is enabled. Use the Copy button to copy text."
           value={preferences.enhancedUserBubble}
           onChange={(enhancedUserBubble) => updateEnhancerPreferences({ enhancedUserBubble })}
           tokens={tokens}
@@ -347,7 +365,7 @@ export function BeautifulChatSettingsPage({ theme }: PluginSurfaceProps) {
 
         <ToggleRow
           title="Assistant markdown"
-          description="Draws the reply with the plugin's own headings, lists and syntax-highlighted code blocks. The plugin cannot reach Paseo's markdown pipeline, so its version is a subset: turn this off for mermaid diagrams, images, and the host's file-path links."
+          description="Draws the reply with the plugin's own headings, lists and syntax-highlighted code blocks. The plugin cannot reach Paseo's markdown pipeline, so its version is a subset: turn this off for mermaid diagrams, images, and the host's file-path links. On iOS, text cannot be selected by dragging when this is enabled. Use the Copy button to copy text."
           value={preferences.assistantMarkdown}
           onChange={(assistantMarkdown) => updateEnhancerPreferences({ assistantMarkdown })}
           tokens={tokens}

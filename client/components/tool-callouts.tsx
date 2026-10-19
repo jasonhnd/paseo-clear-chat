@@ -143,7 +143,7 @@ export function ToolCallout({
           flex: 1,
         },
         toolPill: {
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           fontFamily: tokens.fontUi,
           fontWeight: "600",
           color: tokens.foregroundSubtle,
@@ -151,7 +151,7 @@ export function ToolCallout({
         },
         titleText: {
           fontFamily: tokens.fontUi,
-          fontSize: 12,
+          fontSize: tokens.fs(12),
           fontWeight: "600",
           color: tokens.foreground,
           flexShrink: 1,
@@ -164,7 +164,7 @@ export function ToolCallout({
           gap: 6,
         },
         durationBadge: {
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           fontFamily: tokens.fontUi,
           color: tokens.foregroundSubtle,
         },
@@ -176,14 +176,14 @@ export function ToolCallout({
         },
         statusText: {
           fontFamily: tokens.fontUi,
-          fontSize: 10,
+          fontSize: tokens.fs(10),
           fontWeight: "700",
           textTransform: "uppercase",
           color: statusColor,
         },
         chevron: {
           fontFamily: tokens.fontUi,
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           color: tokens.foregroundMuted,
           marginLeft: 2,
         },
@@ -203,7 +203,7 @@ export function ToolCallout({
           ...tokens.boxShadow,
         },
         terminalPrompt: {
-          fontSize: 12,
+          fontSize: tokens.fs(12),
           fontFamily: tokens.fontMono,
           color: tokens.foreground,
         },
@@ -218,25 +218,25 @@ export function ToolCallout({
         },
         evalOutputLabel: {
           fontFamily: tokens.fontUi,
-          fontSize: 10,
+          fontSize: tokens.fs(10),
           color: tokens.foregroundSubtle,
           textTransform: "lowercase",
         },
         evalOutputText: {
           fontFamily: tokens.fontMono,
-          fontSize: 11.5,
-          lineHeight: 17,
+          fontSize: tokens.fs(11.5),
+          lineHeight: tokens.fs(17),
           color: tokens.foregroundMuted,
         },
         terminalOutput: {
           fontFamily: tokens.fontMono,
-          fontSize: 11.5,
-          lineHeight: 17,
+          fontSize: tokens.fs(11.5),
+          lineHeight: tokens.fs(17),
           color: tokens.foregroundMuted,
         },
         silentCommandText: {
           fontFamily: tokens.fontUi,
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           color: tokens.foregroundSubtle,
           fontStyle: "italic",
         },
@@ -246,7 +246,7 @@ export function ToolCallout({
         },
         askPrompt: {
           fontFamily: tokens.fontUi,
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           color: tokens.foregroundSubtle,
           marginBottom: 4,
         },
@@ -265,7 +265,7 @@ export function ToolCallout({
         },
         askAnswerKey: {
           fontFamily: tokens.fontUi,
-          fontSize: 10,
+          fontSize: tokens.fs(10),
           color: tokens.foregroundSubtle,
           textTransform: "uppercase",
           letterSpacing: 0.4,
@@ -273,7 +273,7 @@ export function ToolCallout({
         askAnswerValue: {
           flex: 1,
           fontFamily: tokens.fontUi,
-          fontSize: 12.5,
+          fontSize: tokens.fs(12.5),
           fontWeight: "600",
           color: tokens.success,
         },
@@ -304,13 +304,13 @@ export function ToolCallout({
         },
         askOptionLabel: {
           fontFamily: tokens.fontUi,
-          fontSize: 13,
+          fontSize: tokens.fs(13),
           fontWeight: "600",
           color: tokens.foreground,
         },
         recommendedBadge: {
           fontFamily: tokens.fontUi,
-          fontSize: 10,
+          fontSize: tokens.fs(10),
           fontWeight: "600",
           color: tokens.success,
           backgroundColor: tokens.successBg,
@@ -320,7 +320,7 @@ export function ToolCallout({
         },
         askOptionDesc: {
           fontFamily: tokens.fontUi,
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           color: tokens.foregroundMuted,
         },
         // Thinking container
@@ -340,12 +340,12 @@ export function ToolCallout({
         },
         thinkingTitle: {
           fontFamily: tokens.fontUi,
-          fontSize: 12,
+          fontSize: tokens.fs(12),
           fontWeight: "600",
           color: tokens.foreground,
         },
         thinkingTokenBadge: {
-          fontSize: 10,
+          fontSize: tokens.fs(10),
           fontFamily: tokens.fontUi,
           color: tokens.foregroundSubtle,
           backgroundColor: tokens.surface2,
@@ -355,8 +355,8 @@ export function ToolCallout({
         },
         thinkingText: {
           fontFamily: tokens.fontUi,
-          fontSize: 12,
-          lineHeight: 18,
+          fontSize: tokens.fs(12),
+          lineHeight: tokens.fs(18),
           color: tokens.foregroundMuted,
         },
         thinkingStepsList: {
@@ -374,8 +374,8 @@ export function ToolCallout({
         thinkingStepText: {
           fontFamily: tokens.fontUi,
           flex: 1,
-          fontSize: 12,
-          lineHeight: 16,
+          fontSize: tokens.fs(12),
+          lineHeight: tokens.fs(16),
           color: tokens.foregroundMuted,
         },
         // MCP container
@@ -395,7 +395,7 @@ export function ToolCallout({
         },
         mcpServerBadge: {
           fontFamily: tokens.fontUi,
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           fontWeight: "700",
           color: tokens.accent,
           backgroundColor: tokens.accentBg,
@@ -404,13 +404,13 @@ export function ToolCallout({
           borderRadius: radius.chip,
         },
         mcpToolName: {
-          fontSize: 13,
+          fontSize: tokens.fs(13),
           fontWeight: "700",
           color: tokens.foreground,
           fontFamily: tokens.fontUi,
         },
         mcpTransportBadge: {
-          fontSize: 10,
+          fontSize: tokens.fs(10),
           fontFamily: tokens.fontUi,
           color: tokens.foregroundSubtle,
           backgroundColor: tokens.surface2,
@@ -420,7 +420,7 @@ export function ToolCallout({
         },
         mcpSectionTitle: {
           fontFamily: tokens.fontUi,
-          fontSize: 10,
+          fontSize: tokens.fs(10),
           fontWeight: "700",
           textTransform: "uppercase",
           letterSpacing: 0.5,
@@ -436,7 +436,7 @@ export function ToolCallout({
         },
         mcpErrorText: {
           fontFamily: tokens.fontUi,
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           color: tokens.danger,
         },
       }),
@@ -491,7 +491,7 @@ export function ToolCallout({
           )}
 
           {isFailed && (
-            <Text selectable style={{ fontSize: 11, fontWeight: "600", color: tokens.danger }}>
+            <Text selectable style={{ fontSize: tokens.fs(11), fontWeight: "600", color: tokens.danger }}>
               failed
             </Text>
           )}
@@ -502,7 +502,7 @@ export function ToolCallout({
               <Text
                 selectable
                 style={{
-                  fontSize: 11,
+                  fontSize: tokens.fs(11),
                   color: tokens.accent,
                   fontWeight: "500",
                 }}
@@ -601,7 +601,7 @@ export function ToolCallout({
                       <Text
                         selectable
                         style={{
-                          fontSize: 11,
+                          fontSize: tokens.fs(11),
                           color: tokens.foregroundSubtle,
                           fontFamily: tokens.fontMono,
                         }}
@@ -1016,14 +1016,14 @@ function useSubagentStyles(tokens: ExtendedThemeTokens): SubagentStyles {
         },
         headline: {
           fontFamily: tokens.fontUi,
-          fontSize: 13,
+          fontSize: tokens.fs(13),
           fontWeight: "700",
           color: tokens.foreground,
           flexShrink: 1,
         },
         chip: {
           fontFamily: tokens.fontUi,
-          fontSize: 10,
+          fontSize: tokens.fs(10),
           fontWeight: "700",
           textTransform: "lowercase",
           paddingHorizontal: 6,
@@ -1047,7 +1047,7 @@ function useSubagentStyles(tokens: ExtendedThemeTokens): SubagentStyles {
         },
         contextLabel: {
           fontFamily: tokens.fontUi,
-          fontSize: 10,
+          fontSize: tokens.fs(10),
           fontWeight: "700",
           letterSpacing: 0.4,
           textTransform: "lowercase",
@@ -1056,8 +1056,8 @@ function useSubagentStyles(tokens: ExtendedThemeTokens): SubagentStyles {
         },
         contextBody: {
           fontFamily: tokens.fontUi,
-          fontSize: 12,
-          lineHeight: 17,
+          fontSize: tokens.fs(12),
+          lineHeight: tokens.fs(17),
           color: tokens.foregroundSubtle,
         },
         row: {
@@ -1070,15 +1070,15 @@ function useSubagentStyles(tokens: ExtendedThemeTokens): SubagentStyles {
         },
         name: {
           fontFamily: tokens.fontUi,
-          fontSize: 12.5,
+          fontSize: tokens.fs(12.5),
           fontWeight: "600",
           color: tokens.foreground,
           flexShrink: 1,
         },
         brief: {
           fontFamily: tokens.fontUi,
-          fontSize: 12,
-          lineHeight: 16,
+          fontSize: tokens.fs(12),
+          lineHeight: tokens.fs(16),
           color: tokens.foregroundMuted,
         },
         pending: {
@@ -1088,7 +1088,7 @@ function useSubagentStyles(tokens: ExtendedThemeTokens): SubagentStyles {
         },
         pendingText: {
           fontFamily: tokens.fontUi,
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           fontWeight: "500",
           color: tokens.accent,
           ...unselectable,

@@ -148,10 +148,35 @@ Devicon brand marks, and the file-manager link.
 | ---------------------- | ------------------------------------------------------------------ |
 | Accent colour          | Follow the Paseo theme, or pick Jade, Violet, Amber, or Rose.      |
 | Interface font         | Embedded Inter, or the system interface face.                      |
+| Text size              | Small (90%), Default (100%), Large (115%), or XL (130%); icons keep their size. |
 | Code glyphs            | Iosevka with ligatures, or literal glyphs.                         |
 | Frosted glass          | Blur card surfaces, or paint them solid.                           |
 | Enhanced prompt bubble | Off hands prompts back to Paseo, whose bubble shows pasted images. |
 | Assistant markdown     | Off hands replies back to Paseo's own markdown renderer.           |
+
+**Assistant markdown** and **Enhanced prompt bubble** are enabled by default on every platform.
+On iOS and iPadOS, text cannot be selected by dragging when either renderer is enabled. Use the
+**Copy** button on the reply, prompt, or code block. Copy uses the host clipboard and shows a
+success or failure toast. If automatic copying fails, a dialog shows the full text in a read-only
+input: touch and hold it, choose **Select All**, then **Copy**. Explicitly disabling either renderer
+still hands that content back to Paseo.
+
+**Text size** changes reply bodies, headings, prompts, footers, code, and card text, including line
+heights. It is saved on the selected host and shared by all devices connected to that host.
+Text scaling is clamped to 85–135%; the four presets provide common reading sizes. Thanks to
+[Moyf's text size contribution in #9](https://github.com/ABorakati/beautiful-chat/pull/9), adapted
+here to SDK host settings. The separate auto-collapse and bottom fold controls are not included.
+
+Preferences are saved with the plugin SDK on the selected host and shared by clients connected
+to that host. Explicit choices override defaults. Existing browser preferences are
+imported once when a client with browser storage first loads the host's settings; saved host
+choices take precedence. A native client's first load leaves that migration available.
+After that, browser storage is ignored, including after **Reset defaults**. Open the existing
+web client before editing or resetting settings on native if you want to import its preferences;
+an explicit edit or reset makes the SDK settings authoritative immediately.
+Changes affect new messages; reload the chat to update rows already on screen. While settings
+are loading or unavailable, text rows stay with Paseo's renderer. Storage errors appear in the
+settings screen; try changing the setting again after the host reconnects.
 
 ---
 
@@ -246,8 +271,8 @@ timestamp, item}`, and plugin navigation offers only `openSettings`, `openSurfac
     GIF, and WebP but never SVG, so a data-URI SVG renders on web and stays blank on iOS and
     Android. Those marks ship as PNG rasters in `client/components/mark-bitmaps.ts`.
 13. **Settings are host-scoped only.** `defineSettings` rejects any scope other than `host`, so
-    per-workspace or per-agent presentation settings are impossible. This plugin keeps presentation
-    preferences in client storage instead.
+    per-workspace or per-agent presentation settings are impossible. This plugin stores explicit
+    presentation choices with the SDK's host settings; unset choices use the plugin defaults.
 14. **Paseo's chat find cannot reach replaced rows.** Paseo 0.9.1 finds a match by its original
     message id, then waits for a row carrying that id. A transformed row always carries
     `<pluginId>/<itemId>` instead, so Ctrl+F on a styled prompt or reply never reveals the match.
@@ -268,7 +293,7 @@ beautiful-chat/
   client/
     live-renderers.tsx       # Timeline item to component mapping
     settings-page.tsx        # Settings screen
-    preferences.ts           # Client-side presentation preferences
+    preferences.ts           # Presentation preferences backed by host settings
     components/              # Cards, syntax block, glyphs, motion, theme tokens
       mark-bitmaps.ts        # GENERATED PNG rasters of every brand mark
       devicon-data.ts        # Vendor SVG sources, read only by the generator
@@ -281,6 +306,7 @@ beautiful-chat/
 
 ```bash
 npm install
+npm test
 npm run typecheck
 paseo plugin reload beautiful-chat
 ```
