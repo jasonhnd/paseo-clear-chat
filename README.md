@@ -180,6 +180,35 @@ Changes affect new messages; reload the chat to update rows already on screen. W
 are loading or unavailable, text rows stay with Paseo's renderer. Storage errors appear in the
 settings screen; try changing the setting again after the host reconnects.
 
+### Upgrading to Clear Chat
+
+The first server start copies the previous plugin's `presentation.json` into
+`plugin-settings/clear-chat/presentation.json` when the new document is absent. It preserves the
+complete SDK envelope, including text size and the browser-import marker. Existing new documents,
+including empty or invalid ones, are left untouched. The copy is published atomically without
+replacing a destination created concurrently. A filesystem error stops startup so defaults cannot
+silently replace settings that could not be copied; a later start retries.
+
+Paseo keys host settings by **installation ID**, then **settings ID**. `registerSettings` and
+`settingsRpc` expose only the current installation's documents, with no directory or cross-plugin
+lookup API in the pinned SDK. The server runs in Node and can read the previous directory directly
+before registering settings. Migration uses `PASEO_HOME`, falling back to the daemon user's
+`~/.paseo`, and assumes the default installation IDs defined in
+[`server/settings-migration.ts`](server/settings-migration.ts). An installation with an overridden
+`--id`, or a custom daemon home supplied only through `--home` without `PASEO_HOME`, cannot be
+located through this SDK; its settings need to be copied to the corresponding installation's
+directory separately.
+
+On the first browser load, an absent `paseo/clear-chat/preferences/v1` key is copied from the legacy
+key defined in [`client/preferences.ts`](client/preferences.ts). Any existing new key takes
+precedence, even if empty or invalid. This copy also runs when saved host settings are already
+authoritative, without changing those host settings. Failed browser copies leave the host import
+marker available for a later attempt. Native clients without localStorage continue to use host
+settings and leave browser import available as described above.
+
+Both migrations retain the original data for rollback. These are independent snapshots; later
+changes in Clear Chat are saved through the host SDK and do not sync back to the previous plugin.
+
 ---
 
 ## Finding text
@@ -288,7 +317,9 @@ timestamp, item}`, and plugin navigation offers only `openSettings`, `openSurfac
 clear-chat/
   paseo-plugin.json          # Manifest: id and Paseo requirement
   index.client.tsx           # Timeline transformers, renderers, settings screen
-  index.server.ts            # Daemon-side RPCs (file.reveal)
+  index.server.ts            # Host settings migration/registration and daemon-side RPCs
+  server/
+    settings-migration.ts    # First-run copy of the previous installation's host settings
   shared/
     contracts.ts             # Data contracts shared by client and server
     file-rpc.ts              # file.reveal contract
