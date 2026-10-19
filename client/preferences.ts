@@ -66,6 +66,7 @@ export interface EnhancerPreferences {
 }
 
 const STORAGE_KEY = "paseo/clear-chat/preferences/v1";
+const LEGACY_STORAGE_KEY = "paseo/beautiful-chat/preferences/v1";
 
 export const DEFAULT_PREFERENCES: Readonly<EnhancerPreferences> = {
   accent: "host",
@@ -87,12 +88,28 @@ function storage(): Storage | undefined {
   return candidate.localStorage;
 }
 
-function loadLegacyPreferences(): PreferenceOverrides | undefined {
+function migrateBrowserPreferences(): string | null | undefined {
   try {
-    const legacyStorage = storage();
-    if (!legacyStorage) return undefined;
-    const stored = legacyStorage.getItem(STORAGE_KEY);
-    if (!stored) return {};
+    const browserStorage = storage();
+    if (!browserStorage) return undefined;
+    const current = browserStorage.getItem(STORAGE_KEY);
+    // Even an empty or invalid new value is an existing choice. Never replace it.
+    if (current !== null) return current;
+    const legacy = browserStorage.getItem(LEGACY_STORAGE_KEY);
+    if (legacy !== null) browserStorage.setItem(STORAGE_KEY, legacy);
+    return legacy;
+  } catch {
+    // Unavailable storage or a failed copy must not consume the host's migration
+    // marker. A later browser initialization can retry; the old key stays intact.
+    return undefined;
+  }
+}
+
+function loadLegacyPreferences(): PreferenceOverrides | undefined {
+  const stored = migrateBrowserPreferences();
+  if (stored === undefined) return undefined;
+  if (!stored) return {};
+  try {
     const candidate: unknown = JSON.parse(stored);
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return {};
     const valid: Record<string, unknown> = {};
@@ -171,9 +188,11 @@ function enqueue(change: (values: PresentationSettings) => PresentationSettings)
 
 export function initializeEnhancerPreferences(rpc: PluginClientContext["rpc"]): Promise<void> {
   invoke = rpc;
+  // Copy the browser key even if host settings were already migrated. The host
+  // remains authoritative; the new browser key is only the import snapshot.
+  const legacy = loadLegacyPreferences();
   return enqueue((values) => {
     if (values.legacyMigrated) return values;
-    const legacy = loadLegacyPreferences();
     // Native has no browser storage. Leave migration available until a web
     // client connects, or an explicit edit/reset makes SDK settings authoritative.
     if (legacy === undefined) return values;
