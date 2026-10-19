@@ -6,21 +6,34 @@ const test = require("node:test");
 const { runInThisContext } = require("node:vm");
 const ts = require("typescript");
 
-const STORAGE_KEY = "paseo/beautiful-chat/preferences/v1";
+const STORAGE_KEY = "paseo/clear-chat/preferences/v1";
+const LEGACY_STORAGE_KEY = "paseo/beautiful-chat/preferences/v1";
 
 // Compile with the existing TypeScript dependency; only host UI/runtime modules
 // are stubbed. Preferences, settings contracts and transformers run unchanged.
-function harness(platform = "ios", legacy) {
+function harness(platform = "ios", legacy, current) {
   const cache = new Map();
   const transformers = new Map();
-  const storage = legacy === undefined ? undefined : {
+  const entries = new Map();
+  if (typeof legacy === "string") entries.set(LEGACY_STORAGE_KEY, legacy);
+  if (typeof current === "string") entries.set(STORAGE_KEY, current);
+  const storage = legacy === undefined && current === undefined ? undefined : {
+    entries,
+    writes: [],
+    failWrites: false,
     getItem(key) {
-      assert.equal(key, STORAGE_KEY);
+      assert.ok(key === STORAGE_KEY || key === LEGACY_STORAGE_KEY);
       if (legacy instanceof Error) throw legacy;
-      return legacy;
+      return entries.get(key) ?? null;
     },
-    setItem() { throw new Error("Legacy storage must not receive new writes"); },
-    removeItem() {},
+    setItem(key, value) {
+      assert.equal(key, STORAGE_KEY, "Legacy storage must not receive new writes");
+      if (this.failWrites) throw new Error("Storage full");
+      assert.equal(entries.has(key), false, "Existing preferences must not be overwritten");
+      entries.set(key, value);
+      this.writes.push({ key, value });
+    },
+    removeItem() { throw new Error("Migration must keep old storage"); },
   };
   function load(relative) {
     const filename = resolve(__dirname, "..", relative);
@@ -33,6 +46,9 @@ function harness(platform = "ios", legacy) {
     const realRequire = createRequire(filename);
     const localRequire = (id) => {
       if (id === "react-native") return { Platform: { OS: platform } };
+      // Host startup migration has its own filesystem tests. Client tests never
+      // read or write the real daemon's settings directory.
+      if (id.endsWith("/settings-migration")) return { migrateHostSettings() {} };
       if (id.endsWith("/settings-page") || id.endsWith("/live-renderers")) return {};
       if (id.includes("/components/")) return new Proxy({}, { get: () => () => () => {} });
       if (id.startsWith(".")) {
@@ -49,6 +65,7 @@ function harness(platform = "ios", legacy) {
   const preferences = load("client/preferences.ts");
   return {
     preferences,
+    storage,
     load,
     transformers,
     contribute(rpc) {
@@ -95,6 +112,73 @@ function host(initial = {}) {
   };
   return state;
 }
+
+test("browser migration copies old preferences into the new key and keeps the old key", async () => {
+  const legacy = JSON.stringify({ accent: "jade", enhancedUserBubble: false, unknown: "preserved" });
+  const h = harness("web", legacy);
+  const server = host();
+  await h.preferences.initializeEnhancerPreferences(server.rpc);
+  assert.equal(h.storage.entries.get(STORAGE_KEY), legacy);
+  assert.equal(h.storage.entries.get(LEGACY_STORAGE_KEY), legacy);
+  assert.deepEqual(h.storage.writes, [{ key: STORAGE_KEY, value: legacy }]);
+  assert.equal(h.preferences.getEnhancerPreferences().accent, "jade");
+  assert.equal(h.preferences.getEnhancerPreferences().enhancedUserBubble, false);
+  await h.preferences.updateEnhancerPreferences({ accent: "rose" });
+  await h.preferences.resetEnhancerPreferences();
+  await h.preferences.initializeEnhancerPreferences(server.rpc);
+  assert.equal(h.storage.writes.length, 1);
+  assert.equal(h.storage.entries.get(LEGACY_STORAGE_KEY), legacy);
+  assert.equal(h.preferences.getEnhancerPreferences().accent, "host");
+});
+
+for (const current of [JSON.stringify({ accent: "rose" }), "{}", "", "{broken"]) {
+  test(`browser migration leaves an existing new key untouched (${current || "empty"})`, async () => {
+    const legacy = JSON.stringify({ accent: "jade", assistantMarkdown: false });
+    const h = harness("web", legacy, current);
+    await h.preferences.initializeEnhancerPreferences(host().rpc);
+    assert.equal(h.storage.entries.get(STORAGE_KEY), current);
+    assert.equal(h.storage.entries.get(LEGACY_STORAGE_KEY), legacy);
+    assert.deepEqual(h.storage.writes, []);
+    assert.equal(h.preferences.getEnhancerPreferences().accent, current.includes("rose") ? "rose" : "host");
+    assert.equal(h.preferences.getEnhancerPreferences().assistantMarkdown, true);
+  });
+}
+
+test("browser migration with neither key uses defaults without creating a key", async () => {
+  const h = harness("web", null);
+  await h.preferences.initializeEnhancerPreferences(host().rpc);
+  assert.deepEqual(h.preferences.getEnhancerPreferences(), h.preferences.DEFAULT_PREFERENCES);
+  assert.equal(h.storage.entries.size, 0);
+  assert.deepEqual(h.storage.writes, []);
+});
+
+test("browser key is copied even when migrated host preferences are already authoritative", async () => {
+  const legacy = JSON.stringify({ accent: "jade", assistantMarkdown: false });
+  const server = host({ preferences: { accent: "rose" }, legacyMigrated: true });
+  const h = harness("web", legacy);
+  await h.preferences.initializeEnhancerPreferences(server.rpc);
+  assert.equal(h.storage.entries.get(STORAGE_KEY), legacy);
+  assert.equal(h.storage.entries.get(LEGACY_STORAGE_KEY), legacy);
+  assert.equal(h.preferences.getEnhancerPreferences().accent, "rose");
+  assert.deepEqual(server.values, { preferences: { accent: "rose" }, legacyMigrated: true });
+  assert.equal(server.calls.some(({ name }) => name.endsWith(".write")), false);
+});
+
+test("failed browser copy leaves migration available for a later first start", async () => {
+  const legacy = JSON.stringify({ accent: "jade" });
+  const server = host();
+  const h = harness("web", legacy);
+  h.storage.failWrites = true;
+  await h.preferences.initializeEnhancerPreferences(server.rpc);
+  assert.equal(h.storage.entries.has(STORAGE_KEY), false);
+  assert.equal(h.storage.entries.get(LEGACY_STORAGE_KEY), legacy);
+  assert.equal(server.values.legacyMigrated, false);
+  h.storage.failWrites = false;
+  await h.preferences.initializeEnhancerPreferences(server.rpc);
+  assert.equal(h.storage.entries.get(STORAGE_KEY), legacy);
+  assert.equal(h.preferences.getEnhancerPreferences().accent, "jade");
+  assert.equal(server.values.legacyMigrated, true);
+});
 
 test("iOS defaults enable both styled text renderers", () => {
   const { preferences: p } = harness("ios");
