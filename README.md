@@ -1,8 +1,10 @@
-# Beautiful Chat
+# Clear Chat
 
-A Paseo plugin that redraws the Oh My Pi (OMP) chat stream: tool calls, reasoning, prompts, approvals,
-and checklists. It replaces the host rendering of OMP timeline items with typed, syntax-aware cards
-that follow the active Paseo theme.
+Clear Chat is a Paseo plugin that redraws the Oh My Pi (OMP) chat stream: tool calls, reasoning,
+prompts, approvals, and checklists. It replaces the host rendering of OMP timeline items with typed,
+syntax-aware cards that follow the active Paseo theme.
+
+Clear Chat is based on Beautiful Chat by ABorakati (https://github.com/ABorakati/beautiful-chat).
 
 ![A prompt, a tool call, a finished background job, and the reply that closes the turn](images/hero.png)
 
@@ -13,10 +15,10 @@ them.
 ## Install
 
 ```bash
-paseo plugin install ABorakati/beautiful-chat
+paseo plugin install git:https://github.com/jasonhnd/beautiful-chat.git
 ```
 
-The manifest requires Paseo `>=0.8.0`. Open **Settings → Plugins → Beautiful Chat** for the
+The manifest requires Paseo `>=0.8.0`. Open **Settings → Plugins → Clear Chat** for the
 accent, fonts, frosted glass, and prompt bubble options.
 
 ---
@@ -148,10 +150,64 @@ Devicon brand marks, and the file-manager link.
 | ---------------------- | ------------------------------------------------------------------ |
 | Accent colour          | Follow the Paseo theme, or pick Jade, Violet, Amber, or Rose.      |
 | Interface font         | Embedded Inter, or the system interface face.                      |
+| Text size              | Small (90%), Default (100%), Large (115%), or XL (130%); icons keep their size. |
 | Code glyphs            | Iosevka with ligatures, or literal glyphs.                         |
 | Frosted glass          | Blur card surfaces, or paint them solid.                           |
 | Enhanced prompt bubble | Off hands prompts back to Paseo, whose bubble shows pasted images. |
 | Assistant markdown     | Off hands replies back to Paseo's own markdown renderer.           |
+
+**Assistant markdown** and **Enhanced prompt bubble** are enabled by default on every platform.
+On iOS and iPadOS, text cannot be selected by dragging when either renderer is enabled. Use the
+**Copy** button on the reply, prompt, or code block. Copy uses the host clipboard and shows a
+success or failure toast. If automatic copying fails, a dialog shows the full text in a read-only
+input: touch and hold it, choose **Select All**, then **Copy**. Explicitly disabling either renderer
+still hands that content back to Paseo.
+
+**Text size** changes reply bodies, headings, prompts, footers, code, and card text, including line
+heights. It is saved on the selected host and shared by all devices connected to that host.
+Text scaling is clamped to 85–135%; the four presets provide common reading sizes. Thanks to
+[Moyf's text size contribution in #9](https://github.com/ABorakati/beautiful-chat/pull/9), adapted
+here to SDK host settings. The separate auto-collapse and bottom fold controls are not included.
+
+Preferences are saved with the plugin SDK on the selected host and shared by clients connected
+to that host. Explicit choices override defaults. Existing browser preferences are
+imported once when a client with browser storage first loads the host's settings; saved host
+choices take precedence. A native client's first load leaves that migration available.
+After that, browser storage is ignored, including after **Reset defaults**. Open the existing
+web client before editing or resetting settings on native if you want to import its preferences;
+an explicit edit or reset makes the SDK settings authoritative immediately.
+Changes affect new messages; reload the chat to update rows already on screen. While settings
+are loading or unavailable, text rows stay with Paseo's renderer. Storage errors appear in the
+settings screen; try changing the setting again after the host reconnects.
+
+### Upgrading to Clear Chat
+
+The first server start copies the previous plugin's `presentation.json` into
+`plugin-settings/clear-chat/presentation.json` when the new document is absent. It preserves the
+complete SDK envelope, including text size and the browser-import marker. Existing new documents,
+including empty or invalid ones, are left untouched. The copy is published atomically without
+replacing a destination created concurrently. A filesystem error stops startup so defaults cannot
+silently replace settings that could not be copied; a later start retries.
+
+Paseo keys host settings by **installation ID**, then **settings ID**. `registerSettings` and
+`settingsRpc` expose only the current installation's documents, with no directory or cross-plugin
+lookup API in the pinned SDK. The server runs in Node and can read the previous directory directly
+before registering settings. Migration uses `PASEO_HOME`, falling back to the daemon user's
+`~/.paseo`, and assumes the default installation IDs defined in
+[`server/settings-migration.ts`](server/settings-migration.ts). An installation with an overridden
+`--id`, or a custom daemon home supplied only through `--home` without `PASEO_HOME`, cannot be
+located through this SDK; its settings need to be copied to the corresponding installation's
+directory separately.
+
+On the first browser load, an absent `paseo/clear-chat/preferences/v1` key is copied from the legacy
+key defined in [`client/preferences.ts`](client/preferences.ts). Any existing new key takes
+precedence, even if empty or invalid. This copy also runs when saved host settings are already
+authoritative, without changing those host settings. Failed browser copies leave the host import
+marker available for a later attempt. Native clients without localStorage continue to use host
+settings and leave browser import available as described above.
+
+Both migrations retain the original data for rollback. These are independent snapshots; later
+changes in Clear Chat are saved through the host SDK and do not sync back to the previous plugin.
 
 ---
 
@@ -166,7 +222,7 @@ to the previous one, and Escape closes the bar.
 The bar searches only messages the chat has loaded. Scroll up first to include older history.
 
 To keep Paseo's native search, which also searches unloaded history, turn off **Assistant
-markdown** and **Enhanced prompt bubble** in **Settings -> Plugins -> Beautiful Chat**. Paseo then
+markdown** and **Enhanced prompt bubble** in **Settings -> Plugins -> Clear Chat**. Paseo then
 draws replies and prompts itself, and Ctrl/Cmd+F opens Paseo's find instead of the plugin's bar.
 New messages follow the change.
 Tool, reasoning, and checklist cards keep the plugin's styling, so Paseo's find still cannot reveal a
@@ -246,8 +302,8 @@ timestamp, item}`, and plugin navigation offers only `openSettings`, `openSurfac
     GIF, and WebP but never SVG, so a data-URI SVG renders on web and stays blank on iOS and
     Android. Those marks ship as PNG rasters in `client/components/mark-bitmaps.ts`.
 13. **Settings are host-scoped only.** `defineSettings` rejects any scope other than `host`, so
-    per-workspace or per-agent presentation settings are impossible. This plugin keeps presentation
-    preferences in client storage instead.
+    per-workspace or per-agent presentation settings are impossible. This plugin stores explicit
+    presentation choices with the SDK's host settings; unset choices use the plugin defaults.
 14. **Paseo's chat find cannot reach replaced rows.** Paseo 0.9.1 finds a match by its original
     message id, then waits for a row carrying that id. A transformed row always carries
     `<pluginId>/<itemId>` instead, so Ctrl+F on a styled prompt or reply never reveals the match.
@@ -258,17 +314,19 @@ timestamp, item}`, and plugin navigation offers only `openSettings`, `openSurfac
 ## Project structure
 
 ```text
-beautiful-chat/
+clear-chat/
   paseo-plugin.json          # Manifest: id and Paseo requirement
   index.client.tsx           # Timeline transformers, renderers, settings screen
-  index.server.ts            # Daemon-side RPCs (file.reveal)
+  index.server.ts            # Host settings migration/registration and daemon-side RPCs
+  server/
+    settings-migration.ts    # First-run copy of the previous installation's host settings
   shared/
     contracts.ts             # Data contracts shared by client and server
     file-rpc.ts              # file.reveal contract
   client/
     live-renderers.tsx       # Timeline item to component mapping
     settings-page.tsx        # Settings screen
-    preferences.ts           # Client-side presentation preferences
+    preferences.ts           # Presentation preferences backed by host settings
     components/              # Cards, syntax block, glyphs, motion, theme tokens
       mark-bitmaps.ts        # GENERATED PNG rasters of every brand mark
       devicon-data.ts        # Vendor SVG sources, read only by the generator
@@ -281,8 +339,9 @@ beautiful-chat/
 
 ```bash
 npm install
+npm test
 npm run typecheck
-paseo plugin reload beautiful-chat
+paseo plugin reload clear-chat
 ```
 
 Rebuild the screenshots after a visual change:

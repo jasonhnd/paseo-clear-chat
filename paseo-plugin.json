@@ -1,5 +1,7 @@
 {
-  "id": "beautiful-chat",
+  "id": "clear-chat",
+  "name": "Clear Chat",
+  "description": "Paseo plugin: clear, syntax-aware chat cards for OMP tools, reasoning, prompts, and tasks",
   "requirements": {
     "paseo": ">=0.8.0"
   },

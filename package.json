@@ -1,10 +1,11 @@
 {
-  "name": "beautiful-chat",
+  "name": "clear-chat",
   "version": "0.1.0",
   "private": true,
-  "description": "Paseo plugin: a beautiful chat for OMP tools, reasoning, prompts, and tasks",
+  "description": "Paseo plugin: clear, syntax-aware chat cards for OMP tools, reasoning, prompts, and tasks",
   "license": "MIT",
   "scripts": {
+    "test": "node --test test/*.test.cjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
