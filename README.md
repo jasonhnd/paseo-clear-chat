@@ -17,10 +17,10 @@ them.
 If Beautiful Chat is already installed, follow [Upgrading to Clear Chat](#upgrading-to-clear-chat)
 before installing or removing either plugin.
 
-Install from the local checkout whose `main` includes Clear Chat:
+Install from the GitHub repository:
 
 ```bash
-paseo plugin install "git:file://$HOME/AgenticCoder/beautiful-chat" --ref main
+paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref main
 ```
 
 The manifest requires Paseo `>=0.8.0`. Open **Settings → Plugins → Clear Chat** for the
@@ -202,10 +202,10 @@ set `PASEO_HOME` to that path first. Stop if a backup or verification fails.
    cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_backup"
    ```
 
-2. Install Clear Chat from the local `main` that contains the rename:
+2. Install Clear Chat from the GitHub repository:
 
    ```bash
-   paseo plugin install "git:file://$HOME/AgenticCoder/beautiful-chat" --ref main
+   paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref main
    ```
 
 3. Confirm that `${PASEO_HOME:-$HOME/.paseo}/plugin-settings/clear-chat/presentation.json` was
@@ -221,7 +221,7 @@ set `PASEO_HOME` to that path first. Stop if a backup or verification fails.
    ```
 
 Keep the backup after removal. Before any rollback, also back up Clear Chat's current settings;
-see [Rollback](docs/STATUS.md#rollback) for the pinned version and restoration order.
+see [Rollback](#rollback) for the pinned version and restoration order.
 
 The first server start copies the previous plugin's `presentation.json` into
 `plugin-settings/clear-chat/presentation.json` when the new document is absent. It preserves the
@@ -255,6 +255,47 @@ so concurrent first writes can race. Saved host settings remain authoritative.
 The migrations themselves retain the original data for rollback; uninstalling a plugin can delete
 its host settings, so keep the backups described above. These are independent snapshots; later
 changes in Clear Chat are saved through the host SDK and do not sync back to the previous plugin.
+
+### Rollback
+
+Paseo 0.12 removes an installation's settings directory together with the plugin. Before removing
+Clear Chat, back up its current settings and keep the Beautiful Chat backup recorded during the
+[upgrade](#upgrading-to-clear-chat). These commands use `PASEO_HOME`, falling back to
+`$HOME/.paseo`. For a daemon configured only with `--home`, set `PASEO_HOME` to that path first.
+Stop if the backup fails.
+
+```bash
+clear_chat_backup="${PASEO_HOME:-$HOME/.paseo}/backups/plugin-settings-clear-chat-$(date +%Y%m%d-%H%M%S)"
+mkdir -p "${PASEO_HOME:-$HOME/.paseo}/backups"
+cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/clear-chat" "$clear_chat_backup"
+```
+
+After confirming the backup, uninstall Clear Chat:
+
+```bash
+paseo plugin remove clear-chat
+```
+
+If Beautiful Chat's settings directory was deleted during upgrade, restore its saved snapshot
+before installing the pinned old version. Replace `YYYYMMDD-HHMMSS` with the actual upgrade
+backup timestamp. Do not overwrite an existing settings directory; if it already exists, keep it
+and skip this restore step. Verify the restored `presentation.json` before continuing.
+
+```bash
+legacy_backup="${PASEO_HOME:-$HOME/.paseo}/backups/plugin-settings-beautiful-chat-YYYYMMDD-HHMMSS"
+test ! -e "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" &&
+  cp -a "$legacy_backup" "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat"
+```
+
+Then install the pinned Beautiful Chat version:
+
+```bash
+paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref 2bf25e8
+```
+
+Migration itself keeps the old host settings and browser key untouched; plugin removal deletes
+the host settings unless backed up separately. Later Clear Chat edits do not sync back to the
+Beautiful Chat snapshot. Keep both backups to preserve those newer choices.
 
 ---
 
