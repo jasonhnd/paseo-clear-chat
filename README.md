@@ -187,17 +187,19 @@ settings screen; try changing the setting again after the host reconnects.
 
 ### Upgrading to Clear Chat
 
-Paseo 0.12's `paseo plugin remove <id>` also deletes `~/.paseo/plugin-settings/<id>`.
+Paseo 0.12's `paseo plugin remove <id>` also deletes
+`${PASEO_HOME:-$HOME/.paseo}/plugin-settings/<id>`.
 Back up first, install Clear Chat while the old settings still exist, verify the migrated file,
-and only then remove Beautiful Chat. The commands below assume the default daemon home and IDs;
-adjust paths for a custom home. Stop if a backup or verification fails.
+and only then remove Beautiful Chat. The commands below use `PASEO_HOME`, falling back to
+`$HOME/.paseo`, and assume the default installation IDs. For a daemon configured only with `--home`,
+set `PASEO_HOME` to that path first. Stop if a backup or verification fails.
 
 1. Back up the old host settings and record the backup path for rollback:
 
    ```bash
-   legacy_backup="$HOME/.paseo/backups/plugin-settings-beautiful-chat-$(date +%Y%m%d-%H%M%S)"
-   mkdir -p "$HOME/.paseo/backups"
-   cp -a "$HOME/.paseo/plugin-settings/beautiful-chat" "$legacy_backup"
+   legacy_backup="${PASEO_HOME:-$HOME/.paseo}/backups/plugin-settings-beautiful-chat-$(date +%Y%m%d-%H%M%S)"
+   mkdir -p "${PASEO_HOME:-$HOME/.paseo}/backups"
+   cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_backup"
    ```
 
 2. Install Clear Chat from the local `main` that contains the rename:
@@ -206,8 +208,8 @@ adjust paths for a custom home. Stop if a backup or verification fails.
    paseo plugin install "git:file://$HOME/AgenticCoder/beautiful-chat" --ref main
    ```
 
-3. Confirm that `~/.paseo/plugin-settings/clear-chat/presentation.json` was generated and that
-   Clear Chat loads with the expected settings. For a fresh migration, compare the file with
+3. Confirm that `${PASEO_HOME:-$HOME/.paseo}/plugin-settings/clear-chat/presentation.json` was
+   generated and that Clear Chat loads with the expected settings. For a fresh migration, compare the file with
    `$legacy_backup/presentation.json`; an existing Clear Chat document intentionally wins.
    If the file is missing or settings differ unexpectedly, keep Beautiful Chat and the backup,
    check the migration error log, and resolve the failure before proceeding.
