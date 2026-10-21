@@ -22,7 +22,6 @@ import { TimelineTailHub } from "./components/hub-live";
 import { AssistantFooter } from "./components/turn-footer";
 import { SystemCard } from "./components/system-card";
 import { parseSystemEnvelope } from "./system-envelope";
-import { useIsTimelineTail } from "./timeline-tail";
 import { toolErrorLine } from "./tool-error";
 import type {
   ReasoningTraceData,
@@ -37,6 +36,7 @@ import { buildChecklist } from "./tool-detail";
 import { useToolExpansion } from "./tool-expansion";
 import { defaultToolExpanded } from "./tool-summary";
 import { FinalToolReply } from "./components/final-tool-reply";
+import { finalToolReplyMarkdown } from "./tool-final-reply";
 import { toolRowMarker } from "./tool-row-spacing";
 import { GeneratedImages } from "./components/generated-images";
 import { extractGeneratedImages, type GeneratedImage } from "./generated-images";
@@ -170,6 +170,7 @@ export function LiveToolCallRenderer({
         <View testID="tool-final-reply">
           <FinalToolReply text={calloutData.finalReply} cwd={cwd} tokens={tokens} variant={preferences.markdownVariant} />
           {toolErrorLine(calloutData, "never") ? <Text testID="tool-error-line" selectable style={{ color: tokens.danger }}>{calloutData.error}</Text> : null}
+          <AssistantFooter text={finalToolReplyMarkdown(calloutData.finalReply)} at={timestamp} tokens={tokens} />
         </View>
       ) : (
         <ToolCallout
@@ -322,11 +323,9 @@ export function LiveAssistantRenderer({
   useSelectionActions(tokens, preferences.selectionActions);
   usePointerGlow(preferences.pointerGlow);
 
-  // Replacing the reply costs the host's footer, which the stream layout hangs
-  // off an `assistant_message` item that no longer exists. Rebuild it where the
-  // host puts it: under the newest message, once, not under every reply.
+  // Copy belongs to this reply, even when another item or conversation owns
+  // the global hub tail. Turn duration remains the host's responsibility.
   const itemKey = `assistant:${timestamp.getTime()}`;
-  const isTail = useIsTimelineTail(itemKey);
 
   // Job results, IRC relays and reminders arrive as replies because the host
   // files any unclaimed `custom` message under this item kind. They are not
@@ -340,7 +339,7 @@ export function LiveAssistantRenderer({
       ) : (
         <MarkdownView text={item.data.text} images={item.data.images} cwd={cwd} tokens={tokens} variant={preferences.markdownVariant} />
       )}
-      {isTail && !envelope ? (
+      {!envelope ? (
         <AssistantFooter text={item.data.text} at={timestamp} tokens={tokens} />
       ) : null}
       <TimelineTailHub

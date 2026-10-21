@@ -40,3 +40,36 @@ for (const platform of ["web", "ios", "android"]) {
     h.unmount();
   });
 }
+
+for (const platform of ["web", "ios", "android"]) {
+  test(`plain wrap-up copies all Markdown beyond output limits on ${platform}`, async () => {
+    const reply = "# Sample report\n\n[Reference](https://example.com/report)\n\n![Preview](https://example.com/preview.png)\n\n```js\nconst sample = true;\n```\n\n"
+      + Array.from({ length: 40 }, (_, index) => `Report line ${index + 1}`).join("\n") + "\n  ";
+    const item = structuredClone(wrapUp);
+    item.detail.input = { response: reply };
+    const h = createToolHarness(platform, { replyFooter: true, preferences: { foldLongOutputAfter: 10 } });
+    const { tree } = h.mount(item, false);
+    assert.equal(copyButtons(h, tree).length, 1);
+    await copyButtons(h, tree)[0].props.onPress();
+    assert.deepEqual(h.copies, [reply]);
+    h.unmount();
+  });
+}
+
+test("structured clipboard Markdown keeps authored option letters and blocked reasons", () => {
+  const h = createToolHarness();
+  const { finalToolReplyMarkdown } = h.load("client/tool-final-reply.ts");
+  const source = JSON.stringify({ recap: "**All checks retained.**", ask: "What next?", actions: [
+    { label: "C) Review", message: "[Open the report](https://example.com/report)" },
+    { label: "A: Continue", message: "Keep this complete message." },
+  ], blocked: ["Missing sample permission.", "Waiting for a sample decision."] });
+  assert.equal(finalToolReplyMarkdown(source), "**All checks retained.**\n\n## Question\n\nWhat next?\n\n## Options\n\nC) Review\n\n[Open the report](https://example.com/report)\n\nA: Continue\n\nKeep this complete message.\n\n## Blocked\n\nMissing sample permission.\n\nWaiting for a sample decision.");
+});
+
+test("unfamiliar wrap-up JSON stays verbatim on the clipboard", () => {
+  const h = createToolHarness();
+  const { finalToolReplyMarkdown } = h.load("client/tool-final-reply.ts");
+  for (const source of ["{broken JSON", JSON.stringify({ recap: "Sample recap", unfamiliar: "Keep this field" }, null, 2)]) {
+    assert.equal(finalToolReplyMarkdown(source), source);
+  }
+});

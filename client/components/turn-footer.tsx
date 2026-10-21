@@ -7,17 +7,10 @@ import { radius } from "./theme-tokens";
 import type { ExtendedThemeTokens } from "./theme-tokens";
 
 /**
- * The host's own reply footer — copy, fork and the turn's time — is drawn by
- * the stream layout, not by the message renderer: it walks up from the newest
- * item looking for a `assistant_message` stream item
- * (`agent-stream/layout.ts:102`). A transformed item is projected as
- * `kind: "plugin"` (`plugins/timeline/projection.ts:96`), so once this plugin
- * renders the reply the host finds no assistant and draws no footer.
- *
- * This is the part a plugin can rebuild. Fork is not: it needs the daemon
- * client and a timeline cursor (`hooks/use-fork-agent.ts`), and the plugin SDK
- * exposes neither. Turning "Assistant markdown" off in settings hands the reply
- * back to the host, which brings the full footer with it.
+ * Reply-local copy and timestamp for content owned by the plugin. These must
+ * not depend on which conversation or item currently owns the hub dock.
+ * The host owns turn duration and fork controls; this component does not add
+ * another turn-duration label or infer elapsed work from message timestamps.
  */
 interface AssistantFooterProps {
   /** The reply, copied verbatim — the same text the host would copy. */

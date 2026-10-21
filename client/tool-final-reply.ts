@@ -5,6 +5,32 @@ export type FinalToolReplyContent =
   | { kind: "text"; text: string }
   | { kind: "wrap_up"; recap: string; ask?: string; actions: string[]; blocked: string[]; isBlocked: boolean };
 
+/** Use the same option markers in the card and its clipboard Markdown. */
+export function finalReplyOptionPrefix(action: string, index: number): string | undefined {
+  if (/^[A-Z](?:$|[\s.):\u3001])/.test(action)) return undefined;
+  let label = "";
+  for (let value = index + 1; value > 0; value = Math.floor((value - 1) / 26)) {
+    label = String.fromCharCode(65 + (value - 1) % 26) + label;
+  }
+  return `${label}.`;
+}
+
+/** Copy the complete displayed reply, keeping Markdown instead of envelope JSON. */
+export function finalToolReplyMarkdown(text: string): string {
+  const content = parseFinalToolReply(text);
+  if (content.kind !== "wrap_up") return content.text;
+  const sections = [content.recap];
+  if (content.ask) sections.push(`## Question\n\n${content.ask}`);
+  if (content.actions.length) {
+    sections.push(`## Options\n\n${content.actions.map((action, index) => {
+      const prefix = finalReplyOptionPrefix(action, index);
+      return prefix ? `${prefix} ${action}` : action;
+    }).join("\n\n")}`);
+  }
+  if (content.isBlocked) sections.push(["## Blocked", ...content.blocked].join("\n\n"));
+  return sections.filter(section => section.trim()).join("\n\n");
+}
+
 function actionText(value: unknown): string | undefined {
   if (typeof value === "string") return value.trim() ? value : undefined;
   const action = record(value);

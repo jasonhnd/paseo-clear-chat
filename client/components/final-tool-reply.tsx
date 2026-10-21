@@ -1,18 +1,10 @@
 import React, { useMemo } from "react";
 import { View, Text } from "react-native";
-import { parseFinalToolReply } from "../tool-final-reply";
+import { finalReplyOptionPrefix, parseFinalToolReply } from "../tool-final-reply";
 import { MarkdownView, type MarkdownVariant } from "./markdown/markdown-view";
 import type { ExtendedThemeTokens } from "./theme-tokens";
 import { extractGeneratedImages } from "../generated-images";
 import { GeneratedImages } from "./generated-images";
-
-function optionLabel(index: number): string {
-  let label = "";
-  for (let value = index + 1; value > 0; value = Math.floor((value - 1) / 26)) {
-    label = String.fromCharCode(65 + (value - 1) % 26) + label;
-  }
-  return label;
-}
 
 export function FinalToolReply({ text, tokens, variant, cwd }: {
   text: string;
@@ -42,9 +34,9 @@ export function FinalToolReply({ text, tokens, variant, cwd }: {
         <View testID="wrap-up-options" style={{ gap: 8 }}>
           {content.actions.map((action, index) => (
             <View key={index} testID="wrap-up-option" style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
-              {/^[A-Z](?:$|[\s.):\u3001])/.test(action) ? null : (
-                <Text style={[heading, { color: tokens.accent }]}>{`${optionLabel(index)}.`}</Text>
-              )}
+              {finalReplyOptionPrefix(action, index) ? (
+                <Text style={[heading, { color: tokens.accent }]}>{finalReplyOptionPrefix(action, index)}</Text>
+              ) : null}
               <View style={{ flex: 1 }}><MarkdownView text={action} cwd={cwd} tokens={tokens} variant={variant} /></View>
             </View>
           ))}
