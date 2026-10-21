@@ -245,7 +245,7 @@ export interface LiveAssistantPayload {
  * The assistant's own reply, drawn with the plugin's markdown renderer.
  *
  * The host's renderer carries a pipeline this plugin cannot import — mermaid,
- * images, its own file-path links — so `assistantMarkdown` exists to hand the
+ * local images, its own file-path links — so `assistantMarkdown` exists to hand the
  * turn back when a reply needs any of that.
  */
 export function LiveAssistantRenderer({

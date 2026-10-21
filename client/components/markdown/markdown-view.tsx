@@ -8,6 +8,7 @@ import { selectionSurface } from "../selection-actions";
 import { SyntaxHighlightBlock } from "../syntax-highlight";
 import { openLink } from "../open-link";
 import { parseMarkdown, type MdAlign, type MdBlock, type MdInline, type MdListItem } from "./parse";
+import { MarkdownImage } from "./markdown-image";
 
 /**
  * The assistant's own prose, drawn by the plugin instead of the host. Three
@@ -260,23 +261,18 @@ function renderBlock(
       const headingStyle = styles[HEADING_KEYS[block.level - 1] ?? "h4"];
       return (
         <View key={key} style={first ? styles.headingBlockFirst : styles.headingBlock}>
-          <Text selectable style={headingStyle}>
-            {metrics.headingHash ? (
+          {renderFlow(block.spans, headingStyle, key, context, {
+            prefix: metrics.headingHash ? (
               <Text style={styles.headingHash}>{HASH_LABELS[block.level - 1] ?? "# "}</Text>
-            ) : null}
-            {renderInline(block.spans, styles, key)}
-          </Text>
+            ) : null,
+          })}
           {metrics.headingRule && block.level <= 2 ? <View style={styles.headingRule} /> : null}
         </View>
       );
     }
 
     case "paragraph":
-      return (
-        <Text key={key} selectable style={styles.paragraph}>
-          {renderInline(block.spans, styles, key)}
-        </Text>
-      );
+      return renderFlow(block.spans, styles.paragraph, key, context);
 
     case "list": {
       const numberWidth = orderedColumnWidth(block.items, metrics);
@@ -292,11 +288,7 @@ function renderBlock(
     case "quote":
       return (
         <View key={key} style={styles.quote}>
-          {block.paragraphs.map((spans, index) => (
-            <Text key={`${key}q${index}`} selectable style={styles.quoteText}>
-              {renderInline(spans, styles, `${key}q${index}`)}
-            </Text>
-          ))}
+          {block.paragraphs.map((spans, index) => renderFlow(spans, styles.quoteText, `${key}q${index}`, context))}
         </View>
       );
 
@@ -341,11 +333,9 @@ function renderItem(
   const indentStyle = styles[INDENT_KEYS[depth] ?? "indent0"];
   // The body is the flexible column, so a wrapped second line starts under the
   // item's first character instead of under its marker.
-  const body = (
-    <Text selectable style={item.checked === true ? styles.itemTextDone : styles.itemText}>
-      {renderInline(item.spans, styles, key)}
-    </Text>
-  );
+  const body = renderFlow(item.spans, item.checked === true ? styles.itemTextDone : styles.itemText, key, context, {
+    containerStyle: { flex: 1 },
+  });
 
   if (item.checked !== undefined) {
     return (
@@ -404,43 +394,76 @@ function renderTable(block: MdTableBlock, key: string, context: RenderContext): 
         <View style={styles.tableHeaderRow}>
           {block.header.map((cell, column) => {
             const cellKey = `${key}h${column}`;
-            return (
-              <Text
-                key={cellKey}
-                selectable
-                style={[
-                  styles.tableHeaderCell,
-                  styles[ALIGN_KEYS[block.align[column] ?? "left"]],
-                  { width: widths[column] ?? metrics.columnMin },
-                ]}
-              >
-                {renderInline(cell, styles, cellKey)}
-              </Text>
-            );
+            return renderFlow(cell, [
+              styles.tableHeaderCell,
+              styles[ALIGN_KEYS[block.align[column] ?? "left"]],
+              { width: widths[column] ?? metrics.columnMin },
+            ], cellKey, context, { containerStyle: { width: widths[column] ?? metrics.columnMin } });
           })}
         </View>
         {block.rows.map((row, rowIndex) => (
           <View key={`${key}r${rowIndex}`} style={styles.tableRow}>
             {row.map((cell, column) => {
               const cellKey = `${key}r${rowIndex}c${column}`;
-              return (
-                <Text
-                  key={cellKey}
-                  selectable
-                  style={[
-                    styles.tableCell,
-                    styles[ALIGN_KEYS[block.align[column] ?? "left"]],
-                    { width: widths[column] ?? metrics.columnMin },
-                  ]}
-                >
-                  {renderInline(cell, styles, cellKey)}
-                </Text>
-              );
+              return renderFlow(cell, [
+                styles.tableCell,
+                styles[ALIGN_KEYS[block.align[column] ?? "left"]],
+                { width: widths[column] ?? metrics.columnMin },
+              ], cellKey, context, { containerStyle: { width: widths[column] ?? metrics.columnMin } });
             })}
           </View>
         ))}
       </View>
     </ScrollView>
+  );
+}
+
+type ImageSpan = Extract<MdInline, { kind: "image" }>;
+type FlowRun = { kind: "prose"; spans: MdInline[] } | ImageSpan;
+
+/** Keep surrounding prose formatting while lifting images out of Text. */
+function imageRuns(spans: MdInline[]): FlowRun[] {
+  const runs: FlowRun[] = [];
+  let prose: MdInline[] = [];
+  const flush = () => {
+    if (prose.length) runs.push({ kind: "prose", spans: prose });
+    prose = [];
+  };
+  for (const span of spans) {
+    if (span.kind === "image") {
+      flush();
+      runs.push(span);
+    } else if ("spans" in span) {
+      for (const run of imageRuns(span.spans)) {
+        if (run.kind === "image") {
+          flush();
+          runs.push(run);
+        } else prose.push({ ...span, spans: run.spans });
+      }
+    } else prose.push(span);
+  }
+  flush();
+  return runs;
+}
+
+function renderFlow(
+  spans: MdInline[],
+  textStyle: TextStyle | TextStyle[],
+  key: string,
+  context: RenderContext,
+  options: { containerStyle?: ViewStyle; prefix?: React.ReactNode } = {},
+): React.ReactNode {
+  const runs = imageRuns(spans);
+  if (!runs.some(run => run.kind === "image")) {
+    return <Text key={key} selectable style={textStyle}>{options.prefix}{renderInline(spans, context.styles, key)}</Text>;
+  }
+  return (
+    <View key={key} style={[{ minWidth: 0, gap: 8 }, options.containerStyle]}>
+      {options.prefix}
+      {runs.map((run, index) => run.kind === "image"
+        ? <MarkdownImage key={`${key}i${index}:${run.src}`} src={run.src} alt={run.alt} tokens={context.tokens} />
+        : <Text key={`${key}t${index}`} selectable style={[textStyle, { flex: 0 }]}>{renderInline(run.spans, context.styles, `${key}t${index}`)}</Text>)}
+    </View>
   );
 }
 

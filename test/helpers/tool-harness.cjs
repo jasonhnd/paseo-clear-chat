@@ -10,7 +10,7 @@ const { createExpansionHost } = require("./expansion-host.cjs");
 function createToolHarness(platform = "ios", options = {}) {
   const root = resolve(__dirname, "../..");
   const cache = new Map(), frames = new Map(), transformers = new Map(), renderers = new Map();
-  const reveals = [], links = [];
+  const reveals = [], links = [], copies = [], toasts = [];
   let frame;
   const jsx = (type, props) => ({ type, props: props ?? {} });
   const passthrough = props => props.children ?? null;
@@ -132,7 +132,13 @@ function createToolHarness(platform = "ios", options = {}) {
         },
         useAgent: (_, selector) => selector({ cwd: "/workspace/demo" }),
       };
-      if (id === "@getpaseo/plugin/client/react-native") return { useRevealedText: text => text };
+      if (id === "@getpaseo/plugin/client/react-native") return {
+        useRevealedText: text => text,
+        copyText: async text => { copies.push(text); },
+        useToast: () => ({ show: message => toasts.push(message), error: message => toasts.push(message) }),
+        Modal: Object.assign(passthrough, { Content: "Modal.Content" }),
+        TextInput: "SDK.TextInput",
+      };
       if (id.startsWith(".")) return load(resolve(dirname(filename), id));
       return createRequire(filename)(id);
     };
@@ -176,7 +182,7 @@ function createToolHarness(platform = "ios", options = {}) {
     frames.clear();
   }
   return {
-    load, nodes, text, reveals, links, transformers, renderers, get preferences() { return getPreferences(); }, tokens, draw, expansionHost, unmount,
+    load, nodes, text, reveals, links, copies, toasts, transformers, renderers, get preferences() { return getPreferences(); }, tokens, draw, expansionHost, unmount,
     mount(item, expand = true, identity = {}) {
       unmount(); reveals.length = links.length = 0;
       if (!timestamps.has(item)) timestamps.set(item, new Date(nextTimestamp++));
