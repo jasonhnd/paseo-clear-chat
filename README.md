@@ -211,7 +211,14 @@ actions the host owns.
 ### Prompt bubble
 
 The authored turn on a raised theme surface with a square tail, a copy button, and the turn's token
-usage.
+usage. Pasted images show thumbnails and a count such as **1 image attached** or **3 images attached**.
+The count remains visible when image data is missing or a thumbnail fails to load. Available
+thumbnails still appear when other images in the same prompt are unavailable.
+
+If the host omits all attachment metadata, the plugin leaves the prompt to Paseo's native bubble
+so pasted images remain visible. On those hosts, ordinary text prompts also stay native because
+the plugin cannot distinguish them from prompts whose image metadata was stripped. Disabling
+**Enhanced prompt bubble** always uses the native bubble.
 
 ![Prompt bubble](docs/images/user.png)
 
@@ -237,7 +244,7 @@ Devicon brand marks, and the file-manager link.
 | Fold finished steps    | On by default. Off expands all steps unless a call has an explicit choice. |
 | Fold long output after | 10, 15 (default), 30 lines, or Never. Applies to tool code and output. |
 | Frosted glass          | Blur card surfaces, or paint them solid.                           |
-| Enhanced prompt bubble | Off hands prompts back to Paseo, whose bubble shows pasted images. |
+| Enhanced prompt bubble | Styles prompts with attachment metadata; otherwise keeps Paseo's native previews. Off always uses Paseo's bubble. |
 | Assistant markdown     | Off hands replies back to Paseo's own markdown renderer.           |
 
 **Assistant markdown** and **Enhanced prompt bubble** are enabled by default on every platform.
@@ -456,11 +463,12 @@ timestamp, item}`, and plugin navigation offers only `openSettings`, `openSurfac
    target (`{kind:"file", path}`, reachable in-app through `?open=file:<path>`) is not exposed, and
    the `paseo://` scheme only carries agent deep links. Workaround: a daemon-side RPC that reveals
    the path in the operating system's file manager.
-2. **Transformers see a stripped item.** The app maps its stream item to the plugin item before any
-   transformer runs, and a user message keeps only `text`, `messageId`, and `clientMessageId`. Pasted
-   images never reach plugin code, and the daemon timeline row stores the same item, so a server RPC
-   cannot recover them either. Workaround: the **Enhanced prompt bubble** setting returns prompts to
-   the host.
+2. **Some hosts strip prompt attachments.** A host can map a user message to only `text`,
+   `messageId`, and `clientMessageId` before transformers run. The plugin cannot recover or count
+   attachments removed this way, so it automatically leaves these prompts to the host. When image
+   metadata is available, the enhanced bubble keeps available thumbnails and the complete image
+   count, including attachments with missing data or failed previews. Other attachment kinds also
+   remain with the host.
 3. **Interception is all or nothing.** A transformer replaces the host item completely. There is no
    way to decorate an item or keep host affordances that the plugin does not reimplement. Returning
    `undefined` is the only opt-out.

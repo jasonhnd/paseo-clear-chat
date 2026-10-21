@@ -118,11 +118,25 @@ test("upstream #17: image counts cannot hide available sources or become invalid
   const schema = h.renderers.get("omp-user-message").schema;
   for (const imageCount of [-1, 1.5, "2", NaN, Infinity]) {
     assert.equal(schema.safeParse({ text: "Sample", imageCount }).success, false);
-    assert.equal(h.load("client/prompt-images.ts").extractPromptImages(prompt({ imageCount })).count, 0);
+    assert.equal(h.load("client/prompt-images.ts").extractPromptImages(prompt({ imageCount })).count, null);
   }
   const mounted = h.mount(prompt({ images: [png, remote], imageCount: 1 }));
   assert.equal(mounted.data.imageCount, 2);
   assert.match(visibleText(h, mounted.render({ ...mounted.data, imageCount: 0 })), /2 images attached/);
+});
+
+test("upstream #17: stripped host payloads stay native because their image count is unknown", () => {
+  const h = createToolHarness("ios", { userMessage: true });
+  const item = prompt();
+  const before = structuredClone(item);
+  assert.equal(h.load("client/prompt-images.ts").extractPromptImages(item).count, null);
+  assert.equal(h.transformers.get("user_message").transform({ item }), undefined);
+  assert.deepEqual(item, before);
+  for (const fields of [{ imageCount: 0 }, { images: [] }]) {
+    const { tree, data } = h.mount(prompt(fields));
+    assert.equal(data.imageCount, undefined);
+    assert.doesNotMatch(visibleText(h, tree), /images? attached/);
+  }
 });
 
 test("upstream #17: non-image attachments and disabled enhanced prompts remain with the host", () => {
@@ -130,6 +144,9 @@ test("upstream #17: non-image attachments and disabled enhanced prompts remain w
   const transform = item => h.transformers.get("user_message").transform({ item });
   assert.equal(transform(prompt({ attachments: [{ type: "file", mimeType: "application/pdf", name: "sample.pdf" }] })), undefined);
   assert.equal(transform(prompt({ images: [png], attachments: [{ type: "file", name: "sample.pdf" }] })), undefined);
+  for (const key of ["content", "blocks", "parts"]) {
+    assert.equal(transform(prompt({ [key]: [{ type: "image", source: { uri: png } }, { type: "file", name: "sample.pdf" }] })), undefined);
+  }
   h.preferences.enhancedUserBubble = false;
   assert.equal(transform(prompt({ images: [png] })), undefined);
 });

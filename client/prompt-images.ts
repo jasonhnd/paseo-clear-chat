@@ -2,12 +2,13 @@ const IMAGE_URI = /^(?:data:image\/|blob:|file:\/\/)/i;
 const IMAGE_URL = /^https?:\/\/\S+\.(?:png|jpe?g|gif|webp|avif|bmp|svg)(?:\?\S*)?$/i;
 const REMOTE_URI = /^https?:\/\/\S+$/i;
 const IMAGE_TYPE = /^(?:image|image_url|input_image)$/i;
+const CONTENT_KEYS = new Set(["attachments", "content", "blocks", "parts"]);
 
 export interface PromptImages {
   /** Everything renderable as an `<Image>` source. */
   readonly uris: string[];
-  /** Includes images whose bytes or URL are missing. */
-  readonly count: number;
+  /** Includes missing sources; null means the host supplied no attachment metadata. */
+  readonly count: number | null;
   /** At least one announced image has no usable source. */
   readonly hasUnrenderable: boolean;
   /** Leave other attachment kinds to the host so they keep their affordances. */
@@ -92,16 +93,22 @@ export function extractPromptImages(item: unknown): PromptImages {
       if (key === "text" || nested == null) continue;
       visit(nested, depth + 1, key);
     }
-    if (context === "attachments" && count === before) hasOtherAttachments = true;
+    if (CONTENT_KEYS.has(context) && count === before) hasOtherAttachments = true;
   };
 
   visit(item, 0);
-  const reportedCount = asRecord(item)?.imageCount;
-  if (typeof reportedCount === "number" && Number.isSafeInteger(reportedCount) && reportedCount > count) {
+  const record = asRecord(item);
+  const reportedCount = record?.imageCount;
+  const hasReportedCount = typeof reportedCount === "number" && Number.isSafeInteger(reportedCount) && reportedCount >= 0;
+  if (hasReportedCount && reportedCount > count) {
     count = reportedCount;
     hasUnrenderable = true;
   }
 
+  // A stripped text-only item is indistinguishable from one whose images were
+  // removed by the host. Only explicit attachment metadata establishes zero.
+  const hasMetadata = hasReportedCount || ["images", "attachments", "content", "blocks", "parts"]
+    .some((key) => Array.isArray(record?.[key]));
   const unique = [...new Set(uris)];
-  return { uris: unique, count, hasUnrenderable, hasOtherAttachments };
+  return { uris: unique, count: count > 0 || hasMetadata ? count : null, hasUnrenderable, hasOtherAttachments };
 }

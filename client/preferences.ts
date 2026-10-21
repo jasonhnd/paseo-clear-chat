@@ -50,10 +50,9 @@ export interface EnhancerPreferences {
    */
   pointerGlow: boolean;
   /**
-   * Paseo maps a stream item to the plugin timeline item before any transformer
-   * runs, and that mapping carries only the text. Pasted images therefore never
-   * reach plugin code, so the enhanced bubble cannot draw them. Turning this off
-   * hands prompts back to the host, whose own bubble still shows them.
+   * Style prompts when the host supplies attachment metadata. Older hosts strip
+   * it entirely, so those prompts automatically stay native to preserve images.
+   * Turning this off always hands prompts back to the host.
    */
   enhancedUserBubble: boolean;
   /**

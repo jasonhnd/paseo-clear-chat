@@ -163,7 +163,9 @@ export default function contribute(client: PluginClientContext) {
       if (item.type !== "user_message") return undefined;
       if (!areEnhancerPreferencesReady() || !getEnhancerPreferences().enhancedUserBubble) return undefined;
       const images = extractPromptImages(item);
-      if (images.hasOtherAttachments) return undefined;
+      // Older hosts strip all attachment metadata. Returning the original item
+      // preserves their previews when this plugin cannot even know the count.
+      if (images.count === null || images.hasOtherAttachments) return undefined;
       // `messageId` rides along so the renderer can carry the host's own
       // `data-history-row-id`, which is the id the chat outline scrolls to.
       // Replacing the item leaves the outline nothing to find otherwise.
