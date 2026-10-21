@@ -46,6 +46,38 @@ for (const [label, imageRpc] of [
   });
 }
 
+test("guessed tool-output image hides unreadable files; explicit reply Markdown and paths show reason and address", async () => {
+  for (const imageRpc of [
+    async () => ({ dataUri: null, width: null, height: null, bytes: null, error: missing }),
+    async () => { throw new Error(missing); },
+  ]) {
+    const path = "/workspace/sample/image.png";
+    const h = harness({ imageRpc });
+    const guessed = h.mount(call(path), false);
+    await settle();
+    const toolTree = guessed.render();
+    assert.equal(pictures(h, toolTree).length, 0);
+    assert.equal(sourceLinks(h, toolTree).length, 0, "a guessed candidate must not leave a card header");
+    assert.doesNotMatch(h.text(toolTree), /could not be loaded|ENOENT|\bstat\b/);
+
+    for (const text of [`![Missing chart](${path})`, `The chart is ready: ${path}`]) {
+      const reply = h.mount({ type: "assistant_message", text });
+      await settle();
+      const replyTree = reply.render();
+      assert.deepEqual(h.imageReads, [{ cwd: "/workspace/demo", path }]);
+      assert.equal(pictures(h, replyTree).length, 0);
+      assert.ok(h.text(replyTree).includes("The image could not be loaded."));
+      if (text.startsWith("![")) assert.ok(h.text(replyTree).includes("Missing chart"));
+      const address = h.nodes(replyTree, node => node.props.accessibilityLabel === "Copy image address");
+      assert.equal(address.length, 1, "an explicit image must retain its address action");
+      assert.equal(h.text(address[0]), path);
+      await address[0].props.onPress();
+      assert.deepEqual(h.copies, [path]);
+      assert.doesNotMatch(h.text(replyTree), /ENOENT|\bstat\b/);
+    }
+  }
+});
+
 test("captured assistant reply preserves complete spaced paths and the remote URL", async () => {
   const h = harness();
   const item = fixture.entries.find(entry => entry.item.type === "assistant_message").item;
