@@ -245,3 +245,16 @@ test("upstream #12: escaped Markdown image addresses do not create a duplicate g
   assert.equal(pictures(h, tree).length, 1);
   assert.equal(pictures(h, tree)[0].props.source.uri, "https://example.org/square(blue).png");
 });
+
+test("upstream #12: iOS image source links remain tappable before and after load failure", () => {
+  const h = harness();
+  const mounted = h.mount({ type: "assistant_message", text: `![Square](${remote})` });
+  const success = sourceLinks(h, mounted.tree)[0];
+  assert.equal(success.props.selectable, false);
+  success.props.onPress();
+  pictures(h, mounted.tree)[0].props.onError();
+  const failure = sourceLinks(h, mounted.render())[0];
+  assert.equal(failure.props.selectable, false);
+  failure.props.onPress();
+  assert.deepEqual(h.links, [remote, remote]);
+});

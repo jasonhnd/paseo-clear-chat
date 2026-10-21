@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Image, Text, View, StyleSheet } from "react-native";
+import { Image, Text, View, StyleSheet, Platform } from "react-native";
 import { CopyFallbackDialog, useCopyText } from "../copy-feedback";
 import { openLink } from "../open-link";
 import { radius, type ExtendedThemeTokens } from "../theme-tokens";
@@ -60,7 +60,7 @@ export function MarkdownImage({ src, alt, tokens, cwd }: MarkdownImageProps) {
   return (
     <View style={styles.frame} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
       <Text
-        selectable
+        selectable={Platform.OS !== "ios"}
         accessibilityRole="link"
         accessibilityLabel={`Open image address: ${src}`}
         onPress={() => openImage(src)}
@@ -100,7 +100,7 @@ function ImageFallback({ src, alt, tokens, unsupported }: MarkdownImageProps & {
       <Text selectable style={textStyle}>{alt || "Image"}</Text>
       <Text style={textStyle}>{unsupported ? "This image source is not supported." : "The image could not be loaded."}</Text>
       <Text
-        selectable
+        selectable={Platform.OS !== "ios"}
         accessibilityRole={web ? "link" : "button"}
         accessibilityLabel={web ? `Open image address: ${src}` : "Copy image address"}
         onPress={web ? () => openLink(src) : handleCopy}
