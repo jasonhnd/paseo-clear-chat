@@ -5,6 +5,7 @@ import { MarkdownView, type MarkdownVariant } from "./markdown/markdown-view";
 import type { ExtendedThemeTokens } from "./theme-tokens";
 import { extractGeneratedImages } from "../generated-images";
 import { GeneratedImages } from "./generated-images";
+import { ImageFallback } from "./markdown/markdown-image";
 
 export function FinalToolReply({ text, tokens, variant, cwd }: {
   text: string;
@@ -17,7 +18,9 @@ export function FinalToolReply({ text, tokens, variant, cwd }: {
   const body = content.kind === "text" ? (
     <View style={{ gap: 8 }}>
       <Text testID="final-reply-plain-text" selectable style={{ ...heading, fontWeight: "400" }}>{content.text}</Text>
-      <GeneratedImages images={extractGeneratedImages(content.text)} cwd={cwd} tokens={tokens} />
+      {/* A final reply explicitly offers these paths, even inside a tool envelope. */}
+      <GeneratedImages images={extractGeneratedImages(content.text)} cwd={cwd} tokens={tokens}
+        renderUnavailable={(image) => <ImageFallback src={image.source} alt="" tokens={tokens} unsupported={false} />} />
     </View>
   ) : content.kind === "markdown" ? <MarkdownView text={content.text} cwd={cwd} tokens={tokens} variant={variant} /> : (
     <View testID="wrap-up-reply" style={{ gap: 12 }}>

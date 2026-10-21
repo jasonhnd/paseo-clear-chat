@@ -35,7 +35,7 @@ for (const [label, imageRpc] of [
   ["permission failure", async () => ({ dataUri: null, width: null, height: null, bytes: null, error: "EACCES: permission denied, open '/workspace/sample/image.png'" })],
   ["RPC rejection", async () => { throw new Error(missing); }],
 ]) {
-  test(`${label} removes the generated image card and hides system errors`, async () => {
+  test(`guessed tool-output image: ${label} hides the card and system errors`, async () => {
     const h = harness({ imageRpc });
     const mounted = h.mount(call("/workspace/sample/image.png"), false);
     await settle();
@@ -60,14 +60,20 @@ test("guessed tool-output image hides unreadable files; explicit reply Markdown 
     assert.equal(sourceLinks(h, toolTree).length, 0, "a guessed candidate must not leave a card header");
     assert.doesNotMatch(h.text(toolTree), /could not be loaded|ENOENT|\bstat\b/);
 
-    for (const text of [`![Missing chart](${path})`, `The chart is ready: ${path}`]) {
-      const reply = h.mount({ type: "assistant_message", text });
+    for (const item of [
+      { type: "assistant_message", text: `![Missing chart](${path})` },
+      { type: "assistant_message", text: `The chart is ready: ${path}` },
+      { type: "tool_call", name: "wrap_up", status: "completed", detail: {
+        type: "unknown", input: { response: JSON.stringify({ image: path }) }, output: "Acknowledged",
+      } },
+    ]) {
+      const reply = h.mount(item);
       await settle();
       const replyTree = reply.render();
       assert.deepEqual(h.imageReads, [{ cwd: "/workspace/demo", path }]);
       assert.equal(pictures(h, replyTree).length, 0);
       assert.ok(h.text(replyTree).includes("The image could not be loaded."));
-      if (text.startsWith("![")) assert.ok(h.text(replyTree).includes("Missing chart"));
+      if (item.text?.startsWith("![")) assert.ok(h.text(replyTree).includes("Missing chart"));
       const address = h.nodes(replyTree, node => node.props.accessibilityLabel === "Copy image address");
       assert.equal(address.length, 1, "an explicit image must retain its address action");
       assert.equal(h.text(address[0]), path);
@@ -77,6 +83,26 @@ test("guessed tool-output image hides unreadable files; explicit reply Markdown 
     }
   }
 });
+
+for (const platform of ["web", "ios", "android"]) {
+  test(`explicit reply image: ${platform} local decode failures retain reason, alt and address`, async () => {
+    const h = createToolHarness(platform, { markdown: true, images: true });
+    const path = "artifacts/chart.png";
+    for (const text of [`![Chart](${path})`, `Chart: ${path}`]) {
+      const mounted = h.mount({ type: "assistant_message", text });
+      await settle();
+      const image = pictures(h, mounted.render())[0];
+      image.props.onError({ nativeEvent: { error: missing } });
+      const tree = mounted.render();
+      assert.equal(pictures(h, tree).length, 0);
+      assert.ok(h.text(tree).includes("The image could not be loaded."));
+      if (text.startsWith("![")) assert.ok(h.text(tree).includes("Chart"));
+      const address = h.nodes(tree, node => node.props.accessibilityLabel === "Copy image address")[0];
+      assert.equal(h.text(address), path);
+      assert.doesNotMatch(h.text(tree), /ENOENT|\bstat\b/);
+    }
+  });
+}
 
 test("captured assistant reply preserves complete spaced paths and the remote URL", async () => {
   const h = harness();
@@ -118,7 +144,7 @@ for (const output of ["image.png", { images: ["sample image.png"] }, { type: "im
   });
 }
 
-test("a pending or failed replacement never borrows the preceding file preview", async () => {
+test("explicit reply image: a failed replacement shows reason and address without borrowing the preceding preview", async () => {
   let finish;
   const h = harness({ imageRpc: ({ path }) => path.endsWith("first.png")
     ? Promise.resolve({ dataUri: "data:image/png;base64,c2FtcGxl", width: 32, height: 24, bytes: 6, error: null })
@@ -134,6 +160,9 @@ test("a pending or failed replacement never borrows the preceding file preview",
   await settle();
   const tree = mounted.render(replacement);
   assert.equal(sourceLinks(h, tree).length, 0);
+  assert.ok(h.text(tree).includes("The image could not be loaded."));
+  const address = h.nodes(tree, node => node.props.accessibilityLabel === "Copy image address")[0];
+  assert.equal(h.text(address), "/workspace/missing.png");
   assert.doesNotMatch(h.text(tree), /ENOENT|\bstat\b/);
 });
 

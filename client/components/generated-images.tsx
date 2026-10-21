@@ -31,21 +31,27 @@ export function openImage(source: string): void {
   }
 }
 
-function GeneratedImagePreview({ image, cwd, tokens }: {
+function GeneratedImagePreview({ image, cwd, tokens, renderUnavailable }: {
   image: GeneratedImage;
   cwd: string | null;
   tokens: ExtendedThemeTokens;
+  renderUnavailable?: (image: GeneratedImage) => React.ReactNode;
 }) {
   const reveal = useRpc(revealPathRpc);
   const local = useImageFile(image.path, cwd);
   const file = image.path ? local : {
     dataUri: image.source, width: null, height: null, bytes: null, error: null,
   };
-  // Local candidates become cards only after a successful daemon read.
-  if (!file?.dataUri || file.error) return null;
+  // Guessed tool-output images stay silent when unreadable: a wrong guess should
+  // not disturb the user. Explicit reply callers supply a reason/address fallback
+  // because the agent deliberately offered that image. Neither exposes RPC errors.
+  if (!file) return null;
+  const unavailable = renderUnavailable?.(image);
+  if (!file.dataUri || file.error) return unavailable ?? null;
   return <ImagePreview
     path={image.source}
     file={file}
+    unavailable={unavailable}
     tokens={tokens}
     revealLabel={image.path ? `Show ${image.source} in the file manager` : "Open image source"}
     onReveal={() => {
@@ -55,13 +61,15 @@ function GeneratedImagePreview({ image, cwd, tokens }: {
   />;
 }
 
-export function GeneratedImages({ images, cwd = null, tokens }: {
+export function GeneratedImages({ images, cwd = null, tokens, renderUnavailable }: {
   images: GeneratedImage[];
   cwd?: string | null;
   tokens: ExtendedThemeTokens;
+  /** Explicit replies retain a generic reason and address; guesses omit this. */
+  renderUnavailable?: (image: GeneratedImage) => React.ReactNode;
 }) {
   if (!images.length) return null;
   return <View testID="generated-images" style={{ gap: 8 }}>
-    {images.map((image) => <GeneratedImagePreview key={image.source} image={image} cwd={cwd} tokens={tokens} />)}
+    {images.map((image) => <GeneratedImagePreview key={image.source} image={image} cwd={cwd} tokens={tokens} renderUnavailable={renderUnavailable} />)}
   </View>;
 }

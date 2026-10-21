@@ -158,7 +158,7 @@ for (const [label, imageRpc] of [
   ["missing file", async () => ({ dataUri: null, width: null, height: null, bytes: null, error: "File not found" })],
   ["size limit", async () => ({ dataUri: null, width: 1200, height: 800, bytes: 4_000_000, error: "Too large to preview" })],
 ]) {
-  test(`upstream #12: ${label} removes the unavailable image card`, async () => {
+  test(`guessed tool-output image: ${label} hides the unreadable card`, async () => {
     const h = harness({ imageRpc });
     const mounted = h.mount(call("artifacts/output.png"), false);
     await settle();
@@ -170,7 +170,7 @@ for (const [label, imageRpc] of [
 }
 
 for (const source of [remote, embedded]) {
-  test(`upstream #12: ${source === remote ? "remote load" : "embedded decode"} failure removes the image card`, () => {
+  test(`guessed tool-output image: ${source === remote ? "remote load" : "embedded decode"} failure hides the card`, () => {
     const h = harness();
     const mounted = h.mount(call({ content: [{ type: "image_url", image_url: { url: source } }] }), false);
     pictures(h, mounted.tree)[0].props.onError({ nativeEvent: { error: "Decode failed" } });
@@ -258,7 +258,7 @@ test("upstream #12: daemon image reads preserve complete files and filenames wit
   assert.equal(oversized.error, "Too large to preview");
 });
 
-test("upstream #12: local image decode failures remove the image card", async () => {
+test("guessed tool-output image: local decode failure hides the card", async () => {
   const h = harness();
   const mounted = h.mount(call("artifacts/output.png"), false);
   await settle();

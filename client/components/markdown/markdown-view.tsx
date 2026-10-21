@@ -10,7 +10,7 @@ import { openLink } from "../open-link";
 import { extractGeneratedImages, imageSource, type GeneratedImage } from "../../generated-images";
 import { GeneratedImages } from "../generated-images";
 import { parseMarkdown, type MdAlign, type MdBlock, type MdInline, type MdListItem } from "./parse";
-import { MarkdownImage } from "./markdown-image";
+import { ImageFallback, MarkdownImage } from "./markdown-image";
 
 /**
  * The assistant's own prose, drawn by the plugin instead of the host. Three
@@ -255,7 +255,9 @@ export function MarkdownView({ text, tokens, variant, images = [], cwd }: Markdo
   return (
     <View {...selectionSurface} style={styles.root}>
       {blocks.map((block, index) => renderBlock(block, `b${index}`, index === 0, context))}
-      <GeneratedImages images={previews} cwd={cwd} tokens={tokens} />
+      {/* Written reply paths are explicit, so unreadable images keep a reason and address. */}
+      <GeneratedImages images={previews} cwd={cwd} tokens={tokens}
+        renderUnavailable={(image) => <ImageFallback src={image.source} alt="" tokens={tokens} unsupported={false} />} />
     </View>
   );
 }

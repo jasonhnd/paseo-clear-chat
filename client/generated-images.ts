@@ -27,7 +27,13 @@ export function imageSource(source: string, explicit = false): GeneratedImage | 
   return IMAGE_EXTENSION.test(value) ? { source: value, path: value } : null;
 }
 
-/** Collect only output values; callers deliberately leave tool inputs out. */
+/**
+ * Collect only output values; callers deliberately leave tool inputs out.
+ * toolOutput candidates are guesses, so unreadable images must disappear without
+ * disturbing the user. Reply Markdown and written paths express the agent's intent:
+ * those renderers must retain a generic failure reason and the image address.
+ * The explicit flag below only controls parsing; it does not change that policy.
+ */
 export function extractGeneratedImages(value: unknown, options: { toolOutput?: boolean } = {}): GeneratedImage[] {
   const images = new Map<string, GeneratedImage>();
   const seen = new Set<object>();

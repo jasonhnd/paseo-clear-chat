@@ -15,6 +15,8 @@ interface ImagePreviewProps {
   /** Shows the file in the machine's own file manager. */
   onReveal?: () => void;
   revealLabel?: string;
+  /** Explicit reply images retain a reason and address; guessed cards disappear. */
+  unavailable?: React.ReactNode;
 }
 
 /** The tallest a thumbnail grows. Past this the image scales down to fit. */
@@ -38,7 +40,7 @@ function formatBytes(bytes: number): string {
  * falls back to a fixed box when the header could not be read: an image that
  * loads but reports no size still has to occupy an honest amount of room.
  */
-export function ImagePreview({ path, file, tokens, onReveal, revealLabel }: ImagePreviewProps) {
+export function ImagePreview({ path, file, tokens, onReveal, revealLabel, unavailable }: ImagePreviewProps) {
   const [shown, setShown] = useState(true);
   const [failedUri, setFailedUri] = useState<string | null>(null);
   const failed = Boolean(file?.dataUri && failedUri === file.dataUri);
@@ -137,7 +139,9 @@ export function ImagePreview({ path, file, tokens, onReveal, revealLabel }: Imag
         }
       : styles.image;
 
-  if (!file?.dataUri || file.error || failed) return null;
+  // Keep the caller's guessed-versus-explicit policy on daemon and decode errors.
+  // Never render the raw file.error or native image error event.
+  if (!file?.dataUri || file.error || failed) return unavailable ?? null;
 
   return (
     <View style={styles.container}>

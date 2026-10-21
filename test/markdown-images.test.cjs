@@ -53,7 +53,7 @@ for (const platform of ["web", "ios", "android"]) {
     }
   });
 
-  test(`upstream #3: ${platform} load failures show alt text and an address that opens`, () => {
+  test(`explicit reply image: ${platform} load failure shows reason, alt text and address`, () => {
     const h = createToolHarness(platform, { markdown: true });
     const src = "https://example.org/missing.png";
     const mounted = h.mount({ type: "assistant_message", text: `![Missing chart](${src})` }, false);
@@ -93,7 +93,7 @@ test("upstream #3: unsafe sources stay visible with a working copy-address actio
   }
 });
 
-test("upstream #3: a failed data image and empty alt have visible labels and copyable addresses", async () => {
+test("explicit reply image: failed data and empty alt retain reason, label and copyable address", async () => {
   const h = createToolHarness("ios", { markdown: true });
   const mounted = h.mount({ type: "assistant_message", text: `![](${dataImage})` }, false);
   assert.equal(imageNodes(h, mounted.tree)[0].props.accessibilityLabel, "Image");

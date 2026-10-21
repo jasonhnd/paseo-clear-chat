@@ -45,7 +45,10 @@ export function MarkdownImage({ src, alt, tokens, cwd }: MarkdownImageProps) {
   const [size, setSize] = useState<{ src: string; width: number; height: number } | null>(null);
   const supported = isWebImage(src) || isImageData(src);
   const local = imageSource(src, true);
-  if (local?.path) return <GeneratedImages images={[local]} cwd={cwd} tokens={tokens} />;
+  // Markdown images are explicit agent intent, including local files. An unreadable
+  // file must retain its alt text, generic reason and address, unlike tool guesses.
+  if (local?.path) return <GeneratedImages images={[local]} cwd={cwd} tokens={tokens}
+    renderUnavailable={() => <ImageFallback src={src} alt={alt} tokens={tokens} unsupported={false} />} />;
 
   if (!supported || failedSrc === src) {
     return <ImageFallback src={src} alt={alt} tokens={tokens} unsupported={!supported} />;
@@ -91,7 +94,8 @@ export function MarkdownImage({ src, alt, tokens, cwd }: MarkdownImageProps) {
   );
 }
 
-function ImageFallback({ src, alt, tokens, unsupported }: MarkdownImageProps & { unsupported: boolean }) {
+/** Explicit reply failures keep context and an address without system error details. */
+export function ImageFallback({ src, alt, tokens, unsupported }: MarkdownImageProps & { unsupported: boolean }) {
   const { handleCopy, fallbackText, setFallbackText } = useCopyText(src);
   const web = isWebImage(src);
   const textStyle = { color: tokens.foregroundMuted, fontFamily: tokens.fontUi, fontSize: tokens.fs(13), lineHeight: tokens.fs(20) };
