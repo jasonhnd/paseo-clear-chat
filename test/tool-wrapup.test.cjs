@@ -55,6 +55,42 @@ test("boolean false omits the blocked section while keeping every reply field", 
   assert.equal(byId(h, tree, "final-reply-plain-text").length, 0);
 });
 
+function renderOptions(labels) {
+  const h = createToolHarness("web", { markdown: true });
+  const item = structuredClone(fixture);
+  item.detail.input.actions = labels.map(label => ({ label, message: "Keep this sample message." }));
+  const { tree } = h.mount(item, false);
+  return { h, rows: byId(h, tree, "wrap-up-option") };
+}
+
+test("wrap-up labels with an existing option letter keep a single prefix", () => {
+  for (const label of ["A", "A Review first", "A. Review first", "A) Review first", "A: Review first", "A\u3001Review first"]) {
+    const { h, rows } = renderOptions([label]);
+    assert.equal(rows[0].props.children[0], null, "an authored option letter needs no generated marker");
+    assert.ok(h.text(rows[0]).startsWith(label));
+    assert.ok(h.text(rows[0]).includes("Keep this sample message."));
+  }
+});
+
+test("wrap-up labels without an option letter receive sequential prefixes", () => {
+  const labels = ["Review first", "Apply the change", "Backup the sample"];
+  const { h, rows } = renderOptions(labels);
+  assert.equal(rows.length, labels.length);
+  for (const [index, row] of rows.entries()) {
+    assert.equal(h.text(row.props.children[0]), `${String.fromCharCode(65 + index)}.`);
+    assert.ok(h.text(row).includes(labels[index]));
+  }
+});
+
+test("wrap-up labels retain authored letters even when they differ from their order", () => {
+  const labels = ["C) Apply later", "A: Review first"];
+  const { h, rows } = renderOptions(labels);
+  for (const [index, row] of rows.entries()) {
+    assert.equal(row.props.children[0], null);
+    assert.ok(h.text(row).startsWith(labels[index]));
+  }
+});
+
 test("a blocked-only reply retains its alert and card header", () => {
   const h = createToolHarness();
   const item = structuredClone(fixture);

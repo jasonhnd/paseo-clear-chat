@@ -42,7 +42,9 @@ export function FinalToolReply({ text, tokens, variant, cwd }: {
         <View testID="wrap-up-options" style={{ gap: 8 }}>
           {content.actions.map((action, index) => (
             <View key={index} testID="wrap-up-option" style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
-              <Text style={[heading, { color: tokens.accent }]}>{`${optionLabel(index)}.`}</Text>
+              {/^[A-Z](?:$|[\s.):\u3001])/.test(action) ? null : (
+                <Text style={[heading, { color: tokens.accent }]}>{`${optionLabel(index)}.`}</Text>
+              )}
               <View style={{ flex: 1 }}><MarkdownView text={action} cwd={cwd} tokens={tokens} variant={variant} /></View>
             </View>
           ))}
