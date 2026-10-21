@@ -1,0 +1,433 @@
+{
+  "style": "claude",
+  "provenance": "Sanitized real projected timeline fetched read-only from a Paseo daemon. Original item keys, detail types, nesting and metadata shapes are preserved. All session content and identifiers are fictional.",
+  "items": [
+    {
+      "type": "user_message",
+      "text": "Review the sample project and describe the result.",
+      "messageId": "sample-claude-message-1"
+    },
+    {
+      "type": "assistant_message",
+      "text": "The sample review is complete.",
+      "messageId": "sample-claude-message-2"
+    },
+    {
+      "type": "user_message",
+      "text": "Review the sample project and describe the result.",
+      "messageId": "sample-claude-message-3"
+    },
+    {
+      "type": "user_message",
+      "text": "Review the sample project and describe the result.",
+      "messageId": "sample-claude-message-4"
+    },
+    {
+      "type": "assistant_message",
+      "text": "The sample review is complete.",
+      "messageId": "sample-claude-message-5"
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-1",
+      "name": "mcp__sample__update_plan",
+      "detail": {
+        "type": "unknown",
+        "input": {
+          "items": [
+            {
+              "content": "Sample text line 1.",
+              "status": "in_progress"
+            },
+            {
+              "content": "Sample text line 1.",
+              "status": "pending"
+            },
+            {
+              "content": "Sample text line 1.",
+              "status": "pending"
+            },
+            {
+              "content": "Sample text line 1.",
+              "status": "pending"
+            }
+          ],
+          "scope": "workspace"
+        },
+        "output": {
+          "output": "Sample text line 1."
+        }
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-2",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "printf 'Sample output'",
+        "output": "Sample text line 1.\nSample text line 2.\nSample text line 3.\nSample text line 4.\nSample text line 5.\nSample text line 6.\nSample text line 7.\nSample text line 8.\nSample text line 9.\nSample text line 10.\nSample text line 11.\nSample text line 12.\nSample text line 13.\nSample text line 14.\nSample text line 15.\nSample text line 16.\nSample text line 17.\nSample text line 18.\nSample text line 19.\nSample text line 20.\nSample text line 21.\nSample text line 22.\nSample text line 23.\nSample text line 24."
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-3",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "printf 'Sample output'",
+        "output": "Sample text line 1.\nSample text line 2.\nSample text line 3.\nSample text line 4.\nSample text line 5.\nSample text line 6.\nSample text line 7.\nSample text line 8.\nSample text line 9.\nSample text line 10.\nSample text line 11.\nSample text line 12.\nSample text line 13.\nSample text line 14.\nSample text line 15.\nSample text line 16.\nSample text line 17.\nSample text line 18.\nSample text line 19.\nSample text line 20.\nSample text line 21.\nSample text line 22.\nSample text line 23.\nSample text line 24."
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-4",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "printf 'Sample output'",
+        "output": "Sample text line 1.\nSample text line 2.\nSample text line 3.\nSample text line 4.\nSample text line 5.\nSample text line 6.\nSample text line 7.\nSample text line 8.\nSample text line 9.\nSample text line 10.\nSample text line 11.\nSample text line 12.\nSample text line 13.\nSample text line 14.\nSample text line 15.\nSample text line 16.\nSample text line 17.\nSample text line 18.\nSample text line 19.\nSample text line 20.\nSample text line 21.\nSample text line 22.\nSample text line 23.\nSample text line 24."
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "reasoning",
+      "text": "Sample text line 1.\nSample text line 2."
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-5",
+      "name": "mcp__sample__update_plan",
+      "detail": {
+        "type": "unknown",
+        "input": {
+          "advance": true
+        },
+        "output": {
+          "output": "Sample text line 1."
+        }
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-6",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "printf 'Sample output'",
+        "output": "Sample text line 1.\nSample text line 2.\nSample text line 3."
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-7",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "printf 'Sample output'",
+        "output": "Sample text line 1.\nSample text line 2.\nSample text line 3.\nSample text line 4.\nSample text line 5.\nSample text line 6.\nSample text line 7.\nSample text line 8.\nSample text line 9."
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-8",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "printf 'Sample output'",
+        "output": "Sample text line 1.\nSample text line 2.\nSample text line 3.\nSample text line 4.\nSample text line 5.\nSample text line 6.\nSample text line 7.\nSample text line 8.\nSample text line 9.\nSample text line 10.\nSample text line 11.\nSample text line 12.\nSample text line 13.\nSample text line 14.\nSample text line 15.\nSample text line 16.\nSample text line 17.\nSample text line 18.\nSample text line 19.\nSample text line 20.\nSample text line 21.\nSample text line 22.\nSample text line 23.\nSample text line 24."
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "assistant_message",
+      "text": "The sample review is complete.",
+      "messageId": "sample-claude-message-15"
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-9",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "printf 'Sample output'",
+        "output": "Sample text line 1.\nSample text line 2.\nSample text line 3.\nSample text line 4.\nSample text line 5.\nSample text line 6.\nSample text line 7.\nSample text line 8.\nSample text line 9.\nSample text line 10.\nSample text line 11.\nSample text line 12.\nSample text line 13.\nSample text line 14.\nSample text line 15.\nSample text line 16.\nSample text line 17.\nSample text line 18.\nSample text line 19.\nSample text line 20.\nSample text line 21.\nSample text line 22.\nSample text line 23.\nSample text line 24."
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-10",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "printf 'Sample output'",
+        "output": "Sample text line 1.\nSample text line 2.\nSample text line 3.\nSample text line 4.\nSample text line 5.\nSample text line 6.\nSample text line 7.\nSample text line 8.\nSample text line 9.\nSample text line 10.\nSample text line 11.\nSample text line 12.\nSample text line 13.\nSample text line 14.\nSample text line 15.\nSample text line 16.\nSample text line 17.\nSample text line 18."
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-11",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "printf 'Sample output'",
+        "output": "Sample text line 1.\nSample text line 2.\nSample text line 3.\nSample text line 4.\nSample text line 5.\nSample text line 6.\nSample text line 7.\nSample text line 8.\nSample text line 9.\nSample text line 10.\nSample text line 11.\nSample text line 12.\nSample text line 13.\nSample text line 14.\nSample text line 15.\nSample text line 16.\nSample text line 17.\nSample text line 18.\nSample text line 19.\nSample text line 20.\nSample text line 21.\nSample text line 22.\nSample text line 23.\nSample text line 24."
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-12",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "printf 'Sample output'",
+        "output": "Sample text line 1.\nSample text line 2.\nSample text line 3.\nSample text line 4.\nSample text line 5.\nSample text line 6.\nSample text line 7.\nSample text line 8.\nSample text line 9.\nSample text line 10.\nSample text line 11.\nSample text line 12.\nSample text line 13.\nSample text line 14.\nSample text line 15.\nSample text line 16.\nSample text line 17.\nSample text line 18.\nSample text line 19.\nSample text line 20.\nSample text line 21.\nSample text line 22.\nSample text line 23.\nSample text line 24."
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-13",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "printf 'Sample output'",
+        "output": "Sample text line 1.\nSample text line 2.\nSample text line 3.\nSample text line 4.\nSample text line 5.\nSample text line 6.\nSample text line 7.\nSample text line 8.\nSample text line 9.\nSample text line 10.\nSample text line 11.\nSample text line 12.\nSample text line 13.\nSample text line 14.\nSample text line 15.\nSample text line 16.\nSample text line 17.\nSample text line 18.\nSample text line 19.\nSample text line 20.\nSample text line 21.\nSample text line 22.\nSample text line 23.\nSample text line 24."
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-14",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "printf 'Sample output'",
+        "output": "Sample text line 1.\nSample text line 2.\nSample text line 3.\nSample text line 4.\nSample text line 5.\nSample text line 6.\nSample text line 7."
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "assistant_message",
+      "text": "The sample review is complete.",
+      "messageId": "sample-claude-message-22"
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-15",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "printf 'Sample output'",
+        "output": "Sample text line 1.\nSample text line 2.\nSample text line 3.\nSample text line 4.\nSample text line 5.\nSample text line 6.\nSample text line 7.\nSample text line 8.\nSample text line 9.\nSample text line 10.\nSample text line 11.\nSample text line 12.\nSample text line 13.\nSample text line 14.\nSample text line 15.\nSample text line 16.\nSample text line 17.\nSample text line 18.\nSample text line 19.\nSample text line 20.\nSample text line 21.\nSample text line 22.\nSample text line 23.\nSample text line 24."
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-16",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "printf 'Sample output'",
+        "output": "Sample text line 1.\nSample text line 2.\nSample text line 3.\nSample text line 4."
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-17",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "printf 'Sample output'",
+        "output": "Sample text line 1."
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-18",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "printf 'Sample output'",
+        "output": "Sample text line 1.\nSample text line 2.\nSample text line 3.\nSample text line 4.\nSample text line 5."
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-19",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "printf 'Sample output'",
+        "output": "Sample text line 1.\nSample text line 2.\nSample text line 3.\nSample text line 4.\nSample text line 5.\nSample text line 6.\nSample text line 7.\nSample text line 8."
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-20",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "printf 'Sample output'",
+        "output": "Sample text line 1.\nSample text line 2.\nSample text line 3.\nSample text line 4.\nSample text line 5.\nSample text line 6.\nSample text line 7.\nSample text line 8.\nSample text line 9.\nSample text line 10.\nSample text line 11.\nSample text line 12.\nSample text line 13."
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "assistant_message",
+      "text": "The sample review is complete.",
+      "messageId": "sample-claude-message-29"
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-21",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "printf 'Sample output'",
+        "output": "Sample text line 1.\nSample text line 2.\nSample text line 3.\nSample text line 4.\nSample text line 5.\nSample text line 6.\nSample text line 7.\nSample text line 8.\nSample text line 9.\nSample text line 10.\nSample text line 11.\nSample text line 12.\nSample text line 13.\nSample text line 14.\nSample text line 15.\nSample text line 16.\nSample text line 17.\nSample text line 18.\nSample text line 19.\nSample text line 20.\nSample text line 21.\nSample text line 22.\nSample text line 23.\nSample text line 24."
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-22",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "printf 'Sample output'",
+        "output": "Sample text line 1.\nSample text line 2.\nSample text line 3.\nSample text line 4.\nSample text line 5.\nSample text line 6.\nSample text line 7.\nSample text line 8.\nSample text line 9.\nSample text line 10.\nSample text line 11.\nSample text line 12.\nSample text line 13.\nSample text line 14.\nSample text line 15.\nSample text line 16.\nSample text line 17.\nSample text line 18.\nSample text line 19.\nSample text line 20.\nSample text line 21.\nSample text line 22.\nSample text line 23.\nSample text line 24."
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-23",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "printf 'Sample output'",
+        "output": "Sample text line 1.\nSample text line 2.\nSample text line 3.\nSample text line 4.\nSample text line 5."
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-24",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "printf 'Sample output'",
+        "output": "Sample text line 1.\nSample text line 2.\nSample text line 3.\nSample text line 4.\nSample text line 5.\nSample text line 6.\nSample text line 7.\nSample text line 8.\nSample text line 9.\nSample text line 10.\nSample text line 11.\nSample text line 12.\nSample text line 13.\nSample text line 14.\nSample text line 15.\nSample text line 16.\nSample text line 17.\nSample text line 18.\nSample text line 19.\nSample text line 20.\nSample text line 21.\nSample text line 22.\nSample text line 23.\nSample text line 24."
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "assistant_message",
+      "text": "The sample review is complete.",
+      "messageId": "sample-claude-message-34"
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-25",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "printf 'Sample output'",
+        "output": "Sample text line 1.\nSample text line 2.\nSample text line 3.\nSample text line 4.\nSample text line 5.\nSample text line 6.\nSample text line 7.\nSample text line 8.\nSample text line 9.\nSample text line 10.\nSample text line 11.\nSample text line 12.\nSample text line 13.\nSample text line 14.\nSample text line 15.\nSample text line 16.\nSample text line 17.\nSample text line 18.\nSample text line 19.\nSample text line 20.\nSample text line 21.\nSample text line 22.\nSample text line 23.\nSample text line 24."
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-26",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "printf 'Sample output'",
+        "output": "Sample text line 1.\nSample text line 2.\nSample text line 3.\nSample text line 4.\nSample text line 5.\nSample text line 6.\nSample text line 7.\nSample text line 8.\nSample text line 9.\nSample text line 10.\nSample text line 11.\nSample text line 12.\nSample text line 13.\nSample text line 14.\nSample text line 15.\nSample text line 16.\nSample text line 17.\nSample text line 18.\nSample text line 19.\nSample text line 20.\nSample text line 21.\nSample text line 22.\nSample text line 23.\nSample text line 24."
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-27",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "printf 'Sample output'",
+        "output": "Sample text line 1.\nSample text line 2.\nSample text line 3.\nSample text line 4.\nSample text line 5.\nSample text line 6.\nSample text line 7.\nSample text line 8.\nSample text line 9.\nSample text line 10."
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-claude-call-28",
+      "name": "mcp__sample__wrap_up",
+      "detail": {
+        "type": "unknown",
+        "input": {
+          "recap": "Sample text line 1.",
+          "ask": "Sample text line 1.",
+          "actions": [
+            {
+              "label": "Sample text line 1.",
+              "message": "Sample text line 1."
+            },
+            {
+              "label": "Sample text line 1.",
+              "message": "Sample text line 1."
+            }
+          ],
+          "blocked": true
+        },
+        "output": {
+          "output": "Sample text line 1."
+        }
+      },
+      "status": "completed",
+      "error": null
+    }
+  ]
+}

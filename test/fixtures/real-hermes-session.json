@@ -1,0 +1,117 @@
+{
+  "style": "hermes",
+  "provenance": "Sanitized real projected timeline fetched read-only from a Paseo daemon. Original item keys, detail types, nesting and metadata shapes are preserved. All session content and identifiers are fictional.",
+  "items": [
+    {
+      "type": "user_message",
+      "text": "Review the sample project and describe the result.",
+      "messageId": "sample-hermes-message-1"
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-hermes-call-1",
+      "name": "execute",
+      "detail": {
+        "type": "shell",
+        "command": "terminal: git log",
+        "output": "Sample text line 1.\nSample text line 2.\nSample text line 3.\nSample text line 4.\nSample text line 5.\nSample text line 6.\nSample text line 7."
+      },
+      "metadata": {
+        "kind": "execute",
+        "title": "terminal: git log"
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-hermes-call-2",
+      "name": "read",
+      "detail": {
+        "type": "read",
+        "filePath": "/workspace/sample/src/config.ts",
+        "content": "Sample text line 1.\nSample text line 2.\nSample text line 3.\nSample text line 4.\nSample text line 5.\nSample text line 6.\nSample text line 7.\nSample text line 8.\nSample text line 9.\nSample text line 10.\nSample text line 11.\nSample text line 12.\nSample text line 13.\nSample text line 14.\nSample text line 15.\nSample text line 16.\nSample text line 17.\nSample text line 18.\nSample text line 19.\nSample text line 20.\nSample text line 21.\nSample text line 22.\nSample text line 23.\nSample text line 24."
+      },
+      "metadata": {
+        "kind": "read",
+        "title": "read_file: /workspace/sample/src/config.ts"
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-hermes-call-3",
+      "name": "search",
+      "detail": {
+        "type": "search",
+        "query": "search_files: sampleSetting",
+        "toolName": "search",
+        "content": "/workspace/sample/src/config.ts:4:sampleSetting = true",
+        "filePaths": [
+          "/workspace/sample/src/config.ts"
+        ]
+      },
+      "metadata": {
+        "kind": "search",
+        "title": "search_files: sampleSetting"
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-hermes-call-4",
+      "name": "read",
+      "detail": {
+        "type": "read",
+        "filePath": "skill_view: sample-skill",
+        "content": "Sample skill instruction 1.\nSample skill instruction 2.\nSample skill instruction 3.\nSample skill instruction 4.\nSample skill instruction 5.\nSample skill instruction 6.\nSample skill instruction 7.\nSample skill instruction 8.\nSample skill instruction 9.\nSample skill instruction 10.\nSample skill instruction 11.\nSample skill instruction 12.\nSample skill instruction 13.\nSample skill instruction 14.\nSample skill instruction 15.\nSample skill instruction 16.\nSample skill instruction 17.\nSample skill instruction 18.\nSample skill instruction 19."
+      },
+      "metadata": {
+        "kind": "read",
+        "title": "skill_view: sample-skill"
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-hermes-call-5",
+      "name": "fetch",
+      "detail": {
+        "type": "fetch",
+        "url": "web_search: sample plugin guide",
+        "result": "# Sample reference\n[Sample reference](https://example.org/guide)\nNeutral reference line 1.\nNeutral reference line 2.\nNeutral reference line 3.\nNeutral reference line 4.\nNeutral reference line 5.\nNeutral reference line 6.\nNeutral reference line 7.\nNeutral reference line 8.\nNeutral reference line 9.\nNeutral reference line 10.\nNeutral reference line 11.\nNeutral reference line 12.\nNeutral reference line 13.\nNeutral reference line 14.\nNeutral reference line 15.\nNeutral reference line 16.\nNeutral reference line 17.\nNeutral reference line 18.\nNeutral reference line 19.\nNeutral reference line 20.\nNeutral reference line 21.\nNeutral reference line 22."
+      },
+      "metadata": {
+        "kind": "fetch",
+        "title": "web_search: sample plugin guide"
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-hermes-call-6",
+      "name": "other",
+      "detail": {
+        "type": "plain_text",
+        "label": "tool_search: browser",
+        "text": "Sample browser tool description 1.\nSample browser tool description 2.\nSample browser tool description 3.\nSample browser tool description 4.\nSample browser tool description 5.\nSample browser tool description 6.\nSample browser tool description 7.\nSample browser tool description 8.\nSample browser tool description 9.\nSample browser tool description 10.\nSample browser tool description 11.\nSample browser tool description 12.\nSample browser tool description 13.\nSample browser tool description 14.\nSample browser tool description 15.\nSample browser tool description 16.\nSample browser tool description 17.\nSample browser tool description 18.\nSample browser tool description 19.\nSample browser tool description 20.\nSample browser tool description 21.\nSample browser tool description 22.\nSample browser tool description 23.\nSample browser tool description 24.",
+        "icon": "wrench"
+      },
+      "metadata": {
+        "kind": "other",
+        "title": "tool_search: browser"
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "assistant_message",
+      "text": "The sample review is complete.",
+      "messageId": "sample-hermes-message-8"
+    }
+  ]
+}
