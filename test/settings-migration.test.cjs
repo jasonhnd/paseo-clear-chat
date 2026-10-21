@@ -77,6 +77,30 @@ test("host migration copies the SDK envelope and keeps the old settings", (t) =>
   assert.equal(fs.readFileSync(old, "utf8"), oldRaw);
 });
 
+for (const id of [LEGACY_PLUGIN_ID, PLUGIN_ID]) {
+  test(`version one ${id} settings upgrade without changing existing choices`, async (t) => {
+    const h = fixture(t);
+    h.seed(id);
+    h.load("server/settings-migration.ts").migrateHostSettings();
+    const envelope = JSON.parse(fs.readFileSync(h.path(PLUGIN_ID), "utf8"));
+    const definition = h.load("shared/settings.ts").presentationSettings;
+    assert.equal(definition.version, 2);
+    const migrated = definition.schema.parse(await definition.migrate(envelope.values, envelope.version));
+    assert.deepEqual(migrated, envelope.values);
+    assert.equal(migrated.preferences.enhancedUserBubble, false);
+    assert.equal(migrated.preferences.textScale, 1.3);
+    assert.equal(migrated.legacyMigrated, true);
+  });
+}
+
+test("version two settings retain fold choices during schema migration", async (t) => {
+  const h = fixture(t);
+  const definition = h.load("shared/settings.ts").presentationSettings;
+  const values = { preferences: { accent: "rose", foldFinishedSteps: false, foldLongOutputAfter: "never" }, legacyMigrated: true };
+  assert.deepEqual(definition.schema.parse(await definition.migrate(values, 2)), values);
+  assert.deepEqual(definition.schema.parse(await definition.migrate({}, 1)), { preferences: {}, legacyMigrated: false });
+});
+
 for (const current of [JSON.stringify({ version: 1, values: { preferences: { accent: "rose" } } }), ""]) {
   test(`host migration leaves an existing new document untouched (${current || "empty"})`, (t) => {
     const h = fixture(t);

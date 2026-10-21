@@ -20,6 +20,14 @@ export type AccentPreset = keyof typeof ACCENT_PRESETS;
 export type UiFontPreference = "inter" | "system";
 export type CodeFontPreference = "code" | "plain";
 export type MarkdownVariantPreference = "document" | "compact" | "terminal";
+export type OutputLineLimit = 10 | 15 | 30 | "never";
+
+export const OUTPUT_LINE_OPTIONS = [
+  { value: "10", label: "10 lines" },
+  { value: "15", label: "15 lines" },
+  { value: "30", label: "30 lines" },
+  { value: "never", label: "Never" },
+] as const;
 
 /** Multiplier applied to every font size the plugin draws. */
 export const TEXT_SIZE_OPTIONS = [
@@ -63,6 +71,8 @@ export interface EnhancerPreferences {
   assistantMarkdown: boolean;
   /** Which look the markdown renderer uses. */
   markdownVariant: MarkdownVariantPreference;
+  foldFinishedSteps: boolean;
+  foldLongOutputAfter: OutputLineLimit;
 }
 
 const STORAGE_KEY = "paseo/clear-chat/preferences/v1";
@@ -79,6 +89,8 @@ export const DEFAULT_PREFERENCES: Readonly<EnhancerPreferences> = {
   selectionActions: true,
   assistantMarkdown: true,
   markdownVariant: "document",
+  foldFinishedSteps: true,
+  foldLongOutputAfter: 15,
 };
 
 const listeners = new Set<() => void>();
@@ -117,8 +129,8 @@ function loadLegacyPreferences(): PreferenceOverrides | undefined {
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return {};
     const valid: Record<string, unknown> = {};
     for (const [key, schema] of Object.entries(preferenceOverridesSchema.shape)) {
-      // Text size is a new host-only preference; never import it from localStorage.
-      if (key === "textScale") continue;
+      // New host-only preferences must never come from a browser import snapshot.
+      if (key === "textScale" || key === "foldFinishedSteps" || key === "foldLongOutputAfter") continue;
       const parsed = schema.safeParse((candidate as Record<string, unknown>)[key]);
       if (parsed.success && parsed.data !== undefined) valid[key] = parsed.data;
     }

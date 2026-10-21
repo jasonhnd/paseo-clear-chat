@@ -6,6 +6,7 @@ import { radius, buildThemeTokens, type ExtendedThemeTokens } from "./components
 import {
   ACCENT_PRESETS,
   TEXT_SIZE_OPTIONS,
+  OUTPUT_LINE_OPTIONS,
   resetEnhancerPreferences,
   updateEnhancerPreferences,
   useEnhancerPreferences,
@@ -13,6 +14,7 @@ import {
   type AccentPreset,
   type CodeFontPreference,
   type UiFontPreference,
+  type OutputLineLimit,
 } from "./preferences";
 
 const ACCENT_OPTIONS: ReadonlyArray<{
@@ -328,6 +330,23 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
           value={String(preferences.textScale)}
           options={TEXT_SIZE_OPTIONS}
           onChange={(textScale) => updateEnhancerPreferences({ textScale: Number(textScale) })}
+          tokens={tokens}
+        />
+
+        <ToggleRow
+          title="Fold finished steps"
+          description="Collapse finished tool calls by default. Turning this off expands every step. Saved choices for individual calls take precedence."
+          value={preferences.foldFinishedSteps}
+          onChange={(foldFinishedSteps) => updateEnhancerPreferences({ foldFinishedSteps })}
+          tokens={tokens}
+        />
+
+        <ChoiceRow
+          title="Fold long output after"
+          description="Show a preview of long tool output with a button to reveal every line."
+          value={String(preferences.foldLongOutputAfter)}
+          options={OUTPUT_LINE_OPTIONS}
+          onChange={(value) => updateEnhancerPreferences({ foldLongOutputAfter: value === "never" ? "never" : Number(value) as OutputLineLimit })}
           tokens={tokens}
         />
 

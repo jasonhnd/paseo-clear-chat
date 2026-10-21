@@ -14,16 +14,22 @@ export const preferenceOverridesSchema = z.object({
   selectionActions: z.boolean().optional(),
   assistantMarkdown: z.boolean().optional(),
   markdownVariant: z.enum(["document", "compact", "terminal"]).optional(),
+  foldFinishedSteps: z.boolean().optional(),
+  foldLongOutputAfter: z.union([z.literal(10), z.literal(15), z.literal(30), z.literal("never")]).optional(),
+});
+
+const presentationSchema = z.object({
+  preferences: preferenceOverridesSchema.default({}),
+  legacyMigrated: z.boolean().default(false),
 });
 
 export const presentationSettings = defineSettings({
   id: "presentation",
   scope: "host",
-  version: 1,
-  schema: z.object({
-    preferences: preferenceOverridesSchema.default({}),
-    legacyMigrated: z.boolean().default(false),
-  }),
+  version: 2,
+  schema: presentationSchema,
+  // Version 1 values remain explicit choices. New options use client defaults.
+  migrate: (values) => presentationSchema.parse(values),
 });
 
 export type PreferenceOverrides = z.output<typeof preferenceOverridesSchema>;

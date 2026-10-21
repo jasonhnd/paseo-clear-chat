@@ -469,3 +469,37 @@ test("text size ignores legacy localStorage and clamps host values", async () =>
   await native.initializeEnhancerPreferences(host({ preferences: { textScale: 10 } }).rpc);
   assert.equal(native.getEnhancerPreferences().textScale, 1.35);
 });
+
+test("fold preferences default to finished steps and fifteen output lines", () => {
+  const { preferences: p } = harness();
+  assert.equal(p.getEnhancerPreferences().foldFinishedSteps, true);
+  assert.equal(p.getEnhancerPreferences().foldLongOutputAfter, 15);
+});
+
+test("fold preferences persist all choices and reset to defaults", async () => {
+  const server = host({ preferences: { accent: "jade", textScale: 1.3 }, legacyMigrated: true });
+  const { preferences: p } = harness();
+  await p.initializeEnhancerPreferences(server.rpc);
+  for (const foldLongOutputAfter of [10, 15, 30, "never"]) {
+    await p.updateEnhancerPreferences({ foldFinishedSteps: false, foldLongOutputAfter });
+    const fresh = harness().preferences;
+    await fresh.initializeEnhancerPreferences(server.rpc);
+    assert.equal(fresh.getEnhancerPreferences().foldFinishedSteps, false);
+    assert.equal(fresh.getEnhancerPreferences().foldLongOutputAfter, foldLongOutputAfter);
+    assert.equal(fresh.getEnhancerPreferences().accent, "jade");
+    assert.equal(fresh.getEnhancerPreferences().textScale, 1.3);
+  }
+  await p.resetEnhancerPreferences();
+  assert.equal(p.getEnhancerPreferences().foldFinishedSteps, true);
+  assert.equal(p.getEnhancerPreferences().foldLongOutputAfter, 15);
+});
+
+test("fold preferences reject invalid limits and ignore legacy browser values", async () => {
+  const h = harness("web", JSON.stringify({ foldFinishedSteps: false, foldLongOutputAfter: "never" }));
+  await h.preferences.initializeEnhancerPreferences(host().rpc);
+  assert.equal(h.preferences.getEnhancerPreferences().foldFinishedSteps, true);
+  assert.equal(h.preferences.getEnhancerPreferences().foldLongOutputAfter, 15);
+  for (const foldLongOutputAfter of [0, 11, 100, null, "15"]) {
+    assert.throws(() => h.preferences.updateEnhancerPreferences({ foldLongOutputAfter }));
+  }
+});
