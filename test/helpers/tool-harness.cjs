@@ -16,12 +16,12 @@ function createToolHarness(platform = "ios", options = {}) {
   const passthrough = props => props.children ?? null;
   const noop = () => {};
   const cleanup = () => noop;
-  const preferences = { enhancedUserBubble: true, assistantMarkdown: true, foldFinishedSteps: true, foldLongOutputAfter: 15, ...options.preferences };
+  const preferences = { enhancedUserBubble: true, assistantMarkdown: true, markdownVariant: "document", textScale: 1, foldFinishedSteps: true, foldLongOutputAfter: 15, ...options.preferences };
   const expansionHost = options.expansionHost ?? createExpansionHost();
   const rpcFunctions = new Map();
   const timestamps = new WeakMap();
   let nextTimestamp = Date.parse("2026-01-01T12:00:00Z");
-  const tokens = new Proxy({ fs: n => n, boxShadow: {}, syntax: {}, isDark: true }, { get: (obj, key) => obj[key] ?? "#888888" });
+  const tokens = new Proxy({ fs: n => Math.round(n * preferences.textScale * 2) / 2, get textScale() { return preferences.textScale; }, boxShadow: {}, syntax: {}, isDark: true }, { get: (obj, key) => obj[key] ?? "#888888" });
   function next(initial) {
     const index = frame.cursor++;
     if (!(index in frame.values)) frame.values[index] = typeof initial === "function" ? initial() : initial;
@@ -71,7 +71,7 @@ function createToolHarness(platform = "ios", options = {}) {
     "client/components/glow": { glowing: () => ({}), usePointerGlow: noop, installPointerGlow: cleanup },
     "client/components/host-notice": { installHostNoticeStyle: cleanup },
     "client/components/chat-find": { installChatFind: cleanup },
-    "client/components/theme-tokens": { buildThemeTokens: () => tokens, radius: {} },
+    "client/components/theme-tokens": { buildThemeTokens: () => tokens, radius: {}, withAlpha: color => color },
     "client/components/view-props": { surfaceProps: () => ({}) },
     "client/components/selection-actions": { useSelectionActions: noop, selectionCodeText: {}, selectionSurface: {} },
     "client/components/selection": { selectableSurface: {}, unselectable: {} },
@@ -102,6 +102,7 @@ function createToolHarness(platform = "ios", options = {}) {
     },
   };
   if (options.settingsPage) delete stubs["client/settings-page"];
+  if (options.markdown) delete stubs["client/components/markdown/markdown-view"];
   function load(path) {
     let filename = resolve(root, path);
     if (!existsSync(filename)) filename += existsSync(filename + ".ts") ? ".ts" : ".tsx";

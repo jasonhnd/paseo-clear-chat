@@ -1,5 +1,46 @@
 import { record, stringValue, valueText } from "./tool-detail";
 
+export type FinalToolReplyContent =
+  | { kind: "markdown"; text: string }
+  | { kind: "text"; text: string }
+  | { kind: "wrap_up"; recap: string; ask?: string; actions: string[]; blocked: string[] };
+
+function actionText(value: unknown): string | undefined {
+  if (typeof value === "string") return value.trim() ? value : undefined;
+  const action = record(value);
+  const label = stringValue(action.label, action.title, action.text);
+  if (!label || Object.keys(action).some(key => !["id", "label", "title", "text", "description"].includes(key))) return undefined;
+  if (action.description != null && typeof action.description !== "string") return undefined;
+  return action.description ? `${label}\n\n${action.description}` : label;
+}
+
+/** Decode the known reply envelope without hiding malformed or unfamiliar data. */
+export function parseFinalToolReply(text: string): FinalToolReplyContent {
+  const fallback = { kind: "text" as const, text: text.trim() ? text : "No final reply content was reported." };
+  const source = text.trim();
+  const fenced = source.match(/^```(?:json)?\s*\n([\s\S]*?)\n```$/i);
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(fenced?.[1] ?? source);
+  } catch {
+    return source.startsWith("{") || source.startsWith("[") || /^```json\b/i.test(source) || !source
+      ? fallback : { kind: "markdown", text };
+  }
+  const fields = record(decoded);
+  if (typeof fields.recap !== "string" || Object.keys(fields).some(key => !["recap", "ask", "actions", "blocked"].includes(key))) return fallback;
+  if (fields.ask != null && typeof fields.ask !== "string") return fallback;
+  if (fields.actions != null && !Array.isArray(fields.actions)) return fallback;
+  const actions = (fields.actions ?? []) as unknown[];
+  const labels = actions.map(actionText);
+  if (labels.some(label => label === undefined)) return fallback;
+  const blocked = fields.blocked == null ? [] : typeof fields.blocked === "string" ? [fields.blocked] : fields.blocked;
+  if (!Array.isArray(blocked) || blocked.some(item => typeof item !== "string")) return fallback;
+  const reasons = (blocked as string[]).filter(item => item.trim());
+  const ask = typeof fields.ask === "string" && fields.ask.trim() ? fields.ask : undefined;
+  if (!fields.recap.trim() && !ask && !labels.length && !reasons.length) return fallback;
+  return { kind: "wrap_up", recap: fields.recap, ask, actions: labels as string[], blocked: reasons };
+}
+
 /** Only an explicit wrap-up operation is a reply; a completed phase is not. */
 export function finalToolReply(name: string, input: Record<string, unknown>, output: unknown): string | undefined {
   const leaf = name.toLowerCase().split(/__|[./]/).pop();

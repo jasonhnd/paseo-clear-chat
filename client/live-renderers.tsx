@@ -35,6 +35,7 @@ import type { LiveToolCallPayload } from "./tool-call-data";
 import { buildChecklist } from "./tool-detail";
 import { useToolExpansion } from "./tool-expansion";
 import { defaultToolExpanded } from "./tool-summary";
+import { FinalToolReply } from "./components/final-tool-reply";
 
 export interface LiveReasoningPayload {
   text: string;
@@ -114,7 +115,7 @@ export function LiveToolCallRenderer({
     <View {...hostFontEscape}>
       {calloutData.finalReply ? (
         <View testID="tool-final-reply">
-          <MarkdownView text={calloutData.finalReply} tokens={tokens} variant={preferences.markdownVariant} />
+          <FinalToolReply text={calloutData.finalReply} tokens={tokens} variant={preferences.markdownVariant} />
           {calloutData.error ? <Text selectable style={{ color: tokens.danger }}>{calloutData.error}</Text> : null}
         </View>
       ) : (
