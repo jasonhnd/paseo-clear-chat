@@ -22,6 +22,7 @@ interface TaskListProps {
 export function TaskList({ data, tokens, onToggleTask }: TaskListProps) {
   const [tasks, setTasks] = useState<TaskItemData[]>(data.tasks);
   const [expandedBlockedId, setExpandedBlockedId] = useState<string | null>(null);
+  useEffect(() => setTasks(data.tasks), [data.tasks]);
 
   const completedCount = tasks.filter((t) => t.status === "completed").length;
   const totalCount = tasks.length;

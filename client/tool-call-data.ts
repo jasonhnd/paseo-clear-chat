@@ -2,11 +2,13 @@ import type { EvalCell, GitHubToolData, HubData, McpToolData, PaseoToolData, Too
 import { buildHubData } from "./hub-details";
 import { buildGitHubData } from "./github-request";
 import { asString, buildMcpData, buildPaseoData, buildSubagentBatch, extractAskQuestion, extractAskSelections, extractContentText, extractEvalCells, extractEvalDuration, extractStringProp, languageFromPath } from "./tool-call-legacy";
+import { buildChecklist, fallbackData, fetchData, record, searchData, skillData, stringValue, subagentData, unknownTitle, valueText } from "./tool-detail";
 
 export interface LiveToolCallPayload {
   name: string;
   status: string;
   detail?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
   callId?: string;
   error?: string | null;
   phase?: string;
@@ -19,42 +21,37 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
     unknown
   >;
   const detailType = typeof detail.type === "string" ? detail.type.toLowerCase() : "";
-  const input = (
-    detail.input && typeof detail.input === "object"
-      ? detail.input
-      : detail.arguments && typeof detail.arguments === "object"
-        ? detail.arguments
-        : detail.args && typeof detail.args === "object"
-          ? detail.args
-          : {}
-  ) as Record<string, unknown>;
+  const rawInput = detail.input ?? detail.arguments ?? detail.args;
+  const input = record(rawInput);
   const output = detail.output ?? detail.result ?? detail.content ?? "";
-  
+
   // Universal path extraction across OMP, Paseo, Claude, and Codex formats
   const filePath: string | undefined =
     (typeof detail.filePath === "string" ? detail.filePath : undefined) ||
     (typeof input.path === "string" ? input.path : undefined) ||
     (typeof input.filePath === "string" ? input.filePath : undefined) ||
+      (typeof input.file_path === "string" ? input.file_path : undefined) ||
     (typeof detail.path === "string" ? detail.path : undefined);
-  
+
   // Universal command extraction
   const command: string | undefined =
     (typeof detail.command === "string" ? detail.command : undefined) ||
     (typeof input.command === "string" ? input.command : undefined) ||
+      (typeof input.cmd === "string" ? input.cmd : undefined) ||
     (typeof detail.input === "string" ? detail.input : undefined);
-  
+
   // Universal code / file content extraction
   const code: string | undefined =
     (typeof detail.content === "string" ? detail.content : undefined) ||
-    (typeof output === "string" ? output : undefined) ||
-    (typeof input.content === "string" ? input.content : undefined);
-  
+    (typeof input.content === "string" ? input.content : undefined) ||
+    valueText(output);
+
   // Universal diff extraction
   const diff: string | undefined =
     (typeof detail.unifiedDiff === "string" ? detail.unifiedDiff : undefined) ||
     (typeof detail.diff === "string" ? detail.diff : undefined) ||
     extractStringProp(output, "diff");
-  
+
   // A tool that answers with content blocks carries its prose in
   // `content[0].text`. That text is allowed to be empty — a `hub wait` job
   // snapshot puts everything in `details` and nothing in the text — so there
@@ -70,7 +67,12 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
           : undefined);
   const durationMs =
     typeof detail.durationMs === "number" ? detail.durationMs : extractEvalDuration(output);
-  let toolKind: ToolCallKind = "bash";
+  let toolKind: ToolCallKind = "unknown";
+  let skill: ToolCalloutData["skill"];
+  let search: ToolCalloutData["search"];
+  let fetch: ToolCalloutData["fetch"];
+  let checklist: ToolCalloutData["checklist"];
+  let plainText: string | undefined;
   let hub: HubData | undefined;
   let mcp: McpToolData | undefined;
   let subagent: ToolCalloutData["subagent"];
@@ -80,16 +82,44 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
   let askOptions: NonNullable<ToolCalloutData["askOptions"]> = [];
   let askAnswer: string[] = [];
   let title = data.name || "tool";
-  
+
   const isGitHubTool =
     rawName === "github" ||
     detailType === "github" ||
     filePath === "xd://github" ||
     filePath?.startsWith("xd://github/") === true;
   const isGitCommand =
-    rawName === "git" || detailType === "git" || /^\s*git(?:\.exe)?(?:\s|$)/i.test(command ?? "");
-  
-  if (isGitHubTool) {
+    rawName === "git" || detailType === "git" ||
+    ((detailType === "shell" || rawName === "bash" || rawName === "shell") && /^\s*git(?:\.exe)?(?:\s|$)/i.test(command ?? ""));
+  const isType = (type: string, aliases: string[] = [type]) =>
+    detailType === type || ((!detailType || detailType === "unknown") && aliases.includes(rawName));
+
+  if (/(?:^|[._/])skill_view$/.test(rawName)) {
+    toolKind = "read";
+    skill = skillData(detail, input);
+    title = `Skill: ${skill.name}`;
+  } else if (isType("search") || isType("web_search")) {
+    const web = detailType === "web_search" || detail.toolName === "web_search" || rawName === "web_search";
+    toolKind = web ? "web_search" : "search";
+    search = searchData(detail, input, output, web);
+    if (web && search.results.length === 0) fetch = fetchData(detail, input, output);
+    title = `${web ? "Web search" : "Search"}${search.query ? `: ${search.query}` : ""}`;
+  } else if (isType("fetch", ["fetch", "webfetch"])) {
+    toolKind = "fetch";
+    fetch = fetchData(detail, input, output);
+    title = fetch.title ?? (fetch.url ? `Fetch: ${fetch.url}` : "Fetch");
+  } else if (isType("sub_agent")) {
+    toolKind = "sub_agent";
+    subagent = subagentData(detail, input, record(data.metadata));
+    title = subagent.agents[0]?.name ?? "Subagent";
+  } else if (isType("plan", ["plan", "update_plan"]) || isType("todo", ["todo", "todowrite", "todo_write"])) {
+    toolKind = isType("plan", ["plan", "update_plan"]) ? "plan" : "todo";
+    checklist = buildChecklist(detail, input, toolKind);
+    title = checklist.phaseName;
+  } else if (isType("plain_text")) {
+    toolKind = "plain_text";
+    plainText = typeof detail.text === "string" ? detail.text : valueText(output);
+  } else if (isGitHubTool) {
     toolKind = "github";
     // A device call is a write: `content` is the request, and the tool's own
     // result text is the reply. They are read separately here because the
@@ -104,16 +134,16 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
   } else if (isGitCommand) {
     toolKind = "git";
     title = command ? `$ ${command.trim().slice(0, 55)}` : "Git command";
-  } else if (rawName === "read" || detailType === "read") {
+  } else if (isType("read")) {
     toolKind = "read";
     title = filePath ? `Read ${filePath.split(/[/\\]/).pop() || filePath}` : "Read file";
-  } else if (rawName === "write" || detailType === "write") {
+  } else if (isType("write")) {
     toolKind = "write";
     title = filePath ? `Write ${filePath.split(/[/\\]/).pop() || filePath}` : "Write file";
-  } else if (rawName === "edit" || detailType === "edit") {
+  } else if (isType("edit")) {
     toolKind = "edit";
     title = filePath ? `Edit ${filePath.split(/[/\\]/).pop() || filePath}` : "Edit file";
-  } else if (rawName === "bash" || rawName === "shell" || detailType === "shell") {
+  } else if (isType("shell", ["bash", "shell"])) {
     toolKind = rawName === "shell" || detailType === "shell" ? "shell" : "bash";
     title = command ? `$ ${command.trim().slice(0, 55)}` : "Execute command";
   } else if (rawName === "thinking") {
@@ -156,21 +186,25 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
     title =
       count === 1 ? (subagent?.agents[0]?.name ?? "Subagent") : `${count || "No"} subagents`;
   }
-  
+  if (toolKind === "unknown") title = unknownTitle(title, input);
+
   const exitCodeCandidate =
     typeof detail.exitCode === "number"
       ? detail.exitCode
       : typeof detail.code === "number"
         ? detail.code
         : undefined;
-  
+
   return {
     id: `live-${rawName}`,
     tool: toolKind,
     title,
     status:
-      data.status === "running" ? "running" : data.status === "failed" ? "failed" : "completed",
-    filePath,
+      data.status === "running" ? "running" : data.status === "failed" ? "failed"
+        : data.status === "canceled" ? "canceled" : "completed",
+    error: stringValue(data.error),
+    filePath: skill ? undefined : filePath,
+    command,
     language:
       toolKind === "bash" || toolKind === "shell" || toolKind === "git"
         ? "bash"
@@ -179,7 +213,7 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
     // would draw the request and the reply a second time.
     code: toolKind === "github" ? undefined : code,
     diff,
-    output: toolKind === "github" || evalCells.length > 0 ? undefined : outputText,
+    output: toolKind === "github" || evalCells.length > 0 ? undefined : outputText ?? valueText(output),
     cells: evalCells.length > 0 ? evalCells : undefined,
     askOptions: askOptions.length > 0 ? askOptions : undefined,
     askAnswer: askAnswer.length > 0 ? askAnswer : undefined,
@@ -190,5 +224,11 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
     mcp,
     paseo,
     github,
+    skill,
+    search,
+    fetch,
+    checklist,
+    plainText,
+    fallback: fallbackData(rawInput, output),
   };
 }

@@ -16,6 +16,7 @@ import { ImagePreview } from "./image-preview";
 import { GitHubBody } from "./github-body";
 import { SubagentBatch } from "./subagent-batch";
 import { useToolCalloutStyles } from "./tool-callout-styles";
+import { hasToolDetailBody, ToolDetailBody } from "./tool-detail-body";
 import { isImagePath } from "../image-file";
 import type { ImageFile } from "../image-file";
 import { selectionCodeText, selectionSurface } from "./selection-actions";
@@ -32,7 +33,11 @@ function getToolIconName(tool: string): string {
   if (tool === "eval") return "Play";
   if (tool === "ask") return "HelpCircle";
   if (tool === "mcp") return "Plug";
-  if (tool === "task") return "Bot";
+  if (tool === "task" || tool === "sub_agent") return "Bot";
+  if (tool === "search" || tool === "web_search") return "Search";
+  if (tool === "fetch") return "Globe";
+  if (tool === "plan" || tool === "todo") return "ListChecks";
+  if (tool === "plain_text") return "FileText";
   if (tool === "hub") return "Radio";
   return "Wrench";
 }
@@ -64,6 +69,7 @@ export function ToolCallout({
   // with no parsed record, an unmapped kind — would otherwise draw an empty
   // panel, so the raw output takes over.
   const hasTypedBody =
+    hasToolDetailBody(data) ||
     data.tool === "bash" ||
     data.tool === "shell" ||
     data.tool === "git" ||
@@ -72,10 +78,10 @@ export function ToolCallout({
     data.tool === "read" ||
     data.tool === "write" ||
     data.tool === "edit" ||
-    data.tool === "eval" ||
+    (data.tool === "eval" && Boolean(data.cells?.some((cell) => cell.code || cell.output) || data.code || data.output)) ||
     (data.tool === "mcp" && Boolean(data.mcp)) ||
     (data.tool === "ask" && Boolean(data.askOptions)) ||
-    (data.tool === "task" && Boolean(data.subagent)) ||
+    ((data.tool === "task" || data.tool === "sub_agent") && Boolean(data.subagent)) ||
     (data.tool === "hub" && Boolean(data.hub)) ||
     (data.tool === "paseo" && Boolean(data.paseo));
 
@@ -118,10 +124,16 @@ export function ToolCallout({
 
   return (
     <View
+      testID={`tool-card-${hasTypedBody ? data.tool : "unknown"}`}
       {...surfaceProps(frosted, glowing(tokens.isDark), selectionSurface)}
       style={styles.container}
     >
-      <Pressable onPress={() => setExpanded((p) => !p)} style={styles.header}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${expanded ? "Collapse" : "Expand"} ${data.title}`}
+        accessibilityState={{ expanded }}
+        onPress={() => setExpanded((p) => !p)} style={styles.header}
+      >
         <View style={styles.headerLeft}>
           <Breathe depth={1.08} durationMs={1800}>
             <Glyph name={getToolIconName(data.tool)} size={13} color={iconColor} />
@@ -169,6 +181,10 @@ export function ToolCallout({
             </Text>
           )}
 
+          {isSuccess || data.status === "canceled" ? (
+            <Text selectable style={styles.durationBadge}>{data.status}</Text>
+          ) : null}
+
           {isRunning && (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
               <PulseDot color={tokens.accent} size={5} />
@@ -194,7 +210,9 @@ export function ToolCallout({
       </Pressable>
 
       {expanded && (
-        <View style={styles.body}>
+        <View testID="tool-card-body" style={styles.body}>
+          {data.error ? <Text selectable style={styles.mcpErrorText}>{data.error}</Text> : null}
+          {hasToolDetailBody(data) ? <ToolDetailBody data={data} tokens={tokens} onRevealPath={onRevealPath} /> : null}
           {(data.tool === "bash" || data.tool === "shell" || data.tool === "git") && (
             <View style={styles.terminalWindow}>
               {(data.shell?.command || data.command) && (
@@ -225,6 +243,8 @@ export function ToolCallout({
                 <Text selectable style={styles.silentCommandText}>
                   {isRunning
                     ? "Waiting for command output…"
+                    : isFailed ? "Command failed without output."
+                    : data.status === "canceled" ? "Command canceled without output."
                     : isShellCall
                       ? "Command completed without output."
                       : "The call returned no output."}
@@ -371,7 +391,7 @@ export function ToolCallout({
             </View>
           )}
 
-          {(data.tool === "read" || data.tool === "write") &&
+          {(data.tool === "read" || data.tool === "write") && !data.skill &&
             (imageFile !== undefined && isImagePath(data.filePath) ? (
               <ImagePreview
                 path={data.filePath ?? ""}
@@ -403,7 +423,7 @@ export function ToolCallout({
             />
           )}
 
-          {data.tool === "eval" && (
+          {data.tool === "eval" && hasTypedBody && (
             <View style={{ gap: 10 }}>
               {(
                 data.cells ?? [
@@ -498,27 +518,15 @@ export function ToolCallout({
             </View>
           )}
 
-          {data.tool === "task" && data.subagent && (
-            <SubagentBatch batch={data.subagent} running={isRunning} tokens={tokens} />
+          {(data.tool === "task" || data.tool === "sub_agent") && data.subagent && (
+            <SubagentBatch batch={data.subagent} running={isRunning} tokens={tokens} showModel={data.tool === "sub_agent"} />
           )}
           {data.tool === "hub" && data.hub && <HubCallout data={data.hub} tokens={tokens} />}
           {data.tool === "paseo" && data.paseo && (
             <PaseoToolCallout data={data.paseo} tokens={tokens} />
           )}
 
-          {!hasTypedBody && (
-            <View style={styles.terminalWindow}>
-              {data.output ? (
-                <Text selectable {...selectionCodeText} style={styles.terminalOutput}>
-                  {renderTerminalOutput(data.output, tokens)}
-                </Text>
-              ) : (
-                <Text selectable style={styles.silentCommandText}>
-                  {isRunning ? "Waiting for output…" : "The call returned no output."}
-                </Text>
-              )}
-            </View>
-          )}
+          {!hasTypedBody ? <ToolDetailBody data={data} tokens={tokens} /> : null}
         </View>
       )}
     </View>

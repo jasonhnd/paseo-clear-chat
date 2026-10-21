@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View } from "react-native";
+import { View, Text } from "react-native";
 import { useAgent, usePaseo, useRpc } from "@getpaseo/plugin/client";
 import { useRevealedText } from "@getpaseo/plugin/client/react-native";
 import type { PluginTimelineItemProps } from "@getpaseo/plugin/client";
@@ -26,13 +26,13 @@ import { useIsTimelineTail } from "./timeline-tail";
 import type {
   ReasoningTraceData,
   TaskListData,
-  TaskItemData,
   NoticeCalloutData,
 } from "../shared/contracts";
 import { revealPathRpc } from "../shared/file-rpc";
 import { useImageFile } from "./image-file";
 import { buildLiveToolCallData } from "./tool-call-data";
 import type { LiveToolCallPayload } from "./tool-call-data";
+import { buildChecklist } from "./tool-detail";
 
 export interface LiveReasoningPayload {
   text: string;
@@ -200,29 +200,16 @@ export function LiveTodoRenderer({ item, theme }: PluginTimelineItemProps<LiveTo
   usePointerGlow(preferences.pointerGlow);
   const data = item.data;
 
-  const taskListData: TaskListData = useMemo(() => {
-    const tasks: TaskItemData[] = (data.items || []).map((task, idx) => ({
-      id: typeof task.id === "string" ? task.id : `todo-${idx}`,
-      title: typeof task.text === "string" ? task.text : "Untitled task",
-      phase: "Execution",
-      status:
-        task.completed === true
-          ? "completed"
-          : task.status === "in_progress"
-            ? "in_progress"
-            : "pending",
-    }));
-
-    return {
-      id: "live-todo",
-      phaseName: "Checklist Progress",
-      tasks,
-    };
-  }, [data]);
+  const taskListData: TaskListData = useMemo(() => buildChecklist({ items: data.items }, {}, "todo"), [data]);
 
   return (
-    <View {...hostFontEscape}>
-      <TaskList data={taskListData} tokens={tokens} />
+    <View {...hostFontEscape} testID="tool-card-todo">
+      <View testID="tool-card-body">
+        <TaskList data={taskListData} tokens={tokens} />
+        {!taskListData.tasks.length ? (
+          <Text selectable style={{ color: tokens.foregroundMuted, fontSize: tokens.fs(12) }}>No tasks reported.</Text>
+        ) : null}
+      </View>
     </View>
   );
 }

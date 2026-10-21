@@ -58,10 +58,12 @@ export function SubagentBatch({
   batch,
   running,
   tokens,
+  showModel = false,
 }: {
   batch: NonNullable<ToolCalloutData["subagent"]>;
   running: boolean;
   tokens: ExtendedThemeTokens;
+  showModel?: boolean;
 }) {
   const [contextOpen, setContextOpen] = useState(false);
   const styles = useSubagentStyles(tokens);
@@ -120,6 +122,9 @@ export function SubagentBatch({
           <Text selectable style={styles.brief} numberOfLines={2}>
             {agent.task}
           </Text>
+          {showModel || agent.model ? (
+            <Text selectable style={styles.brief}>{`Model: ${agent.model ?? "Not reported"}`}</Text>
+          ) : null}
         </View>
       ))}
 

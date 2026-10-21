@@ -65,6 +65,8 @@ export default function contribute(client: PluginClientContext) {
               name: item.name,
               status: item.status,
               detail: toJsonValue(item.detail),
+              ...("metadata" in item && item.metadata && typeof item.metadata === "object"
+                ? { metadata: toJsonValue(item.metadata) } : {}),
               ...(item.callId ? { callId: item.callId } : {}),
               error: item.error ? String(item.error) : null,
               phase,
@@ -82,6 +84,7 @@ export default function contribute(client: PluginClientContext) {
       name: z.string(),
       status: z.string(),
       detail: z.record(z.string(), z.unknown()).optional(),
+      metadata: z.record(z.string(), z.unknown()).optional(),
       callId: z.string().optional(),
       error: z.string().nullable().optional(),
       phase: z.string().optional(),

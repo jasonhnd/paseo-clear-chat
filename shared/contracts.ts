@@ -76,6 +76,14 @@ export type ToolCallKind =
   | "read"
   | "edit"
   | "write"
+  | "search"
+  | "fetch"
+  | "web_search"
+  | "sub_agent"
+  | "plan"
+  | "todo"
+  | "plain_text"
+  | "unknown"
   | "eval"
   | "task"
   | "ask"
@@ -390,7 +398,8 @@ export interface ToolCalloutData {
   id: string;
   tool: ToolCallKind;
   title: string;
-  status: "running" | "completed" | "failed";
+  status: "running" | "completed" | "failed" | "canceled";
+  error?: string;
   durationMs?: number;
   exitCode?: number;
   filePath?: string;
@@ -400,6 +409,18 @@ export interface ToolCalloutData {
   language?: string;
   diff?: string;
   output?: string;
+  search?: {
+    query: string;
+    scope: string;
+    count: number;
+    truncated: boolean;
+    results: Array<{ label: string; path?: string; url?: string; preview?: string }>;
+  };
+  fetch?: { url?: string; query?: string; title?: string; preview?: string };
+  checklist?: TaskListData;
+  plainText?: string;
+  skill?: { name: string; text?: string };
+  fallback?: { parameters: Array<{ name: string; value: string }>; output?: string; truncated: boolean };
   cells?: EvalCell[];
   askOptions?: Array<{
     id: string;
@@ -411,15 +432,15 @@ export interface ToolCalloutData {
   askAnswer?: string[];
   /**
    * One `task` call spawns a batch: the tool takes a shared `context` plus a
-   * list of briefs, so the card carries the list. `model` is absent here on
-   * purpose — the call names an agent type, and which model that resolves to
-   * is the spawned agent's business, reported later by `hub`.
+   * list of briefs, so the card carries the list. A model is shown only when
+   * the provider reports one; the agent type alone does not identify it.
    */
   subagent?: {
     context?: string;
     agents: Array<{
       name: string;
       agentType: string;
+      model?: string;
       task: string;
       status?: string;
     }>;
