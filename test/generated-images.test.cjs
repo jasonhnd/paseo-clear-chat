@@ -61,6 +61,38 @@ for (const [label, output, path] of [
   });
 }
 
+for (const channel of ["tool output", "assistant prose"]) {
+  test(`upstream #12: unquoted image paths with spaces stay complete in ${channel}`, async () => {
+    for (const path of [
+      "/workspace/output/final image.png",
+      "/workspace/output folder/final image.png",
+      "artifacts/final image.webp",
+      "./output folder/final image.png",
+      "~/output/final image.png",
+      "C:\\output folder\\final image.png",
+    ]) {
+      const correctImage = "data:image/png;base64,Y29ycmVjdA==";
+      const h = harness({ imageRpc: async ({ path: requested }) => ({
+        dataUri: requested === path ? correctImage : embedded,
+        width: 32, height: 24, bytes: 7, error: null,
+      }) });
+      const output = `Saved image: ${path}`;
+      const mounted = h.mount(channel === "tool output" ? call(output) : { type: "assistant_message", text: output }, false);
+      await settle();
+      const tree = mounted.render();
+      assert.deepEqual(h.imageReads, [{ cwd: "/workspace/demo", path }], path);
+      assert.equal(pictures(h, tree).length, 1, path);
+      assert.equal(pictures(h, tree)[0].props.source.uri, correctImage, path);
+      const links = sourceLinks(h, tree);
+      assert.equal(links.length, 1, path);
+      assert.equal(links[0].props.accessibilityLabel, `Show ${path} in the file manager`);
+      assert.equal(h.text(links[0]), path);
+      links[0].props.onPress();
+      assert.deepEqual(h.reveals, [{ cwd: "/workspace/demo", path }], path);
+    }
+  });
+}
+
 test("upstream #12: remote URLs in assistant Markdown render once and open the complete source URL", () => {
   const h = harness();
   const { tree } = h.mount({ type: "assistant_message", text: `The image is ready.\n\n![Generated square](${remote})\n\n${remote}` });
