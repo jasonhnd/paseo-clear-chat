@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=semver"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <img alt="Paseo >=0.8.0" src="https://img.shields.io/badge/Paseo-%3E%3D0.8.0-5b5bd6">
+  <a href="https://paseo.sh"><img alt="Paseo 0.8.0+" src="https://img.shields.io/badge/Paseo-%3E%3D0.8.0-5b5bd6"></a>
 </p>
 
 <p align="center">
