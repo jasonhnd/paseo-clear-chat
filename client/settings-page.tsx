@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef } from "react";
 import { Animated, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { hostFontEscape } from "./components/host-font-escape";
+import { openLink } from "./components/open-link";
 import { radius, buildThemeTokens, type ExtendedThemeTokens } from "./components/theme-tokens";
 import {
   ACCENT_PRESETS,
@@ -413,6 +414,20 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
           style={[styles.resetText, { color: tokens.foregroundMuted, fontFamily: tokens.fontUi }]}
         >
           Reset defaults
+        </Text>
+      </Pressable>
+
+      <Pressable
+        accessibilityRole="link"
+        onPress={() => openLink("https://github.com/jasonhnd/paseo-clear-chat/issues/new?template=bug_report.yml")}
+        style={[
+          styles.card,
+          styles.row,
+          { borderColor: tokens.borderSubtle, backgroundColor: tokens.surfaceGlass },
+        ]}
+      >
+        <Text style={[styles.rowTitle, { color: tokens.foreground, fontFamily: tokens.fontUi }]}>
+          Report a problem
         </Text>
       </Pressable>
     </View>
