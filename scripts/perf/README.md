@@ -119,6 +119,7 @@ launches. Use the same cache procedure for both configurations.
 | `--fps` | `60` | Refresh rate used to estimate missed slots; set it to the test display's rate. |
 | `--width`, `--height` | `1440`, `900` | CSS viewport dimensions. |
 | `--headless` | off | Use installed Chrome's headless mode; record and keep the mode consistent. |
+| `--trace` | off | Save a CDP trace for each scroll window as `<prefix>.run-N.trace.json`. |
 | `--ready-selector` | `[data-testid="agent-chat-scroll"] [data-message-id]` | Nonempty visible message row marker, scoped to the conversation. |
 | `--scroll-selector` | automatic | Optional CSS selector matching exactly one conversation scroller. |
 
@@ -126,6 +127,14 @@ If a Paseo update changes its markup, inspect the conversation in Chrome and pas
 selector overrides. Use a real message marker shared by both configurations, not
 a sidebar title, composer, loading placeholder, or plugin-specific card. An
 explicit scroll selector must identify the conversation's scrolling element.
+
+For diagnosis, add `--trace` and place the output prefix under `$KANBAN_TMP`.
+Open the resulting trace in Chrome DevTools Performance to inspect JavaScript
+stacks and forced layouts. Tracing excludes navigation, settling and heap
+collection, and enables CPU samples and timeline events without screenshots,
+DOM snapshots or network bodies. Traces may still contain private URLs: delete
+them after analysis and never commit or attach them. Run comparison measurements
+without tracing, since profiling adds overhead.
 
 ## Method reference and limits
 

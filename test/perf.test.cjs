@@ -38,6 +38,49 @@ test("performance arguments reject ambiguous or missing values", () => {
   }
 });
 
+test("scroll tracing is opt-in and cannot be specified twice", () => {
+  assert.equal(parseArgs(args).trace, undefined);
+  assert.equal(parseArgs([...args, "--trace"]).trace, true);
+  assert.throws(() => parseArgs([...args, "--trace", "--trace"]), /Duplicate/);
+});
+
+test("scroll tracing streams CPU events around sampling without screenshots or GC", async t => {
+  const fs = require("node:fs/promises");
+  const path = require("node:path");
+  const os = require("node:os");
+  const { traceScroll } = require("../scripts/perf/trace.cjs");
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "scroll-trace-"));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const filename = path.join(dir, "sample.json");
+  const events = [];
+  let complete;
+  const cdp = {
+    once(event, callback) { assert.equal(event, "Tracing.tracingComplete"); complete = callback; },
+    async send(command, params) {
+      events.push(command);
+      if (command === "Tracing.start") {
+        assert.match(params.categories, /cpu_profiler/);
+        assert.doesNotMatch(params.categories, /screenshot|snapshot|netlog/);
+        assert.equal(params.transferMode, "ReturnAsStream");
+      }
+      if (command === "Tracing.end") complete({ stream: "trace-stream" });
+      if (command === "IO.read") {
+        assert.equal(params.handle, "trace-stream");
+        return { data: Buffer.from('{"traceEvents":[]}').toString("base64"), base64Encoded: true, eof: true };
+      }
+      return {};
+    },
+  };
+  assert.equal(await traceScroll(cdp, filename, async () => { events.push("sample"); return 42; }), 42);
+  assert.deepEqual(events, ["Tracing.start", "sample", "Tracing.end", "IO.read", "IO.close"]);
+  assert.deepEqual(JSON.parse(await fs.readFile(filename, "utf8")), { traceEvents: [] });
+  events.length = 0;
+  assert.equal(await traceScroll(cdp, undefined, async () => 7), 7);
+  assert.deepEqual(events, []);
+  await assert.rejects(traceScroll(cdp, filename, async () => { throw new Error("Sample failed"); }), /Sample failed/);
+  await assert.rejects(fs.stat(filename), { code: "ENOENT" });
+});
+
 test("performance numeric controls reject zero runs, fractions, infinities and excessive values", () => {
   for (const value of ["0", "-1", "1.5", "NaN", "Infinity", "1e2", "101", "9007199254740992"]) {
     assert.throws(() => parseArgs([...args, "--runs", value]), /integer/);

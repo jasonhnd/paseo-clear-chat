@@ -2,6 +2,7 @@
 
 const { analyzeFrames } = require("./metrics.cjs");
 const { observeFirstScreen, prepareScroll, sampleScroll } = require("./probes.cjs");
+const { traceScroll } = require("./trace.cjs");
 
 const APP_ORIGIN = "https://app.paseo.sh";
 
@@ -82,7 +83,8 @@ async function measurePage(page, url, options) {
     await page.waitForTimeout(options.settleMs);
     const geometry = await page.evaluate(prepareScroll, options);
     await page.waitForTimeout(options.settleMs);
-    const scroll = await withTimeout(() => page.evaluate(sampleScroll, options), options.scrollMs + options.timeoutMs, "Scroll sampling");
+    const scroll = await traceScroll(cdp, options.tracePath, () =>
+      withTimeout(() => page.evaluate(sampleScroll, options), options.scrollMs + options.timeoutMs, "Scroll sampling"));
     // GC is deliberately outside the first-screen and scroll timing windows.
     await cdp.send("HeapProfiler.collectGarbage");
     const heap = await cdp.send("Runtime.getHeapUsage");

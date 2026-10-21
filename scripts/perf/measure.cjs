@@ -25,6 +25,7 @@ Options:
   --ready-selector <css> Override the conversation content marker
   --scroll-selector <css> Override automatic timeline scroller selection
   --headless             Run installed Google Chrome without a window
+  --trace                Save each scroll trace as <prefix>.run-N.trace.json
   --help                 Show this help
 
 See scripts/perf/README.md for metric definitions and controlled comparisons.
@@ -52,7 +53,9 @@ async function main(argv) {
       const url = `${APP_ORIGIN}/h/${encodeURIComponent(connection.serverId)}/agent/${encodeURIComponent(options.agent)}`;
       const runs = await collectRuns(context, options.runs, async (page, run) => {
         process.stderr.write(`Measuring sample ${run}/${options.runs} in a new tab...\n`);
-        return measurePage(page, url, options);
+        return measurePage(page, url, { ...options,
+          tracePath: options.trace ? `${path.resolve(options.output)}.run-${run}.trace.json` : undefined,
+        });
       });
       const report = {
         schemaVersion: 1,

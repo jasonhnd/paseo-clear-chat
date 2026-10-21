@@ -47,6 +47,7 @@ function parseArgs(argv) {
     seen.add(flag);
     if (flag === "--help") { options.help = true; continue; }
     if (flag === "--headless") { options.headless = true; continue; }
+    if (flag === "--trace") { options.trace = true; continue; }
     const key = OPTIONS[flag];
     if (!key) throw new Error(`Unknown option: ${flag}`);
     const value = argv[++i];
