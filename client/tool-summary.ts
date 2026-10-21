@@ -27,21 +27,6 @@ export function readLineRange(detail: Record<string, unknown>, input: Record<str
   return count !== undefined ? `${start}-${start + count - 1}` : undefined;
 }
 
-export function editChanges(detail: Record<string, unknown>, input: Record<string, unknown>, diff?: string): ToolCalloutData["changes"] {
-  if (diff) {
-    const lines = diff.split(/\r?\n/);
-    return {
-      added: lines.filter(line => line.startsWith("+") && !line.startsWith("+++ ")).length,
-      removed: lines.filter(line => line.startsWith("-") && !line.startsWith("--- ")).length,
-    };
-  }
-  const oldText = detail.oldString ?? input.oldString ?? input.old_string;
-  const newText = detail.newString ?? input.newString ?? input.new_string;
-  if (typeof oldText !== "string" || typeof newText !== "string") return undefined;
-  const count = (text: string) => text ? text.replace(/\r?\n$/, "").split(/\r?\n/).length : 0;
-  return { added: count(newText), removed: count(oldText) };
-}
-
 export function toolSummary(data: ToolCalloutData): string {
   if (["bash", "shell", "git"].includes(data.tool) && (data.shell?.command || data.command)) {
     return `$ ${singleLine(data.shell?.command || data.command || "")}`;

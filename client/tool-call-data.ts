@@ -3,7 +3,8 @@ import { buildHubData } from "./hub-details";
 import { buildGitHubData } from "./github-request";
 import { asString, buildMcpData, buildPaseoData, buildSubagentBatch, extractAskQuestion, extractAskSelections, extractContentText, extractEvalCells, extractEvalDuration, extractStringProp, languageFromPath } from "./tool-call-legacy";
 import { buildChecklist, fallbackData, fetchData, record, searchData, skillData, stringValue, subagentData, unknownTitle, valueText } from "./tool-detail";
-import { editChanges, readLineRange, toolStatus } from "./tool-summary";
+import { readLineRange, toolStatus } from "./tool-summary";
+import { buildEditDiff } from "./edit-diff";
 import { finalToolReply } from "./tool-final-reply";
 import { recoverProjectedTool } from "./tool-projection";
 import { toolFailureMessage } from "./tool-error";
@@ -200,6 +201,7 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
       count === 1 ? (subagent?.agents[0]?.name ?? "Subagent") : `${count || "No"} subagents`;
   }
   if (toolKind === "unknown") title = unknownTitle(title, input);
+  const edit = toolKind === "edit" ? buildEditDiff(detail, input, diff) : undefined;
 
   const exitCodeCandidate =
     typeof detail.exitCode === "number"
@@ -218,7 +220,7 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
     finalReply: finalToolReply(rawName, rawInput, output),
     filePath: skill ? undefined : filePath,
     lineRange: toolKind === "read" && !skill ? readLineRange(detail, input, code) : undefined,
-    changes: toolKind === "edit" ? editChanges(detail, input, diff) : undefined,
+    changes: edit?.changes,
     command,
     language:
       toolKind === "bash" || toolKind === "shell" || toolKind === "git"
@@ -227,7 +229,7 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
     // A github card reads its typed record; leaving `code` and `output` set
     // would draw the request and the reply a second time.
     code: toolKind === "github" ? undefined : code,
-    diff,
+    diff: edit?.diff ?? diff,
     output: toolKind === "github" || evalCells.length > 0 ? undefined : outputText ?? valueText(output),
     cells: evalCells.length > 0 ? evalCells : undefined,
     askOptions: askOptions.length > 0 ? askOptions : undefined,
