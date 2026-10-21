@@ -84,7 +84,7 @@ export default function contribute(client: PluginClientContext) {
               ...("metadata" in item && item.metadata && typeof item.metadata === "object"
                 ? { metadata: toJsonValue(item.metadata) } : {}),
               ...(item.callId ? { callId: item.callId } : {}),
-              error: item.error ? String(item.error) : null,
+              error: toJsonValue(item.error ?? null),
               phase,
             },
           },
@@ -102,7 +102,7 @@ export default function contribute(client: PluginClientContext) {
       detail: z.record(z.string(), z.unknown()).optional(),
       metadata: z.record(z.string(), z.unknown()).optional(),
       callId: z.string().optional(),
-      error: z.string().nullable().optional(),
+      error: z.unknown().optional(),
       phase: z.string().optional(),
     }),
     Component: LiveToolCallRenderer,
