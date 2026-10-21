@@ -12,7 +12,7 @@ import { View } from "react-native";
 import { embedFonts } from "../client/components/embed-fonts";
 import { installFrostedGlass } from "../client/components/frosted";
 import { buildThemeTokens } from "../client/components/theme-tokens";
-import { ToolCallout } from "../client/components/tool-callouts";
+import { ToolCallout as ControlledToolCallout, type ToolCalloutProps } from "../client/components/tool-callouts";
 import { ReasoningTrace } from "../client/components/reasoning-trace";
 import { TaskList } from "../client/components/task-list";
 import { ApprovalCard } from "../client/components/approval-card";
@@ -29,6 +29,11 @@ import { MarkdownView } from "../client/components/markdown/markdown-view";
 import { parseSystemEnvelope } from "../client/system-envelope";
 import { installPointerGlow } from "../client/components/glow";
 import type { ToolCalloutData } from "../shared/contracts";
+
+function ToolCallout(props: Omit<ToolCalloutProps, "expanded" | "onExpandedChange">) {
+  const [expanded, setExpanded] = React.useState(true);
+  return <ControlledToolCallout {...props} expanded={expanded} onExpandedChange={setExpanded} />;
+}
 
 const DARK = {
   surface0: "#0f0f11",

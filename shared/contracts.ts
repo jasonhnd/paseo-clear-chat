@@ -398,12 +398,13 @@ export interface ToolCalloutData {
   id: string;
   tool: ToolCallKind;
   title: string;
-  status: "running" | "completed" | "failed" | "canceled";
+  status: "running" | "completed" | "failed" | "canceled" | "waiting";
   error?: string;
   durationMs?: number;
   exitCode?: number;
   filePath?: string;
   lineRange?: string;
+  changes?: { added: number; removed: number };
   command?: string;
   code?: string;
   language?: string;

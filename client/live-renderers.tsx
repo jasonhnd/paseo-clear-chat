@@ -33,6 +33,8 @@ import { useImageFile } from "./image-file";
 import { buildLiveToolCallData } from "./tool-call-data";
 import type { LiveToolCallPayload } from "./tool-call-data";
 import { buildChecklist } from "./tool-detail";
+import { useToolExpansion } from "./tool-expansion";
+import { defaultToolExpanded } from "./tool-summary";
 
 export interface LiveReasoningPayload {
   text: string;
@@ -51,6 +53,7 @@ export interface LiveNoticePayload {
 }
 
 export function LiveToolCallRenderer({
+  host,
   agentId,
   item,
   theme,
@@ -83,7 +86,13 @@ export function LiveToolCallRenderer({
   }, [hubData, agentId]);
 
   // Collapse completed tools by default; expand active or failed tools
-  const isExpanded = data.status === "running" || data.status === "failed";
+  const expansion = useToolExpansion({
+    hostId: host.id,
+    agentId,
+    callId: data.callId,
+    name: data.name,
+    timestamp: timestamp.getTime(),
+  }, defaultToolExpanded(calloutData, preferences.foldFinishedSteps));
 
   // The daemon side owns the shell, so revealing a file is one RPC. A path the
   // daemon cannot stat answers with an error the press simply ignores.
@@ -106,10 +115,16 @@ export function LiveToolCallRenderer({
       <ToolCallout
         data={calloutData}
         tokens={tokens}
-        defaultExpanded={isExpanded}
+        expanded={expansion.expanded}
+        onExpandedChange={expansion.onExpandedChange}
         onRevealPath={handleRevealPath}
         imageFile={imageFile}
       />
+      {expansion.error ? (
+        <Text accessibilityRole="alert" style={{ color: tokens.danger, fontSize: tokens.fs(11) }}>
+          Tool expansion choice could not be saved or loaded: {expansion.error}
+        </Text>
+      ) : null}
       <TimelineTailHub
         agentId={agentId}
         tokens={tokens}

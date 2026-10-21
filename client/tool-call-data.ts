@@ -3,6 +3,7 @@ import { buildHubData } from "./hub-details";
 import { buildGitHubData } from "./github-request";
 import { asString, buildMcpData, buildPaseoData, buildSubagentBatch, extractAskQuestion, extractAskSelections, extractContentText, extractEvalCells, extractEvalDuration, extractStringProp, languageFromPath } from "./tool-call-legacy";
 import { buildChecklist, fallbackData, fetchData, record, searchData, skillData, stringValue, subagentData, unknownTitle, valueText } from "./tool-detail";
+import { editChanges, readLineRange, toolStatus } from "./tool-summary";
 
 export interface LiveToolCallPayload {
   name: string;
@@ -66,8 +67,10 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
         (output && typeof output === "object"
           ? extractContentText(output as Record<string, unknown>)
           : undefined);
-  const durationMs =
-    typeof detail.durationMs === "number" ? detail.durationMs : extractEvalDuration(output);
+  const reportedDuration = typeof detail.durationMs === "number" ? detail.durationMs
+    : typeof detail.durationSeconds === "number" ? detail.durationSeconds * 1000 : extractEvalDuration(output);
+  const durationMs = typeof reportedDuration === "number" && Number.isFinite(reportedDuration) && reportedDuration >= 0
+    ? reportedDuration : undefined;
   let toolKind: ToolCallKind = "unknown";
   let skill: ToolCalloutData["skill"];
   let search: ToolCalloutData["search"];
@@ -200,11 +203,11 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
     id: `live-${rawName}`,
     tool: toolKind,
     title,
-    status:
-      data.status === "running" ? "running" : data.status === "failed" ? "failed"
-        : data.status === "canceled" ? "canceled" : "completed",
+    status: toolStatus(data.status),
     error: stringValue(data.error),
     filePath: skill ? undefined : filePath,
+    lineRange: toolKind === "read" && !skill ? readLineRange(detail, input, code) : undefined,
+    changes: toolKind === "edit" ? editChanges(detail, input, diff) : undefined,
     command,
     language:
       toolKind === "bash" || toolKind === "shell" || toolKind === "git"

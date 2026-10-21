@@ -374,7 +374,7 @@ test("server registers an SDK settings schema without platform-dependent default
   const h = harness();
   let definition;
   const cleanup = h.load("index.server.ts").default({
-    registerSettings(value) { definition = value; },
+    registerSettings(value) { if (value.id === "presentation") definition = value; },
     handle() {},
   });
   assert.equal(definition.id, "presentation");

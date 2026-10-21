@@ -3,10 +3,11 @@ const { createRequire } = require("node:module");
 const { resolve, dirname, relative } = require("node:path");
 const { runInThisContext } = require("node:vm");
 const ts = require("typescript");
+const { createExpansionHost } = require("./expansion-host.cjs");
 
 // Exercise the registered transformer, schema, live renderer and card bodies.
 // Only the host runtime, animation, syntax painting and unrelated UI are shims.
-function createToolHarness(platform = "ios") {
+function createToolHarness(platform = "ios", options = {}) {
   const root = resolve(__dirname, "../..");
   const cache = new Map(), frames = new Map(), transformers = new Map(), renderers = new Map();
   const reveals = [], links = [];
@@ -15,7 +16,11 @@ function createToolHarness(platform = "ios") {
   const passthrough = props => props.children ?? null;
   const noop = () => {};
   const cleanup = () => noop;
-  const preferences = { enhancedUserBubble: true, assistantMarkdown: true };
+  const preferences = { enhancedUserBubble: true, assistantMarkdown: true, foldFinishedSteps: true, foldLongOutputAfter: 15, ...options.preferences };
+  const expansionHost = options.expansionHost ?? createExpansionHost();
+  const rpcFunctions = new Map();
+  const timestamps = new WeakMap();
+  let nextTimestamp = Date.parse("2026-01-01T12:00:00Z");
   const tokens = new Proxy({ fs: n => n, boxShadow: {}, syntax: {}, isDark: true }, { get: (obj, key) => obj[key] ?? "#888888" });
   function next(initial) {
     const index = frame.cursor++;
@@ -32,6 +37,7 @@ function createToolHarness(platform = "ios") {
     useRef: value => frame.values[next(() => ({ current: value }))],
     useMemo: fn => fn(),
     useCallback: fn => fn,
+    useSyncExternalStore: (_, getSnapshot) => getSnapshot(),
     useEffect(fn, deps) {
       const index = frame.cursor++;
       const previous = frame.values[index];
@@ -52,7 +58,7 @@ function createToolHarness(platform = "ios") {
     Linking: { openURL: url => { links.push(url); return Promise.resolve(); } },
   };
   const stubs = {
-    "client/preferences": { initializeEnhancerPreferences: async () => {}, areEnhancerPreferencesReady: () => true, getEnhancerPreferences: () => preferences, useEnhancerPreferences: () => preferences },
+    "client/preferences": { initializeEnhancerPreferences: async () => {}, areEnhancerPreferencesReady: () => true, getEnhancerPreferences: () => preferences, useEnhancerPreferences: () => preferences, useEnhancerPreferencesError: () => null, updateEnhancerPreferences: async patch => Object.assign(preferences, patch), resetEnhancerPreferences: async () => {}, OUTPUT_LINE_OPTIONS: [10, 15, 30, "never"].map(value => ({ value: String(value), label: value === "never" ? "Never" : `${value} lines` })), TEXT_SIZE_OPTIONS: [], ACCENT_PRESETS: {} },
     "client/settings-page": { ClearChatSettingsPage: noop },
     "client/image-file": { useImageFile: noop, isImagePath: path => /\.(png|jpe?g|gif|webp)$/i.test(path ?? "") },
     "shared/file-rpc": { revealPathRpc: {} },
@@ -94,6 +100,7 @@ function createToolHarness(platform = "ios") {
       ] }),
     },
   };
+  if (options.settingsPage) delete stubs["client/settings-page"];
   function load(path) {
     let filename = resolve(root, path);
     if (!existsSync(filename)) filename += existsSync(filename + ".ts") ? ".ts" : ".tsx";
@@ -109,7 +116,14 @@ function createToolHarness(platform = "ios") {
       if (id === "react/jsx-runtime") return { jsx, jsxs: jsx, Fragment: "Fragment" };
       if (id === "react-native") return native;
       if (id === "@getpaseo/plugin/client") return {
-        useRpc: () => async value => { reveals.push(value); return {}; },
+        useRpc: contract => {
+          if (contract.name?.startsWith("settings.tool-expansion.")) {
+            if (!rpcFunctions.has(contract.name)) rpcFunctions.set(contract.name,
+              contract.name.endsWith(".read") ? expansionHost.read : expansionHost.write);
+            return rpcFunctions.get(contract.name);
+          }
+          return async value => { reveals.push(value); return {}; };
+        },
         useAgent: (_, selector) => selector({ cwd: "/workspace/demo" }),
       };
       if (id === "@getpaseo/plugin/client/react-native") return { useRevealedText: text => text };
@@ -150,14 +164,15 @@ function createToolHarness(platform = "ios") {
     return text(tree.props?.children);
   }
   return {
-    load, nodes, text, reveals, links, transformers, renderers,
-    mount(item, expand = true) {
+    load, nodes, text, reveals, links, transformers, renderers, preferences, tokens, draw, expansionHost,
+    mount(item, expand = true, identity = {}) {
       frames.clear(); reveals.length = links.length = 0;
+      if (!timestamps.has(item)) timestamps.set(item, new Date(nextTimestamp++));
       const transformed = transformers.get(item.type).transform({ item, phase: "complete" });
       const pluginItem = transformed.items[0];
       const renderer = renderers.get(pluginItem.kind);
       const data = renderer.schema.parse(pluginItem.data);
-      const render = (nextData = data) => draw(jsx(renderer.Component, { agentId: "demo-agent", item: { ...pluginItem, data: nextData }, theme: { colors: {} }, timestamp: new Date("2026-01-01T12:00:00Z") }));
+      const render = (nextData = data) => draw(jsx(renderer.Component, { agentId: "demo-agent", host: { id: "demo-host" }, item: { ...pluginItem, data: nextData }, theme: { colors: {} }, timestamp: timestamps.get(item), ...identity }));
       let tree = render();
       if (expand) {
         const button = nodes(tree, node => node.type === "Pressable" && node.props.accessibilityState?.expanded === false)[0];

@@ -6,6 +6,7 @@ import { revealPathRpc } from "./shared/file-rpc";
 import { type HighlightLine, type HighlightToken, highlightRpc } from "./shared/highlight-rpc";
 import { imageRpc } from "./shared/image-rpc";
 import { presentationSettings } from "./shared/settings";
+import { toolExpansionSettings } from "./shared/tool-expansion-settings";
 import { migrateHostSettings } from "./server/settings-migration";
 
 /**
@@ -451,6 +452,7 @@ function tokenize(
 export default function contribute(server: PluginServerContext) {
   migrateHostSettings();
   server.registerSettings(presentationSettings);
+  server.registerSettings(toolExpansionSettings);
 
   server.handle(revealPathRpc, async (input) => {
     const requested = stripSelector(input.path);

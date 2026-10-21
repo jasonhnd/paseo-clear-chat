@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useMemo } from "react";
 import { View, Text, Pressable } from "react-native";
 import { Glyph } from "./glyph";
 import { frosted } from "./frosted";
@@ -42,10 +42,11 @@ function getToolIconName(tool: string): string {
   return "Wrench";
 }
 
-interface ToolCalloutProps {
+export interface ToolCalloutProps {
   data: ToolCalloutData;
   tokens: ExtendedThemeTokens;
-  defaultExpanded?: boolean;
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
   /** Shows a path in the machine's own file manager. */
   onRevealPath?: (path: string) => void;
   /**
@@ -59,12 +60,11 @@ interface ToolCalloutProps {
 export function ToolCallout({
   data,
   tokens,
-  defaultExpanded = true,
+  expanded,
+  onExpandedChange,
   onRevealPath,
   imageFile,
 }: ToolCalloutProps) {
-  const [expanded, setExpanded] = useState(defaultExpanded);
-
   // Every branch below needs a payload. A tool that carries none — a hub op
   // with no parsed record, an unmapped kind — would otherwise draw an empty
   // panel, so the raw output takes over.
@@ -132,7 +132,7 @@ export function ToolCallout({
         accessibilityRole="button"
         accessibilityLabel={`${expanded ? "Collapse" : "Expand"} ${data.title}`}
         accessibilityState={{ expanded }}
-        onPress={() => setExpanded((p) => !p)} style={styles.header}
+        onPress={() => onExpandedChange(!expanded)} style={styles.header}
       >
         <View style={styles.headerLeft}>
           <Breathe depth={1.08} durationMs={1800}>

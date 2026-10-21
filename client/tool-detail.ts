@@ -63,7 +63,9 @@ export function unknownTitle(name: string, input: Record<string, unknown>): stri
     input.tool, input.name, input.query, input.pattern, input.target, input.connection_id,
     input.path, input.id,
   );
-  return key ? `${name} · ${key.replace(/\s+/g, " ").slice(0, 80)}` : name;
+  const first = Object.values(input)[0];
+  const important = key ?? (first !== undefined ? parameterValue(first) : undefined);
+  return important ? `${name} · ${important.replace(/\s+/g, " ").slice(0, 80)}` : name;
 }
 
 export function skillData(detail: Record<string, unknown>, input: Record<string, unknown>): NonNullable<ToolCalloutData["skill"]> {

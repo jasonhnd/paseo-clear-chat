@@ -267,6 +267,12 @@ test("server startup still registers settings with defaults and RPCs after migra
   assert.doesNotThrow(() => {
     cleanup = h.load("index.server.ts").default({
       registerSettings(definition) {
+        if (definition.id !== "presentation") {
+          assert.equal(definition.id, "tool-expansion");
+          assert.equal(definition.scope, "host");
+          assert.deepEqual(definition.schema.parse({}), { entries: {} });
+          return;
+        }
         assert.equal(definition.id, "presentation");
         assert.deepEqual(definition.schema.parse({}), { preferences: {}, legacyMigrated: false });
         registered = true;
@@ -290,6 +296,7 @@ test("server startup migrates before registering the SDK settings", (t) => {
   let registered = false;
   const cleanup = h.load("index.server.ts").default({
     registerSettings(definition) {
+      if (definition.id !== "presentation") return;
       assert.equal(definition.id, "presentation");
       assert.equal(fs.readFileSync(h.path(PLUGIN_ID), "utf8"), oldRaw);
       registered = true;
