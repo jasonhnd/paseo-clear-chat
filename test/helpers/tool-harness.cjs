@@ -17,11 +17,12 @@ function createToolHarness(platform = "ios", options = {}) {
   const noop = () => {};
   const cleanup = () => noop;
   const preferences = { enhancedUserBubble: true, assistantMarkdown: true, markdownVariant: "document", textScale: 1, foldFinishedSteps: true, foldLongOutputAfter: 15, ...options.preferences };
+  const getPreferences = () => options.presentationHost ? load("client/preferences.ts").getEnhancerPreferences() : preferences;
   const expansionHost = options.expansionHost ?? createExpansionHost();
   const rpcFunctions = new Map();
   const timestamps = new WeakMap();
   let nextTimestamp = Date.parse("2026-01-01T12:00:00Z");
-  const tokens = new Proxy({ fs: n => Math.round(n * preferences.textScale * 2) / 2, get textScale() { return preferences.textScale; }, boxShadow: {}, syntax: {}, isDark: true }, { get: (obj, key) => obj[key] ?? "#888888" });
+  const tokens = new Proxy({ fs: n => Math.round(n * getPreferences().textScale * 2) / 2, get textScale() { return getPreferences().textScale; }, boxShadow: {}, syntax: {}, isDark: true }, { get: (obj, key) => obj[key] ?? "#888888" });
   function next(initial) {
     const index = frame.cursor++;
     if (!(index in frame.values)) frame.values[index] = typeof initial === "function" ? initial() : initial;
@@ -104,6 +105,7 @@ function createToolHarness(platform = "ios", options = {}) {
     },
   };
   if (options.settingsPage) delete stubs["client/settings-page"];
+  if (options.presentationHost) delete stubs["client/preferences"];
   if (options.markdown) delete stubs["client/components/markdown/markdown-view"];
   function load(path) {
     let filename = resolve(root, path);
@@ -138,7 +140,7 @@ function createToolHarness(platform = "ios", options = {}) {
     return mod.exports;
   }
   load("index.client.tsx").default({
-    rpc: noop,
+    rpc: options.presentationHost?.rpc ?? noop,
     addSettingsScreen: cleanup,
     addTimelineTransformer(value) { transformers.set(value.query.itemType, value); return noop; },
     addTimelineRenderer(value) { renderers.set(value.kind, value); return noop; },
@@ -174,7 +176,7 @@ function createToolHarness(platform = "ios", options = {}) {
     frames.clear();
   }
   return {
-    load, nodes, text, reveals, links, transformers, renderers, preferences, tokens, draw, expansionHost, unmount,
+    load, nodes, text, reveals, links, transformers, renderers, get preferences() { return getPreferences(); }, tokens, draw, expansionHost, unmount,
     mount(item, expand = true, identity = {}) {
       unmount(); reveals.length = links.length = 0;
       if (!timestamps.has(item)) timestamps.set(item, new Date(nextTimestamp++));
