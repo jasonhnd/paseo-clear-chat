@@ -14,6 +14,16 @@ function argumentAfterPrefix(value: unknown, name: string): string | undefined {
   return value.startsWith(prefix) ? value.slice(prefix.length).trim() : undefined;
 }
 
+function terminalResultOutput(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  // Only clean the provider's outer labels. Everything between them is literal
+  // command output, including Markdown and lines that resemble result labels.
+  return value.replace(
+    /^(terminal result\r?\n- )\*\*output:\*\*([\s\S]*)(\r?\n- )\*\*exit_code:\*\*( -?\d+(?:\r?\n)?)$/,
+    "$1output:$2$3exit_code:$4",
+  );
+}
+
 /** Recover tool identity from the host's projected category and display fields. */
 export function recoverProjectedTool(
   name: string, detail: Record<string, unknown>, rawMetadata: unknown,
@@ -29,7 +39,11 @@ export function recoverProjectedTool(
 
     if (tool.source === "terminal") return {
       name: tool.source,
-      detail: { ...detail, command: fieldArgument ?? stringValue(detail.command) ?? argument },
+      detail: {
+        ...detail,
+        command: fieldArgument ?? stringValue(detail.command) ?? argument,
+        output: terminalResultOutput(detail.output),
+      },
     };
     if (tool.source === "skill_view") return {
       name: tool.source, detail: { ...detail, skillName: argument },
