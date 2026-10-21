@@ -1,0 +1,335 @@
+import { useMemo } from "react";
+import { StyleSheet } from "react-native";
+import { radius } from "./theme-tokens";
+import { selectableSurface } from "./selection";
+import type { ExtendedThemeTokens } from "./theme-tokens";
+
+export function useToolCalloutStyles(tokens: ExtendedThemeTokens, statusBg: string, statusColor: string) {
+  return useMemo(
+    () =>
+      StyleSheet.create({
+        container: {
+          marginVertical: 4,
+          borderRadius: radius.card,
+          backgroundColor: tokens.surfaceGlass,
+          borderWidth: 1,
+          borderColor: tokens.borderSubtle,
+          ...tokens.boxShadow,
+          overflow: "hidden",
+          ...selectableSurface,
+        },
+        header: {
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          paddingHorizontal: 10,
+          paddingVertical: 6,
+          backgroundColor: tokens.surface1,
+        },
+        headerLeft: {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+          flex: 1,
+        },
+        toolPill: {
+          fontSize: tokens.fs(11),
+          fontFamily: tokens.fontUi,
+          fontWeight: "600",
+          color: tokens.foregroundSubtle,
+          textTransform: "lowercase",
+        },
+        titleText: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(12),
+          fontWeight: "600",
+          color: tokens.foreground,
+          flexShrink: 1,
+        },
+        // Commands and file paths are code, so they stay on the mono face to
+        // match the tool pill sitting beside them.
+        headerRight: {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 6,
+        },
+        durationBadge: {
+          fontSize: tokens.fs(11),
+          fontFamily: tokens.fontUi,
+          color: tokens.foregroundSubtle,
+        },
+        statusBadge: {
+          paddingHorizontal: 6,
+          paddingVertical: 2,
+          borderRadius: radius.chip,
+          backgroundColor: statusBg,
+        },
+        statusText: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(10),
+          fontWeight: "700",
+          textTransform: "uppercase",
+          color: statusColor,
+        },
+        chevron: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(11),
+          color: tokens.foregroundMuted,
+          marginLeft: 2,
+        },
+        body: {
+          padding: 12,
+          backgroundColor: tokens.surface0,
+          borderTopWidth: 1,
+          borderTopColor: tokens.borderSubtle,
+        },
+        // Bash terminal style
+        // Terminal style
+        terminalWindow: {
+          borderRadius: radius.block,
+          backgroundColor: tokens.surfaceCode,
+          padding: 10,
+          gap: 6,
+          ...tokens.boxShadow,
+        },
+        terminalPrompt: {
+          fontSize: tokens.fs(12),
+          fontFamily: tokens.fontMono,
+          color: tokens.foreground,
+        },
+        evalOutput: {
+          padding: 8,
+          borderRadius: radius.block,
+          backgroundColor: tokens.surfaceCode,
+          borderLeftWidth: 2,
+          borderLeftColor: tokens.borderSubtle,
+          gap: 3,
+          ...tokens.boxShadow,
+        },
+        evalOutputLabel: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(10),
+          color: tokens.foregroundSubtle,
+          textTransform: "lowercase",
+        },
+        evalOutputText: {
+          fontFamily: tokens.fontMono,
+          fontSize: tokens.fs(11.5),
+          lineHeight: tokens.fs(17),
+          color: tokens.foregroundMuted,
+        },
+        terminalOutput: {
+          fontFamily: tokens.fontMono,
+          fontSize: tokens.fs(11.5),
+          lineHeight: tokens.fs(17),
+          color: tokens.foregroundMuted,
+        },
+        silentCommandText: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(11),
+          color: tokens.foregroundSubtle,
+          fontStyle: "italic",
+        },
+        // Ask tool options
+        askContainer: {
+          gap: 8,
+        },
+        askPrompt: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(11),
+          color: tokens.foregroundSubtle,
+          marginBottom: 4,
+        },
+        askOptionLabelChosen: {
+          color: tokens.foreground,
+          fontWeight: "600",
+        },
+        askAnswerRow: {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+          marginTop: 6,
+          paddingTop: 6,
+          borderTopWidth: 1,
+          borderTopColor: tokens.borderSubtle,
+        },
+        askAnswerKey: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(10),
+          color: tokens.foregroundSubtle,
+          textTransform: "uppercase",
+          letterSpacing: 0.4,
+        },
+        askAnswerValue: {
+          flex: 1,
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(12.5),
+          fontWeight: "600",
+          color: tokens.success,
+        },
+        askOptionCard: {
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: 10,
+          borderRadius: radius.block,
+          borderWidth: 1,
+          borderColor: tokens.borderSubtle,
+          backgroundColor: tokens.surface1,
+          ...tokens.boxShadow,
+        },
+        askOptionCardSelected: {
+          borderColor: tokens.accent,
+          backgroundColor: tokens.accentBg,
+        },
+        askOptionLeft: {
+          flexDirection: "column",
+          gap: 2,
+          flex: 1,
+        },
+        askOptionLabelRow: {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 6,
+        },
+        askOptionLabel: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(13),
+          fontWeight: "600",
+          color: tokens.foreground,
+        },
+        recommendedBadge: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(10),
+          fontWeight: "600",
+          color: tokens.success,
+          backgroundColor: tokens.successBg,
+          paddingHorizontal: 6,
+          paddingVertical: 1,
+          borderRadius: radius.chip,
+        },
+        askOptionDesc: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(11),
+          color: tokens.foregroundMuted,
+        },
+        // Thinking container
+        thinkingContainer: {
+          padding: 10,
+          borderRadius: radius.block,
+          backgroundColor: tokens.surfaceCode,
+          borderLeftWidth: 2,
+          borderLeftColor: tokens.accent,
+          gap: 6,
+          ...tokens.boxShadow,
+        },
+        thinkingHeader: {
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+        },
+        thinkingTitle: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(12),
+          fontWeight: "600",
+          color: tokens.foreground,
+        },
+        thinkingTokenBadge: {
+          fontSize: tokens.fs(10),
+          fontFamily: tokens.fontUi,
+          color: tokens.foregroundSubtle,
+          backgroundColor: tokens.surface2,
+          paddingHorizontal: 5,
+          paddingVertical: 1,
+          borderRadius: radius.chip,
+        },
+        thinkingText: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(12),
+          lineHeight: tokens.fs(18),
+          color: tokens.foregroundMuted,
+        },
+        thinkingStepsList: {
+          marginTop: 4,
+          gap: 4,
+          paddingTop: 6,
+          borderTopWidth: 1,
+          borderTopColor: tokens.borderSubtle,
+        },
+        thinkingStepRow: {
+          flexDirection: "row",
+          alignItems: "flex-start",
+          gap: 6,
+        },
+        thinkingStepText: {
+          fontFamily: tokens.fontUi,
+          flex: 1,
+          fontSize: tokens.fs(12),
+          lineHeight: tokens.fs(16),
+          color: tokens.foregroundMuted,
+        },
+        // MCP container
+        mcpContainer: {
+          padding: 12,
+          borderRadius: radius.block,
+          backgroundColor: tokens.surface1,
+          borderWidth: 1,
+          borderColor: tokens.borderSubtle,
+          gap: 8,
+          ...tokens.boxShadow,
+        },
+        mcpHeader: {
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+        },
+        mcpServerBadge: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(11),
+          fontWeight: "700",
+          color: tokens.accent,
+          backgroundColor: tokens.accentBg,
+          paddingHorizontal: 6,
+          paddingVertical: 2,
+          borderRadius: radius.chip,
+        },
+        mcpToolName: {
+          fontSize: tokens.fs(13),
+          fontWeight: "700",
+          color: tokens.foreground,
+          fontFamily: tokens.fontUi,
+        },
+        mcpTransportBadge: {
+          fontSize: tokens.fs(10),
+          fontFamily: tokens.fontUi,
+          color: tokens.foregroundSubtle,
+          backgroundColor: tokens.surface2,
+          paddingHorizontal: 6,
+          paddingVertical: 1,
+          borderRadius: radius.chip,
+        },
+        mcpSectionTitle: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(10),
+          fontWeight: "700",
+          textTransform: "uppercase",
+          letterSpacing: 0.5,
+          color: tokens.foregroundSubtle,
+        },
+        mcpErrorBox: {
+          padding: 8,
+          borderRadius: radius.block,
+          backgroundColor: tokens.dangerBg,
+          borderWidth: 1,
+          borderColor: tokens.dangerBorder,
+          ...tokens.boxShadow,
+        },
+        mcpErrorText: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(11),
+          color: tokens.danger,
+        },
+      }),
+    [tokens, statusBg, statusColor],
+  );
+}
