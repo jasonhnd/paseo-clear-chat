@@ -4,15 +4,26 @@ import { radius } from "./theme-tokens";
 import { selectableSurface } from "./selection";
 import type { ExtendedThemeTokens } from "./theme-tokens";
 
+// The fixed header contains up to 21.5px text at the maximum text scale.
+// Include both card borders and both inter-row margins in the 26px budget.
+export const TOOL_ROW_LAYOUT = {
+  contentHeight: 22,
+  paddingVertical: 0,
+  marginVertical: 1,
+  borderWidth: 1,
+} as const;
+export const COLLAPSED_TOOL_HEIGHT = TOOL_ROW_LAYOUT.contentHeight
+  + 2 * (TOOL_ROW_LAYOUT.paddingVertical + TOOL_ROW_LAYOUT.marginVertical + TOOL_ROW_LAYOUT.borderWidth);
+
 export function useToolCalloutStyles(tokens: ExtendedThemeTokens, statusBg: string, statusColor: string) {
   return useMemo(
     () =>
       StyleSheet.create({
         container: {
-          marginVertical: 2,
+          marginVertical: TOOL_ROW_LAYOUT.marginVertical,
           borderRadius: radius.card,
           backgroundColor: tokens.surfaceGlass,
-          borderWidth: 1,
+          borderWidth: TOOL_ROW_LAYOUT.borderWidth,
           borderColor: tokens.borderSubtle,
           ...tokens.boxShadow,
           overflow: "hidden",
@@ -23,7 +34,8 @@ export function useToolCalloutStyles(tokens: ExtendedThemeTokens, statusBg: stri
           alignItems: "center",
           justifyContent: "space-between",
           paddingHorizontal: 10,
-          paddingVertical: 4,
+          height: TOOL_ROW_LAYOUT.contentHeight,
+          paddingVertical: TOOL_ROW_LAYOUT.paddingVertical,
           gap: 8,
           backgroundColor: tokens.surface1,
         },
@@ -45,6 +57,7 @@ export function useToolCalloutStyles(tokens: ExtendedThemeTokens, statusBg: stri
           fontFamily: tokens.fontUi,
           fontSize: tokens.fs(12),
           lineHeight: tokens.fs(16),
+          includeFontPadding: false,
           fontWeight: "600",
           color: tokens.foreground,
           flexShrink: 1,
@@ -59,8 +72,17 @@ export function useToolCalloutStyles(tokens: ExtendedThemeTokens, statusBg: stri
         },
         durationBadge: {
           fontSize: tokens.fs(11),
+          lineHeight: tokens.fs(16),
+          includeFontPadding: false,
           fontFamily: tokens.fontUi,
           color: tokens.foregroundSubtle,
+        },
+        indicatorText: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(12),
+          lineHeight: tokens.fs(16),
+          includeFontPadding: false,
+          color: statusColor,
         },
         statusBadge: {
           paddingHorizontal: 6,

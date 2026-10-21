@@ -145,13 +145,13 @@ export function ToolCallout({
           </Text>
         </View>
         <View style={styles.headerRight}>
-          {duration !== undefined ? <Text testID="tool-duration" style={styles.durationBadge}>{duration}</Text> : null}
+          {duration !== undefined ? <Text testID="tool-duration" style={styles.durationBadge} numberOfLines={1}>{duration}</Text> : null}
           {data.exitCode !== undefined && data.exitCode !== 0 ? (
-            <Text style={[styles.durationBadge, { color: tokens.danger }]}>exit {data.exitCode}</Text>
+            <Text style={[styles.durationBadge, { color: tokens.danger }]} numberOfLines={1}>exit {data.exitCode}</Text>
           ) : null}
           <View testID={`tool-status-${data.status}`} accessibilityLabel={data.status}>
             {isRunning ? <ToolSpinner color={tokens.accent} /> : (
-              <Text style={{ fontSize: tokens.fs(12), color: statusColor }}>
+              <Text style={styles.indicatorText} numberOfLines={1}>
                 {isSuccess ? "✓" : isFailed ? "✗" : isWaiting ? "Waiting" : "canceled"}
               </Text>
             )}

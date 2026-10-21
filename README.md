@@ -34,6 +34,7 @@ Finished calls open as compact, single-line rows: tool icon, command or file/que
 status, and duration when the provider reports one. Running calls spin; failed calls show a
 cross, completed calls a check, and canceled calls a separate label. Running, failed and
 waiting-for-user calls default to expanded. Click a row to expand or collapse it.
+Collapsed rows occupy 26px including their borders and vertical spacing.
 
 Explicit choices, including a manual collapse of an active call, survive reloads and history
 navigation. They are saved on the selected host, independently for each host, agent and call;
@@ -46,6 +47,9 @@ the complete output, and code's Copy control always copies the full source. Ordi
 stay fully expanded. Explicit `wrap_up` calls, including a `ccd_turn` operation marked
 `wrap_up`, also render their reply text outside tool and output disclosures. A completed
 transform phase alone never identifies a final reply.
+Structured wrap-up replies render `recap` as Markdown, `ask` as a question, `actions` as
+lettered options, and nonempty `blocked` reasons below them. A recap can stand on its own.
+Unrecognized or invalid structured replies remain fully visible as plain text.
 
 ### Shell and Git
 

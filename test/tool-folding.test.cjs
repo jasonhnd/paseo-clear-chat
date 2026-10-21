@@ -154,11 +154,32 @@ test("ordinary assistant replies remain fully expanded regardless of fold prefer
   assert.equal(h.nodes(tree, node => node.type === "Pressable").length, 0);
 });
 
-test("collapsed tool chrome uses compact spacing and a single text line", () => {
-  const h = createToolHarness();
-  const { tree } = h.mount(call("shell", { type: "shell", command: "git status" }), false);
-  const row = find(h, tree, "tool-summary-row"), card = find(h, tree, "tool-card-git");
-  const summary = find(h, tree, "tool-summary-text");
-  assert.equal(summary.props.numberOfLines, 1);
-  assert.ok(summary.props.style.lineHeight + 2 * row.props.style.paddingVertical + 2 * card.props.style.marginVertical + 2 * card.props.style.borderWidth <= 32);
-});
+for (const scale of [0.85, 1, 1.3, 1.35]) {
+  for (const status of ["completed", "running", "failed", "canceled", "awaiting_approval"]) {
+    test(`collapsed ${status} row includes padding, borders and spacing within 26px at ${scale} text scale`, () => {
+      const h = createToolHarness("ios", { preferences: { textScale: scale } });
+      const item = call("shell", { type: "shell", command: "git status", durationMs: 1530, exitCode: 2 }, status);
+      const mounted = h.mount(item, false);
+      let tree = mounted.tree;
+      if (find(h, tree, "tool-summary-row").props.accessibilityState.expanded) {
+        find(h, tree, "tool-summary-row").props.onPress();
+        tree = mounted.render();
+      }
+      const row = find(h, tree, "tool-summary-row"), card = find(h, tree, "tool-card-git");
+      const { COLLAPSED_TOOL_HEIGHT, TOOL_ROW_LAYOUT } = h.load("client/components/tool-callout-styles.ts");
+      const total = row.props.style.height + 2 * row.props.style.paddingVertical
+        + 2 * card.props.style.marginVertical + 2 * card.props.style.borderWidth;
+      assert.equal(total, COLLAPSED_TOOL_HEIGHT);
+      assert.ok(total <= 26, `Total row footprint is ${total}px`);
+      assert.equal(row.props.style.height, TOOL_ROW_LAYOUT.contentHeight);
+      assert.equal(find(h, tree, "tool-card-body"), undefined);
+      assert.equal(find(h, tree, "tool-summary-text").props.numberOfLines, 1);
+      for (const text of h.nodes(row, node => node.type === "Text")) {
+        const style = Object.assign({}, ...[text.props.style].flat());
+        assert.ok(style.lineHeight <= row.props.style.height);
+        assert.equal(style.includeFontPadding, false);
+        assert.equal(text.props.numberOfLines, 1);
+      }
+    });
+  }
+}
