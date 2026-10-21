@@ -25,7 +25,7 @@
       "detail": {
         "type": "shell",
         "command": "ls /workspace/example/missing-directory",
-        "output": "output: ls: /workspace/example/missing-directory: No such file or directory\n\nexit_code: 1"
+        "output": "terminal result\n- **output:** ls: /workspace/example/missing-directory: No such file or directory\n- **exit_code:** 1"
       },
       "metadata": {
         "kind": "execute",

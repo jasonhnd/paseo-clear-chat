@@ -122,7 +122,11 @@ for (const [index, item] of require("./fixtures/real-hermes-errors.json").items.
     assert.ok(text.includes(index === 0
       ? "Read failed: File not found: /workspace/example/missing.txt"
       : "ls: /workspace/example/missing-directory: No such file or directory"));
-    if (index === 1) assert.match(text, /exit_code: 1/);
+    if (index === 1) {
+      assert.doesNotMatch(text, /\*\*/);
+      assert.match(text, /output: ls:/);
+      assert.match(text, /exit_code: 1/);
+    }
   });
 }
 
@@ -237,4 +241,34 @@ test("failed final replies avoid repeating an error in the reply body", () => {
   const { tree } = h.mount(item, false);
   assert.equal(find(h, tree, "tool-error-line"), undefined);
   assert.equal(h.text(tree).split("Reply delivery failed").length - 1, 1);
+});
+
+for (const platform of ["web", "ios", "android"]) {
+  test(`captured terminal result labels are clean while command output stays literal on ${platform}`, () => {
+    const h = createToolHarness(platform);
+    const item = structuredClone(require("./fixtures/real-hermes-errors.json").items[1]);
+    const stdout = "**literal output**\n# heading\n- **output:** nested label\n- **exit_code:** 7\n`code` <tag>";
+    item.detail.output = `terminal result\n- **output:** ${stdout}\n- **exit_code:** 1`;
+    const { tree, data } = h.mount(item, false);
+    const output = h.load("client/tool-call-data.ts").buildLiveToolCallData(data).output;
+    assert.equal(output, `terminal result\n- output: ${stdout}\n- exit_code: 1`);
+    assert.ok(h.text(tree).includes(stdout));
+    assert.equal(find(h, tree, "tool-summary-row").props.accessibilityState.expanded, true);
+    assert.equal(find(h, tree, "tool-error-line") && h.text(find(h, tree, "tool-error-line")), "Tool call failed");
+  });
+}
+
+test("terminal label cleanup leaves ordinary shell output and structured streams unchanged", () => {
+  const h = createToolHarness();
+  const build = h.load("client/tool-call-data.ts").buildLiveToolCallData;
+  const sample = require("./fixtures/real-hermes-errors.json").items[1];
+  const literal = sample.detail.output;
+  for (const item of [
+    { ...sample, metadata: undefined },
+    { ...sample, metadata: { kind: "execute", title: "other: sample" } },
+    { ...sample, name: "bash" },
+    { ...sample, detail: { ...sample.detail, output: "**output:** literal\n**exit_code:** 1" } },
+    { ...sample, detail: { ...sample.detail, output: "terminal result\n- **output:** incomplete" } },
+  ]) assert.equal(build(item).output, item.detail.output);
+  assert.equal(build({ ...sample, detail: { ...sample.detail, output: { stdout: literal, stderr: "**literal error**" } } }).output, literal);
 });

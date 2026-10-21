@@ -142,7 +142,9 @@ Legacy JSON strings and unfamiliar-field fallbacks remain covered separately.
 Hermes calls: `read` with `detail.type: read` and `execute` with
 `detail.type: shell`. Both retain `error: { message: string }`, their original
 metadata shapes, and string content/output. The read failure reports a missing
-file; the shell output reports a missing directory and exit code 1. All prose,
+file; the shell output retains the `terminal result` heading and Markdown bold
+labels `**output:**` and `**exit_code:**`, reporting a missing directory and exit
+code 1. A fresh read-only projected fetch confirmed this exact output envelope. All prose,
 paths and call IDs are fictional. A recursive comparison against the temporary
 capture confirmed identical keys, nesting, array lengths and value types.
 `test/tool-errors.test.cjs` replays both without manually opening their cards.
