@@ -45,12 +45,37 @@ animation and syntax painting supplied by a small test harness. The replay opens
 completed cards before checking that each body contains visible text. These are
 component replays, not a live Paseo integration test.
 
-| Sample | Tool calls | Cards including todo | Empty cards | Generic calls | Generic rate |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Hermes | 20 | 21 | 0 | 1 | 5.0% |
-| Claude | 12 | 13 | 0 | 0 | 0.0% |
-| Codex | 12 | 13 | 0 | 0 | 0.0% |
+## Replay results
 
-Generic rate counts actual generic card bodies divided by tool calls. Independent
-todo items are checked for empty rendering but do not inflate the denominator.
-Hermes memory still counts as generic even though its summary says `memory · add`.
+Both real captures enforce zero empty cards and a generic-call rate of at most
+5%. They also check replies through the real Markdown renderer. Claude includes
+one explicit `wrap_up` tool: it counts as a tool call and renders as an expanded
+final reply outside the 27 tool cards. All seven assistant/final replies in that
+capture remain visible; Hermes has one visible final assistant reply.
+
+| Real sample | Tool calls | Tool cards | Empty cards | Generic calls | Generic rate |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Hermes | 6 | 6 | 0 | 0 | 0.0% |
+| Claude | 28 | 27 | 0 | 0 | 0.0% |
+
+The synthetic samples intentionally include generic tools for fallback coverage.
+They assert their expected fallback counts and zero empty cards, while the real
+captures supply the usage budget:
+
+| Synthetic sample | Tool calls | Cards including todo | Empty cards | Generic calls | Generic rate |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Hermes | 20 | 21 | 0 | 3 | 15.0% |
+| Claude | 12 | 13 | 0 | 1 | 8.3% |
+| Codex | 12 | 13 | 0 | 1 | 8.3% |
+
+Generic rate counts calls rendered as plain text, unknown cards or fallback
+bodies divided by tool calls. Each call counts at most once. Independent todo
+items and assistant replies do not inflate the denominator. Hermes memory still
+counts as generic even though its summary says `memory · add`. Tool discovery
+uses a dedicated query-and-results body and counts as typed rendering.
+
+`test/tool-real-payload.test.cjs` separately checks the captured `skill_view`,
+`tool_search`, `web_search`, `terminal` and `search_files` cases in both collapsed
+and expanded states. It also covers source-prefix validation, literal colon text,
+canonical detail precedence, discovery output folding and the captured wrap-up
+reply's complete fallback content.

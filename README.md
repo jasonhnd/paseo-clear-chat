@@ -121,7 +121,13 @@ missing model as **Not reported**. Named `task` batches keep their existing rost
 Search cards show the query, scope and match count. Each result occupies a
 clickable row that reveals its file. Fetch and web search cards show clickable
 URLs, titles and the first five lines of available content. Web search results
-open through the same platform URL helper used by reply links.
+open through the same platform URL helper used by reply links. Summary rows use
+**Search: query** and **web_search: query**, including projected provider calls.
+Shell rows show **$ command**, with the provider's display prefix removed.
+
+Tool discovery has its own card. Its row shows **tool_search · browser** for a
+browser query, and its expanded body preserves the query and discovery output
+with the configured long-output control.
 
 ### Plans, checklists and plain text
 
@@ -132,8 +138,9 @@ text, including whitespace.
 
 ### Skills and other tools
 
-Hermes `skill_view` calls display **Skill: name** instead of a file path. Other
-tools show their real name and a useful argument on the summary row, such as
+Hermes `skill_view` calls display **Skill: name** without a line range. This also
+covers Paseo's projected `read` calls carrying the source tool in `metadata.title`.
+Other tools show their real name and a useful argument on the summary row, such as
 **memory · add**. Expanded unknown cards list each input as `name: value` and
 show a configurable output preview with a control to reveal all lines.
 
@@ -390,10 +397,13 @@ When input and output are empty, the tool name and status remain visible and the
 expanded body reports that no output was returned. Failed calls keep their error
 visible, and canceled calls retain their canceled status.
 
-All twelve tool categories have automated component coverage: shell, read, edit,
-write, search, fetch, web search, subagent, plan, todo, plain text and unknown.
-The [synthetic replay fixtures](test/fixtures/README.md) document coverage and
-generic-card counts for Hermes, Claude and Codex styles.
+All thirteen tool categories have automated component coverage: shell, read, edit,
+write, search, fetch, web search, tool discovery, subagent, plan, todo, plain text
+and unknown. The [replay fixtures](test/fixtures/README.md) document two sanitized
+real timelines and additional synthetic Hermes, Claude and Codex samples. Each
+real timeline must have zero empty cards and at most five percent generic calls;
+plain-text and unknown cards both count toward that budget. Replays also exercise
+assistant replies and explicit wrap-up replies through the real Markdown renderer.
 
 The link cannot open Paseo's own file editor: see the first limitation below.
 
