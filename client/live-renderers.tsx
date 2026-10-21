@@ -37,6 +37,8 @@ import { useToolExpansion } from "./tool-expansion";
 import { defaultToolExpanded } from "./tool-summary";
 import { FinalToolReply } from "./components/final-tool-reply";
 import { toolRowMarker } from "./tool-row-spacing";
+import { GeneratedImages } from "./components/generated-images";
+import { extractGeneratedImages, type GeneratedImage } from "./generated-images";
 
 export interface LiveReasoningPayload {
   text: string;
@@ -73,6 +75,8 @@ export function LiveToolCallRenderer({
   const data = item.data;
 
   const calloutData = useMemo(() => buildLiveToolCallData(data), [data]);
+  const replyImages = useMemo(() => new Set(extractGeneratedImages(calloutData.finalReply)
+    .map((image) => image.path ?? image.source)), [calloutData.finalReply]);
 
   // The dock has no access to the job manager, so the timeline is its only
   // source: every job snapshot that passes through a card is republished, and
@@ -116,7 +120,7 @@ export function LiveToolCallRenderer({
     <View testID="tool-timeline-item" {...surfaceProps(hostFontEscape, toolRowMarker(!calloutData.finalReply && !expansion.expanded && !expansion.error))}>
       {calloutData.finalReply ? (
         <View testID="tool-final-reply">
-          <FinalToolReply text={calloutData.finalReply} tokens={tokens} variant={preferences.markdownVariant} />
+          <FinalToolReply text={calloutData.finalReply} cwd={cwd} tokens={tokens} variant={preferences.markdownVariant} />
           {calloutData.error ? <Text selectable style={{ color: tokens.danger }}>{calloutData.error}</Text> : null}
         </View>
       ) : (
@@ -129,6 +133,13 @@ export function LiveToolCallRenderer({
           imageFile={imageFile}
         />
       )}
+      <GeneratedImages
+        images={(calloutData.images ?? []).filter((image) =>
+          !replyImages.has(image.path ?? image.source) &&
+          !((calloutData.tool === "read" || calloutData.tool === "write") && image.path && image.path === calloutData.filePath))}
+        cwd={cwd}
+        tokens={tokens}
+      />
       {expansion.error ? (
         <Text accessibilityRole="alert" style={{ color: tokens.danger, fontSize: tokens.fs(11) }}>
           Tool expansion choice could not be saved or loaded: {expansion.error}
@@ -240,13 +251,14 @@ export function LiveTodoRenderer({ item, theme }: PluginTimelineItemProps<LiveTo
 
 export interface LiveAssistantPayload {
   text: string;
+  images?: GeneratedImage[];
 }
 
 /**
  * The assistant's own reply, drawn with the plugin's markdown renderer.
  *
- * The host's renderer carries a pipeline this plugin cannot import — mermaid,
- * local images, its own file-path links — so `assistantMarkdown` exists to hand the
+ * The host's renderer carries a pipeline this plugin cannot import — mermaid
+ * and file navigation — so `assistantMarkdown` exists to hand the
  * turn back when a reply needs any of that.
  */
 export function LiveAssistantRenderer({
@@ -255,6 +267,7 @@ export function LiveAssistantRenderer({
   theme,
   timestamp,
 }: PluginTimelineItemProps<LiveAssistantPayload>) {
+  const cwd = useAgent(agentId, (agent) => agent.cwd);
   const preferences = useEnhancerPreferences();
   const tokens = useMemo(
     () => buildThemeTokens(theme.colors, preferences),
@@ -279,7 +292,7 @@ export function LiveAssistantRenderer({
       {envelope ? (
         <SystemCard envelope={envelope} tokens={tokens} />
       ) : (
-        <MarkdownView text={item.data.text} tokens={tokens} variant={preferences.markdownVariant} />
+        <MarkdownView text={item.data.text} images={item.data.images} cwd={cwd} tokens={tokens} variant={preferences.markdownVariant} />
       )}
       {isTail && !envelope ? (
         <AssistantFooter text={item.data.text} at={timestamp} tokens={tokens} />

@@ -1,0 +1,84 @@
+import type { GeneratedImage } from "../shared/contracts";
+export type { GeneratedImage } from "../shared/contracts";
+
+const IMAGE_EXTENSION = /\.(?:png|jpe?g|gif|webp|avif|bmp|ico|svg)(?:[?#].*)?$/i;
+const IMAGE_DATA = /^data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=\s]+$/i;
+
+export function imageSource(source: string, explicit = false): GeneratedImage | null {
+  const value = source.trim();
+  if (!value) return null;
+  if (value.startsWith("//")) return null;
+  if (IMAGE_DATA.test(value) || /^blob:/i.test(value)) return { source: value };
+  if (/^https?:\/\//i.test(value)) {
+    return !/\s/.test(value) && (explicit || IMAGE_EXTENSION.test(value)) ? { source: value } : null;
+  }
+  if (/^file:\/\//i.test(value)) {
+    try {
+      const url = new URL(value);
+      if (url.hostname && url.hostname !== "localhost") return null;
+      const path = decodeURIComponent(url.pathname).replace(/^\/([a-z]:\/)/i, "$1");
+      return IMAGE_EXTENSION.test(path) ? { source: value, path } : null;
+    } catch {
+      return null;
+    }
+  }
+  if (/^[a-z][a-z0-9+.-]*:/i.test(value) && !/^[a-z]:[\\/]/i.test(value)) return null;
+  if (/[\r\n]/.test(value) || (/\s/.test(value) && !explicit && !/^(?:[./~\\]|[a-z]:[\\/])/i.test(value))) return null;
+  return IMAGE_EXTENSION.test(value) ? { source: value, path: value } : null;
+}
+
+/** Collect only output values; callers deliberately leave tool inputs out. */
+export function extractGeneratedImages(value: unknown): GeneratedImage[] {
+  const images = new Map<string, GeneratedImage>();
+  const seen = new Set<object>();
+  const add = (source: string, explicit = false) => {
+    const image = imageSource(source, explicit);
+    if (image) images.set(image.path ?? image.source, image);
+  };
+  const text = (source: string) => {
+    // A whole value may be a path containing spaces or a data URI.
+    if (imageSource(source) && !source.includes("\n")) add(source);
+    let rest = source.replace(/(!?)\[[^\]\n]*\]\((<[^>\n]+>|(?:[^\s()]|\([^()\n]*\))+?)(?:\s+["'][^\n]*?["'])?\)/g,
+      (match, image: string, target: string) => {
+        add(target.replace(/^<|>$/g, "").replace(/\\([!-\/:-@\[-`{-~])/g, "$1"), image === "!" || target.startsWith("<"));
+        return " ";
+      });
+    rest = rest.replace(/[`"']([^`"'\n]+)[`"']/g, (match, target: string) => {
+      if (!imageSource(target, true)) return match;
+      add(target, true);
+      return " ";
+    });
+    // Bare URLs and paths in shell output or prose. Sentence punctuation is
+    // excluded; quoted and Markdown targets above retain spaces and brackets.
+    for (const match of rest.matchAll(/(?:https?:\/\/|file:\/\/|blob:)[^\s<>"'`]+|(?:[a-z]:[\\/]|[./~\\]|\b)[^\s<>"'`()[\]]*\.(?:png|jpe?g|gif|webp|avif|bmp|ico|svg)(?:[?#][^\s<>"'`()[\]]*)?/gi)) {
+      add(match[0].replace(/[),.;!]+$/, ""));
+    }
+  };
+  const visit = (entry: unknown, depth: number, explicit = false): void => {
+    if (depth > 12 || entry === null || entry === undefined) return;
+    if (typeof entry === "string") {
+      if (explicit && imageSource(entry, true)) add(entry, true);
+      else text(entry);
+      return;
+    }
+    if (typeof entry !== "object" || seen.has(entry)) return;
+    seen.add(entry);
+    if (Array.isArray(entry)) {
+      for (const child of entry) visit(child, depth + 1, explicit);
+      return;
+    }
+    const obj = entry as Record<string, unknown>;
+    const mime = obj.mimeType ?? obj.mediaType ?? obj.media_type;
+    const data = obj.data ?? obj.base64;
+    if (typeof mime === "string" && mime.startsWith("image/") && typeof data === "string") {
+      add(data.startsWith("data:") ? data : `data:${mime};base64,${data}`);
+    }
+    const image = explicit || obj.type === "image" || obj.type === "image_url" || obj.type === "output_image" || (typeof mime === "string" && mime.startsWith("image/"));
+    for (const [key, child] of Object.entries(obj)) {
+      if (key === "data" || key === "base64" || key === "mimeType" || key === "mediaType" || key === "media_type") continue;
+      visit(child, depth + 1, ["images", "image", "image_url"].includes(key) || (image && ["source", "url", "uri", "path", "file_path", "image_path"].includes(key)));
+    }
+  };
+  visit(value, 0);
+  return [...images.values()];
+}

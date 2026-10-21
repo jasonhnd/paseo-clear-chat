@@ -9,6 +9,7 @@ import { installHostNoticeStyle } from "./client/components/host-notice";
 import { installChatFind } from "./client/components/chat-find";
 import { extractPromptImages } from "./client/prompt-images";
 import { installCompactToolSpacing } from "./client/tool-row-spacing";
+import { extractGeneratedImages } from "./client/generated-images";
 import {
   areEnhancerPreferencesReady,
   getEnhancerPreferences,
@@ -208,14 +209,15 @@ export default function contribute(client: PluginClientContext) {
     transform({ item }) {
       if (item.type !== "assistant_message") return undefined;
       if (!areEnhancerPreferencesReady() || !getEnhancerPreferences().assistantMarkdown) return undefined;
-      if (!item.text.trim()) return undefined;
+      const images = extractGeneratedImages({ ...item, text: undefined });
+      if (!item.text.trim() && !images.length) return undefined;
       return {
         items: [
           {
             type: "plugin" as const,
             kind: "omp-assistant",
             version: 1,
-            data: { text: item.text },
+            data: { text: item.text, images: toJsonValue(images) },
           },
         ],
       };
@@ -225,7 +227,7 @@ export default function contribute(client: PluginClientContext) {
   const removeAssistantRenderer = client.addTimelineRenderer({
     kind: "omp-assistant",
     version: 1,
-    schema: z.object({ text: z.string() }),
+    schema: z.object({ text: z.string(), images: z.array(z.object({ source: z.string(), path: z.string().optional() })).optional() }),
     Component: LiveAssistantRenderer,
   });
 

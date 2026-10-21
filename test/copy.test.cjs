@@ -45,6 +45,7 @@ function harness(file, name, copyText, platform = "ios", scale = 1) {
       if (id === "./copy-feedback") return load(resolve(dirname(filename), id + ".tsx"));
       if (id === "./theme-tokens" || id === "../theme-tokens") return { radius: {}, withAlpha: value => value };
       if (id === "./parse") return load(resolve(dirname(filename), "parse.ts"));
+      if (id === "../../generated-images") return load(resolve(dirname(filename), id + ".ts"));
       if (id === "../highlight") return { useHighlightedLines: () => null };
       if (id.startsWith(".")) return new Proxy({}, { get: (_, key) => key === "surfaceProps" ? () => ({}) : key === "detectFileType" ? () => ({}) : key });
       return createRequire(filename)(id);

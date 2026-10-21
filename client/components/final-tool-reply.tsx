@@ -3,6 +3,8 @@ import { View, Text } from "react-native";
 import { parseFinalToolReply } from "../tool-final-reply";
 import { MarkdownView, type MarkdownVariant } from "./markdown/markdown-view";
 import type { ExtendedThemeTokens } from "./theme-tokens";
+import { extractGeneratedImages } from "../generated-images";
+import { GeneratedImages } from "./generated-images";
 
 function optionLabel(index: number): string {
   let label = "";
@@ -12,24 +14,28 @@ function optionLabel(index: number): string {
   return label;
 }
 
-export function FinalToolReply({ text, tokens, variant }: {
+export function FinalToolReply({ text, tokens, variant, cwd }: {
   text: string;
   tokens: ExtendedThemeTokens;
   variant: MarkdownVariant;
+  cwd?: string | null;
 }) {
   const content = useMemo(() => parseFinalToolReply(text), [text]);
   const heading = { fontFamily: tokens.fontUi, fontSize: tokens.fs(13), lineHeight: tokens.fs(20), fontWeight: "600" as const, color: tokens.foreground };
   const body = content.kind === "text" ? (
-    <Text testID="final-reply-plain-text" selectable style={{ ...heading, fontWeight: "400" }}>{content.text}</Text>
-  ) : content.kind === "markdown" ? <MarkdownView text={content.text} tokens={tokens} variant={variant} /> : (
+    <View style={{ gap: 8 }}>
+      <Text testID="final-reply-plain-text" selectable style={{ ...heading, fontWeight: "400" }}>{content.text}</Text>
+      <GeneratedImages images={extractGeneratedImages(content.text)} cwd={cwd} tokens={tokens} />
+    </View>
+  ) : content.kind === "markdown" ? <MarkdownView text={content.text} cwd={cwd} tokens={tokens} variant={variant} /> : (
     <View testID="wrap-up-reply" style={{ gap: 12 }}>
       {content.recap.trim() ? (
-        <View testID="wrap-up-recap"><MarkdownView text={content.recap} tokens={tokens} variant={variant} /></View>
+        <View testID="wrap-up-recap"><MarkdownView text={content.recap} cwd={cwd} tokens={tokens} variant={variant} /></View>
       ) : null}
       {content.ask ? (
         <View testID="wrap-up-question" style={{ gap: 4 }}>
           <Text accessibilityRole="header" style={heading}>Question</Text>
-          <MarkdownView text={content.ask} tokens={tokens} variant={variant} />
+          <MarkdownView text={content.ask} cwd={cwd} tokens={tokens} variant={variant} />
         </View>
       ) : null}
       {content.actions.length ? (
@@ -37,7 +43,7 @@ export function FinalToolReply({ text, tokens, variant }: {
           {content.actions.map((action, index) => (
             <View key={index} testID="wrap-up-option" style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
               <Text style={[heading, { color: tokens.accent }]}>{`${optionLabel(index)}.`}</Text>
-              <View style={{ flex: 1 }}><MarkdownView text={action} tokens={tokens} variant={variant} /></View>
+              <View style={{ flex: 1 }}><MarkdownView text={action} cwd={cwd} tokens={tokens} variant={variant} /></View>
             </View>
           ))}
         </View>
@@ -45,7 +51,7 @@ export function FinalToolReply({ text, tokens, variant }: {
       {content.isBlocked ? (
         <View testID="wrap-up-blocked" accessibilityRole="alert" style={{ gap: 4, padding: 10, borderLeftWidth: 3, borderLeftColor: tokens.danger, backgroundColor: tokens.dangerBg }}>
           <Text accessibilityRole="header" style={[heading, { color: tokens.danger }]}>Blocked</Text>
-          {content.blocked.map((reason, index) => <MarkdownView key={index} text={reason} tokens={tokens} variant={variant} />)}
+          {content.blocked.map((reason, index) => <MarkdownView key={index} text={reason} cwd={cwd} tokens={tokens} variant={variant} />)}
         </View>
       ) : null}
     </View>

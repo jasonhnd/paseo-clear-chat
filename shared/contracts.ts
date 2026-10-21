@@ -395,6 +395,13 @@ export interface GitHubToolData {
   text?: string;
 }
 
+export interface GeneratedImage {
+  /** The reported address, also used as the preview's link target. */
+  source: string;
+  /** Local files are read on the daemon, relative to the agent's cwd. */
+  path?: string;
+}
+
 export interface ToolCalloutData {
   id: string;
   tool: ToolCallKind;
@@ -413,6 +420,7 @@ export interface ToolCalloutData {
   language?: string;
   diff?: string;
   output?: string;
+  images?: GeneratedImage[];
   search?: {
     query: string;
     scope: string;

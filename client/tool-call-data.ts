@@ -8,6 +8,7 @@ import { buildEditDiff } from "./edit-diff";
 import { finalToolReply } from "./tool-final-reply";
 import { recoverProjectedTool } from "./tool-projection";
 import { toolFailureMessage } from "./tool-error";
+import { extractGeneratedImages } from "./generated-images";
 
 export interface LiveToolCallPayload {
   name: string;
@@ -218,6 +219,7 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
     status,
     error: status === "failed" ? toolFailureMessage(data.error, detail, toolKind) : stringValue(data.error),
     finalReply: finalToolReply(rawName, rawInput, output),
+    images: extractGeneratedImages([output, detail.text]),
     filePath: skill ? undefined : filePath,
     lineRange: toolKind === "read" && !skill ? readLineRange(detail, input, code) : undefined,
     changes: edit?.changes,

@@ -7,6 +7,8 @@ import { selectableSurface, unselectable } from "../selection";
 import { selectionSurface } from "../selection-actions";
 import { SyntaxHighlightBlock } from "../syntax-highlight";
 import { openLink } from "../open-link";
+import { extractGeneratedImages, imageSource, type GeneratedImage } from "../../generated-images";
+import { GeneratedImages } from "../generated-images";
 import { parseMarkdown, type MdAlign, type MdBlock, type MdInline, type MdListItem } from "./parse";
 import { MarkdownImage } from "./markdown-image";
 
@@ -23,6 +25,8 @@ export interface MarkdownViewProps {
   text: string;
   tokens: ExtendedThemeTokens;
   variant: MarkdownVariant;
+  images?: GeneratedImage[];
+  cwd?: string | null;
 }
 
 type MdTableBlock = Extract<MdBlock, { kind: "table" }>;
@@ -194,6 +198,7 @@ interface RenderContext {
   styles: MarkdownStyles;
   tokens: ExtendedThemeTokens;
   metrics: VariantMetrics;
+  cwd?: string | null;
 }
 
 /**
@@ -229,23 +234,50 @@ function scaleMetrics(metrics: VariantMetrics, scale: number): VariantMetrics {
   };
 }
 
-export function MarkdownView({ text, tokens, variant }: MarkdownViewProps) {
+export function MarkdownView({ text, tokens, variant, images = [], cwd }: MarkdownViewProps) {
   const blocks = useMemo(() => parseMarkdown(text), [text]);
+  const previews = useMemo(() => {
+    const inline = markdownImageKeys(blocks);
+    return [...new Map([...extractGeneratedImages(text), ...images]
+      .filter((image) => !inline.has(image.path ?? image.source))
+      .map((image) => [image.path ?? image.source, image])).values()];
+  }, [text, images, blocks]);
   const metrics = useMemo(
     () => scaleMetrics(VARIANT_METRICS[variant], tokens.textScale),
     [variant, tokens],
   );
   const styles = useMemo(() => buildStyles(tokens, variant, metrics), [tokens, variant, metrics]);
   const context = useMemo<RenderContext>(
-    () => ({ styles, tokens, metrics }),
-    [styles, tokens, metrics],
+    () => ({ styles, tokens, metrics, cwd }),
+    [styles, tokens, metrics, cwd],
   );
 
   return (
     <View {...selectionSurface} style={styles.root}>
       {blocks.map((block, index) => renderBlock(block, `b${index}`, index === 0, context))}
+      <GeneratedImages images={previews} cwd={cwd} tokens={tokens} />
     </View>
   );
+}
+
+/** Inline Markdown images keep their position; the gallery owns other sources. */
+function markdownImageKeys(blocks: MdBlock[]): Set<string> {
+  const keys = new Set<string>();
+  const visit = (spans: MdInline[]) => {
+    for (const span of spans) {
+      if (span.kind === "image") {
+        const image = imageSource(span.src, true);
+        keys.add(image?.path ?? image?.source ?? span.src);
+      } else if ("spans" in span) visit(span.spans);
+    }
+  };
+  for (const block of blocks) {
+    if (block.kind === "heading" || block.kind === "paragraph") visit(block.spans);
+    else if (block.kind === "list") block.items.forEach((item) => visit(item.spans));
+    else if (block.kind === "quote") block.paragraphs.forEach(visit);
+    else if (block.kind === "table") [...block.header, ...block.rows.flat()].forEach(visit);
+  }
+  return keys;
 }
 
 function renderBlock(
@@ -461,7 +493,7 @@ function renderFlow(
     <View key={key} style={[{ minWidth: 0, gap: 8 }, options.containerStyle]}>
       {options.prefix}
       {runs.map((run, index) => run.kind === "image"
-        ? <MarkdownImage key={`${key}i${index}:${run.src}`} src={run.src} alt={run.alt} tokens={context.tokens} />
+        ? <MarkdownImage key={`${key}i${index}:${run.src}`} src={run.src} alt={run.alt} cwd={context.cwd} tokens={context.tokens} />
         : <Text key={`${key}t${index}`} selectable={canSelectInline(run.spans)} style={[textStyle, { flex: 0 }]}>{renderInline(run.spans, context.styles, `${key}t${index}`)}</Text>)}
     </View>
   );

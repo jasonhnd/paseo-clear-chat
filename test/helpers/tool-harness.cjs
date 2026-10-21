@@ -10,7 +10,7 @@ const { createExpansionHost } = require("./expansion-host.cjs");
 function createToolHarness(platform = "ios", options = {}) {
   const root = resolve(__dirname, "../..");
   const cache = new Map(), frames = new Map(), transformers = new Map(), renderers = new Map();
-  const reveals = [], links = [], copies = [], toasts = [];
+  const reveals = [], links = [], copies = [], toasts = [], imageReads = [];
   let frame;
   const jsx = (type, props) => ({ type, props: props ?? {} });
   const passthrough = props => props.children ?? null;
@@ -63,6 +63,7 @@ function createToolHarness(platform = "ios", options = {}) {
   const stubs = {
     "client/preferences": { initializeEnhancerPreferences: async () => {}, areEnhancerPreferencesReady: () => true, getEnhancerPreferences: () => preferences, useEnhancerPreferences: () => preferences, useEnhancerPreferencesError: () => null, updateEnhancerPreferences: async patch => Object.assign(preferences, patch), resetEnhancerPreferences: async () => {}, OUTPUT_LINE_OPTIONS: [10, 15, 30, "never"].map(value => ({ value: String(value), label: value === "never" ? "Never" : `${value} lines` })), TEXT_SIZE_OPTIONS: [], ACCENT_PRESETS: {} },
     "client/settings-page": { ClearChatSettingsPage: noop },
+    "server/settings-migration": { migrateHostSettings: noop },
     "client/image-file": { useImageFile: noop, isImagePath: path => /\.(png|jpe?g|gif|webp)$/i.test(path ?? "") },
     "shared/file-rpc": { revealPathRpc: {} },
     "client/hub-activity": { publishHubSnapshot: noop },
@@ -118,6 +119,10 @@ function createToolHarness(platform = "ios", options = {}) {
     };
   }
   if (options.replyFooter) delete stubs["client/components/turn-footer"];
+  if (options.images) {
+    delete stubs["client/image-file"];
+    delete stubs["client/components/image-preview"];
+  }
   function load(path) {
     let filename = resolve(root, path);
     if (!existsSync(filename)) filename += existsSync(filename + ".ts") ? ".ts" : ".tsx";
@@ -134,6 +139,15 @@ function createToolHarness(platform = "ios", options = {}) {
       if (id === "react-native") return native;
       if (id === "@getpaseo/plugin/client") return {
         useRpc: contract => {
+          if (contract.name === "file.image") {
+            if (!rpcFunctions.has(contract.name)) rpcFunctions.set(contract.name, async value => {
+              imageReads.push(value);
+              return options.imageRpc ? options.imageRpc(value) : {
+                dataUri: "data:image/png;base64,c2FtcGxl", mime: "image/png", width: 32, height: 24, bytes: 6, error: null,
+              };
+            });
+            return rpcFunctions.get(contract.name);
+          }
           if (contract.name?.startsWith("settings.tool-expansion.")) {
             if (!rpcFunctions.has(contract.name)) rpcFunctions.set(contract.name,
               contract.name.endsWith(".read") ? expansionHost.read : expansionHost.write);
@@ -194,9 +208,9 @@ function createToolHarness(platform = "ios", options = {}) {
     frames.clear();
   }
   return {
-    load, nodes, text, reveals, links, copies, toasts, transformers, renderers, get preferences() { return getPreferences(); }, tokens, draw, expansionHost, unmount,
+    load, nodes, text, reveals, links, copies, toasts, imageReads, transformers, renderers, get preferences() { return getPreferences(); }, tokens, draw, expansionHost, unmount,
     mount(item, expand = true, identity = {}) {
-      unmount(); reveals.length = links.length = copies.length = 0;
+      unmount(); reveals.length = links.length = copies.length = imageReads.length = 0;
       if (!timestamps.has(item)) timestamps.set(item, new Date(nextTimestamp++));
       const transformed = transformers.get(item.type).transform({ item, phase: "complete" });
       const pluginItem = transformed.items[0];

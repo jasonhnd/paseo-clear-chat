@@ -674,6 +674,10 @@ function matchBracket(src: string, start: number, open: string, close: string): 
 
 function cleanHref(raw: string): string {
   let href = raw.trim();
+  if (href.startsWith("<")) {
+    const end = href.indexOf(">");
+    if (end > 0) return href.slice(1, end);
+  }
   // A link title follows the target after whitespace: `(url "title")`.
   const space = href.search(/\s/);
   if (space > -1) href = href.slice(0, space);

@@ -3,11 +3,14 @@ import { Image, Text, View, StyleSheet } from "react-native";
 import { CopyFallbackDialog, useCopyText } from "../copy-feedback";
 import { openLink } from "../open-link";
 import { radius, type ExtendedThemeTokens } from "../theme-tokens";
+import { imageSource } from "../../generated-images";
+import { GeneratedImages, openImage } from "../generated-images";
 
 interface MarkdownImageProps {
   src: string;
   alt: string;
   tokens: ExtendedThemeTokens;
+  cwd?: string | null;
 }
 
 interface ImageLoadMetadata {
@@ -36,11 +39,13 @@ function isImageData(src: string): boolean {
 }
 
 /** Images occupy a native View, never an inline Text line box. */
-export function MarkdownImage({ src, alt, tokens }: MarkdownImageProps) {
+export function MarkdownImage({ src, alt, tokens, cwd }: MarkdownImageProps) {
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const [width, setWidth] = useState(0);
   const [size, setSize] = useState<{ src: string; width: number; height: number } | null>(null);
   const supported = isWebImage(src) || isImageData(src);
+  const local = imageSource(src, true);
+  if (local?.path) return <GeneratedImages images={[local]} cwd={cwd} tokens={tokens} />;
 
   if (!supported || failedSrc === src) {
     return <ImageFallback src={src} alt={alt} tokens={tokens} unsupported={!supported} />;
@@ -54,6 +59,13 @@ export function MarkdownImage({ src, alt, tokens }: MarkdownImageProps) {
 
   return (
     <View style={styles.frame} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
+      <Text
+        selectable
+        accessibilityRole="link"
+        accessibilityLabel={`Open image address: ${src}`}
+        onPress={() => openImage(src)}
+        style={{ color: tokens.accent, fontSize: tokens.fs(12), textDecorationLine: "underline" }}
+      >{src.startsWith("data:") ? `${src.slice(0, src.indexOf(",") + 1)}…` : src}</Text>
       <Image
         source={{ uri: src }}
         accessibilityLabel={alt || "Image"}
@@ -96,6 +108,7 @@ function ImageFallback({ src, alt, tokens, unsupported }: MarkdownImageProps & {
       >
         {src || "Empty image address"}
       </Text>
+      {isImageData(src) ? <Text accessibilityRole="link" accessibilityLabel="Open image source" onPress={() => openImage(src)} style={[textStyle, { color: tokens.accent }]}>Open image source</Text> : null}
       <CopyFallbackDialog text={fallbackText} onClose={() => setFallbackText(null)} tokens={tokens} />
     </View>
   );
