@@ -136,6 +136,63 @@ DOM snapshots or network bodies. Traces may still contain private URLs: delete
 them after analysis and never commit or attach them. Run comparison measurements
 without tracing, since profiling adds overhead.
 
+## Auditing reply-duration timeline reads
+
+Reply duration uses a separate canonical timeline request. A first-screen median
+alone does not show its recurring network cost: the request can overlap app
+startup, and another request can occur when the agent's status or update time
+changes. Audit those reads separately from the ordinary measurement runs.
+
+Use the same sanitized long history and isolated daemon for both revisions.
+Record the canonical entry count, tool-call count and serialized response size;
+tool-call count alone does not describe the amount of history transferred.
+Prepare each plugin revision only on that isolated daemon. Keep shared test
+daemons unchanged, and keep temporary homes, provider history, browser profiles
+and reports under the chosen temporary results directory. Stop the isolated
+daemon and remove those files when finished.
+
+For network diagnosis, register Chrome WebSocket frame listeners before
+navigation. Match outgoing `fetch_agent_timeline_request` messages with
+`projection: "canonical"` to incoming `fetch_agent_timeline_response` messages
+by `payload.requestId`, keeping a separate pending map for each socket. Paseo's
+JSON envelope places these messages under `message`. Retain only aggregates:
+
+| Reading | Definition |
+| --- | --- |
+| Count | Matching requests in each lifecycle phase, including unfinished requests. |
+| Frame elapsed time | Monotonic time between the observer receiving the outgoing request frame and its matching incoming response frame. Inspector delivery and observer scheduling affect this reading; it is not the API Promise duration. |
+| Response bytes | UTF-8 byte length of the complete incoming JSON envelope. This is serialized application data, not compressed network bytes. |
+| Window | Request direction and limit, response entry count and completeness flags. `tail` with `limit: 0` requests all history. |
+
+When a latency threshold applies to the API, also time the actual
+`timeline.refetch` Promise in a temporary diagnostic build. Record duration
+derivation separately after the Promise resolves. Frame timing alone cannot
+establish that the decoded API result meets that threshold, and inspector lag
+can even make it exceed the in-page API duration. Keep this diagnostic
+build out of the ordinary first-screen, scroll and heap samples.
+
+Observe opening, entering `running`, further updates while running, returning
+to `idle`, and further idle updates. Repeat complete cycles to distinguish a
+shared read from one request per mounted reply. A controlled status replay must
+be identified as such: replaying metadata against a fixed history measures
+invalidation and transfer cost, while a real appended turn also measures history
+growth. Use valid subscription metadata from the host's own update events;
+fabricated directory events may be silently ignored. Do not submit real model
+prompts merely to obtain timing samples.
+
+Do not store prompts, reply text, tool output, request IDs or agent snapshots in
+the diagnostic report. Release parsed response bodies after collecting their
+size and entry count. Keep instrumented runs separate from the standard
+first-screen, scroll and heap comparison, since frame listeners and JSON parsing
+add overhead. Heap comparisons still require a fresh tab for every sample.
+
+Report per-run first-screen values, heap readings, total long-frame counts and
+the worst frame interval as well as medians. This script counts intervals
+**at least** 50 ms; a check defined as **greater than** 50 ms must distinguish an
+exactly 50 ms boundary sample. A zero median can still contain a nonzero outlier.
+Keep numeric results in the local report or review handoff, together with the
+revision hashes, replay method and limitations; do not commit raw captures.
+
 ## Method reference and limits
 
 The public [Better Paseo performance description](https://github.com/RoundRedDot/better-paseo/blob/main/README.md#performance)
