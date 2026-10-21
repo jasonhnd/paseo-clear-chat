@@ -6,6 +6,7 @@ import { buildChecklist, fallbackData, fetchData, record, searchData, skillData,
 import { editChanges, readLineRange, toolStatus } from "./tool-summary";
 import { finalToolReply } from "./tool-final-reply";
 import { recoverProjectedTool } from "./tool-projection";
+import { toolFailureMessage } from "./tool-error";
 
 export interface LiveToolCallPayload {
   name: string;
@@ -206,13 +207,14 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
       : typeof detail.code === "number"
         ? detail.code
         : undefined;
+  const status = toolStatus(data.status);
 
   return {
     id: `live-${rawName}`,
     tool: toolKind,
     title,
-    status: toolStatus(data.status),
-    error: stringValue(data.error),
+    status,
+    error: status === "failed" ? toolFailureMessage(data.error, detail) : stringValue(data.error),
     finalReply: finalToolReply(rawName, input, output),
     filePath: skill ? undefined : filePath,
     lineRange: toolKind === "read" && !skill ? readLineRange(detail, input, code) : undefined,
