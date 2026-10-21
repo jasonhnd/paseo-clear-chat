@@ -182,6 +182,41 @@ test("updates batch into one frame and cleanup restores only the plugin margin",
   assert.equal(dom.disconnected, true);
 });
 
+test("compact spacing finishes all layout reads before writing any margin", () => {
+  const dom = timeline(["collapsed", "collapsed", "collapsed", "collapsed"]);
+  const events = [];
+  for (const marker of dom.markers) {
+    const measure = marker.getBoundingClientRect.bind(marker);
+    marker.getBoundingClientRect = () => { events.push("read"); return measure(); };
+    let margin = "";
+    Object.defineProperty(marker.style, "marginTop", {
+      get: () => margin,
+      set: value => { events.push("write"); margin = value; },
+    });
+  }
+  dom.doc.defaultView.getComputedStyle = node => { events.push("read"); return node.style; };
+  dom.flush();
+  assert.ok(events.includes("write"));
+  assert.ok(events.lastIndexOf("read") < events.indexOf("write"), "a style write must never precede a layout read");
+  assert.deepEqual(dom.markers.map(node => node.style.marginTop), ["", "-12px", "-12px", "-12px"]);
+  dom.stop();
+});
+
+test("a compact row is measured once per refresh even when it is also a neighbor", () => {
+  const dom = timeline(["collapsed", "collapsed", "collapsed", "collapsed"]);
+  const readings = dom.markers.map(() => 0);
+  dom.markers.forEach((marker, index) => {
+    const measure = marker.getBoundingClientRect.bind(marker);
+    marker.getBoundingClientRect = () => { readings[index] += 1; return measure(); };
+  });
+  dom.flush();
+  assert.deepEqual(readings, [1, 1, 1, 1]);
+  dom.markers[1].height = 80;
+  dom.mutate(); dom.flush();
+  assert.deepEqual(dom.markers.map(node => node.style.marginTop), ["", "", "", "-12px"]);
+  dom.stop();
+});
+
 test("native runtimes without a document keep their layout", () => {
   assert.doesNotThrow(() => installCompactToolSpacing()());
 });
