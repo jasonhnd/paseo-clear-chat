@@ -44,8 +44,8 @@ fictional content, sample identifiers, neutral paths and URLs on example domains
   no change count; a red/green diff requires the provider to retain the actual
   patch or replacement text in the timeline.
 
-The full-timeline captures used `fetchAgentTimeline(agentId, { direction: "tail", limit: 0,
-projection: "projected" })`; each returned `hasOlder: false` and
+All full-timeline captures used `fetchAgentTimeline(agentId, { direction: "tail", limit: 0,
+projection: "projected" })`; all returned `hasOlder: false` and
 `hasNewer: false`. Fixtures retain each `entry.item` with the exact original
 keys, nesting, array lengths, value types, detail tags and metadata shapes.
 Tool namespaces and all message content, identifiers, paths and URLs were
