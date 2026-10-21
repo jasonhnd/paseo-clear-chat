@@ -118,12 +118,12 @@ Changes made in Clear Chat do not sync back to Beautiful Chat. Keep both backups
 
 | | |
 |---|---|
-| ![Shell and Git](docs/images/tool-bash.png)<br>**Shell and Git.** Terminal frame, highlighted command, exit code and time. | ![Read](docs/images/tool-read.png)<br>**Read.** Language icon, line numbers, copy button. The file name shows the file in your file manager. |
-| ![Edit](docs/images/tool-edit.png)<br>**Edit.** A clean diff, also built from old and new text when no diff is given. | ![Images](docs/images/tool-image.png)<br>**Images.** Read and generated images appear inline, with size and a clickable source. |
-| ![Reasoning tool](docs/images/tool-thinking.png)<br>**Reasoning tool.** Live thinking text, token count and numbered steps. | ![MCP](docs/images/tool-mcp.png)<br>**MCP.** Server, transport, inputs and response, all highlighted. |
-| ![Eval](docs/images/tool-eval.png)<br>**Eval.** Each cell's code, then what it printed. | ![Ask](docs/images/tool-ask.png)<br>**Ask.** Options with the recommended one and the chosen answer marked. |
-| ![Task](docs/images/tool-task.png)<br>**Subagents.** Name, type, model and the task it was given. | ![Hub](docs/images/hub.png)<br>**Hub.** Process, message and job cards for every hub operation. |
-| ![Paseo tools](docs/images/paseo.png)<br>**Paseo tools.** Paseo's mark, with the provider's mark on created agents. | |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-bash-dark.png"><img alt="Shell and Git" src="docs/images/tool-bash-light.png"></picture><br>**Shell and Git.** Terminal frame, highlighted command, exit code and time. | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-read-dark.png"><img alt="Read" src="docs/images/tool-read-light.png"></picture><br>**Read.** Language icon, line numbers, copy button. The file name shows the file in your file manager. |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-edit-dark.png"><img alt="Edit" src="docs/images/tool-edit-light.png"></picture><br>**Edit.** A clean diff, also built from old and new text when no diff is given. | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-image-dark.png"><img alt="Images" src="docs/images/tool-image-light.png"></picture><br>**Images.** Read and generated images appear inline, with size and a clickable source. |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-thinking-dark.png"><img alt="Reasoning tool" src="docs/images/tool-thinking-light.png"></picture><br>**Reasoning tool.** Live thinking text, token count and numbered steps. | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-mcp-dark.png"><img alt="MCP" src="docs/images/tool-mcp-light.png"></picture><br>**MCP.** Server, transport, inputs and response, all highlighted. |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-eval-dark.png"><img alt="Eval" src="docs/images/tool-eval-light.png"></picture><br>**Eval.** Each cell's code, then what it printed. | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-ask-dark.png"><img alt="Ask" src="docs/images/tool-ask-light.png"></picture><br>**Ask.** Options with the recommended one and the chosen answer marked. |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-task-dark.png"><img alt="Task" src="docs/images/tool-task-light.png"></picture><br>**Subagents.** Name, type, model and the task it was given. | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/hub-dark.png"><img alt="Hub" src="docs/images/hub-light.png"></picture><br>**Hub.** Process, message and job cards for every hub operation. |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/paseo-dark.png"><img alt="Paseo tools" src="docs/images/paseo-light.png"></picture><br>**Paseo tools.** Paseo's mark, with the provider's mark on created agents. | |
 
 Search, fetch and web search, plans and checklists, plain text, skills and any other tool also get their own cards. An unknown tool shows its name, its inputs as `name: value` and a preview of its output. It is never an empty box.
 
@@ -131,9 +131,9 @@ Search, fetch and web search, plans and checklists, plain text, skills and any o
 
 | | |
 |---|---|
-| ![Reasoning trace](docs/images/reasoning.png)<br>**Reasoning trace.** Collapsible steps with time per step and a token total. | ![Checklist](docs/images/tasks.png)<br>**Checklist.** Phase, status per task and the reason a task is blocked. |
-| ![Approval](docs/images/approval.png)<br>**Approvals.** Risk, the exact command and target. Past approvals stay as short status rows. | ![Prompt bubble](docs/images/user.png)<br>**Prompt bubble.** Copy button, token usage and pasted images, such as "3 images attached". |
-| ![Syntax block](docs/images/syntax.png)<br>**Code.** Language detection, line numbers, diff colours and a full-source copy. | |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/reasoning-dark.png"><img alt="Reasoning trace" src="docs/images/reasoning-light.png"></picture><br>**Reasoning trace.** Collapsible steps with time per step and a token total. | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tasks-dark.png"><img alt="Checklist" src="docs/images/tasks-light.png"></picture><br>**Checklist.** Phase, status per task and the reason a task is blocked. |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/approval-dark.png"><img alt="Approval" src="docs/images/approval-light.png"></picture><br>**Approvals.** Risk, the exact command and target. Past approvals stay as short status rows. | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/user-dark.png"><img alt="Prompt bubble" src="docs/images/user-light.png"></picture><br>**Prompt bubble.** Copy button, token usage and pasted images, such as "3 images attached". |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/syntax-dark.png"><img alt="Syntax block" src="docs/images/syntax-light.png"></picture><br>**Code.** Language detection, line numbers, diff colours and a full-source copy. | |
 
 ### Also included
 
@@ -145,7 +145,7 @@ Search, fetch and web search, plans and checklists, plain text, skills and any o
 
 ## Settings
 
-![Settings screen](docs/images/settings.png)
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/settings-dark.png"><img alt="Settings screen" src="docs/images/settings-light.png"></picture>
 
 | Setting | Effect |
 |---|---|

@@ -118,12 +118,12 @@ paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref 
 
 | | |
 |---|---|
-| ![Shell 和 Git](docs/images/tool-bash.png)<br>**Shell 和 Git。** 终端外框、高亮的命令、退出码和耗时。 | ![读取文件](docs/images/tool-read.png)<br>**读取文件。** 语言图标、行号、复制按钮。点文件名会在文件管理器里显示这个文件。 |
-| ![编辑](docs/images/tool-edit.png)<br>**编辑。** 清楚的改动对比；没有给出 diff 时，也会用新旧文字算出对比。 | ![图片](docs/images/tool-image.png)<br>**图片。** 读取和生成的图片直接显示，带尺寸和可以点的来源地址。 |
-| ![推理工具](docs/images/tool-thinking.png)<br>**推理工具。** 实时的思考文字、token 数和编号步骤。 | ![MCP](docs/images/tool-mcp.png)<br>**MCP。** 服务器、传输方式、输入和返回结果，全部高亮。 |
-| ![Eval](docs/images/tool-eval.png)<br>**Eval。** 每个单元格先显示运行的代码，再显示输出。 | ![提问](docs/images/tool-ask.png)<br>**提问。** 列出选项，标出推荐项和最后选的答案。 |
-| ![子 Agent](docs/images/tool-task.png)<br>**子 Agent。** 名字、类型、模型和交给它的任务。 | ![Hub](docs/images/hub.png)<br>**Hub。** 每一种 hub 操作都有对应的进程、消息或任务卡片。 |
-| ![Paseo 工具](docs/images/paseo.png)<br>**Paseo 工具。** 显示 Paseo 的标志，新建的 Agent 带上提供方的标志。 | |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-bash-dark.png"><img alt="Shell 和 Git" src="docs/images/tool-bash-light.png"></picture><br>**Shell 和 Git。** 终端外框、高亮的命令、退出码和耗时。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-read-dark.png"><img alt="读取文件" src="docs/images/tool-read-light.png"></picture><br>**读取文件。** 语言图标、行号、复制按钮。点文件名会在文件管理器里显示这个文件。 |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-edit-dark.png"><img alt="编辑" src="docs/images/tool-edit-light.png"></picture><br>**编辑。** 清楚的改动对比；没有给出 diff 时，也会用新旧文字算出对比。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-image-dark.png"><img alt="图片" src="docs/images/tool-image-light.png"></picture><br>**图片。** 读取和生成的图片直接显示，带尺寸和可以点的来源地址。 |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-thinking-dark.png"><img alt="推理工具" src="docs/images/tool-thinking-light.png"></picture><br>**推理工具。** 实时的思考文字、token 数和编号步骤。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-mcp-dark.png"><img alt="MCP" src="docs/images/tool-mcp-light.png"></picture><br>**MCP。** 服务器、传输方式、输入和返回结果，全部高亮。 |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-eval-dark.png"><img alt="Eval" src="docs/images/tool-eval-light.png"></picture><br>**Eval。** 每个单元格先显示运行的代码，再显示输出。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-ask-dark.png"><img alt="提问" src="docs/images/tool-ask-light.png"></picture><br>**提问。** 列出选项，标出推荐项和最后选的答案。 |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-task-dark.png"><img alt="子 Agent" src="docs/images/tool-task-light.png"></picture><br>**子 Agent。** 名字、类型、模型和交给它的任务。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/hub-dark.png"><img alt="Hub" src="docs/images/hub-light.png"></picture><br>**Hub。** 每一种 hub 操作都有对应的进程、消息或任务卡片。 |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/paseo-dark.png"><img alt="Paseo 工具" src="docs/images/paseo-light.png"></picture><br>**Paseo 工具。** 显示 Paseo 的标志，新建的 Agent 带上提供方的标志。 | |
 
 搜索、网页获取、网页搜索、计划和清单、纯文字、Skill 以及其他工具也都有自己的卡片。不认识的工具会显示工具名、`名字: 值` 形式的输入和输出预览，绝不会是空框。
 
@@ -131,9 +131,9 @@ paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref 
 
 | | |
 |---|---|
-| ![推理过程](docs/images/reasoning.png)<br>**推理过程。** 可以收起的步骤，带每步耗时和 token 总数。 | ![清单](docs/images/tasks.png)<br>**清单。** 阶段、每项任务的状态，以及任务被卡住的原因。 |
-| ![批准](docs/images/approval.png)<br>**批准。** 风险等级、具体命令和目标。已经处理过的批准留成一行简短的状态。 | ![提问气泡](docs/images/user.png)<br>**提问气泡。** 复制按钮、token 用量和粘贴的图片，例如「3 images attached」。 |
-| ![代码](docs/images/syntax.png)<br>**代码。** 识别语言、行号、改动颜色，复制时复制完整代码。 | |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/reasoning-dark.png"><img alt="推理过程" src="docs/images/reasoning-light.png"></picture><br>**推理过程。** 可以收起的步骤，带每步耗时和 token 总数。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tasks-dark.png"><img alt="清单" src="docs/images/tasks-light.png"></picture><br>**清单。** 阶段、每项任务的状态，以及任务被卡住的原因。 |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/approval-dark.png"><img alt="批准" src="docs/images/approval-light.png"></picture><br>**批准。** 风险等级、具体命令和目标。已经处理过的批准留成一行简短的状态。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/user-dark.png"><img alt="提问气泡" src="docs/images/user-light.png"></picture><br>**提问气泡。** 复制按钮、token 用量和粘贴的图片，例如「3 images attached」。 |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/syntax-dark.png"><img alt="代码" src="docs/images/syntax-light.png"></picture><br>**代码。** 识别语言、行号、改动颜色，复制时复制完整代码。 | |
 
 ### 还有这些
 
@@ -145,7 +145,7 @@ paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref 
 
 ## 设置
 
-![设置页](docs/images/settings.png)
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/settings-dark.png"><img alt="设置页" src="docs/images/settings-light.png"></picture>
 
 | 设置项 | 作用 |
 |---|---|

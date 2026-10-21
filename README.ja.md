@@ -118,12 +118,12 @@ Clear Chat で変えた設定は Beautiful Chat には戻りません。バッ�
 
 | | |
 |---|---|
-| ![Shell と Git](docs/images/tool-bash.png)<br>**Shell と Git。** ターミナル風の枠、色分けしたコマンド、終了コード、時間を表示します。 | ![ファイルの読み込み](docs/images/tool-read.png)<br>**ファイルの読み込み。** 言語アイコン、行番号、コピーボタン。ファイル名を押すとファイルマネージャーでそのファイルを表示します。 |
-| ![編集](docs/images/tool-edit.png)<br>**編集。** 見やすい差分を表示します。差分がないときは、変更前と変更後の文字から差分を作ります。 | ![画像](docs/images/tool-image.png)<br>**画像。** 読み込んだ画像や生成した画像をその場で表示し、サイズと押せる参照元を添えます。 |
-| ![推論ツール](docs/images/tool-thinking.png)<br>**推論ツール。** 考えている途中の文章、トークン数、番号付きのステップを表示します。 | ![MCP](docs/images/tool-mcp.png)<br>**MCP。** サーバー、通信方式、入力、応答を色分けして表示します。 |
-| ![Eval](docs/images/tool-eval.png)<br>**Eval。** セルごとに、実行したコードとその出力を表示します。 | ![質問](docs/images/tool-ask.png)<br>**質問。** 選択肢を並べ、おすすめと選んだ答えに印を付けます。 |
-| ![サブエージェント](docs/images/tool-task.png)<br>**サブエージェント。** 名前、種類、モデル、渡した作業を表示します。 | ![Hub](docs/images/hub.png)<br>**Hub。** hub のすべての操作に、プロセス・メッセージ・ジョブのカードがあります。 |
-| ![Paseo のツール](docs/images/paseo.png)<br>**Paseo のツール。** Paseo のマークを表示し、作成したエージェントには提供元のマークを付けます。 | |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-bash-dark.png"><img alt="Shell と Git" src="docs/images/tool-bash-light.png"></picture><br>**Shell と Git。** ターミナル風の枠、色分けしたコマンド、終了コード、時間を表示します。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-read-dark.png"><img alt="ファイルの読み込み" src="docs/images/tool-read-light.png"></picture><br>**ファイルの読み込み。** 言語アイコン、行番号、コピーボタン。ファイル名を押すとファイルマネージャーでそのファイルを表示します。 |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-edit-dark.png"><img alt="編集" src="docs/images/tool-edit-light.png"></picture><br>**編集。** 見やすい差分を表示します。差分がないときは、変更前と変更後の文字から差分を作ります。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-image-dark.png"><img alt="画像" src="docs/images/tool-image-light.png"></picture><br>**画像。** 読み込んだ画像や生成した画像をその場で表示し、サイズと押せる参照元を添えます。 |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-thinking-dark.png"><img alt="推論ツール" src="docs/images/tool-thinking-light.png"></picture><br>**推論ツール。** 考えている途中の文章、トークン数、番号付きのステップを表示します。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-mcp-dark.png"><img alt="MCP" src="docs/images/tool-mcp-light.png"></picture><br>**MCP。** サーバー、通信方式、入力、応答を色分けして表示します。 |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-eval-dark.png"><img alt="Eval" src="docs/images/tool-eval-light.png"></picture><br>**Eval。** セルごとに、実行したコードとその出力を表示します。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-ask-dark.png"><img alt="質問" src="docs/images/tool-ask-light.png"></picture><br>**質問。** 選択肢を並べ、おすすめと選んだ答えに印を付けます。 |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-task-dark.png"><img alt="サブエージェント" src="docs/images/tool-task-light.png"></picture><br>**サブエージェント。** 名前、種類、モデル、渡した作業を表示します。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/hub-dark.png"><img alt="Hub" src="docs/images/hub-light.png"></picture><br>**Hub。** hub のすべての操作に、プロセス・メッセージ・ジョブのカードがあります。 |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/paseo-dark.png"><img alt="Paseo のツール" src="docs/images/paseo-light.png"></picture><br>**Paseo のツール。** Paseo のマークを表示し、作成したエージェントには提供元のマークを付けます。 | |
 
 検索、Web の取得と検索、計画とチェックリスト、プレーンテキスト、Skill、そのほかのツールにもそれぞれカードがあります。知らないツールでも、ツール名、`名前: 値` の形の入力、出力のプレビューを表示します。空の枠になることはありません。
 
@@ -131,9 +131,9 @@ Clear Chat で変えた設定は Beautiful Chat には戻りません。バッ�
 
 | | |
 |---|---|
-| ![推論の流れ](docs/images/reasoning.png)<br>**推論の流れ。** たためるステップに、ステップごとの時間とトークンの合計を付けます。 | ![チェックリスト](docs/images/tasks.png)<br>**チェックリスト。** フェーズ、タスクごとの状態、止まっているタスクの理由を表示します。 |
-| ![承認](docs/images/approval.png)<br>**承認。** リスク、実行するコマンド、対象を表示します。済んだ承認は短い状態の行として残ります。 | ![プロンプトの吹き出し](docs/images/user.png)<br>**プロンプトの吹き出し。** コピーボタン、トークン使用量、貼り付けた画像（例：「3 images attached」）を表示します。 |
-| ![コード](docs/images/syntax.png)<br>**コード。** 言語の判定、行番号、差分の色分けがあり、コピーではコード全体をコピーします。 | |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/reasoning-dark.png"><img alt="推論の流れ" src="docs/images/reasoning-light.png"></picture><br>**推論の流れ。** たためるステップに、ステップごとの時間とトークンの合計を付けます。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tasks-dark.png"><img alt="チェックリスト" src="docs/images/tasks-light.png"></picture><br>**チェックリスト。** フェーズ、タスクごとの状態、止まっているタスクの理由を表示します。 |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/approval-dark.png"><img alt="承認" src="docs/images/approval-light.png"></picture><br>**承認。** リスク、実行するコマンド、対象を表示します。済んだ承認は短い状態の行として残ります。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/user-dark.png"><img alt="プロンプトの吹き出し" src="docs/images/user-light.png"></picture><br>**プロンプトの吹き出し。** コピーボタン、トークン使用量、貼り付けた画像（例：「3 images attached」）を表示します。 |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/syntax-dark.png"><img alt="コード" src="docs/images/syntax-light.png"></picture><br>**コード。** 言語の判定、行番号、差分の色分けがあり、コピーではコード全体をコピーします。 | |
 
 ### そのほか
 
@@ -145,7 +145,7 @@ Clear Chat で変えた設定は Beautiful Chat には戻りません。バッ�
 
 ## 設定
 
-![設定画面](docs/images/settings.png)
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/settings-dark.png"><img alt="設定画面" src="docs/images/settings-light.png"></picture>
 
 | 設定 | 内容 |
 |---|---|
