@@ -1,0 +1,94 @@
+{
+  "provider": "Hermes",
+  "items": [
+    {
+      "type": "user_message",
+      "text": "Update the sample configuration and confirm the changes.",
+      "messageId": "sample-messageId"
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-call-1",
+      "name": "edit",
+      "detail": {
+        "type": "edit",
+        "filePath": "/workspace/sample/config.txt",
+        "unifiedDiff": "--- a/config.txt\n+++ b/config.txt\n@@ -1 +1 @@\n-old setting\n+new setting\n"
+      },
+      "metadata": {
+        "kind": "edit",
+        "title": "Edit /workspace/sample/config.txt"
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-call-2",
+      "name": "other",
+      "detail": {
+        "type": "plain_text",
+        "label": "Sample operation",
+        "text": "The sample operation completed.",
+        "icon": "wrench"
+      },
+      "metadata": {
+        "kind": "other",
+        "title": "Sample operation"
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "edit-approval-sample-1",
+      "name": "edit-approval-sample-1",
+      "detail": {
+        "type": "unknown",
+        "input": null,
+        "output": null
+      },
+      "metadata": {
+        "title": "edit-approval-sample-1"
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-call-4",
+      "name": "edit",
+      "detail": {
+        "type": "edit",
+        "filePath": "/workspace/sample/config.txt",
+        "unifiedDiff": "--- a/config.txt\n+++ b/config.txt\n@@ -1 +1 @@\n-old setting\n+new setting\n"
+      },
+      "metadata": {
+        "kind": "edit",
+        "title": "Edit /workspace/sample/config.txt"
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "edit-approval-sample-2",
+      "name": "edit-approval-sample-2",
+      "detail": {
+        "type": "unknown",
+        "input": null,
+        "output": null
+      },
+      "metadata": {
+        "title": "edit-approval-sample-2"
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "assistant_message",
+      "text": "The sample configuration has been updated.",
+      "messageId": "sample-messageId"
+    }
+  ]
+}

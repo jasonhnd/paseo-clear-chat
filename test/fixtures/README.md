@@ -23,6 +23,16 @@ fictional content, sample identifiers, neutral paths and URLs on example domains
   `recap`, `ask`, two `actions` with `label` and `message`, and boolean `blocked`.
   The result retains its nested `output.output` shape. All prose and the call ID
   are fictional. Key, nesting, array-length and value-type differences are zero.
+- `real-hermes-approvals.json` retains a seven-item projected timeline with two
+  edits and two completed approval records. Each approval is a `tool_call` with
+  `detail: { type: "unknown", input: null, output: null }`; its name, call ID and
+  sole metadata title match an `edit-approval-*` identifier. Each follows an edit,
+  but neither contains a reference to that edit. The single-item transformer
+  therefore renders a standalone approval status instead of guessing a link.
+  All content, paths and identifiers are fictional; item keys, nesting, array
+  lengths, value types, detail tags and metadata shapes match the capture.
+  `test/tool-approval.test.cjs` replays both records on web, iOS and Android and
+  derives pending and denied variants as additional synthetic coverage.
 
 Both captures used `fetchAgentTimeline(agentId, { direction: "tail", limit: 0,
 projection: "projected" })`; both returned `hasOlder: false` and
