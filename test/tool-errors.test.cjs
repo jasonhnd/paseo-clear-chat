@@ -18,6 +18,8 @@ const failures = [
   ["result content blocks", { result: { content: [{ type: "text", text: "Request failed" }, { type: "text", text: "Service unavailable" }] } }, null, "Request failed\nService unavailable"],
   ["content text", { type: "read", filePath: "missing.txt", content: "Read failed" }, null, "Read failed"],
   ["output content array", { output: [{ type: "text", text: "Resource unavailable" }] }, null, "Resource unavailable"],
+  ["write output with input content", { type: "write", content: "Draft file body", output: "Write permission denied" }, null, "Write permission denied"],
+  ["write result content blocks", { type: "write", content: "Draft file body", result: { content: [{ type: "text", text: "Write failed" }] } }, null, "Write failed"],
   ["error beyond the output fold", { output: longError }, null, longError],
 ];
 
@@ -54,6 +56,33 @@ test("upstream #19: empty text envelopes do not hide the failure fallback", () =
   const h = createToolHarness();
   for (const output of [undefined, null, "", " \n ", [], { error: "", message: " " }, { content: [{ type: "text", text: "" }] }]) {
     const mounted = h.mount(call({ type: "unknown", output }), false);
+    assert.ok(h.text(find(h, mounted.tree, "tool-card-body")).includes(fallback));
+  }
+});
+
+test("upstream #19: failed writes with only input content show the fallback", () => {
+  const h = createToolHarness();
+  const build = h.load("client/tool-call-data.ts").buildLiveToolCallData;
+  for (const type of ["write", "unknown"]) {
+    const item = { ...call({ type, filePath: "sample.txt", content: "Draft file body" }, null), name: "Write" };
+    const mounted = h.mount(item, false);
+    assert.equal(build(mounted.data).error, fallback);
+    assert.equal(build(mounted.data).code, "Draft file body");
+    assert.equal(find(h, mounted.tree, "tool-summary-row").props.accessibilityState.expanded, true);
+    assert.ok(h.text(find(h, mounted.tree, "tool-card-body")).includes(fallback));
+    find(h, mounted.tree, "tool-summary-row").props.onPress();
+    find(h, mounted.render(), "tool-summary-row").props.onPress();
+    assert.ok(h.text(find(h, mounted.render(), "tool-card-body")).includes(fallback));
+  }
+});
+
+test("upstream #19: request content is not a reported failure", () => {
+  const h = createToolHarness();
+  const build = h.load("client/tool-call-data.ts").buildLiveToolCallData;
+  for (const [name, type] of [["Edit", "edit"], ["github", "unknown"]]) {
+    const item = { ...call({ type, content: "Sample request body" }, null), name };
+    const mounted = h.mount(item, false);
+    assert.equal(build(mounted.data).error, fallback);
     assert.ok(h.text(find(h, mounted.tree, "tool-card-body")).includes(fallback));
   }
 });

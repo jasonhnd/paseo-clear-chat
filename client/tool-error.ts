@@ -1,3 +1,4 @@
+import type { ToolCallKind } from "../shared/contracts";
 import { record, stringValue } from "./tool-detail";
 
 function reportedText(value: unknown): string | undefined {
@@ -16,6 +17,10 @@ function reportedText(value: unknown): string | undefined {
   return undefined;
 }
 
-export function toolFailureMessage(error: string | null | undefined, detail: Record<string, unknown>): string {
-  return stringValue(error) ?? reportedText(detail) ?? "Failed (no error message reported)";
+export function toolFailureMessage(error: string | null | undefined, detail: Record<string, unknown>, tool: ToolCallKind): string {
+  // These tools carry request content at the detail root. Only exclude that
+  // input field; content blocks inside output/result still report failures.
+  const report = tool === "write" || tool === "edit" || tool === "github"
+    ? { ...detail, content: undefined } : detail;
+  return stringValue(error) ?? reportedText(report) ?? "Failed (no error message reported)";
 }
