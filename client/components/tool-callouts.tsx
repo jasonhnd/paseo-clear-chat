@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { View, Text, Pressable } from "react-native";
 import { Glyph } from "./glyph";
 import { frosted } from "./frosted";
@@ -11,7 +11,7 @@ import type { ExtendedThemeTokens } from "./theme-tokens";
 import { HubCallout } from "./hub-callout";
 import { PaseoToolCallout } from "./paseo-tool-callouts";
 import { renderTerminalOutput } from "./syntax-highlight";
-import { ToolCodeBlock, ToolOutput } from "./tool-output";
+import { ToolCodeBlock, ToolOutput, ToolOutputVisibility } from "./tool-output";
 import { ImagePreview } from "./image-preview";
 import { GitHubBody } from "./github-body";
 import { SubagentBatch } from "./subagent-batch";
@@ -21,7 +21,7 @@ import { isImagePath } from "../image-file";
 import type { ImageFile } from "../image-file";
 import { selectionCodeText, selectionSurface } from "./selection-actions";
 import type { ToolCalloutData } from "../../shared/contracts";
-import { useEnhancerPreferences } from "../preferences";
+import { useEnhancerPreferences, type OutputLineLimit } from "../preferences";
 import { toolErrorLine } from "../tool-error";
 
 function getToolIconName(tool: string): string {
@@ -68,7 +68,18 @@ export function ToolCallout({
   imageFile,
 }: ToolCalloutProps) {
   const { foldLongOutputAfter } = useEnhancerPreferences();
-  const errorLine = toolErrorLine(data, foldLongOutputAfter);
+  const [visibleOutputs, setVisibleOutputs] = useState<{ limit: OutputLineLimit; texts: ReadonlySet<string> }>();
+  const reportVisibility = useCallback((text: string, visible: boolean) => {
+    setVisibleOutputs(previous => {
+      const texts = new Set(previous?.limit === foldLongOutputAfter ? previous.texts : []);
+      if (texts.has(text) === visible) return previous;
+      if (visible) texts.add(text); else texts.delete(text);
+      return { limit: foldLongOutputAfter, texts };
+    });
+  }, [foldLongOutputAfter]);
+  const errorLine = toolErrorLine(data, foldLongOutputAfter,
+    visibleOutputs?.limit === foldLongOutputAfter ? visibleOutputs.texts : undefined,
+    imageFile !== undefined && isImagePath(data.filePath));
   // Every branch below needs a payload. A tool that carries none — a hub op
   // with no parsed record, an unmapped kind — would otherwise draw an empty
   // panel, so the raw output takes over.
@@ -167,6 +178,7 @@ export function ToolCallout({
       </Pressable>
 
       {expanded && (
+        <ToolOutputVisibility.Provider value={reportVisibility}>
         <View testID="tool-card-body" style={styles.body}>
           {errorLine ? <Text testID="tool-error-line" selectable style={styles.mcpErrorText}>{errorLine}</Text> : null}
           {hasToolDetailBody(data) ? <ToolDetailBody data={data} tokens={tokens} onRevealPath={onRevealPath} /> : null}
@@ -485,6 +497,7 @@ export function ToolCallout({
 
           {!hasTypedBody ? <ToolDetailBody data={data} tokens={tokens} /> : null}
         </View>
+        </ToolOutputVisibility.Provider>
       )}
     </View>
   );

@@ -182,3 +182,43 @@ test("object errors beyond the output fold remain visible by default", () => {
   assert.equal(h.text(find(h, tree, "tool-error-line")), "Final failure");
   assert.match(h.text(tree), /Final failure/);
 });
+
+test("error deduplication follows manual output expansion and refolding", () => {
+  const h = createToolHarness();
+  const output = [...Array(20).fill("Progress"), "Final failure"].join("\n");
+  const mounted = h.mount(call({ type: "shell", command: "sample", output }, { message: "Final failure" }), false);
+  assert.equal(h.text(find(h, mounted.tree, "tool-error-line")), "Final failure");
+  h.nodes(mounted.tree, node => node.props.accessibilityLabel === "Show all 21 lines")[0].props.onPress();
+  const expanded = mounted.render();
+  assert.equal(find(h, expanded, "tool-error-line"), undefined);
+  assert.equal(h.text(expanded).split("Final failure").length - 1, 1);
+  h.nodes(expanded, node => node.props.accessibilityLabel === "Show fewer lines")[0].props.onPress();
+  const folded = mounted.render();
+  assert.equal(h.text(find(h, folded, "tool-error-line")), "Final failure");
+  assert.equal(h.text(folded).split("Final failure").length - 1, 1);
+});
+
+test("error deduplication respects a changed output limit", () => {
+  const h = createToolHarness();
+  const output = [...Array(20).fill("Progress"), "Final failure"].join("\n");
+  const mounted = h.mount(call({ type: "read", filePath: "sample.txt", content: output }, { message: "Final failure" }), false);
+  h.preferences.foldLongOutputAfter = "never";
+  const complete = mounted.render();
+  assert.equal(find(h, complete, "tool-error-line"), undefined);
+  h.preferences.foldLongOutputAfter = 10;
+  assert.equal(h.text(find(h, mounted.render(), "tool-error-line")), "Final failure");
+});
+
+test("typed GitHub, fetch, search and discovery outputs avoid duplicate error lines", () => {
+  const h = createToolHarness();
+  for (const item of [
+    { ...call({ type: "unknown", content: '{"op":"status"}', output: "Request denied" }, { message: "Request denied" }), name: "github" },
+    call({ type: "fetch", url: "https://example.org", content: "Request denied" }, { reason: "Request denied" }),
+    call({ type: "search", results: [{ path: "sample.txt", snippet: "Request denied" }] }, { text: "Request denied" }),
+    { ...call({ type: "unknown", output: "Request denied" }, { detail: "Request denied" }), name: "tool_search" },
+  ]) {
+    const { tree } = h.mount(item, false);
+    assert.equal(find(h, tree, "tool-error-line"), undefined);
+    assert.equal(h.text(tree).split("Request denied").length - 1, 1);
+  }
+});
