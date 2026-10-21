@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
+const realHermesPatch = require("./fixtures/real-hermes-patch.json");
 const { createToolHarness } = require("./helpers/tool-harness.cjs");
 
 // Use the real diff painter as well as the registered timeline/card pipeline.
@@ -26,6 +27,24 @@ function check(detail, added, removed) {
     }
   }
   return { data, tree };
+}
+
+for (const [index, item] of realHermesPatch.items.entries()) {
+  test(`real Hermes patch ${index + 1}: a success-only projection preserves its text without invented counts`, () => {
+    const original = structuredClone(item);
+    const data = build(item);
+    assert.equal(data.changes, undefined, "the captured item has no patch or replacement text to count");
+    assert.equal(data.diff, item.detail.unifiedDiff);
+    for (const expanded of [false, true]) {
+      const { tree } = h.mount(item, expanded);
+      assert.equal(summary(tree), "example.txt");
+      assert.doesNotMatch(summary(tree), /[+−]0/);
+      if (expanded) assert.ok(h.text(tree).includes(item.detail.unifiedDiff));
+      assert.equal(rows(tree, "+").length, 0);
+      assert.equal(rows(tree, "-").length, 0);
+    }
+    assert.deepEqual(item, original);
+  });
 }
 
 for (const [oldKey, newKey] of [["old_string", "new_string"], ["oldText", "newText"], ["oldString", "newString"], ["old_text", "new_text"]]) {
