@@ -59,3 +59,62 @@ test("captured assistant reply preserves complete spaced paths and the remote UR
   assert.equal(pictures(h, tree).length, 3);
   assert.ok(pictures(h, tree).some(image => image.props.source.uri === "https://example.org/avatar.png?size=80"));
 });
+
+for (const output of [
+  "sample image.png",
+  "Found sample image.png in the directory.",
+  "image.png other.png",
+  "output folder/sample image.png",
+  "Saved output folder/sample image.png",
+  '-rw-r--r--@  1 visitor  staff  128 Jan 01 12:00 "sample image.png"',
+  "-rw-r--r--  1 visitor  staff  128 Jan 01 2026 /workspace/sample image.png",
+  "lrwxrwxrwx  1 visitor  staff  128 Jan 01 12:00 sample.png -> ./target image.png",
+]) {
+  test(`ambiguous tool text does not create an image path: ${output}`, () => {
+    const h = harness();
+    const build = h.load("client/tool-call-data.ts").buildLiveToolCallData;
+    assert.deepEqual(build(call(output)).images, []);
+  });
+}
+
+for (const output of ["image.png", { images: ["sample image.png"] }, { type: "image", path: "sample image.png" }]) {
+  test(`complete standalone or explicit tool image paths remain supported: ${JSON.stringify(output)}`, () => {
+    const h = harness();
+    const images = h.load("client/tool-call-data.ts").buildLiveToolCallData(call(output)).images;
+    const path = typeof output === "string" ? output : "sample image.png";
+    assert.deepEqual(images, [{ source: path, path }]);
+  });
+}
+
+test("a pending or failed replacement never borrows the preceding file preview", async () => {
+  let finish;
+  const h = harness({ imageRpc: ({ path }) => path.endsWith("first.png")
+    ? Promise.resolve({ dataUri: "data:image/png;base64,c2FtcGxl", width: 32, height: 24, bytes: 6, error: null })
+    : new Promise(resolve => { finish = resolve; }) });
+  const mounted = h.mount({ type: "assistant_message", text: "/workspace/first.png" });
+  assert.equal(sourceLinks(h, mounted.tree).length, 0);
+  await settle();
+  assert.equal(pictures(h, mounted.render()).length, 1);
+  const replacement = { ...mounted.data, text: "/workspace/missing.png" };
+  assert.equal(pictures(h, mounted.render(replacement)).length, 0);
+  assert.equal(sourceLinks(h, mounted.render(replacement)).length, 0);
+  finish({ dataUri: null, width: null, height: null, bytes: null, error: missing });
+  await settle();
+  const tree = mounted.render(replacement);
+  assert.equal(sourceLinks(h, tree).length, 0);
+  assert.doesNotMatch(h.text(tree), /ENOENT|\bstat\b/);
+});
+
+for (const tool of ["read", "write"]) {
+  test(`failed ${tool} image previews also hide the card and filesystem error`, async () => {
+    const h = harness({ imageRpc: async () => { throw new Error(missing); } });
+    const mounted = h.mount({ type: "tool_call", name: tool, status: "completed", detail: {
+      type: tool, filePath: "/workspace/sample/image.png", content: "Image file",
+    } });
+    await settle();
+    const tree = mounted.render();
+    assert.equal(pictures(h, tree).length, 0);
+    assert.equal(sourceLinks(h, tree).length, 0);
+    assert.doesNotMatch(h.text(tree), /ENOENT|\bstat\b/);
+  });
+}

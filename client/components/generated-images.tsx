@@ -41,6 +41,8 @@ function GeneratedImagePreview({ image, cwd, tokens }: {
   const file = image.path ? local : {
     dataUri: image.source, width: null, height: null, bytes: null, error: null,
   };
+  // Local candidates become cards only after a successful daemon read.
+  if (!file?.dataUri || file.error) return null;
   return <ImagePreview
     path={image.source}
     file={file}

@@ -220,7 +220,7 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
     status,
     error: status === "failed" ? toolFailureMessage(data.error, detail, toolKind) : errorText(data.error),
     finalReply: finalToolReply(rawName, rawInput, output),
-    images: extractGeneratedImages([output, detail.text]),
+    images: extractGeneratedImages([output, detail.text], { toolOutput: true }),
     filePath: skill ? undefined : filePath,
     lineRange: toolKind === "read" && !skill ? readLineRange(detail, input, code) : undefined,
     changes: edit?.changes,

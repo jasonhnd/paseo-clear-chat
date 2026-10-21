@@ -115,12 +115,6 @@ export function ImagePreview({ path, file, tokens, onReveal, revealLabel }: Imag
           backgroundColor: tokens.surface0,
         },
         image: { width: "100%", height: MAX_HEIGHT },
-        message: {
-          fontFamily: tokens.fontUi,
-          fontSize: tokens.fs(11.5),
-          color: tokens.foregroundMuted,
-          padding: 10,
-        },
       }),
     [tokens],
   );
@@ -142,6 +136,8 @@ export function ImagePreview({ path, file, tokens, onReveal, revealLabel }: Imag
           maxWidth: "100%" as const,
         }
       : styles.image;
+
+  if (!file?.dataUri || file.error || failed) return null;
 
   return (
     <View style={styles.container}>
@@ -183,11 +179,7 @@ export function ImagePreview({ path, file, tokens, onReveal, revealLabel }: Imag
         ) : null}
       </View>
 
-      {file === null ? (
-        <Text style={styles.message}>Reading the file…</Text>
-      ) : failed || file.dataUri === null ? (
-        <Text style={styles.message}>{failed ? "The image could not be displayed. Open the source above." : file.error ?? "The image could not be read."}</Text>
-      ) : shown ? (
+      {shown ? (
         <View style={styles.canvas}>
           <Image
             source={{ uri: file.dataUri }}

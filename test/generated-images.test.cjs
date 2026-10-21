@@ -51,7 +51,8 @@ for (const [label, output, path] of [
   test(`upstream #12: ${label} image file output uses daemon bytes and a clickable file path`, async () => {
     const h = harness();
     const mounted = h.mount(call(output), false);
-    assert.match(h.text(mounted.tree), /Reading the file/);
+    assert.equal(pictures(h, mounted.tree).length, 0);
+    assert.equal(sourceLinks(h, mounted.tree).length, 0);
     await settle();
     const tree = mounted.render();
     assert.equal(pictures(h, tree)[0].props.source.uri, embedded);
@@ -157,28 +158,26 @@ for (const [label, imageRpc] of [
   ["missing file", async () => ({ dataUri: null, width: null, height: null, bytes: null, error: "File not found" })],
   ["size limit", async () => ({ dataUri: null, width: 1200, height: 800, bytes: 4_000_000, error: "Too large to preview" })],
 ]) {
-  test(`upstream #12: ${label} keeps a clickable address without an empty image frame`, async () => {
+  test(`upstream #12: ${label} removes the unavailable image card`, async () => {
     const h = harness({ imageRpc });
     const mounted = h.mount(call("artifacts/output.png"), false);
     await settle();
     const tree = mounted.render();
     assert.equal(pictures(h, tree).length, 0);
-    assert.match(h.text(tree), /Image unavailable|File not found|Too large to preview/);
-    sourceLinks(h, tree)[0].props.onPress();
-    assert.deepEqual(h.reveals, [{ cwd: "/workspace/demo", path: "artifacts/output.png" }]);
+    assert.equal(sourceLinks(h, tree).length, 0);
+    assert.doesNotMatch(h.text(tree), /Image unavailable|File not found|Too large to preview/);
   });
 }
 
 for (const source of [remote, embedded]) {
-  test(`upstream #12: ${source === remote ? "remote load" : "embedded decode"} failure removes the preview and keeps its source link`, () => {
+  test(`upstream #12: ${source === remote ? "remote load" : "embedded decode"} failure removes the image card`, () => {
     const h = harness();
     const mounted = h.mount(call({ content: [{ type: "image_url", image_url: { url: source } }] }), false);
     pictures(h, mounted.tree)[0].props.onError({ nativeEvent: { error: "Decode failed" } });
     const tree = mounted.render();
     assert.equal(pictures(h, tree).length, 0);
-    assert.match(h.text(tree), /could not be displayed/);
-    sourceLinks(h, tree)[0].props.onPress();
-    assert.deepEqual(h.links, [source]);
+    assert.equal(sourceLinks(h, tree).length, 0);
+    assert.doesNotMatch(h.text(tree), /Decode failed|could not be displayed/);
   });
 }
 
@@ -259,16 +258,15 @@ test("upstream #12: daemon image reads preserve complete files and filenames wit
   assert.equal(oversized.error, "Too large to preview");
 });
 
-test("upstream #12: local image decode failures retain the file link", async () => {
+test("upstream #12: local image decode failures remove the image card", async () => {
   const h = harness();
   const mounted = h.mount(call("artifacts/output.png"), false);
   await settle();
   pictures(h, mounted.render())[0].props.onError();
   const tree = mounted.render();
   assert.equal(pictures(h, tree).length, 0);
-  assert.match(h.text(tree), /could not be displayed/);
-  sourceLinks(h, tree)[0].props.onPress();
-  assert.deepEqual(h.reveals, [{ cwd: "/workspace/demo", path: "artifacts/output.png" }]);
+  assert.equal(sourceLinks(h, tree).length, 0);
+  assert.doesNotMatch(h.text(tree), /could not be displayed/);
 });
 
 test("upstream #12: explicit wrap-up replies preview output images once", () => {

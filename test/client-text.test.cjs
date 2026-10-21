@@ -49,13 +49,14 @@ for (const [label, cause, expected] of [
   ["object", { error: { reason: "Connection lost" } }, "Connection lost"],
   ["unknown", { code: 500 }, undefined],
 ]) {
-  test(`image RPC ${label} failures display readable text`, async () => {
+  test(`image RPC ${label} failures hide the unavailable preview`, async () => {
     const h = createToolHarness("ios", { images: true, imageRpc: async () => { throw cause; } });
     const mounted = h.mount({ type: "tool_call", name: "read", status: "failed", detail: { type: "read", filePath: "sample.png" } }, false);
     await settle();
-    const text = h.text(mounted.render());
-    assert.ok(text.includes(expected ?? "Image could not be loaded."));
-    assert.doesNotMatch(text, /\[object Object\]|"code"/);
+    const tree = mounted.render();
+    assert.equal(h.nodes(tree, node => node.type === "Image").length, 0);
+    assert.equal(h.nodes(tree, node => node.props.accessibilityLabel === "Show sample.png in the file manager").length, 0);
+    assert.doesNotMatch(h.text(tree), /Connection lost|Image could not be loaded|\[object Object\]|"code"/);
   });
 
   test(`preference RPC ${label} failures display readable text`, async () => {
