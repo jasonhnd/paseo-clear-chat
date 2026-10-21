@@ -109,8 +109,9 @@ export function searchData(
     ?? (Array.isArray(output) ? output : web && typeof result.url === "string" ? [result] : undefined);
   const content = valueText(detail.content ?? output);
   const filePaths = Array.isArray(detail.filePaths) ? detail.filePaths : [];
-  const source = Array.isArray(rows) ? rows : content?.trim()
-    ? content.split(/\r?\n/).filter((line) => line.trim()) : filePaths;
+  const source = Array.isArray(rows) ? rows
+    : detail.mode === "files_with_matches" && filePaths.length ? filePaths
+      : content?.trim() ? content.split(/\r?\n/).filter((line) => line.trim()) : filePaths;
   const results = source.flatMap((value) => {
     const row = resultRow(value);
     if (!row) return [];
@@ -122,7 +123,8 @@ export function searchData(
     }
     // A prose-only match can still reveal the reported scope, rather than
     // passing its entire contents off as a filesystem path.
-    if (!web && row.path && /\s/.test(row.path) && !row.path.includes("/")) {
+    if (!web && row.path && /\s/.test(row.path) && !row.path.includes("/")
+      && !filePaths.includes(row.path) && !(typeof value === "string" && /:\d+(?::|$)/.test(value))) {
       row.path = filePaths.length === 1 ? String(filePaths[0]) : stringValue(input.path, detail.path) ?? ".";
     }
     return [row];

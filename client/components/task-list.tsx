@@ -307,7 +307,7 @@ export function TaskList({ data, tokens, onToggleTask }: TaskListProps) {
                   {data.phaseName}
                 </Text>
                 <Text selectable style={styles.phaseBadge}>
-                  OMP todo
+                  Checklist
                 </Text>
               </View>
             </View>

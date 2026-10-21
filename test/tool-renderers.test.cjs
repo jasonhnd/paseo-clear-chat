@@ -215,3 +215,16 @@ test("untrusted fetch schemes never reach the platform URL opener", () => {
   h.nodes(tree, node => node.type === "Pressable" && node.props.accessibilityRole === "link")[0].props.onPress();
   assert.deepEqual(h.links, []);
 });
+
+test("search rows preserve filenames containing spaces and use reported file lists", () => {
+  for (const detail of [
+    { type: "search", query: "enabled", content: "sample settings.ts:2:enabled" },
+    { type: "search", query: "*.ts", mode: "files_with_matches", filePaths: ["sample settings.ts"], content: "Found one file." },
+  ]) {
+    const { tree } = h.mount(call("search", detail));
+    const links = h.nodes(tree, node => node.type === "Pressable" && node.props.accessibilityRole === "link");
+    assert.equal(links.length, 1);
+    links[0].props.onPress();
+    assert.deepEqual(h.reveals, [{ cwd: "/workspace/demo", path: "sample settings.ts" }]);
+  }
+});
