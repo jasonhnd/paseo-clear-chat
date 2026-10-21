@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { createToolHarness } = require("./helpers/tool-harness.cjs");
+const capturedReplies = require("./fixtures/real-assistant-links.json");
 
 const markdownTarget = "https://example.org/guide?from=reply&mode=full#links";
 const bareTarget = "https://example.org/reference";
@@ -19,6 +20,49 @@ function press(link) {
   link.props.onPress({ stopPropagation() { stopped = true; } });
   assert.equal(stopped, true, "link presses do not bubble into surrounding controls");
 }
+
+for (const [index, source] of capturedReplies.entries()) {
+  for (const platform of ["web", "ios", "android"]) {
+    test(`captured reply ${index + 1} autolinks a URL after fullwidth punctuation on ${platform}`, () => {
+      const browser = [];
+      const h = createToolHarness(platform, { markdown: true, globals: { open: (...args) => browser.push(args) } });
+      const item = structuredClone(source);
+      const transformed = h.transformers.get(item.type).transform({ item, phase: "complete" });
+      assert.equal(transformed.items[0].kind, "omp-assistant");
+      assert.equal(transformed.items[0].data.text, source.text);
+      const { tree } = h.mount(item);
+      const links = linksIn(h, tree);
+      const bare = links.filter(link => h.text(link) === "https://example.com/sample/project");
+      assert.equal(bare.length, 1, "the captured bare URL becomes an inline link");
+      assert.equal(links.length, index === 0 ? 2 : 3, "explicit links and image links stay intact");
+      assert.equal(h.nodes(tree, node => node.type === "Image").length, index === 0 ? 0 : 2);
+      press(bare[0]);
+      assert.deepEqual(browser, platform === "web" ? [["https://example.com/sample/project", "_blank", "noopener,noreferrer"]] : []);
+      assert.deepEqual(h.links, platform === "web" ? [] : ["https://example.com/sample/project"]);
+      assert.deepEqual(item, source, "the projected item stays unchanged");
+    });
+  }
+}
+
+test("bare URLs respect Unicode punctuation, adjacent code and word boundaries", () => {
+  const h = createToolHarness("ios", { markdown: true });
+  const text = [
+    "Label\uff1ahttps://example.com/colon\u3002",
+    "\u201chttps://example.com/quoted\u201d\uff0c",
+    "\uff08https://example.com/parenthesized\uff09\uff1b",
+    "https://example.com/adjacent`code`",
+    "\u03b1https://example.com/word xhttps://example.com/word _https://example.com/word",
+    "`https://example.com/code`",
+  ].join("\n\n");
+  const tree = renderReply(h, text);
+  const links = linksIn(h, tree);
+  assert.deepEqual(links.map(link => h.text(link)), ["colon", "quoted", "parenthesized", "adjacent"].map(path => `https://example.com/${path}`));
+  links.forEach(press);
+  assert.deepEqual(h.links, links.map(link => h.text(link)));
+  for (const literal of ["\uff1a", "\u3002", "\u201c", "\u201d", "\uff0c", "\uff08", "\uff09", "\uff1b", "code"]) {
+    assert.ok(h.text(tree).includes(literal), "surrounding punctuation and code remain visible");
+  }
+});
 
 for (const client of ["desktop", "web", "ios"]) {
   test(`upstream #4: Markdown links and bare URLs open through the ${client} client`, async () => {

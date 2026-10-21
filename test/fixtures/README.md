@@ -33,6 +33,26 @@ replaced. No source agent identifiers or connection details are stored here.
 The original and sanitized item structures were compared before the captures
 were committed. Raw captures are temporary and are never committed.
 
+## Captured assistant links
+
+`real-assistant-links.json` contains two sanitized `assistant_message` items
+from projected Hermes timelines. Both retain exactly `type`, `text` and
+`messageId`. The first reply is a three-item ordered list: a Markdown link, a
+bare URL immediately after a fullwidth colon, and a note ending in an
+ideographic full stop. The second has two Markdown images followed by a bare
+URL immediately after a fullwidth colon. Newlines, Markdown delimiters and
+surrounding punctuation are preserved. Prose, message IDs and URLs are
+fictional; Unicode punctuation is escaped in JSON.
+
+The running host used the default assistant Markdown preference. These items
+reach `omp-enhanced-assistant`, `omp-assistant`, `LiveAssistantRenderer` and
+`MarkdownView`, whose custom parser performs autolinking. Its old word-boundary
+check classified fullwidth punctuation as a word character, skipping these
+URLs. The earlier reply-link tests used English prose with a space before the
+bare URL, so they did not exercise this boundary. `test/reply-links.test.cjs`
+replays both sanitized items through the registered transformer and real
+renderer, then presses each bare link and checks the platform opener.
+
 ## Synthetic coverage
 
 The handwritten samples contain no original session data:
