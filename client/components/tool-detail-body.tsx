@@ -55,7 +55,7 @@ export function ToolDetailBody({ data, tokens, onRevealPath }: {
         <Pressable
           key={`${row.label}-${index}`}
           style={styles.result}
-          accessibilityRole="link"
+          accessibilityRole={row.url || row.path ? "link" : undefined}
           accessibilityLabel={`Open ${row.url ?? row.path ?? row.label}`}
           onPress={() => row.url ? openLink(row.url) : onRevealPath?.(row.path ?? ".")}
         >
@@ -64,6 +64,7 @@ export function ToolDetailBody({ data, tokens, onRevealPath }: {
           {row.preview ? <Text selectable style={styles.text}>{preview(row.preview, 5).text}</Text> : null}
         </Pressable>
       ))}
+      {data.search?.preview && data.search.results.length > 0 ? <Text selectable style={styles.text}>{data.search.preview}</Text> : null}
       {!data.search?.results.length && data.fetch ? <FetchPreview data={data.fetch} tokens={tokens} status={data.status} /> : null}
       {!data.search?.results.length && !data.fetch ? (
         <Text selectable style={styles.key}>{data.status === "running" ? "Searching…" : "No results reported."}</Text>

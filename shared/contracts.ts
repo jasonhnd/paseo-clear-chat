@@ -414,6 +414,7 @@ export interface ToolCalloutData {
     scope: string;
     count: number;
     truncated: boolean;
+    preview?: string;
     results: Array<{ label: string; path?: string; url?: string; preview?: string }>;
   };
   fetch?: { url?: string; query?: string; title?: string; preview?: string };

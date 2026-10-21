@@ -310,4 +310,3 @@ export function languageFromPath(filePath?: string): string | undefined {
   const ext = base.split(".").pop() ?? "";
   return LANGUAGE_BY_EXTENSION[ext];
 }
-

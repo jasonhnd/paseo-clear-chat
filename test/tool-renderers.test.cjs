@@ -181,3 +181,37 @@ test("subagent model is marked as not reported when the provider omits it", () =
   const { tree } = h.mount(call("Task", { type: "sub_agent", subAgentType: "research", description: "Inspect the guide", log: "" }));
   assert.match(bodyText(tree), /Model: Not reported/);
 });
+
+test("web search keeps a body preview alongside structured titles and URLs", () => {
+  const { tree } = h.mount(call("WebSearch", { type: "search", toolName: "web_search", query: "sample", webResults: [{ title: "Guide", url: "https://example.org" }], content: "Overview\nFirst\nSecond\nThird\nFourth\nHidden" }));
+  assert.match(bodyText(tree), /Guide[\s\S]*Overview[\s\S]*Fourth/);
+  assert.doesNotMatch(bodyText(tree), /Hidden/);
+});
+
+test("count-mode search rows reveal the file without the match-count suffix", () => {
+  const { tree } = h.mount(call("Grep", { type: "search", query: "enabled", mode: "count", content: "src/config.ts:2", numMatches: 2 }));
+  h.nodes(tree, node => node.type === "Pressable" && node.props.accessibilityRole === "link")[0].props.onPress();
+  assert.deepEqual(h.reveals, [{ cwd: "/workspace/demo", path: "src/config.ts" }]);
+});
+
+test("blank tool names still have a visible name and status", () => {
+  const { tree } = h.mount(call("  ", { type: "unknown", input: null, output: null }), false);
+  assert.match(h.text(tree), /tool[\s\S]*completed/);
+});
+
+test("checklist content follows new timeline data while mounted", () => {
+  const mounted = h.mount({ type: "todo", items: [{ text: "First task", completed: false }] });
+  assert.match(bodyText(mounted.tree), /First task/);
+  const update = { ...mounted.data, items: [{ text: "Updated task", completed: true }] };
+  mounted.render(update);
+  const tree = mounted.render(update);
+  assert.match(bodyText(tree), /Updated task/);
+  assert.doesNotMatch(bodyText(tree), /First task/);
+  assert.match(bodyText(tree), /1\s*\/\s*1\s*\(\s*100\s*%\)/);
+});
+
+test("untrusted fetch schemes never reach the platform URL opener", () => {
+  const { tree } = h.mount(call("fetch", { type: "fetch", url: "javascript:alert(1)", result: "Invalid link" }));
+  h.nodes(tree, node => node.type === "Pressable" && node.props.accessibilityRole === "link")[0].props.onPress();
+  assert.deepEqual(h.links, []);
+});

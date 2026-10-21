@@ -71,7 +71,7 @@ export function skillData(detail: Record<string, unknown>, input: Record<string,
   const parts = path.replace(/\\/g, "/").replace(/\/$/, "").split("/");
   const leaf = parts.pop();
   const name = stringValue(input.name, input.skill_name, input.skill, detail.skillName)
-    ?? (leaf?.toLowerCase() === "skill.md" ? parts.pop() : leaf)
+    ?? stringValue(leaf?.toLowerCase() === "skill.md" ? parts.pop() : leaf)
     ?? "Unnamed skill";
   return { name, text: valueText(detail.content ?? detail.output ?? detail.result) };
 }
@@ -80,7 +80,7 @@ function resultRow(value: unknown): NonNullable<ToolCalloutData["search"]>["resu
   if (typeof value === "string") {
     if (!value.trim()) return undefined;
     if (/^https?:\/\//i.test(value)) return { label: value, url: value };
-    const match = value.match(/^(.+?):(\d+)(?::(\d+))?:(.*)$/);
+    const match = value.match(/^(.+?):(\d+)(?::(\d+))?(?::(.*))?$/);
     return { label: value, path: match?.[1] ?? value.trim() };
   }
   const row = record(value);
@@ -105,7 +105,7 @@ export function searchData(
   const scope = stringValue(detail.scope, detail.path, input.path, input.directory, input.cwd)
     ?? (web ? "Web" : "Workspace");
   const filter = stringValue(input.glob, input.include, input.filePattern);
-  const rows = detail.webResults ?? detail.results ?? result.results
+  const rows = detail.webResults ?? detail.results ?? result.results ?? result.matches
     ?? (Array.isArray(output) ? output : web && typeof result.url === "string" ? [result] : undefined);
   const content = valueText(detail.content ?? output);
   const filePaths = Array.isArray(detail.filePaths) ? detail.filePaths : [];
@@ -133,6 +133,7 @@ export function searchData(
     scope: filter ? `${scope} (${filter})` : scope,
     count: typeof reported === "number" && Number.isFinite(reported) ? reported : results.length,
     truncated: detail.truncated === true,
+    preview: web ? preview(stringValue(detail.content, result.content, result.text, typeof output === "string" ? output : undefined), 5).text : undefined,
     results,
   };
 }
@@ -145,7 +146,8 @@ export function fetchData(
   return {
     url: stringValue(detail.url, input.url, result.url),
     query: stringValue(detail.query, input.query),
-    title: stringValue(detail.title, result.title) ?? body?.match(/^#\s+(.+)$/m)?.[1],
+    title: stringValue(detail.title, result.title) ?? body?.match(/^#\s+(.+)$/m)?.[1]
+      ?? body?.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1],
     preview: preview(body, 5).text,
   };
 }

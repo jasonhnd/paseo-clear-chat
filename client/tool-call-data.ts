@@ -15,7 +15,8 @@ export interface LiveToolCallPayload {
 }
 
 export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutData {
-  const rawName = (data.name || "").toLowerCase();
+  const toolName = stringValue(data.name)?.trim() ?? "tool";
+  const rawName = toolName.toLowerCase();
   const detail = (data.detail && typeof data.detail === "object" ? data.detail : {}) as Record<
     string,
     unknown
@@ -30,14 +31,14 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
     (typeof detail.filePath === "string" ? detail.filePath : undefined) ||
     (typeof input.path === "string" ? input.path : undefined) ||
     (typeof input.filePath === "string" ? input.filePath : undefined) ||
-      (typeof input.file_path === "string" ? input.file_path : undefined) ||
+    (typeof input.file_path === "string" ? input.file_path : undefined) ||
     (typeof detail.path === "string" ? detail.path : undefined);
 
   // Universal command extraction
   const command: string | undefined =
     (typeof detail.command === "string" ? detail.command : undefined) ||
     (typeof input.command === "string" ? input.command : undefined) ||
-      (typeof input.cmd === "string" ? input.cmd : undefined) ||
+    (typeof input.cmd === "string" ? input.cmd : undefined) ||
     (typeof detail.input === "string" ? detail.input : undefined);
 
   // Universal code / file content extraction
@@ -81,7 +82,7 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
   let evalCells: EvalCell[] = [];
   let askOptions: NonNullable<ToolCalloutData["askOptions"]> = [];
   let askAnswer: string[] = [];
-  let title = data.name || "tool";
+  let title = toolName;
 
   const isGitHubTool =
     rawName === "github" ||

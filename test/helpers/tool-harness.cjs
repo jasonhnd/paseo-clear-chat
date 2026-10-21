@@ -157,7 +157,7 @@ function createToolHarness(platform = "ios") {
       const pluginItem = transformed.items[0];
       const renderer = renderers.get(pluginItem.kind);
       const data = renderer.schema.parse(pluginItem.data);
-      const render = () => draw(jsx(renderer.Component, { agentId: "demo-agent", item: { ...pluginItem, data }, theme: { colors: {} }, timestamp: new Date("2026-01-01T12:00:00Z") }));
+      const render = (nextData = data) => draw(jsx(renderer.Component, { agentId: "demo-agent", item: { ...pluginItem, data: nextData }, theme: { colors: {} }, timestamp: new Date("2026-01-01T12:00:00Z") }));
       let tree = render();
       if (expand) {
         const button = nodes(tree, node => node.type === "Pressable" && node.props.accessibilityState?.expanded === false)[0];
