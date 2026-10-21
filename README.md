@@ -145,7 +145,8 @@ Shell rows show **$ command**, with the provider's display prefix removed.
 
 Tool discovery has its own card. Its row shows **tool_search · browser** for a
 browser query, and its expanded body preserves the query and discovery output
-with the configured long-output control.
+with the configured long-output control. Projected provider labels omit their
+redundant **Searching tools** phrase; literal query text stays intact.
 
 ### Plans, checklists and plain text
 

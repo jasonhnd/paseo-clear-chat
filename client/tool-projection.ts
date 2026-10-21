@@ -46,7 +46,9 @@ export function recoverProjectedTool(
         ...(fieldArgument !== undefined ? { url: undefined } : {}),
       },
     };
-    return { name: tool.source, detail: { ...detail, query: stringValue(detail.query) ?? argument } };
+    // This phrase is a provider display label, not part of a discovery query.
+    // Only strip it after the projected tool identity has been corroborated.
+    return { name: tool.source, detail: { ...detail, query: stringValue(detail.query) ?? argument.replace(/^Searching tools\s*·\s*/, "") } };
   }
   return { name, detail };
 }

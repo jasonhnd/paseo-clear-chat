@@ -97,13 +97,13 @@
       "name": "other",
       "detail": {
         "type": "plain_text",
-        "label": "tool_search: browser",
+        "label": "tool_search: Searching tools · browser",
         "text": "Sample browser tool description 1.\nSample browser tool description 2.\nSample browser tool description 3.\nSample browser tool description 4.\nSample browser tool description 5.\nSample browser tool description 6.\nSample browser tool description 7.\nSample browser tool description 8.\nSample browser tool description 9.\nSample browser tool description 10.\nSample browser tool description 11.\nSample browser tool description 12.\nSample browser tool description 13.\nSample browser tool description 14.\nSample browser tool description 15.\nSample browser tool description 16.\nSample browser tool description 17.\nSample browser tool description 18.\nSample browser tool description 19.\nSample browser tool description 20.\nSample browser tool description 21.\nSample browser tool description 22.\nSample browser tool description 23.\nSample browser tool description 24.",
         "icon": "wrench"
       },
       "metadata": {
         "kind": "other",
-        "title": "tool_search: browser"
+        "title": "tool_search: Searching tools · browser"
       },
       "status": "completed",
       "error": null

@@ -30,10 +30,12 @@ test("captured tool_search gets a discovery card with the real name and key para
   const item = call("tool_search");
   assert.equal(item.name, "other");
   assert.equal(item.detail.type, "plain_text");
+  assert.equal(item.detail.label, "tool_search: Searching tools · browser");
   for (const expand of [false, true]) {
     const mounted = h.mount(item, expand);
     const { tree } = mounted;
     assert.equal(summary(tree), "tool_search · browser");
+    assert.doesNotMatch(summary(tree), /Searching tools/);
     assert.equal(byId(tree, "tool-card-tool_search").length, 1);
     assert.equal(byId(tree, "tool-card-plain_text").length, 0);
     assert.equal(byId(tree, "tool-generic-content").length, 0);
@@ -46,6 +48,28 @@ test("captured tool_search gets a discovery card with the real name and key para
       assert.match(h.text(byId(mounted.render(), "tool-card-body")), /description 24/);
     }
   }
+});
+
+test("projected discovery title fallback removes only the provider display prefix", () => {
+  const item = structuredClone(call("tool_search"));
+  item.detail.label = "Tool discovery";
+  for (const expand of [false, true]) {
+    const { tree } = h.mount(item, expand);
+    assert.equal(summary(tree), "tool_search · browser");
+    if (expand) assert.match(h.text(byId(tree, "tool-card-body")), /Query: browser/);
+  }
+});
+
+test("literal discovery queries and unrelated display text retain Searching tools", () => {
+  const literal = "Searching tools · browser";
+  const native = { type: "tool_call", name: "tool_search", status: "completed", detail: { type: "unknown", input: { query: literal } } };
+  assert.equal(summary(h.mount(native, false).tree), `tool_search · ${literal}`);
+  const projected = structuredClone(call("tool_search"));
+  projected.detail.query = literal;
+  assert.equal(summary(h.mount(projected, false).tree), `tool_search · ${literal}`, "an explicit query takes priority over a display label");
+  delete projected.detail.query;
+  projected.detail.label = "tool_search: Searching tools: browser";
+  assert.equal(summary(h.mount(projected, false).tree), "tool_search · Searching tools: browser");
 });
 
 test("captured web_search keeps its query on the row instead of the page heading", () => {

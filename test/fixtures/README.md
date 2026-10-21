@@ -11,6 +11,8 @@ fictional content, sample identifiers, neutral paths and example.org URLs.
   reply. Paseo normalizes the tool names to `execute`, `read`, `search`, `fetch`
   and `other`. The original tool identity and argument appear in
   `metadata.title`, and sometimes in a detail field such as `filePath` or `url`.
+  Discovery labels retain the provider's `Searching tools ·` display prefix,
+  which is removed from the query and summary after validating the source tool.
 - `real-claude-session.json` contains 28 tool calls, including shell calls and
   MCP calls with nested input and output objects. This provider does not attach
   the Hermes metadata object.
