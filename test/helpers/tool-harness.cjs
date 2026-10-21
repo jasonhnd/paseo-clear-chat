@@ -80,11 +80,11 @@ function createToolHarness(platform = "ios", options = {}) {
     "client/components/host-font-escape": { hostFontEscape: {} },
     "client/components/prompt-anchor": { promptRowAnchor: () => ({}) },
     "client/components/glyph": { Glyph: props => jsx("Glyph", props) },
-    "client/components/motion": { Rotate: passthrough, Glow: passthrough },
+    "client/components/motion": { Rotate: passthrough, Glow: passthrough, Pop: passthrough },
     "client/components/breathe": { Breathe: passthrough },
     "client/components/pulse-dot": { PulseDot: noop },
     "client/components/tool-spinner": { ToolSpinner: props => jsx("Spinner", { accessibilityLabel: "Running", ...props }) },
-    "client/components/file-type-logo": { FileTypeLogo: noop },
+    "client/components/file-type-logo": { FileTypeLogo: noop, detectFileType: () => "generic" },
     "client/components/image-preview": { ImagePreview: noop },
     "client/components/hub-live": { TimelineTailHub: noop },
     "client/components/reasoning-trace": { ReasoningTrace: noop },
@@ -106,6 +106,14 @@ function createToolHarness(platform = "ios", options = {}) {
   if (options.settingsPage) delete stubs["client/settings-page"];
   if (options.presentationHost) delete stubs["client/preferences"];
   if (options.markdown) delete stubs["client/components/markdown/markdown-view"];
+  if (options.syntax) {
+    delete stubs["client/components/syntax-highlight"];
+    stubs["client/highlight"] = { useHighlightedLines: () => null };
+    stubs["client/components/copy-feedback"] = {
+      useCopyText: () => ({ copied: false, handleCopy: noop, fallbackText: null, setFallbackText: noop }),
+      CopyFallbackDialog: noop, copyTouchTarget: {},
+    };
+  }
   function load(path) {
     let filename = resolve(root, path);
     if (!existsSync(filename)) filename += existsSync(filename + ".ts") ? ".ts" : ".tsx";
