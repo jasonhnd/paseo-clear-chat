@@ -15,10 +15,29 @@ export const TOOL_ROW_LAYOUT = {
 export const COLLAPSED_TOOL_HEIGHT = TOOL_ROW_LAYOUT.contentHeight
   + 2 * (TOOL_ROW_LAYOUT.paddingVertical + TOOL_ROW_LAYOUT.marginVertical + TOOL_ROW_LAYOUT.borderWidth);
 
+const styleCache = new WeakMap<ExtendedThemeTokens, Map<string, ReturnType<typeof createToolCalloutStyles>>>();
+
 export function useToolCalloutStyles(tokens: ExtendedThemeTokens, statusBg: string, statusColor: string) {
   return useMemo(
-    () =>
-      StyleSheet.create({
+    () => {
+      let statuses = styleCache.get(tokens);
+      if (!statuses) { statuses = new Map(); styleCache.set(tokens, statuses); }
+      const key = JSON.stringify([statusBg, statusColor]);
+      const cached = statuses.get(key);
+      if (cached) return cached;
+      const styles = createToolCalloutStyles(tokens, statusBg, statusColor);
+      // Internal callers use four semantic statuses. Bound unusual custom values
+      // too, without retaining tokens after a theme leaves the shared cache.
+      if (statuses.size >= 8) statuses.delete(statuses.keys().next().value!);
+      statuses.set(key, styles);
+      return styles;
+    },
+    [tokens, statusBg, statusColor],
+  );
+}
+
+function createToolCalloutStyles(tokens: ExtendedThemeTokens, statusBg: string, statusColor: string) {
+  return StyleSheet.create({
         container: {
           marginVertical: TOOL_ROW_LAYOUT.marginVertical,
           borderRadius: radius.card,
@@ -355,7 +374,5 @@ export function useToolCalloutStyles(tokens: ExtendedThemeTokens, statusBg: stri
           fontSize: tokens.fs(11),
           color: tokens.danger,
         },
-      }),
-    [tokens, statusBg, statusColor],
-  );
+      });
 }

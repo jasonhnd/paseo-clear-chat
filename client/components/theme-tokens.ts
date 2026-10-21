@@ -171,10 +171,27 @@ function isDarkSurface(color: string): boolean {
 // PluginTheme only carries six colours, so every other surface is derived from
 // the host foreground/accent with alpha. That keeps the plugin on-theme for any
 // Paseo theme instead of hard-coding a palette that matches only one of them.
+const themeCache = new Map<string, ExtendedThemeTokens>();
+const THEME_CACHE_LIMIT = 8;
+
 export function buildThemeTokens(
   colors: PluginSurfaceColors,
   preferences: EnhancerPreferences = DEFAULT_PREFERENCES,
 ): ExtendedThemeTokens {
+  // History virtualization remounts rows. Share immutable derived tokens across
+  // those mounts, even when the host supplies equivalent new input objects.
+  const key = JSON.stringify([
+    colors.surface0, colors.foreground, colors.foregroundMuted,
+    colors.accent, colors.accentForeground, colors.statusDanger,
+    preferences.accent, preferences.uiFont, preferences.codeFont,
+    preferences.textScale, preferences.frostedGlass,
+  ]);
+  const cached = themeCache.get(key);
+  if (cached) {
+    themeCache.delete(key);
+    themeCache.set(key, cached);
+    return cached;
+  }
   const isDark = isDarkSurface(colors.surface0);
   const fg = colors.foreground;
   const accent = ACCENT_PRESETS[preferences.accent] ?? colors.accent;
@@ -185,7 +202,7 @@ export function buildThemeTokens(
   const edge = isDark ? 0.22 : 0.18;
   const textScale = preferences.textScale;
 
-  return {
+  const tokens: ExtendedThemeTokens = {
     isDark,
     fontMono,
     fontCode: preferences.codeFont === "plain" ? fontMono : fontCode,
@@ -260,4 +277,7 @@ export function buildThemeTokens(
       hunk: withAlpha(colors.foregroundMuted, 0.7),
     },
   };
+  themeCache.set(key, tokens);
+  if (themeCache.size > THEME_CACHE_LIMIT) themeCache.delete(themeCache.keys().next().value!);
+  return tokens;
 }
