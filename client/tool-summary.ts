@@ -54,7 +54,9 @@ export function toolSummary(data: ToolCalloutData): string {
     return [file, delta].filter(Boolean).join(" · ") || singleLine(data.title);
   }
   if (data.tool === "write" && file) return file;
-  if ((data.tool === "search" || data.tool === "web_search") && data.search?.query) return JSON.stringify(singleLine(data.search.query));
+  if ((data.tool === "search" || data.tool === "web_search") && data.search?.query) {
+    return `${data.tool === "web_search" ? "web_search" : "Search"}: ${singleLine(data.search.query)}`;
+  }
   if (data.tool === "fetch" && data.fetch?.url) return singleLine(data.fetch.url);
   return singleLine(data.title);
 }

@@ -5,6 +5,7 @@ import { asString, buildMcpData, buildPaseoData, buildSubagentBatch, extractAskQ
 import { buildChecklist, fallbackData, fetchData, record, searchData, skillData, stringValue, subagentData, unknownTitle, valueText } from "./tool-detail";
 import { editChanges, readLineRange, toolStatus } from "./tool-summary";
 import { finalToolReply } from "./tool-final-reply";
+import { recoverProjectedTool } from "./tool-projection";
 
 export interface LiveToolCallPayload {
   name: string;
@@ -17,12 +18,10 @@ export interface LiveToolCallPayload {
 }
 
 export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutData {
-  const toolName = stringValue(data.name)?.trim() ?? "tool";
+  const projected = recoverProjectedTool(stringValue(data.name)?.trim() ?? "tool", record(data.detail), data.metadata);
+  const toolName = projected.name;
   const rawName = toolName.toLowerCase();
-  const detail = (data.detail && typeof data.detail === "object" ? data.detail : {}) as Record<
-    string,
-    unknown
-  >;
+  const detail = projected.detail;
   const detailType = typeof detail.type === "string" ? detail.type.toLowerCase() : "";
   const rawInput = detail.input ?? detail.arguments ?? detail.args;
   const input = record(rawInput);
@@ -76,6 +75,7 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
   let skill: ToolCalloutData["skill"];
   let search: ToolCalloutData["search"];
   let fetch: ToolCalloutData["fetch"];
+  let toolSearch: ToolCalloutData["toolSearch"];
   let checklist: ToolCalloutData["checklist"];
   let plainText: string | undefined;
   let hub: HubData | undefined;
@@ -108,7 +108,14 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
     toolKind = web ? "web_search" : "search";
     search = searchData(detail, input, output, web);
     if (web && search.results.length === 0) fetch = fetchData(detail, input, output);
-    title = `${web ? "Web search" : "Search"}${search.query ? `: ${search.query}` : ""}`;
+    title = `${web ? "web_search" : "Search"}${search.query ? `: ${search.query}` : ""}`;
+  } else if (isType("tool_search") || (rawName === "tool_search" && ["unknown", "plain_text", ""].includes(detailType))) {
+    toolKind = "tool_search";
+    toolSearch = {
+      query: stringValue(detail.query, input.query, input.pattern, input.search_term, input.q) ?? "",
+      text: typeof detail.text === "string" ? detail.text : valueText(output),
+    };
+    title = unknownTitle("tool_search", { query: toolSearch.query });
   } else if (isType("fetch", ["fetch", "webfetch"])) {
     toolKind = "fetch";
     fetch = fetchData(detail, input, output);
@@ -233,6 +240,7 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
     skill,
     search,
     fetch,
+    toolSearch,
     checklist,
     plainText,
     fallback: fallbackData(rawInput, output),

@@ -8,7 +8,7 @@ import { preview } from "../tool-detail";
 import { ToolOutput } from "./tool-output";
 
 export function hasToolDetailBody(data: ToolCalloutData): boolean {
-  return Boolean(data.skill) || ["search", "fetch", "web_search", "plan", "todo", "plain_text", "unknown"].includes(data.tool);
+  return Boolean(data.skill) || ["search", "fetch", "web_search", "tool_search", "plan", "todo", "plain_text", "unknown"].includes(data.tool);
 }
 
 export function ToolDetailBody({ data, tokens, onRevealPath }: {
@@ -44,6 +44,15 @@ export function ToolDetailBody({ data, tokens, onRevealPath }: {
   if (data.tool === "plain_text") return (
     <View style={styles.body}>
       {data.plainText?.trim() ? <ToolOutput text={data.plainText} tokens={tokens}>{shown => <Text selectable style={styles.text}>{shown}</Text>}</ToolOutput> : empty}
+    </View>
+  );
+
+  if (data.tool === "tool_search") return (
+    <View testID="tool-discovery-content" style={styles.body}>
+      <Text selectable style={styles.text}>{`Query: ${data.toolSearch?.query || "Not reported"}`}</Text>
+      {data.toolSearch?.text?.trim() ? (
+        <ToolOutput text={data.toolSearch.text} tokens={tokens}>{shown => <Text selectable style={styles.text}>{shown}</Text>}</ToolOutput>
+      ) : empty}
     </View>
   );
 

@@ -34,7 +34,7 @@ function getToolIconName(tool: string): string {
   if (tool === "ask") return "HelpCircle";
   if (tool === "mcp") return "Plug";
   if (tool === "task" || tool === "sub_agent") return "Bot";
-  if (tool === "search" || tool === "web_search") return "Search";
+  if (tool === "search" || tool === "web_search" || tool === "tool_search") return "Search";
   if (tool === "fetch") return "Globe";
   if (tool === "plan" || tool === "todo") return "ListChecks";
   if (tool === "plain_text") return "FileText";

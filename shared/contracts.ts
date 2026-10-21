@@ -79,6 +79,7 @@ export type ToolCallKind =
   | "search"
   | "fetch"
   | "web_search"
+  | "tool_search"
   | "sub_agent"
   | "plan"
   | "todo"
@@ -421,6 +422,7 @@ export interface ToolCalloutData {
     results: Array<{ label: string; path?: string; url?: string; preview?: string }>;
   };
   fetch?: { url?: string; query?: string; title?: string; preview?: string };
+  toolSearch?: { query: string; text?: string };
   checklist?: TaskListData;
   plainText?: string;
   skill?: { name: string; text?: string };
