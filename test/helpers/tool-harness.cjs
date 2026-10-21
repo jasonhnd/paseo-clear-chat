@@ -75,7 +75,6 @@ function createToolHarness(platform = "ios", options = {}) {
     "client/components/host-notice": { installHostNoticeStyle: cleanup },
     "client/components/chat-find": { installChatFind: cleanup },
     "client/components/theme-tokens": { buildThemeTokens: () => tokens, radius: {}, withAlpha: color => color },
-    "client/components/view-props": { surfaceProps: () => ({}) },
     "client/components/selection-actions": { useSelectionActions: noop, selectionCodeText: {}, selectionSurface: {} },
     "client/components/selection": { selectableSurface: {}, unselectable: {} },
     "client/components/host-font-escape": { hostFontEscape: {} },

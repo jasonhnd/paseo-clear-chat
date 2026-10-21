@@ -35,6 +35,12 @@ status, and duration when the provider reports one. Running calls spin; failed c
 cross, completed calls a check, and canceled calls a separate label. Running, failed and
 waiting-for-user calls default to expanded. Click a row to expand or collapse it.
 Collapsed rows occupy 26px including their borders and vertical spacing.
+On web, adjacent collapsed tool rows have a 30px center pitch with the host's
+16px timeline gap: `26 + 16 - 12 = 30`. The plugin reads the preceding host
+frame's actual gap and applies up to 12px of negative top margin to its own
+root, leaving at least 4px of that gap. Expanded tools, replies, messages,
+footers and auxiliary content end a compact sequence. Smaller gaps receive
+less compensation, so rows never overlap. Host styles are not modified.
 
 Explicit choices, including a manual collapse of an active call, survive reloads and history
 navigation. They are saved on the selected host, independently for each host, agent and call;
@@ -478,6 +484,14 @@ timestamp, item}`, and plugin navigation offers only `openSettings`, `openSurfac
     message id, then waits for a row carrying that id. A transformed row always carries
     `<pluginId>/<itemId>` instead, so Ctrl+F on a styled prompt or reply never reveals the match.
     Workaround: the plugin's own find bar, described in [Finding text](#finding-text).
+15. **No timeline gap or neighbor props.** In the pinned SDK, `layout` exposes only
+    `compact` (the device breakpoint) and `platform`; transform results expose only
+    replacement items. The [v0.8 host spacing rules](https://github.com/getpaseo/paseo/blob/v0.8.0/packages/app/src/agent-stream/spacing.ts)
+    give transformed `plugin` rows the default 16px gap, unlike native tool sequences.
+    The web workaround reads the existing history row/frame DOM and adjusts only
+    the plugin root between collapsed tools. Unknown layouts, nonconsecutive
+    virtual rows and native apps keep host spacing. Controlling those gaps requires
+    a host API that supplies the actual gap and adjacent item types.
 
 ---
 

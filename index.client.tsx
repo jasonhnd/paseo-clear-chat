@@ -8,6 +8,7 @@ import { installPointerGlow } from "./client/components/glow";
 import { installHostNoticeStyle } from "./client/components/host-notice";
 import { installChatFind } from "./client/components/chat-find";
 import { extractPromptImages } from "./client/prompt-images";
+import { installCompactToolSpacing } from "./client/tool-row-spacing";
 import {
   areEnhancerPreferencesReady,
   getEnhancerPreferences,
@@ -39,6 +40,7 @@ export default function contribute(client: PluginClientContext) {
   const removeNoticeStyle = installHostNoticeStyle();
   // Paseo's Ctrl+F cannot reveal rows this plugin draws; this bar can.
   const removeChatFind = installChatFind();
+  const removeToolSpacing = installCompactToolSpacing();
 
   // Configuration lives in the host Settings area. The plugin has no showcase
   // surface, panels, or Command Center item.
@@ -272,6 +274,7 @@ export default function contribute(client: PluginClientContext) {
     removeGlow();
     removeNoticeStyle();
     removeChatFind();
+    removeToolSpacing();
     removeToolTransformer();
     removeToolRenderer();
     removeReasoningTransformer();

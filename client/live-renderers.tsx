@@ -36,6 +36,7 @@ import { buildChecklist } from "./tool-detail";
 import { useToolExpansion } from "./tool-expansion";
 import { defaultToolExpanded } from "./tool-summary";
 import { FinalToolReply } from "./components/final-tool-reply";
+import { toolRowMarker } from "./tool-row-spacing";
 
 export interface LiveReasoningPayload {
   text: string;
@@ -112,7 +113,7 @@ export function LiveToolCallRenderer({
   );
 
   return (
-    <View {...hostFontEscape}>
+    <View testID="tool-timeline-item" {...surfaceProps(hostFontEscape, toolRowMarker(!calloutData.finalReply && !expansion.expanded && !expansion.error))}>
       {calloutData.finalReply ? (
         <View testID="tool-final-reply">
           <FinalToolReply text={calloutData.finalReply} tokens={tokens} variant={preferences.markdownVariant} />
