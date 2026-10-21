@@ -454,6 +454,8 @@ function renderInline(
     switch (span.kind) {
       case "text":
         return span.text;
+      case "image":
+        return span.alt;
       case "codeSpan":
         return (
           <Text key={key} selectable style={styles.codeSpan}>
@@ -530,6 +532,9 @@ function inlineWidth(spans: MdInline[], size: number, ratio: number): number {
     switch (span.kind) {
       case "text":
         width += span.text.length * size * ratio;
+        break;
+      case "image":
+        width += span.alt.length * size * ratio;
         break;
       case "codeSpan":
         width += span.text.length * size * CHAR_RATIO_MONO + CODE_CHIP_PADDING * 2;

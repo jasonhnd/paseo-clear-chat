@@ -12,10 +12,11 @@
  * Pure module: no React, no runtime imports.
  */
 
-/** One inline run. `text` is the only leaf; every other kind carries runs. */
+/** Inline text, code and images are leaves; formatting and links carry runs. */
 export type MdInline =
   | { kind: "text"; text: string }
   | { kind: "codeSpan"; text: string }
+  | { kind: "image"; alt: string; src: string }
   | { kind: "strong"; spans: MdInline[] }
   | { kind: "emphasis"; spans: MdInline[] }
   | { kind: "strike"; spans: MdInline[] }
@@ -584,7 +585,11 @@ function parseInline(src: string, depth = 0): MdInline[] {
           const href = cleanHref(src.slice(labelEnd + 2, hrefEnd));
           const label = src.slice(open + 1, labelEnd);
           flush();
-          out.push({
+          out.push(ch === "!" ? {
+            kind: "image",
+            src: unescapePunctuation(href),
+            alt: unescapePunctuation(label),
+          } : {
             kind: "link",
             href,
             spans: label === "" ? [{ kind: "text", text: href }] : parseInline(label, depth + 1),
@@ -676,11 +681,16 @@ function cleanHref(raw: string): string {
   return href;
 }
 
+function unescapePunctuation(text: string): string {
+  return text.replace(/\\([!-\/:-@\[-`{-~])/g, "$1");
+}
+
 /** The text a reader sees, for measuring and for copy targets. */
 export function inlineToText(spans: MdInline[]): string {
   let out = "";
   for (const span of spans) {
     if (span.kind === "text" || span.kind === "codeSpan") out += span.text;
+    else if (span.kind === "image") out += span.alt;
     else out += inlineToText(span.spans);
   }
   return out;
