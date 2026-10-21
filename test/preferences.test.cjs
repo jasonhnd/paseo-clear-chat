@@ -321,7 +321,7 @@ test("edits made before initial storage load are saved", async () => {
   assert.equal(p.getEnhancerPreferences().accent, "amber");
 });
 
-test("contribution loads preferences and iOS transformers honor explicit opt-out", async () => {
+test("upstream #17: iOS preferences honor explicit opt-out and preserve stripped prompts", async () => {
   const server = host();
   const h = harness();
   const cleanup = h.contribute(server.rpc);
@@ -330,9 +330,10 @@ test("contribution loads preferences and iOS transformers honor explicit opt-out
   const assistant = h.transformers.get("omp-enhanced-assistant");
   const user = h.transformers.get("omp-enhanced-user-message");
   const reply = { item: { type: "assistant_message", text: "Hello" } };
-  const prompt = { item: { type: "user_message", text: "Hi" } };
+  const prompt = { item: { type: "user_message", text: "Hi", images: [] } };
   assert.equal(assistant.transform(reply).items[0].kind, "omp-assistant");
   assert.equal(user.transform(prompt).items[0].kind, "omp-user-message");
+  assert.equal(user.transform({ item: { type: "user_message", text: "Hi" } }), undefined);
   await h.preferences.updateEnhancerPreferences({ assistantMarkdown: false, enhancedUserBubble: false });
   assert.equal(assistant.transform(reply), undefined);
   assert.equal(user.transform(prompt), undefined);
@@ -346,13 +347,13 @@ test("text transformers defer to the host while saved preferences are unavailabl
   const cleanup = h.contribute(server.rpc);
   await new Promise(setImmediate);
   assert.equal(h.transformers.get("omp-enhanced-assistant").transform({ item: { type: "assistant_message", text: "Hi" } }), undefined);
-  assert.equal(h.transformers.get("omp-enhanced-user-message").transform({ item: { type: "user_message", text: "Hi" } }), undefined);
+  assert.equal(h.transformers.get("omp-enhanced-user-message").transform({ item: { type: "user_message", text: "Hi", images: [] } }), undefined);
   assert.match(h.preferences.getEnhancerPreferencesError(), /Host unavailable/);
   cleanup();
 });
 
 for (const platform of ["android", "web"]) {
-  test(`${platform} transformers keep rendering by default and honor explicit opt-out`, async () => {
+  test(`upstream #17: ${platform} preferences honor explicit opt-out and preserve stripped prompts`, async () => {
     const server = host();
     const h = harness(platform);
     const cleanup = h.contribute(server.rpc);
@@ -360,9 +361,10 @@ for (const platform of ["android", "web"]) {
     const assistant = h.transformers.get("omp-enhanced-assistant");
     const user = h.transformers.get("omp-enhanced-user-message");
     const reply = { item: { type: "assistant_message", text: "Hello" } };
-    const prompt = { item: { type: "user_message", text: "Hi" } };
+    const prompt = { item: { type: "user_message", text: "Hi", images: [] } };
     assert.equal(assistant.transform(reply).items[0].kind, "omp-assistant");
     assert.equal(user.transform(prompt).items[0].kind, "omp-user-message");
+    assert.equal(user.transform({ item: { type: "user_message", text: "Hi" } }), undefined);
     await h.preferences.updateEnhancerPreferences({ assistantMarkdown: false, enhancedUserBubble: false });
     assert.equal(assistant.transform(reply), undefined);
     assert.equal(user.transform(prompt), undefined);
