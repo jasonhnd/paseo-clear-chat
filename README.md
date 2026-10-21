@@ -30,6 +30,23 @@ accent, fonts, frosted glass, and prompt bubble options.
 
 ## Tool calls
 
+Finished calls open as compact, single-line rows: tool icon, command or file/query summary,
+status, and duration when the provider reports one. Running calls spin; failed calls show a
+cross, completed calls a check, and canceled calls a separate label. Running, failed and
+waiting-for-user calls default to expanded. Click a row to expand or collapse it.
+
+Explicit choices, including a manual collapse of an active call, survive reloads and history
+navigation. They are saved on the selected host, independently for each host, agent and call;
+the timeline timestamp distinguishes reused call IDs. The most recent 1,000 choices are retained.
+Writes are merged and debounced, with revision conflicts retried. A storage error appears below
+the affected row; toggling it again retries the save.
+
+Long code and command output preview the first 15 lines by default. **Show all N lines** reveals
+the complete output, and code's Copy control always copies the full source. Ordinary replies
+stay fully expanded. Explicit `wrap_up` calls, including a `ccd_turn` operation marked
+`wrap_up`, also render their reply text outside tool and output disclosures. A completed
+transform phase alone never identifies a final reply.
+
 ### Shell and Git
 
 Terminal frame, Bash syntax, exit code, duration, and the Git brand mark. A command that prints
@@ -114,7 +131,7 @@ text, including whitespace.
 Hermes `skill_view` calls display **Skill: name** instead of a file path. Other
 tools show their real name and a useful argument on the summary row, such as
 **memory · add**. Expanded unknown cards list each input as `name: value` and
-show the first 15 output lines, with a note when more lines were omitted.
+show a configurable output preview with a control to reveal all lines.
 
 ### Hub
 
@@ -180,6 +197,8 @@ Devicon brand marks, and the file-manager link.
 | Interface font         | Embedded Inter, or the system interface face.                      |
 | Text size              | Small (90%), Default (100%), Large (115%), or XL (130%); icons keep their size. |
 | Code glyphs            | Iosevka with ligatures, or literal glyphs.                         |
+| Fold finished steps    | On by default. Off expands all steps unless a call has an explicit choice. |
+| Fold long output after | 10, 15 (default), 30 lines, or Never. Applies to tool code and output. |
 | Frosted glass          | Blur card surfaces, or paint them solid.                           |
 | Enhanced prompt bubble | Off hands prompts back to Paseo, whose bubble shows pasted images. |
 | Assistant markdown     | Off hands replies back to Paseo's own markdown renderer.           |
@@ -195,7 +214,7 @@ still hands that content back to Paseo.
 heights. It is saved on the selected host and shared by all devices connected to that host.
 Text scaling is clamped to 85–135%; the four presets provide common reading sizes. Thanks to
 [Moyf's text size contribution in #9](https://github.com/ABorakati/beautiful-chat/pull/9), adapted
-here to SDK host settings. The separate auto-collapse and bottom fold controls are not included.
+here to SDK host settings. Tool folding uses the two controls described above.
 
 Preferences are saved with the plugin SDK on the selected host and shared by clients connected
 to that host. Explicit choices override defaults. Existing browser preferences are
@@ -204,7 +223,8 @@ choices take precedence. A native client's first load leaves that migration avai
 After that, browser storage is ignored, including after **Reset defaults**. Open the existing
 web client before editing or resetting settings on native if you want to import its preferences;
 an explicit edit or reset makes the SDK settings authoritative immediately.
-Changes affect new messages; reload the chat to update rows already on screen. While settings
+Folding controls update mounted tool calls immediately. Changes to prompt and assistant renderer
+ownership affect new messages; reload the chat to update rows already on screen. While settings
 are loading or unavailable, text rows stay with Paseo's renderer. Storage errors appear in the
 settings screen; try changing the setting again after the host reconnects.
 
@@ -255,6 +275,11 @@ the original error; settings and RPC registration continue, using SDK defaults w
 document exists. Migration does not delete or overwrite either document. The old directory stays
 available for a later retry after the filesystem issue is resolved; an existing new document
 still takes precedence on subsequent starts.
+
+The SDK then upgrades presentation settings from version 1 to version 2, preserving existing
+preferences and the browser-import marker. Unset folding preferences use their new defaults.
+Expansion choices have a separate host settings document, `tool-expansion.json`; they never use
+browser localStorage as their backend.
 
 Paseo keys host settings by **installation ID**, then **settings ID**. `registerSettings` and
 `settingsRpc` expose only the current installation's documents, with no directory or cross-plugin
