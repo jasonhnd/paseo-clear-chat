@@ -400,6 +400,8 @@ export interface ToolCalloutData {
   title: string;
   status: "running" | "completed" | "failed" | "canceled" | "waiting";
   error?: string;
+  /** A reply explicitly delivered by a wrap-up tool, outside step disclosures. */
+  finalReply?: string;
   durationMs?: number;
   exitCode?: number;
   filePath?: string;
@@ -422,7 +424,7 @@ export interface ToolCalloutData {
   checklist?: TaskListData;
   plainText?: string;
   skill?: { name: string; text?: string };
-  fallback?: { parameters: Array<{ name: string; value: string }>; output?: string; truncated: boolean };
+  fallback?: { parameters: Array<{ name: string; value: string }>; output?: string };
   cells?: EvalCell[];
   askOptions?: Array<{
     id: string;

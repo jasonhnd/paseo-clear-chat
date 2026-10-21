@@ -92,7 +92,7 @@ test("host storage prunes the oldest keys and refreshes edited entries", async (
   assert.equal(host.values.entries.new.expanded, false);
 });
 
-for (const status of ["running", "failed"]) {
+for (const status of ["running", "failed", "awaiting_approval", "awaiting_answer"]) {
   test(`${status} defaults open and manual collapse survives fresh settings reads and status changes`, async () => {
     const host = createExpansionHost();
     const h = createToolHarness("ios", { expansionHost: host });
@@ -120,6 +120,27 @@ test("manual expansion survives a fresh component and module reading host settin
   assert.equal(header(fresh, replay.tree).props.accessibilityState.expanded, false);
   await tick();
   assert.equal(header(fresh, replay.render()).props.accessibilityState.expanded, true);
+});
+
+test("remounting history restores the same choice without sharing it across hosts, agents or occurrences", async () => {
+  const host = createExpansionHost();
+  const h = createToolHarness("ios", { expansionHost: host });
+  const identity = { host: { id: "first-host" }, agentId: "first-agent", timestamp: new Date("2026-01-01T12:00:00Z") };
+  const first = h.mount(call(), false, identity);
+  header(h, first.tree).props.onPress();
+  await new Promise(resolve => setTimeout(resolve, 250));
+  for (const alternate of [
+    { ...identity, host: { id: "other-host" } },
+    { ...identity, agentId: "other-agent" },
+    { ...identity, timestamp: new Date("2026-01-02T12:00:00Z") },
+  ]) {
+    const other = h.mount(call(), false, alternate);
+    await tick();
+    assert.equal(header(h, other.render()).props.accessibilityState.expanded, false);
+  }
+  const restored = h.mount(call(), false, identity);
+  await tick();
+  assert.equal(header(h, restored.render()).props.accessibilityState.expanded, true);
 });
 
 test("async saved choices update mounted rows and do not overwrite a newer manual click", async () => {

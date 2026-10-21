@@ -4,6 +4,7 @@ import { buildGitHubData } from "./github-request";
 import { asString, buildMcpData, buildPaseoData, buildSubagentBatch, extractAskQuestion, extractAskSelections, extractContentText, extractEvalCells, extractEvalDuration, extractStringProp, languageFromPath } from "./tool-call-legacy";
 import { buildChecklist, fallbackData, fetchData, record, searchData, skillData, stringValue, subagentData, unknownTitle, valueText } from "./tool-detail";
 import { editChanges, readLineRange, toolStatus } from "./tool-summary";
+import { finalToolReply } from "./tool-final-reply";
 
 export interface LiveToolCallPayload {
   name: string;
@@ -205,6 +206,7 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
     title,
     status: toolStatus(data.status),
     error: stringValue(data.error),
+    finalReply: finalToolReply(rawName, input, output),
     filePath: skill ? undefined : filePath,
     lineRange: toolKind === "read" && !skill ? readLineRange(detail, input, code) : undefined,
     changes: toolKind === "edit" ? editChanges(detail, input, diff) : undefined,

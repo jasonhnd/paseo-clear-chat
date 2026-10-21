@@ -85,7 +85,7 @@ export function LiveToolCallRenderer({
     });
   }, [hubData, agentId]);
 
-  // Collapse completed tools by default; expand active or failed tools
+  // Saved choices win over status and preference defaults, including false.
   const expansion = useToolExpansion({
     hostId: host.id,
     agentId,
@@ -112,14 +112,21 @@ export function LiveToolCallRenderer({
 
   return (
     <View {...hostFontEscape}>
-      <ToolCallout
-        data={calloutData}
-        tokens={tokens}
-        expanded={expansion.expanded}
-        onExpandedChange={expansion.onExpandedChange}
-        onRevealPath={handleRevealPath}
-        imageFile={imageFile}
-      />
+      {calloutData.finalReply ? (
+        <View testID="tool-final-reply">
+          <MarkdownView text={calloutData.finalReply} tokens={tokens} variant={preferences.markdownVariant} />
+          {calloutData.error ? <Text selectable style={{ color: tokens.danger }}>{calloutData.error}</Text> : null}
+        </View>
+      ) : (
+        <ToolCallout
+          data={calloutData}
+          tokens={tokens}
+          expanded={expansion.expanded}
+          onExpandedChange={expansion.onExpandedChange}
+          onRevealPath={handleRevealPath}
+          imageFile={imageFile}
+        />
+      )}
       {expansion.error ? (
         <Text accessibilityRole="alert" style={{ color: tokens.danger, fontSize: tokens.fs(11) }}>
           Tool expansion choice could not be saved or loaded: {expansion.error}

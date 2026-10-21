@@ -8,7 +8,7 @@ import { Rotate } from "./motion";
 import { radius } from "./theme-tokens";
 import type { ExtendedThemeTokens } from "./theme-tokens";
 import { ProviderLogo } from "./provider-logo";
-import { SyntaxHighlightBlock } from "./syntax-highlight";
+import { ToolCodeBlock } from "./tool-output";
 import { selectableSurface } from "./selection";
 import { selectionSurface } from "./selection-actions";
 import type {
@@ -241,7 +241,7 @@ function CreateAgentView({
         >
           Initial Task Prompt
         </Text>
-        <SyntaxHighlightBlock
+        <ToolCodeBlock
           code={data.initialPrompt}
           language="markdown"
           tokens={tokens}

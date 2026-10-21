@@ -7,6 +7,7 @@ import type { ExtendedThemeTokens } from "./theme-tokens";
 import { selectableSurface, unselectable } from "./selection";
 import { selectionSurface, selectionCodeText } from "./selection-actions";
 import { renderTerminalOutput } from "./syntax-highlight";
+import { ToolOutput } from "./tool-output";
 import { Breathe } from "./breathe";
 import { shimmering } from "./shimmer";
 import { normalizeProvider } from "./provider-logo";
@@ -272,10 +273,7 @@ function TerminalBlock({
   );
 }
 
-/** A `hub jobs` snapshot carries one result per job, and a bash result is a
- * whole terminal transcript. Unclipped, fourteen of those turn one card into a
- * page, so every long body opens on demand. */
-const CLIP_LINES = 6;
+/** Keep rosters short independently of the configurable output line limit. */
 const ROW_CAP = 8;
 
 // An Image style, kept out of the themed sheet: `StyleSheet.create` widens an
@@ -311,29 +309,10 @@ function ClippedTerminal({
   styles: HubStyles;
   footer?: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
-  const lines = text.split("\n");
-  const hidden = Math.max(0, lines.length - CLIP_LINES);
-  const shown = open || hidden === 0 ? text : lines.slice(0, CLIP_LINES).join("\n");
-
   return (
-    <TerminalBlock
-      text={shown}
-      tokens={tokens}
-      styles={styles}
-      footer={
-        <>
-          {footer ?? null}
-          {hidden > 0 ? (
-            <MoreControl
-              label={open ? "show less" : `show ${hidden} more ${hidden === 1 ? "line" : "lines"}`}
-              onPress={() => setOpen((previous) => !previous)}
-              styles={styles}
-            />
-          ) : null}
-        </>
-      }
-    />
+    <ToolOutput text={text} tokens={tokens}>
+      {shown => <TerminalBlock text={shown} tokens={tokens} styles={styles} footer={footer} />}
+    </ToolOutput>
   );
 }
 

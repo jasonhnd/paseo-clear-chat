@@ -61,6 +61,7 @@ export function createToolExpansionStore() {
         const result = await nextRead({});
         if (result.status !== "ready") throw new Error(result.error);
         saved = toolExpansionSettings.schema.parse(result.values).entries;
+        updatedAt = Math.max(updatedAt, ...Object.values(saved).map(entry => entry.updatedAt));
         error = null;
         publish();
       }).catch((cause: unknown) => { connected = false; report(cause); });
@@ -87,6 +88,7 @@ export function createToolExpansionStore() {
         if (result.status === "invalid") throw new Error(result.error);
         if (result.status === "conflict") continue;
         saved = toolExpansionSettings.schema.parse(result.values).entries;
+        updatedAt = Math.max(updatedAt, ...Object.values(saved).map(entry => entry.updatedAt));
         // A click made during this write belongs to the next batch, even when
         // it changes the same call. Never replace it with the older response.
         for (const [key, entry] of Object.entries(patch)) {

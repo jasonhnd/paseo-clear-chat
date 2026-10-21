@@ -76,7 +76,7 @@ test("skill_view shows Skill: name and never treats the skill as a file path", (
 test("memory · add appears on the collapsed summary row", () => {
   const { tree } = h.mount(call("memory", { type: "unknown", input: { content: "Use the sample configuration", action: "add" }, output: "Saved" }), false);
   assert.match(h.text(tree), /memory · add/);
-  assert.match(h.text(tree), /completed/);
+  assert.equal(h.nodes(tree, node => node.props.testID === "tool-status-completed").length, 1);
   assert.equal(h.nodes(tree, node => node.props.testID === "tool-card-body").length, 0);
 });
 
@@ -105,12 +105,12 @@ test("unknown inputs keep false, zero, nested objects and all output text blocks
   assert.match(text, /First block\nSecond block/);
 });
 
-test("unknown output is limited to the first 15 lines with an explicit truncation note", () => {
+test("unknown output previews fifteen lines with a control to reveal the complete output", () => {
   const output = Array.from({ length: 22 }, (_, i) => `Output line ${i + 1}`).join("\n");
   const text = bodyText(h.mount(call("inspect", { type: "unknown", input: {}, output })).tree);
   assert.match(text, /Output line 15/);
   assert.doesNotMatch(text, /Output line 16|Output line 22/);
-  assert.match(text, /Showing the first 15 lines/);
+  assert.match(text, /Show all 22 lines/);
 });
 
 for (const input of ["literal argument", ["one", "two"], false, 0]) {
@@ -196,7 +196,8 @@ test("count-mode search rows reveal the file without the match-count suffix", ()
 
 test("blank tool names still have a visible name and status", () => {
   const { tree } = h.mount(call("  ", { type: "unknown", input: null, output: null }), false);
-  assert.match(h.text(tree), /tool[\s\S]*completed/);
+  assert.match(h.text(tree), /tool[\s\S]*✓/);
+  assert.equal(h.nodes(tree, node => node.props.testID === "tool-status-completed").length, 1);
 });
 
 test("checklist content follows new timeline data while mounted", () => {

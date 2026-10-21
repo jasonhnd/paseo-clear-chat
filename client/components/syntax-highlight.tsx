@@ -13,8 +13,10 @@ import { selectionCodeSurface, selectionSurface } from "./selection-actions";
 import { useHighlightedLines } from "../highlight";
 import type { HighlightLine, HighlightToken } from "../../shared/highlight-rpc";
 
-interface SyntaxHighlightProps {
+export interface SyntaxHighlightProps {
   code: string;
+  /** A folded preview still copies the complete source. */
+  copyText?: string;
   language?: "typescript" | "bash" | "diff" | "json" | "python" | string;
   tokens: ExtendedThemeTokens;
   showLineNumbers?: boolean;
@@ -466,6 +468,7 @@ function renderCssTokens(
 
 export function SyntaxHighlightBlock({
   code,
+  copyText,
   language = "typescript",
   tokens,
   showLineNumbers = false,
@@ -473,7 +476,7 @@ export function SyntaxHighlightBlock({
   compact = false,
   onRevealFile,
 }: SyntaxHighlightProps) {
-  const { copied, handleCopy, fallbackText, setFallbackText } = useCopyText(code);
+  const { copied, handleCopy, fallbackText, setFallbackText } = useCopyText(copyText ?? code);
 
   const lines = useMemo(() => code.trimEnd().split("\n"), [code]);
   // A diff is a diff whatever the label says, and everything below reads this

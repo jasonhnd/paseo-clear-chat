@@ -9,7 +9,7 @@ export function useToolCalloutStyles(tokens: ExtendedThemeTokens, statusBg: stri
     () =>
       StyleSheet.create({
         container: {
-          marginVertical: 4,
+          marginVertical: 2,
           borderRadius: radius.card,
           backgroundColor: tokens.surfaceGlass,
           borderWidth: 1,
@@ -23,7 +23,8 @@ export function useToolCalloutStyles(tokens: ExtendedThemeTokens, statusBg: stri
           alignItems: "center",
           justifyContent: "space-between",
           paddingHorizontal: 10,
-          paddingVertical: 6,
+          paddingVertical: 4,
+          gap: 8,
           backgroundColor: tokens.surface1,
         },
         headerLeft: {
@@ -31,6 +32,7 @@ export function useToolCalloutStyles(tokens: ExtendedThemeTokens, statusBg: stri
           alignItems: "center",
           gap: 8,
           flex: 1,
+          minWidth: 0,
         },
         toolPill: {
           fontSize: tokens.fs(11),
@@ -42,6 +44,7 @@ export function useToolCalloutStyles(tokens: ExtendedThemeTokens, statusBg: stri
         titleText: {
           fontFamily: tokens.fontUi,
           fontSize: tokens.fs(12),
+          lineHeight: tokens.fs(16),
           fontWeight: "600",
           color: tokens.foreground,
           flexShrink: 1,
@@ -52,6 +55,7 @@ export function useToolCalloutStyles(tokens: ExtendedThemeTokens, statusBg: stri
           flexDirection: "row",
           alignItems: "center",
           gap: 6,
+          flexShrink: 0,
         },
         durationBadge: {
           fontSize: tokens.fs(11),

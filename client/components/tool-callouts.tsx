@@ -5,13 +5,13 @@ import { frosted } from "./frosted";
 import { surfaceProps } from "./view-props";
 import { glowing } from "./glow";
 import { Rotate } from "./motion";
-import { Breathe } from "./breathe";
-import { PulseDot } from "./pulse-dot";
+import { ToolSpinner } from "./tool-spinner";
+import { toolSummary, toolDuration } from "../tool-summary";
 import type { ExtendedThemeTokens } from "./theme-tokens";
 import { HubCallout } from "./hub-callout";
 import { PaseoToolCallout } from "./paseo-tool-callouts";
-import { SyntaxHighlightBlock, renderTerminalOutput } from "./syntax-highlight";
-import { FileTypeLogo } from "./file-type-logo";
+import { renderTerminalOutput } from "./syntax-highlight";
+import { ToolCodeBlock, ToolOutput } from "./tool-output";
 import { ImagePreview } from "./image-preview";
 import { GitHubBody } from "./github-body";
 import { SubagentBatch } from "./subagent-batch";
@@ -96,15 +96,17 @@ export function ToolCallout({
   const isSuccess = data.status === "completed";
   const isRunning = data.status === "running";
   const isFailed = data.status === "failed";
+  const isWaiting = data.status === "waiting";
+  const duration = toolDuration(data.durationMs);
 
   // Only a real shell call can "complete without output". A git op or an
   // unmapped tool that prints nothing is not a silent command, so neither
   // inherits the shell sentence.
   const isShellCall = data.tool === "bash" || data.tool === "shell";
 
-  const statusColor = isSuccess ? tokens.success : isRunning ? tokens.accent : tokens.danger;
+  const statusColor = isSuccess ? tokens.success : isRunning || isWaiting ? tokens.accent : isFailed ? tokens.danger : tokens.foregroundMuted;
 
-  const statusBg = isSuccess ? tokens.successBg : isRunning ? tokens.accentBg : tokens.dangerBg;
+  const statusBg = isSuccess ? tokens.successBg : isRunning || isWaiting ? tokens.accentBg : isFailed ? tokens.dangerBg : tokens.surface2;
 
   const iconColor =
     data.tool === "git" ? "#F05032" : data.tool === "github" ? tokens.foreground : tokens.accent;
@@ -129,82 +131,33 @@ export function ToolCallout({
       style={styles.container}
     >
       <Pressable
+        testID="tool-summary-row"
         accessibilityRole="button"
-        accessibilityLabel={`${expanded ? "Collapse" : "Expand"} ${data.title}`}
+        accessibilityLabel={`${expanded ? "Collapse" : "Expand"} ${toolSummary(data)}`}
         accessibilityState={{ expanded }}
-        onPress={() => onExpandedChange(!expanded)} style={styles.header}
+        onPress={() => onExpandedChange(!expanded)}
+        style={styles.header}
       >
         <View style={styles.headerLeft}>
-          <Breathe depth={1.08} durationMs={1800}>
-            <Glyph name={getToolIconName(data.tool)} size={13} color={iconColor} />
-          </Breathe>
-          <Text selectable style={styles.toolPill}>
-            {data.tool}
-          </Text>
-          {data.filePath ? (
-            <Breathe depth={1.08} durationMs={1800}>
-              {isImagePath(data.filePath) ? (
-                // An image has no language logo to show, and the generic page
-                // mark says less than the picture mark does.
-                <Glyph name="Image" size={13} color={tokens.foreground} />
-              ) : (
-                <FileTypeLogo
-                  filename={data.filePath}
-                  language={data.language}
-                  size="sm"
-                  foregroundColor={tokens.foreground}
-                />
-              )}
-            </Breathe>
-          ) : null}
-          <Text selectable style={styles.titleText} numberOfLines={1}>
-            {data.title}
+          <Glyph name={getToolIconName(data.tool)} size={13} color={iconColor} />
+          <Text selectable testID="tool-summary-text" style={styles.titleText} numberOfLines={1}>
+            {toolSummary(data)}
           </Text>
         </View>
-
         <View style={styles.headerRight}>
-          {data.durationMs ? (
-            <Text selectable style={styles.durationBadge}>
-              {data.durationMs}ms
-            </Text>
+          {duration !== undefined ? <Text testID="tool-duration" style={styles.durationBadge}>{duration}</Text> : null}
+          {data.exitCode !== undefined && data.exitCode !== 0 ? (
+            <Text style={[styles.durationBadge, { color: tokens.danger }]}>exit {data.exitCode}</Text>
           ) : null}
-
-          {data.exitCode !== undefined && data.exitCode !== 0 && (
-            <Text selectable style={[styles.durationBadge, { color: tokens.danger }]}>
-              exit {data.exitCode}
-            </Text>
-          )}
-
-          {isFailed && (
-            <Text selectable style={{ fontSize: tokens.fs(11), fontWeight: "600", color: tokens.danger }}>
-              failed
-            </Text>
-          )}
-
-          {isSuccess || data.status === "canceled" ? (
-            <Text selectable style={styles.durationBadge}>{data.status}</Text>
-          ) : null}
-
-          {isRunning && (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-              <PulseDot color={tokens.accent} size={5} />
-              <Text
-                selectable
-                style={{
-                  fontSize: tokens.fs(11),
-                  color: tokens.accent,
-                  fontWeight: "500",
-                }}
-              >
-                running
+          <View testID={`tool-status-${data.status}`} accessibilityLabel={data.status}>
+            {isRunning ? <ToolSpinner color={tokens.accent} /> : (
+              <Text style={{ fontSize: tokens.fs(12), color: statusColor }}>
+                {isSuccess ? "✓" : isFailed ? "✗" : isWaiting ? "Waiting" : "canceled"}
               </Text>
-            </View>
-          )}
-
+            )}
+          </View>
           <Rotate active={expanded}>
-            <Breathe depth={1.08} durationMs={1800}>
-              <Glyph name="ChevronDown" size={16} color={tokens.foregroundMuted} />
-            </Breathe>
+            <Glyph name="ChevronDown" size={14} color={tokens.foregroundMuted} />
           </Rotate>
         </View>
       </Pressable>
@@ -216,7 +169,7 @@ export function ToolCallout({
           {(data.tool === "bash" || data.tool === "shell" || data.tool === "git") && (
             <View style={styles.terminalWindow}>
               {(data.shell?.command || data.command) && (
-                <SyntaxHighlightBlock
+                <ToolCodeBlock
                   code={`$ ${data.shell?.command || data.command}`}
                   language="bash"
                   tokens={tokens}
@@ -225,19 +178,19 @@ export function ToolCallout({
               )}
 
               {data.shell?.stdout && (
-                <Text selectable {...selectionCodeText} style={styles.terminalOutput}>
-                  {renderTerminalOutput(data.shell.stdout, tokens)}
-                </Text>
+                <ToolOutput text={data.shell.stdout} tokens={tokens}>
+                  {shown => <Text selectable {...selectionCodeText} style={styles.terminalOutput}>{renderTerminalOutput(shown, tokens)}</Text>}
+                </ToolOutput>
               )}
               {data.shell?.stderr && (
-                <Text selectable style={[styles.terminalOutput, { color: tokens.danger }]}>
-                  {data.shell.stderr}
-                </Text>
+                <ToolOutput text={data.shell.stderr} tokens={tokens}>
+                  {shown => <Text selectable style={[styles.terminalOutput, { color: tokens.danger }]}>{shown}</Text>}
+                </ToolOutput>
               )}
               {data.output && !data.shell?.stdout && (
-                <Text selectable {...selectionCodeText} style={styles.terminalOutput}>
-                  {renderTerminalOutput(data.output, tokens)}
-                </Text>
+                <ToolOutput text={data.output} tokens={tokens}>
+                  {shown => <Text selectable {...selectionCodeText} style={styles.terminalOutput}>{renderTerminalOutput(shown, tokens)}</Text>}
+                </ToolOutput>
               )}
               {!data.shell?.stdout && !data.shell?.stderr && !data.output && (
                 <Text selectable style={styles.silentCommandText}>
@@ -355,7 +308,7 @@ export function ToolCallout({
                 <Text selectable style={styles.mcpSectionTitle}>
                   Input Parameters
                 </Text>
-                <SyntaxHighlightBlock
+                <ToolCodeBlock
                   code={JSON.stringify(data.mcp.arguments, null, 2)}
                   language="json"
                   tokens={tokens}
@@ -368,7 +321,7 @@ export function ToolCallout({
                   <Text selectable style={styles.mcpSectionTitle}>
                     Response Payload
                   </Text>
-                  <SyntaxHighlightBlock
+                  <ToolCodeBlock
                     code={
                       typeof data.mcp.result === "string"
                         ? data.mcp.result
@@ -400,7 +353,7 @@ export function ToolCallout({
                 onReveal={revealFile}
               />
             ) : (
-              <SyntaxHighlightBlock
+              <ToolCodeBlock
                 code={data.code || "// [Empty content or pending stream]"}
                 language={data.language ?? "text"}
                 filename={data.filePath ? `${data.filePath} ${data.lineRange || ""}` : undefined}
@@ -412,7 +365,7 @@ export function ToolCallout({
             ))}
 
           {data.tool === "edit" && (
-            <SyntaxHighlightBlock
+            <ToolCodeBlock
               code={data.diff || data.code || "// [Edit: diff applied]"}
               language="diff"
               filename={data.filePath}
@@ -436,7 +389,7 @@ export function ToolCallout({
               ).map((cell, idx) => (
                 <View key={idx} style={{ gap: 4 }}>
                   {cell.code ? (
-                    <SyntaxHighlightBlock
+                    <ToolCodeBlock
                       code={cell.code}
                       language={cell.language}
                       filename={cell.title || "Persistent Kernel Cell"}
@@ -450,9 +403,9 @@ export function ToolCallout({
                       <Text selectable style={styles.evalOutputLabel}>
                         stdout
                       </Text>
-                      <Text selectable {...selectionCodeText} style={styles.evalOutputText}>
-                        {renderTerminalOutput(cell.output, tokens)}
-                      </Text>
+                      <ToolOutput text={cell.output} tokens={tokens}>
+                        {shown => <Text selectable {...selectionCodeText} style={styles.evalOutputText}>{renderTerminalOutput(shown, tokens)}</Text>}
+                      </ToolOutput>
                     </View>
                   ) : null}
                 </View>

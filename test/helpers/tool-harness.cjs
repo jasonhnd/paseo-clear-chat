@@ -81,20 +81,21 @@ function createToolHarness(platform = "ios", options = {}) {
     "client/components/motion": { Rotate: passthrough, Glow: passthrough },
     "client/components/breathe": { Breathe: passthrough },
     "client/components/pulse-dot": { PulseDot: noop },
+    "client/components/tool-spinner": { ToolSpinner: props => jsx("Spinner", { accessibilityLabel: "Running", ...props }) },
     "client/components/file-type-logo": { FileTypeLogo: noop },
     "client/components/image-preview": { ImagePreview: noop },
     "client/components/hub-live": { TimelineTailHub: noop },
     "client/components/reasoning-trace": { ReasoningTrace: noop },
     "client/components/user-message": { UserMessage: noop },
     "client/components/notice-callout": { NoticeCallout: noop },
-    "client/components/markdown/markdown-view": { MarkdownView: noop },
+    "client/components/markdown/markdown-view": { MarkdownView: props => jsx("Text", { children: props.text }) },
     "client/components/turn-footer": { AssistantFooter: noop },
     "client/components/system-card": { SystemCard: noop },
     "client/components/hub-callout": { HubCallout: props => jsx("Text", { children: props.data.text ?? props.data.kind }) },
     "client/components/paseo-tool-callouts": { PaseoToolCallout: props => jsx("Text", { children: props.data.tool }) },
     "client/components/syntax-highlight": {
       renderTerminalOutput: text => text,
-      SyntaxHighlightBlock: props => jsx("View", { children: [
+      SyntaxHighlightBlock: props => jsx("View", { testID: "syntax-block", code: props.code, copyText: props.copyText, children: [
         props.filename ? jsx("Pressable", { accessibilityLabel: `Reveal ${props.filename}`, onPress: props.onRevealFile, children: jsx("Text", { children: props.filename }) }) : null,
         jsx("Text", { children: props.code }),
       ] }),
@@ -175,7 +176,7 @@ function createToolHarness(platform = "ios", options = {}) {
       const render = (nextData = data) => draw(jsx(renderer.Component, { agentId: "demo-agent", host: { id: "demo-host" }, item: { ...pluginItem, data: nextData }, theme: { colors: {} }, timestamp: timestamps.get(item), ...identity }));
       let tree = render();
       if (expand) {
-        const button = nodes(tree, node => node.type === "Pressable" && node.props.accessibilityState?.expanded === false)[0];
+        const button = nodes(tree, node => node.props.testID === "tool-summary-row" && node.props.accessibilityState?.expanded === false)[0];
         button?.props.onPress();
         tree = render();
       }

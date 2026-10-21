@@ -73,6 +73,14 @@ const components = [
   ["client/components/user-message.tsx", "UserMessage", "Copy prompt"],
   ["client/components/syntax-highlight.tsx", "SyntaxHighlightBlock", "Copy code"],
 ];
+test("syntax preview copies the complete source supplied by the tool output fold", async () => {
+  const h = harness("client/components/syntax-highlight.tsx", "SyntaxHighlightBlock", async () => {});
+  h.props.copyText = h.text;
+  h.props.code = "A folded preview";
+  const button = h.nodes(h.render(), n => n.type === "Pressable" && n.props.accessibilityLabel === "Copy code")[0];
+  await button.props.onPress();
+  assert.deepEqual(h.calls, [h.text]);
+});
 for (const [file, name, label] of components) {
   test(`${name}: native press copies verbatim, reports success only after SDK resolves`, async () => {
     let finish;

@@ -65,7 +65,7 @@ export function extractEvalCells(
       title: typeof input.title === "string" ? input.title : undefined,
       code,
       language: normalizeKernel(fallbackLanguage),
-      output: extractContentText(container),
+      output: typeof output === "string" ? output : extractContentText(container),
     },
   ];
 }

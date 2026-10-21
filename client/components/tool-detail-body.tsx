@@ -5,6 +5,7 @@ import type { ExtendedThemeTokens } from "./theme-tokens";
 import { openLink } from "./open-link";
 import { TaskList } from "./task-list";
 import { preview } from "../tool-detail";
+import { ToolOutput } from "./tool-output";
 
 export function hasToolDetailBody(data: ToolCalloutData): boolean {
   return Boolean(data.skill) || ["search", "fetch", "web_search", "plan", "todo", "plain_text", "unknown"].includes(data.tool);
@@ -29,7 +30,7 @@ export function ToolDetailBody({ data, tokens, onRevealPath }: {
   if (data.skill) return (
     <View style={styles.body}>
       <Text selectable style={styles.title}>{`Skill: ${data.skill.name}`}</Text>
-      {data.skill.text?.trim() ? <Text selectable style={styles.text}>{data.skill.text}</Text> : empty}
+      {data.skill.text?.trim() ? <ToolOutput text={data.skill.text} tokens={tokens}>{shown => <Text selectable style={styles.text}>{shown}</Text>}</ToolOutput> : empty}
     </View>
   );
 
@@ -42,7 +43,7 @@ export function ToolDetailBody({ data, tokens, onRevealPath }: {
 
   if (data.tool === "plain_text") return (
     <View style={styles.body}>
-      {data.plainText?.trim() ? <Text selectable style={styles.text}>{data.plainText}</Text> : empty}
+      {data.plainText?.trim() ? <ToolOutput text={data.plainText} tokens={tokens}>{shown => <Text selectable style={styles.text}>{shown}</Text>}</ToolOutput> : empty}
     </View>
   );
 
@@ -79,11 +80,10 @@ export function ToolDetailBody({ data, tokens, onRevealPath }: {
       {data.fallback?.parameters.map((parameter) => (
         <View key={parameter.name} style={styles.row}>
           <Text selectable style={styles.key}>{`${parameter.name}:`}</Text>
-          <Text selectable style={styles.text}>{parameter.value}</Text>
+          <ToolOutput text={parameter.value} tokens={tokens}>{shown => <Text selectable style={styles.text}>{shown}</Text>}</ToolOutput>
         </View>
       ))}
-      {data.fallback?.output ? <Text selectable style={styles.text}>{data.fallback.output}</Text> : empty}
-      {data.fallback?.truncated ? <Text selectable style={styles.key}>Showing the first 15 lines.</Text> : null}
+      {data.fallback?.output ? <ToolOutput text={data.fallback.output} tokens={tokens}>{shown => <Text selectable style={styles.text}>{shown}</Text>}</ToolOutput> : empty}
     </View>
   );
 }

@@ -48,11 +48,9 @@ export function fallbackData(input: unknown, output: unknown): NonNullable<ToolC
   const entries = input && typeof input === "object" && !Array.isArray(input)
     ? Object.entries(input)
     : input !== undefined && input !== null && input !== "" ? [["input", input] as const] : [];
-  const excerpt = preview(valueText(output), 15);
   return {
     parameters: entries.map(([name, value]) => ({ name, value: parameterValue(value) })),
-    output: excerpt.text,
-    truncated: excerpt.truncated,
+    output: valueText(output),
   };
 }
 
