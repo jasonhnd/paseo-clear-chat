@@ -62,10 +62,15 @@ export function installCompactToolSpacing(doc = typeof document === "undefined" 
     if (stopped) return;
     const markers = Array.from(doc!.querySelectorAll<HTMLElement>(TOOL_SELECTOR));
     const present = new Set(markers);
-    for (const marker of adjusted.keys()) if (!present.has(marker)) restore(marker);
-    const compact = (marker: HTMLElement) => marker.getAttribute("data-clearchattool") === "collapsed"
-      && marker.getBoundingClientRect().height > 0
-      && marker.getBoundingClientRect().height <= COLLAPSED_TOOL_HEIGHT;
+    const measured = new Map<HTMLElement, boolean>();
+    const compact = (marker: HTMLElement) => {
+      if (measured.has(marker)) return measured.get(marker)!;
+      const height = marker.getAttribute("data-clearchattool") === "collapsed" ? marker.getBoundingClientRect().height : 0;
+      const result = height > 0 && height <= COLLAPSED_TOOL_HEIGHT;
+      measured.set(marker, result);
+      return result;
+    };
+    const margins = new Map<HTMLElement, number>();
     for (const marker of markers) {
       const row = marker.closest(ROW_SELECTOR);
       const above = row ? previousRow(row) : undefined;
@@ -75,6 +80,12 @@ export function installCompactToolSpacing(doc = typeof document === "undefined" 
         || Number(row.getAttribute("data-index")) === Number(above.getAttribute("data-index")) + 1;
       const amount = row && frame && previous && consecutive && markerInRow(row) === marker && hostFrame(marker, row) && compact(marker) && compact(previous)
         ? toolGapCompensation(Number.parseFloat(view!.getComputedStyle(frame).marginBottom)) : 0;
+      margins.set(marker, amount);
+    }
+    // Read the entire batch before changing layout. Interleaving each margin
+    // with the next row's geometry forces a reflow for every compact neighbor.
+    for (const marker of adjusted.keys()) if (!present.has(marker)) restore(marker);
+    for (const [marker, amount] of margins) {
       if (!amount) { restore(marker); continue; }
       if (!adjusted.has(marker)) adjusted.set(marker, marker.style.marginTop);
       const margin = `${-amount}px`;
