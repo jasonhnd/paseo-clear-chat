@@ -3,7 +3,7 @@
 The `real-*.json` fixtures are sanitized captures from Paseo's projected timeline
 API. They are the primary replay samples. The other fixtures are handwritten
 synthetic sessions that provide additional coverage. Every sample contains
-fictional content, sample identifiers, neutral paths and example.org URLs.
+fictional content, sample identifiers, neutral paths and URLs on example domains.
 
 ## Captured structures
 
