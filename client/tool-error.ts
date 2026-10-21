@@ -34,22 +34,31 @@ export function toolFailureMessage(error: unknown, detail: Record<string, unknow
 }
 
 /** Keep a separate error line when output folding would otherwise hide it. */
-export function toolErrorLine(data: ToolCalloutData, limit: OutputLineLimit): string | undefined {
+export function toolErrorLine(
+  data: ToolCalloutData, limit: OutputLineLimit, expandedOutputs?: ReadonlySet<string>, imagePreview = false,
+): string | undefined {
   const error = data.error;
   if (!error) return undefined;
   let outputs: Array<string | undefined> = [];
   if (data.finalReply) outputs = [data.finalReply];
   else if (data.skill) outputs = [data.skill.text];
   else if (["bash", "shell", "git"].includes(data.tool)) outputs = [data.shell?.stdout || data.output, data.shell?.stderr];
-  else if (data.tool === "read" || data.tool === "write") outputs = [data.code];
+  else if ((data.tool === "read" || data.tool === "write") && !imagePreview) outputs = [data.code];
   else if (data.tool === "edit") outputs = [data.diff || data.code];
   else if (data.tool === "plain_text") outputs = [data.plainText];
   else if (data.tool === "tool_search") outputs = [data.toolSearch?.text];
   else if (data.tool === "mcp") outputs = [typeof data.mcp?.result === "string" ? data.mcp.result : undefined];
   else if (data.tool === "eval") outputs = data.cells?.map(cell => cell.output) ?? [data.output];
+  else if (data.tool === "thinking") outputs = [data.thinking?.text || data.code || data.output];
+  else if (data.tool === "github") outputs = [data.github?.text, data.github?.file?.code];
+  else if (data.tool === "fetch") outputs = [data.fetch?.preview];
+  else if (data.tool === "search" || data.tool === "web_search") outputs = data.search?.results.length
+    ? [data.search.preview, ...data.search.results.map(row => row.preview?.split(/\r?\n/).slice(0, 5).join("\n"))]
+    : [data.fetch?.preview];
   else if (data.tool === "unknown") outputs = [data.fallback?.output];
   return outputs.some(text => {
-    const visible = data.finalReply || limit === "never" ? text : text?.split(/\r?\n/).slice(0, limit).join("\n");
+    const visible = data.finalReply || data.tool === "thinking" || limit === "never" || (text && expandedOutputs?.has(text))
+      ? text : text?.split(/\r?\n/).slice(0, limit).join("\n");
     return visible?.includes(error);
   }) ? undefined : error;
 }

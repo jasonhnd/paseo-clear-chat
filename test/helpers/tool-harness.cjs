@@ -29,6 +29,12 @@ function createToolHarness(platform = "ios", options = {}) {
     return index;
   }
   const react = {
+    createContext(value) {
+      const context = { current: value };
+      context.Provider = { context };
+      return context;
+    },
+    useContext: context => context.current,
     useState(initial) {
       const owner = frame, index = next(initial);
       return [owner.values[index], value => {
@@ -181,6 +187,12 @@ function createToolHarness(platform = "ios", options = {}) {
   function draw(element, path = "root") {
     if (Array.isArray(element)) return element.map((child, i) => draw(child, `${path}.${i}`));
     if (!element || typeof element !== "object") return element;
+    if (element.type?.context) {
+      const context = element.type.context, previous = context.current;
+      context.current = element.props.value;
+      try { return draw(element.props.children, `${path}.provider`); }
+      finally { context.current = previous; }
+    }
     if (typeof element.type === "function") {
       const key = `${path}:${element.type.name}`;
       const owner = frames.get(key) ?? { values: [], cursor: 0, effects: new Map() };
