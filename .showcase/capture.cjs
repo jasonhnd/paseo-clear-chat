@@ -1,0 +1,133 @@
+"use strict";
+
+// Build, serve, capture and clean up in one process. Never uses a live host.
+const { build } = require("esbuild");
+const { chromium } = require("playwright-core");
+const { createServer } = require("node:http");
+const { readFileSync, writeFileSync, mkdirSync, rmSync, statSync, realpathSync, copyFileSync } = require("node:fs");
+const { resolve, join, dirname } = require("node:path");
+const { tmpdir } = require("node:os");
+const { execFileSync } = require("node:child_process");
+
+const root = resolve(__dirname, "..");
+const output = join(root, "images");
+const existingDocs = new Set([
+  "tool-bash", "tool-read", "tool-edit", "tool-image", "tool-thinking", "tool-mcp",
+  "tool-eval", "tool-ask", "tool-task", "hub", "paseo", "reasoning", "tasks",
+  "approval", "user", "syntax", "settings",
+]);
+const temp = process.env.KANBAN_TMP;
+if (!temp || realpathSync(temp) !== resolve(temp)) {
+  throw new Error("KANBAN_TMP must be an existing, absolute task directory.");
+}
+// Chrome and image tools inherit this value; no system temporary directory.
+process.env.TMPDIR = temp;
+process.env.TMP = temp;
+process.env.TEMP = temp;
+process.env.MAGICK_TEMPORARY_PATH = temp;
+if (tmpdir() !== temp) throw new Error("Temporary directory was not redirected.");
+const work = join(temp, "capture");
+mkdirSync(work, { recursive: true });
+mkdirSync(output, { recursive: true });
+
+async function capture() {
+  const bundle = await build({
+    absWorkingDir: root, entryPoints: [join(__dirname, "showcase.tsx")], bundle: true, write: false,
+    jsx: "automatic", platform: "browser", logLevel: "warning", define: { global: "globalThis" },
+    alias: {
+      react: dirname(require.resolve("react/package.json")),
+      "react-dom/client": require.resolve("react-dom/client"),
+      "react-native": require.resolve("react-native-web"),
+      "@getpaseo/plugin/client/react-native": join(__dirname, "shims/plugin-react-native.tsx"),
+      "@getpaseo/plugin/client": join(__dirname, "shims/plugin-client.tsx"),
+    },
+    nodePaths: [join(__dirname, "node_modules")],
+  });
+  const html = readFileSync(join(__dirname, "index.html"));
+  const server = createServer((request, response) => {
+    if (request.url === "/showcase.js") {
+      response.setHeader("Content-Type", "text/javascript");
+      response.end(bundle.outputFiles[0].contents);
+    } else if (request.url?.startsWith("/?")) {
+      response.setHeader("Content-Type", "text/html");
+      response.end(html);
+    } else { response.writeHead(404); response.end(); }
+  });
+  let browser;
+  const report = [];
+  try {
+    await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+    browser = await chromium.launchPersistentContext(join(work, "chrome-profile"), {
+      channel: "chrome", headless: true, viewport: { width: 1600, height: 1000 },
+      deviceScaleFactor: 1.5, reducedMotion: "reduce", timezoneId: "UTC", locale: "en-US",
+      args: ["--disable-background-networking", "--disable-component-update", "--no-first-run"],
+    });
+    const page = await browser.newPage();
+    const errors = [];
+    page.on("pageerror", error => errors.push(error.message));
+    // Rasterize the authored SVG fixture in Chrome, entirely in memory.
+    const image = await page.evaluate(async svg => {
+      const bitmap = new Image();
+      bitmap.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+      await bitmap.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width; canvas.height = bitmap.height;
+      canvas.getContext("2d").drawImage(bitmap, 0, 0);
+      return canvas.toDataURL("image/png");
+    }, readFileSync(join(__dirname, "sample-image.svg"), "utf8"));
+    await page.addInitScript(image => { window.__showcaseImage = image; }, image);
+    // Refuse all external traffic, including accidental URLs in demo content.
+    await page.route("**/*", route => {
+      const url = new URL(route.request().url());
+      return url.hostname === "127.0.0.1" ? route.continue() : route.abort();
+    });
+    for (const theme of ["light", "dark"]) {
+      await page.goto(`http://127.0.0.1:${server.address().port}/?theme=${theme}`, { waitUntil: "networkidle" });
+      await page.waitForFunction(() => document.querySelector("#shot-settings") || window.__err?.length);
+      if (errors.length) throw new Error(errors.join("\n"));
+      await page.locator("#shot-settings").waitFor();
+      await page.evaluate(async () => {
+        await document.fonts.ready;
+        await Promise.all([...document.images].map(image => image.decode().catch(() => {})));
+      });
+      // Freeze decorative animations after component effects and fonts settle.
+      await page.addStyleTag({ content: "*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; } pre { white-space: pre-wrap; overflow-wrap: anywhere; font-family: Iosevka, monospace; font-size: 12px; line-height: 20px; }" });
+      if (errors.length) throw new Error(errors.join("\n"));
+      const shots = await page.locator("[id^=shot-]").all();
+      if (shots.length !== 33) throw new Error(`Expected 33 capture groups, received ${shots.length}`);
+      for (const shot of shots) {
+        const id = (await shot.getAttribute("id")).slice(5);
+        const text = await shot.innerText();
+        if (id === "settings") {
+          for (const label of ["Fold finished steps", "Fold long output after", "Report a problem"]) {
+            if (!text.includes(label)) throw new Error(`Settings capture is missing ${label}`);
+          }
+        }
+        const name = `${id}-${theme}.png`;
+        const raw = join(work, name);
+        await shot.screenshot({ path: raw, animations: "disabled" });
+        const destination = join(output, name);
+        execFileSync("sips", ["-s", "format", "png", raw, "--out", destination], { stdio: "pipe" });
+        // Palette compression keeps large comparison/whole-turn images readable.
+        if (statSync(destination).size > 500000) {
+          execFileSync("magick", [raw, "-strip", "-colors", "256", "-define", "png:compression-level=9", destination]);
+        }
+        const bytes = statSync(destination).size;
+        if (bytes > 500000) throw new Error(`${name} exceeds 500 KB (${bytes} bytes)`);
+        if (theme === "dark" && existingDocs.has(id)) {
+          copyFileSync(destination, join(root, "docs/images", `${id}.png`));
+        }
+        report.push({ file: `images/${name}`, fixture: id, bytes, text });
+        console.log(`${name}: ${bytes} bytes`);
+        rmSync(raw);
+      }
+    }
+    writeFileSync(join(temp, "capture-report.json"), JSON.stringify(report, null, 2) + "\n");
+    console.log(`Captured ${report.length} images with Google Chrome.`);
+  } finally {
+    await browser?.close();
+    await new Promise(resolve => server.close(resolve));
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+capture().catch(error => { console.error(error); process.exitCode = 1; });

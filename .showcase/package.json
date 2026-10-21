@@ -1,0 +1,16 @@
+{
+  "name": "clear-chat-showcase",
+  "private": true,
+  "scripts": {
+    "capture": "node capture.cjs",
+    "typecheck": "tsc --project tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/react-dom": "19.1.0",
+    "esbuild": "0.25.12",
+    "lucide-react": "0.468.0",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-native-web": "0.21.2"
+  }
+}
