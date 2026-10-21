@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const { createHash } = require("node:crypto");
 const fs = require("node:fs");
 const { createRequire } = require("node:module");
 const { tmpdir } = require("node:os");
@@ -75,6 +76,54 @@ test("host migration copies the SDK envelope and keeps the old settings", (t) =>
   // Editing the copy must not mutate a shared inode belonging to the old ID.
   fs.writeFileSync(h.path(PLUGIN_ID), "new choices");
   assert.equal(fs.readFileSync(old, "utf8"), oldRaw);
+});
+
+test("host migration preserves the legacy settings SHA256 and source bytes", (t) => {
+  const h = fixture(t);
+  const raw = Buffer.from(`${JSON.stringify(JSON.parse(oldRaw), null, 2).replace(/\n/g, "\r\n")}\r\n`);
+  const source = h.seed(LEGACY_PLUGIN_ID, raw);
+  const original = fs.readFileSync(source);
+  const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+  const originalHash = sha256(original);
+
+  h.load("server/settings-migration.ts").migrateHostSettings();
+
+  assert.equal(sha256(fs.readFileSync(h.path(PLUGIN_ID))), originalHash);
+  assert.equal(fs.existsSync(source), true);
+  assert.deepEqual(fs.readFileSync(source), original);
+  assert.deepEqual(h.errors, []);
+});
+
+test("presentation version one upgrades to version two preserving every existing value", async (t) => {
+  const h = fixture(t);
+  const values = {
+    preferences: {
+      accent: "violet",
+      uiFont: "system",
+      codeFont: "plain",
+      textScale: 1.15,
+      frostedGlass: false,
+      pointerGlow: false,
+      enhancedUserBubble: false,
+      selectionActions: false,
+      assistantMarkdown: false,
+      markdownVariant: "terminal",
+    },
+    legacyMigrated: false,
+  };
+  const raw = JSON.stringify({ version: 1, values });
+  const source = h.seed(LEGACY_PLUGIN_ID, raw);
+  h.load("server/settings-migration.ts").migrateHostSettings();
+  const envelope = JSON.parse(fs.readFileSync(h.path(PLUGIN_ID), "utf8"));
+  const definition = h.load("shared/settings.ts").presentationSettings;
+
+  assert.equal(envelope.version, 1);
+  assert.equal(definition.id, "presentation");
+  assert.equal(definition.version, 2);
+  const migrated = definition.schema.parse(await definition.migrate(envelope.values, envelope.version));
+  assert.deepEqual(migrated, values);
+  assert.deepEqual(envelope.values, values);
+  assert.equal(fs.readFileSync(source, "utf8"), raw);
 });
 
 for (const id of [LEGACY_PLUGIN_ID, PLUGIN_ID]) {
