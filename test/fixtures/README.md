@@ -137,3 +137,12 @@ web, iOS and Android. It requires the card header, complete recap, question,
 lettered labels, option messages and boolean blocked alert, with no raw JSON or
 tool disclosure. Saved collapsed choices and output limits cannot hide a reply.
 Legacy JSON strings and unfamiliar-field fallbacks remain covered separately.
+
+`real-hermes-errors.json` is a separate projected-timeline capture of two failed
+Hermes calls: `read` with `detail.type: read` and `execute` with
+`detail.type: shell`. Both retain `error: { message: string }`, their original
+metadata shapes, and string content/output. The read failure reports a missing
+file; the shell output reports a missing directory and exit code 1. All prose,
+paths and call IDs are fictional. A recursive comparison against the temporary
+capture confirmed identical keys, nesting, array lengths and value types.
+`test/tool-errors.test.cjs` replays both without manually opening their cards.
