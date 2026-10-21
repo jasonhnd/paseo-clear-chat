@@ -63,7 +63,7 @@ export function MarkdownImage({ src, alt, tokens, cwd }: MarkdownImageProps) {
         selectable={Platform.OS !== "ios"}
         accessibilityRole="link"
         accessibilityLabel={`Open image address: ${src}`}
-        onPress={() => openImage(src)}
+        onPress={(event) => { event?.stopPropagation?.(); openImage(src); }}
         style={{ color: tokens.accent, fontSize: tokens.fs(12), textDecorationLine: "underline" }}
       >{src.startsWith("data:") ? `${src.slice(0, src.indexOf(",") + 1)}…` : src}</Text>
       <Image
@@ -103,12 +103,12 @@ function ImageFallback({ src, alt, tokens, unsupported }: MarkdownImageProps & {
         selectable={Platform.OS !== "ios"}
         accessibilityRole={web ? "link" : "button"}
         accessibilityLabel={web ? `Open image address: ${src}` : "Copy image address"}
-        onPress={web ? () => openLink(src) : handleCopy}
+        onPress={(event) => { event?.stopPropagation?.(); if (web) void openLink(src); else void handleCopy(); }}
         style={[textStyle, { color: tokens.accent, textDecorationLine: "underline" }]}
       >
         {src || "Empty image address"}
       </Text>
-      {isImageData(src) ? <Text accessibilityRole="link" accessibilityLabel="Open image source" onPress={() => openImage(src)} style={[textStyle, { color: tokens.accent }]}>Open image source</Text> : null}
+      {isImageData(src) ? <Text accessibilityRole="link" accessibilityLabel="Open image source" onPress={(event) => { event?.stopPropagation?.(); openImage(src); }} style={[textStyle, { color: tokens.accent }]}>Open image source</Text> : null}
       <CopyFallbackDialog text={fallbackText} onClose={() => setFallbackText(null)} tokens={tokens} />
     </View>
   );

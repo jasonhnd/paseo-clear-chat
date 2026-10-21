@@ -151,7 +151,7 @@ export function ImagePreview({ path, file, tokens, onReveal, revealLabel }: Imag
           <Pressable
             accessibilityRole="link"
             accessibilityLabel={revealLabel ?? `Show ${path} in the file manager`}
-            onPress={onReveal}
+            onPress={(event) => { event?.stopPropagation?.(); onReveal(); }}
           >
             <Text style={styles.path} numberOfLines={1}>
               {label}

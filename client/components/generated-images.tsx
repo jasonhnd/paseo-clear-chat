@@ -10,7 +10,10 @@ import type { ExtendedThemeTokens } from "./theme-tokens";
 
 /** Embedded images need a browser-local URL; the daemon cannot open one. */
 export function openImage(source: string): void {
-  if (/^https?:\/\//i.test(source)) return openLink(source);
+  if (/^https?:\/\//i.test(source)) {
+    void openLink(source);
+    return;
+  }
   if (Platform.OS !== "web") {
     void Linking.openURL(source).catch(() => {});
     return;

@@ -89,13 +89,13 @@ test("upstream #4: iOS links alongside reply images remain tappable", () => {
   const h = createToolHarness("ios", { markdown: true });
   const tree = renderReply(h, `[Guide](${markdownTarget}) ![Diagram](https://example.org/diagram.png) and ${bareTarget}.`);
   const links = linksIn(h, tree);
-  assert.equal(links.length, 2);
+  assert.equal(links.length, 3);
   assert.equal(h.nodes(tree, node => node.type === "Image").length, 1, "reply images stay outside inline text");
   for (const run of h.nodes(tree, node => node.type === "Text" && linksIn(h, node).length > 0)) {
     assert.equal(run.props.selectable, false);
   }
   links.forEach(press);
-  assert.deepEqual(h.links, [markdownTarget, bareTarget]);
+  assert.deepEqual(h.links, [markdownTarget, "https://example.org/diagram.png", bareTarget]);
 });
 
 for (const platform of ["web", "android"]) {
