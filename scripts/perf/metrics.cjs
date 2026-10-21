@@ -9,6 +9,7 @@ const DEFAULTS = Object.freeze({
   width: 1440,
   height: 900,
   headless: false,
+  readySelector: '[data-testid="agent-chat-scroll"] [data-message-id]',
 });
 
 const NUMBERS = {

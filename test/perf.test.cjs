@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { parseArgs, median, analyzeFrames, summarizeRuns, renderMarkdown } = require("../scripts/perf/metrics.cjs");
+const { collectRuns } = require("../scripts/perf/runner.cjs");
 
 const args = ["--daemon", "http://localhost:7000", "--agent", "sample-agent", "--label", "current-state", "--output", "results/sample"];
 
@@ -110,4 +111,32 @@ test("Markdown reports medians, percent and binary heap units with escaped label
   assert.match(markdown, /with&#124;plugin&#96;&lt;x&gt;/);
   assert.match(markdown, /\| 1 \| 123\.5 \| 1 \| 66\.67 \| 2\.00 \|/);
   assert.match(markdown, /median/);
+});
+
+test("each performance sample owns a new tab that closes before the next sample", async () => {
+  const events = [];
+  const pages = [];
+  const context = { async newPage() {
+    const id = pages.length + 1;
+    const page = { id, async close() { events.push(`close ${id}`); } };
+    pages.push(page);
+    events.push(`open ${id}`);
+    return page;
+  } };
+  const runs = await collectRuns(context, 3, async (page, run) => {
+    assert.equal(page, pages[run - 1]);
+    events.push(`measure ${run}`);
+    return { firstScreenMs: run * 10 };
+  });
+  assert.deepEqual(events, ["open 1", "measure 1", "close 1", "open 2", "measure 2", "close 2", "open 3", "measure 3", "close 3"]);
+  assert.deepEqual(runs.map(run => run.firstScreenMs), [10, 20, 30]);
+});
+
+test("failed performance samples close their tab and abort instead of silently changing the median", async () => {
+  let closed = 0;
+  let opened = 0;
+  const context = { async newPage() { opened += 1; return { async close() { closed += 1; } }; } };
+  await assert.rejects(collectRuns(context, 3, async () => { throw new Error("Conversation unavailable"); }), /Conversation unavailable/);
+  assert.equal(opened, 1);
+  assert.equal(closed, 1);
 });
