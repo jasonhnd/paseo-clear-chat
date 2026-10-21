@@ -161,14 +161,9 @@ export default function contribute(client: PluginClientContext) {
     query: { itemType: "user_message" },
     transform({ item }) {
       if (item.type !== "user_message") return undefined;
-      // The host strips images while mapping the stream item, so an enhanced
-      // bubble would silently swallow a pasted screenshot. The preference lets
-      // the reader trade the bubble for the host's image previews.
       if (!areEnhancerPreferencesReady() || !getEnhancerPreferences().enhancedUserBubble) return undefined;
       const images = extractPromptImages(item);
-      // Replacing the item drops whatever this renderer does not carry, so a
-      // message with an attachment it cannot show is left to the host.
-      if (images.hasUnrenderable) return undefined;
+      if (images.hasOtherAttachments) return undefined;
       // `messageId` rides along so the renderer can carry the host's own
       // `data-history-row-id`, which is the id the chat outline scrolls to.
       // Replacing the item leaves the outline nothing to find otherwise.
@@ -181,6 +176,7 @@ export default function contribute(client: PluginClientContext) {
             data: toJsonValue({
               text: item.text,
               ...(images.uris.length > 0 ? { images: images.uris } : {}),
+              ...(images.count > 0 ? { imageCount: images.count } : {}),
               ...(item.messageId ? { messageId: item.messageId } : {}),
             }),
           },
@@ -195,6 +191,7 @@ export default function contribute(client: PluginClientContext) {
     schema: z.object({
       text: z.string(),
       images: z.array(z.string()).optional(),
+      imageCount: z.number().int().nonnegative().optional(),
       messageId: z.string().optional(),
     }),
     Component: LiveUserMessageRenderer,

@@ -331,6 +331,7 @@ export function LiveNoticeRenderer({ item, theme }: PluginTimelineItemProps<Live
 export interface LiveUserMessagePayload {
   text: string;
   images?: string[];
+  imageCount?: number;
   /** The host's own id for this message, when the provider gave one. */
   messageId?: string;
 }
@@ -405,6 +406,7 @@ export function LiveUserMessageRenderer({
         <UserMessage
           text={item.data.text}
           images={item.data.images}
+          imageCount={item.data.imageCount}
           timestamp={timestamp}
           tokens={tokens}
           usage={observedLive ? usage : null}

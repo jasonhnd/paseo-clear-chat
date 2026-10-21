@@ -109,6 +109,9 @@ function createToolHarness(platform = "ios", options = {}) {
   if (options.syntax) {
     delete stubs["client/components/syntax-highlight"];
     stubs["client/highlight"] = { useHighlightedLines: () => null };
+  }
+  if (options.userMessage) delete stubs["client/components/user-message"];
+  if (options.syntax || options.userMessage) {
     stubs["client/components/copy-feedback"] = {
       useCopyText: () => ({ copied: false, handleCopy: noop, fallbackText: null, setFallbackText: noop }),
       CopyFallbackDialog: noop, copyTouchTarget: {},
@@ -139,6 +142,7 @@ function createToolHarness(platform = "ios", options = {}) {
           return async value => { reveals.push(value); return {}; };
         },
         useAgent: (_, selector) => selector({ cwd: "/workspace/demo" }),
+        usePaseo: () => ({ agents: { ref: () => ({ refresh: async () => null }) } }),
       };
       if (id === "@getpaseo/plugin/client/react-native") return {
         useRevealedText: text => text,

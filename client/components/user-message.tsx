@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { View, Text, Pressable, StyleSheet, Image } from "react-native";
 import { CopyFallbackDialog, copyTouchTarget, useCopyText } from "./copy-feedback";
 import { Glyph } from "./glyph";
@@ -21,6 +21,8 @@ interface UserMessageProps {
   timestamp?: Date;
   /** Pasted or attached images, as anything `<Image>` accepts. */
   images?: string[];
+  /** Total attachments, including images whose data is unavailable. */
+  imageCount?: number;
   tokens: ExtendedThemeTokens;
   /** Absent until the turn reports usage, and absent entirely for turns this
    * client did not observe live — usage is not persisted on timeline items. */
@@ -83,11 +85,14 @@ export function UserMessage({
   text,
   timestamp,
   images,
+  imageCount,
   tokens,
   usage,
   pending = false,
 }: UserMessageProps) {
   const { copied, handleCopy, fallbackText, setFallbackText } = useCopyText(text);
+  const [failedImages, setFailedImages] = useState<ReadonlySet<string>>(() => new Set());
+  const attachmentCount = Math.max(imageCount ?? 0, images?.length ?? 0);
 
   const styles = useMemo(
     () =>
@@ -152,6 +157,11 @@ export function UserMessage({
           borderRadius: radius.block,
           backgroundColor: tokens.userBorder,
         },
+        attachmentCount: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(12),
+          color: tokens.userTextMuted,
+        },
         usageRow: {
           flexDirection: "row",
           alignItems: "center",
@@ -209,15 +219,19 @@ export function UserMessage({
         <Text selectable style={styles.text}>
           {text}
         </Text>
-        {images?.length ? (
+        {attachmentCount > 0 ? (
           <View style={styles.imageRow}>
-            {images.map((uri) => (
+            <Text selectable style={styles.attachmentCount}>
+              {attachmentCount} {attachmentCount === 1 ? "image" : "images"} attached
+            </Text>
+            {images?.filter((uri) => !failedImages.has(uri)).map((uri) => (
               <Image
                 key={uri}
                 source={{ uri }}
                 style={styles.image}
                 resizeMode="contain"
                 accessibilityLabel="Attached image"
+                onError={() => setFailedImages((previous) => new Set(previous).add(uri))}
               />
             ))}
           </View>
