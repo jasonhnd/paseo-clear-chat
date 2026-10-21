@@ -18,6 +18,7 @@ function replyKey(item: ReplyIdentity, at: number): string {
 
 /** Same flooring and units as the host's utils/time.ts:formatDuration. */
 export function formatWorkedDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "0s";
   const seconds = Math.floor(Math.max(0, ms) / 1000);
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
