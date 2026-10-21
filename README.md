@@ -450,7 +450,7 @@ visible, and canceled calls retain their canceled status.
 
 All thirteen tool categories have automated component coverage: shell, read, edit,
 write, search, fetch, web search, tool discovery, subagent, plan, todo, plain text
-and unknown. The [replay fixtures](test/fixtures/README.md) document two sanitized
+and unknown. The [replay fixtures](test/fixtures/README.md) document sanitized
 real timelines and additional synthetic Hermes, Claude and Codex samples. Each
 real timeline must have zero empty cards and at most five percent generic calls;
 plain-text and unknown cards both count toward that budget. Replays also exercise

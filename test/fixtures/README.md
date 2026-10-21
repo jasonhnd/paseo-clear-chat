@@ -34,8 +34,8 @@ fictional content, sample identifiers, neutral paths and URLs on example domains
   `test/tool-approval.test.cjs` replays both records on web, iOS and Android and
   derives pending and denied variants as additional synthetic coverage.
 
-Both captures used `fetchAgentTimeline(agentId, { direction: "tail", limit: 0,
-projection: "projected" })`; both returned `hasOlder: false` and
+The full-timeline captures used `fetchAgentTimeline(agentId, { direction: "tail", limit: 0,
+projection: "projected" })`; each returned `hasOlder: false` and
 `hasNewer: false`. Fixtures retain each `entry.item` with the exact original
 keys, nesting, array lengths, value types, detail tags and metadata shapes.
 Tool namespaces and all message content, identifiers, paths and URLs were
@@ -86,7 +86,7 @@ component replays, not a live Paseo integration test.
 
 ## Replay results
 
-Both real captures enforce zero empty cards and a generic-call rate of at most
+The original Hermes and Claude replays enforce zero empty cards and a generic-call rate of at most
 5%. They also check replies through the real Markdown renderer. Claude includes
 one explicit `wrap_up` tool: it counts as a tool call and renders as an expanded
 final reply outside the 27 tool cards. All seven assistant/final replies in that

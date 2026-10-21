@@ -10,6 +10,7 @@ import { installChatFind } from "./client/components/chat-find";
 import { extractPromptImages } from "./client/prompt-images";
 import { installCompactToolSpacing } from "./client/tool-row-spacing";
 import { extractGeneratedImages } from "./client/generated-images";
+import { projectedApprovalStatus } from "./client/tool-approval";
 import {
   areEnhancerPreferencesReady,
   getEnhancerPreferences,
@@ -17,6 +18,7 @@ import {
 } from "./client/preferences";
 import {
   LiveToolCallRenderer,
+  LiveApprovalRenderer,
   LiveReasoningRenderer,
   LiveTodoRenderer,
   LiveUserMessageRenderer,
@@ -58,6 +60,17 @@ export default function contribute(client: PluginClientContext) {
     query: { itemType: "tool_call" },
     transform({ item, phase }) {
       if (item.type !== "tool_call") return undefined;
+      const approval = projectedApprovalStatus(item);
+      if (approval) {
+        return {
+          items: [{
+            type: "plugin" as const,
+            kind: "omp-approval",
+            version: 1,
+            data: { status: approval },
+          }],
+        };
+      }
       return {
         items: [
           {
@@ -93,6 +106,13 @@ export default function contribute(client: PluginClientContext) {
       phase: z.string().optional(),
     }),
     Component: LiveToolCallRenderer,
+  });
+
+  const removeApprovalRenderer = client.addTimelineRenderer({
+    kind: "omp-approval",
+    version: 1,
+    schema: z.object({ status: z.enum(["approved", "denied", "waiting"]) }),
+    Component: LiveApprovalRenderer,
   });
 
   const removeReasoningTransformer = client.addTimelineTransformer({
@@ -278,6 +298,7 @@ export default function contribute(client: PluginClientContext) {
     removeToolSpacing();
     removeToolTransformer();
     removeToolRenderer();
+    removeApprovalRenderer();
     removeReasoningTransformer();
     removeReasoningRenderer();
     removeTodoTransformer();

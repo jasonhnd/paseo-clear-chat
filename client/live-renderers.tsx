@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View, Text } from "react-native";
+import { View, Text, Pressable } from "react-native";
 import { useAgent, usePaseo, useRpc } from "@getpaseo/plugin/client";
 import { useRevealedText } from "@getpaseo/plugin/client/react-native";
 import type { PluginTimelineItemProps } from "@getpaseo/plugin/client";
@@ -39,6 +39,49 @@ import { FinalToolReply } from "./components/final-tool-reply";
 import { toolRowMarker } from "./tool-row-spacing";
 import { GeneratedImages } from "./components/generated-images";
 import { extractGeneratedImages, type GeneratedImage } from "./generated-images";
+import type { ApprovalStatus } from "./tool-approval";
+import { Glyph } from "./components/glyph";
+
+export function LiveApprovalRenderer({
+  item,
+  theme,
+}: PluginTimelineItemProps<{ status: ApprovalStatus }>) {
+  const preferences = useEnhancerPreferences();
+  const tokens = useMemo(() => buildThemeTokens(theme.colors, preferences), [theme.colors, preferences]);
+  const [expanded, setExpanded] = useState(true);
+  const status = item.data.status;
+  const waiting = status === "waiting";
+  const label = status === "approved" ? "Approved" : status === "denied" ? "Denied" : "Awaiting approval";
+  const color = status === "approved" ? tokens.success : status === "denied" ? tokens.danger : tokens.accent;
+  const summary = (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 6 }}>
+      <Glyph name={status === "approved" ? "Check" : status === "denied" ? "X" : "Clock"} size={13} color={color} />
+      <Text selectable testID={`approval-status-${status}`} style={{ color, fontSize: tokens.fs(12) }}>{label}</Text>
+      {waiting ? <Glyph name={expanded ? "ChevronUp" : "ChevronDown"} size={13} color={tokens.foregroundMuted} /> : null}
+    </View>
+  );
+
+  return (
+    <View testID="approval-timeline-item" {...hostFontEscape}>
+      {waiting ? (
+        <Pressable
+          testID="approval-summary-row"
+          accessibilityRole="button"
+          accessibilityLabel={`${expanded ? "Collapse" : "Expand"} approval details`}
+          accessibilityState={{ expanded }}
+          onPress={() => setExpanded(!expanded)}
+        >
+          {summary}
+        </Pressable>
+      ) : summary}
+      {waiting && expanded ? (
+        <Text selectable testID="approval-body" style={{ color: tokens.foregroundMuted, fontSize: tokens.fs(12), paddingLeft: 21, paddingBottom: 6 }}>
+          This edit is awaiting approval in Paseo.
+        </Text>
+      ) : null}
+    </View>
+  );
+}
 
 export interface LiveReasoningPayload {
   text: string;

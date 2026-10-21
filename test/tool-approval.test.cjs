@@ -23,7 +23,8 @@ for (const platform of ["web", "ios", "android"]) {
       assert.deepEqual(item.detail, { type: "unknown", input: null, output: null });
       assert.deepEqual(item.metadata, { title: item.name });
       assert.equal(item.callId, item.name);
-      const { tree } = h.mount(item, false);
+      const { tree, data } = h.mount(item, false);
+      assert.deepEqual(data, { status: "approved" }, "internal identifiers do not reach the status renderer");
       assert.equal(h.text(tree), "Approved");
       assert.equal(byId(h, tree, "approval-status-approved").length, 1);
       assert.equal(byId(h, tree, "tool-summary-row").length, 0);
@@ -60,6 +61,18 @@ for (const platform of ["web", "ios", "android"]) {
     }
   });
 }
+
+test("approval state updates replace the waiting disclosure with the final decision", () => {
+  const h = createToolHarness();
+  const { render } = h.mount({ ...approvals[0], status: "waiting" }, false);
+  for (const status of ["approved", "denied"]) {
+    const tree = render({ status });
+    assert.equal(h.text(tree), status === "approved" ? "Approved" : "Denied");
+    assert.equal(byId(h, tree, "approval-body").length, 0);
+    assert.equal(byId(h, tree, "approval-summary-row").length, 0);
+    assertNoInternalIds(h, tree);
+  }
+});
 
 test("captured edits retain their diff cards without guessing approval associations", () => {
   const h = createToolHarness();
