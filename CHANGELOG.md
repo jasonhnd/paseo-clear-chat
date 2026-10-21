@@ -15,7 +15,7 @@ First release under the name Clear Chat.
 - Finished tool calls fold into one compact row. Click to open or close a row. The choice is remembered across reloads and history. Running, failed and waiting calls open by default.
 - Long code and output fold after 15 lines, with **Show all N lines**. Two new settings: **Fold finished steps** and **Fold long output after**.
 - Replies sent through a `wrap_up` tool render as a full reply card, with recap, question, lettered options and a **Blocked** alert.
-- Images in replies and from tools: Markdown images, generated images, local paths and image URLs, each with a clickable source and a clear message when an image cannot load.
+- Images in replies and from tools: Markdown images, generated images, local paths and image URLs, each with a clickable source. An image written in a reply that cannot load shows why, together with its address.
 - Clickable links in replies on desktop, web and iOS, including bare URLs and `mailto:` links.
 - Failed tool calls show their error message.
 - Prompts with pasted images show the image count, such as "3 images attached", even when an image cannot be previewed.

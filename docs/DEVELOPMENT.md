@@ -36,6 +36,31 @@ Legacy string options, option descriptions, blocked reasons and JSON string enve
 remain supported. A recap can stand on its own. Unrecognized or invalid structured
 replies remain fully visible as plain text inside the same expanded card.
 
+## Image previews
+
+A read of a `.png` carries no bytes through the timeline, so the host draws it as an empty code
+block with a language badge. The image card draws the file instead: a picture mark, the path as a
+link, the pixel size and file size read from the header, and an eye control that hides the
+thumbnail. The bytes come from the plugin's own daemon-side RPC (`file.image`), which is the only
+side that can reach the file; PNG, JPEG, GIF, WebP, AVIF, BMP, ICO and SVG are recognised. Local
+preview cards appear after a successful read; missing files, read failures and files past 3 MB
+produce no card.
+
+Generated images also appear below tool outputs and assistant replies, including image content
+blocks, Markdown images, local file paths and remote image URLs. Each preview has a clickable
+source address: local files open in the daemon machine's file manager, remote URLs open in the
+browser, and embedded images open in an image viewer. Local paths resolve against the agent's
+working directory and support filenames with spaces.
+
+- **Images written in a reply** (Markdown images and paths given in the reply text): if one cannot
+  be shown, the reply shows the reason and the original address instead of an empty frame.
+- **Images found in tool output**: the output must contain a complete image address. Directory
+  listings and ambiguous filename fragments do not create previews. A failed preview is hidden,
+  including its card and source link.
+
+Filesystem and RPC error details are never displayed by image previews. The host must include the
+image block or address in the timeline payload for the plugin to show it.
+
 ## Opening files
 
 A file name in a read, write, edit, or code block is a link. Pressing it calls the plugin's own
