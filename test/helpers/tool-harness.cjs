@@ -58,7 +58,7 @@ function createToolHarness(platform = "ios", options = {}) {
     View: "View", Text: "Text", Pressable: "Pressable", Image: "Image", ScrollView: "ScrollView",
     Platform: { OS: platform }, StyleSheet: { create: value => value },
     Animated: { Value, View: "Animated.View", timing: () => ({ start: noop, stop: noop }) },
-    Linking: { openURL: url => { links.push(url); return Promise.resolve(); } },
+    Linking: { openURL: url => { links.push(url); return options.openURL?.(url) ?? Promise.resolve(); } },
   };
   const stubs = {
     "client/preferences": { initializeEnhancerPreferences: async () => {}, areEnhancerPreferencesReady: () => true, getEnhancerPreferences: () => preferences, useEnhancerPreferences: () => preferences, useEnhancerPreferencesError: () => null, updateEnhancerPreferences: async patch => Object.assign(preferences, patch), resetEnhancerPreferences: async () => {}, OUTPUT_LINE_OPTIONS: [10, 15, 30, "never"].map(value => ({ value: String(value), label: value === "never" ? "Never" : `${value} lines` })), TEXT_SIZE_OPTIONS: [], ACCENT_PRESETS: {} },
@@ -66,7 +66,7 @@ function createToolHarness(platform = "ios", options = {}) {
     "client/image-file": { useImageFile: noop, isImagePath: path => /\.(png|jpe?g|gif|webp)$/i.test(path ?? "") },
     "shared/file-rpc": { revealPathRpc: {} },
     "client/hub-activity": { publishHubSnapshot: noop },
-    "client/timeline-tail": { useIsTimelineTail: () => false },
+    "client/timeline-tail": { useIsTimelineTail: () => options.timelineTail ?? false },
     "client/system-envelope": { parseSystemEnvelope: () => null },
     "client/components/embed-fonts": { embedFonts: cleanup },
     "client/components/frosted": { frosted: {}, installFrostedGlass: cleanup },
@@ -114,6 +114,7 @@ function createToolHarness(platform = "ios", options = {}) {
       CopyFallbackDialog: noop, copyTouchTarget: {},
     };
   }
+  if (options.replyFooter) delete stubs["client/components/turn-footer"];
   function load(path) {
     let filename = resolve(root, path);
     if (!existsSync(filename)) filename += existsSync(filename + ".ts") ? ".ts" : ".tsx";
@@ -149,7 +150,7 @@ function createToolHarness(platform = "ios", options = {}) {
       if (id.startsWith(".")) return load(resolve(dirname(filename), id));
       return createRequire(filename)(id);
     };
-    runInThisContext(`(function(require,module,exports){${source}\n})`, { filename })(localRequire, mod, mod.exports);
+    runInThisContext(`(function(require,module,exports,globalThis){${source}\n})`, { filename })(localRequire, mod, mod.exports, options.globals ?? globalThis);
     return mod.exports;
   }
   load("index.client.tsx").default({
@@ -191,7 +192,7 @@ function createToolHarness(platform = "ios", options = {}) {
   return {
     load, nodes, text, reveals, links, copies, toasts, transformers, renderers, get preferences() { return getPreferences(); }, tokens, draw, expansionHost, unmount,
     mount(item, expand = true, identity = {}) {
-      unmount(); reveals.length = links.length = 0;
+      unmount(); reveals.length = links.length = copies.length = 0;
       if (!timestamps.has(item)) timestamps.set(item, new Date(nextTimestamp++));
       const transformed = transformers.get(item.type).transform({ item, phase: "complete" });
       const pluginItem = transformed.items[0];

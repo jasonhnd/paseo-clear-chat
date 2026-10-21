@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { View, Text, ScrollView, StyleSheet } from "react-native";
+import { View, Text, ScrollView, StyleSheet, Platform } from "react-native";
 import type { TextStyle, ViewStyle } from "react-native";
 import { Glyph } from "../glyph";
 import { radius, withAlpha, type ExtendedThemeTokens } from "../theme-tokens";
@@ -455,22 +455,33 @@ function renderFlow(
 ): React.ReactNode {
   const runs = imageRuns(spans);
   if (!runs.some(run => run.kind === "image")) {
-    return <Text key={key} selectable style={textStyle}>{options.prefix}{renderInline(spans, context.styles, key)}</Text>;
+    return <Text key={key} selectable={canSelectInline(spans)} style={textStyle}>{options.prefix}{renderInline(spans, context.styles, key)}</Text>;
   }
   return (
     <View key={key} style={[{ minWidth: 0, gap: 8 }, options.containerStyle]}>
       {options.prefix}
       {runs.map((run, index) => run.kind === "image"
         ? <MarkdownImage key={`${key}i${index}:${run.src}`} src={run.src} alt={run.alt} tokens={context.tokens} />
-        : <Text key={`${key}t${index}`} selectable style={[textStyle, { flex: 0 }]}>{renderInline(run.spans, context.styles, `${key}t${index}`)}</Text>)}
+        : <Text key={`${key}t${index}`} selectable={canSelectInline(run.spans)} style={[textStyle, { flex: 0 }]}>{renderInline(run.spans, context.styles, `${key}t${index}`)}</Text>)}
     </View>
   );
+}
+
+function hasLink(spans: MdInline[]): boolean {
+  return spans.some((span) => span.kind === "link" || ("spans" in span && hasLink(span.spans)));
+}
+
+function canSelectInline(spans: MdInline[]): boolean {
+  // iOS selection recognizers compete with nested Text presses. Keep the
+  // entire linked text run tappable; other runs and the reply copy still work.
+  return Platform.OS !== "ios" || !hasLink(spans);
 }
 
 function renderInline(
   spans: MdInline[],
   styles: MarkdownStyles,
   keyPrefix: string,
+  selectable = canSelectInline(spans),
 ): React.ReactNode[] {
   return spans.map((span, index) => {
     const key = `${keyPrefix}i${index}`;
@@ -481,26 +492,26 @@ function renderInline(
         return span.alt;
       case "codeSpan":
         return (
-          <Text key={key} selectable style={styles.codeSpan}>
+          <Text key={key} selectable={selectable} style={styles.codeSpan}>
             {span.text}
           </Text>
         );
       case "strong":
         return (
-          <Text key={key} selectable style={styles.strong}>
-            {renderInline(span.spans, styles, key)}
+          <Text key={key} selectable={selectable} style={styles.strong}>
+            {renderInline(span.spans, styles, key, selectable)}
           </Text>
         );
       case "emphasis":
         return (
-          <Text key={key} selectable style={styles.emphasis}>
-            {renderInline(span.spans, styles, key)}
+          <Text key={key} selectable={selectable} style={styles.emphasis}>
+            {renderInline(span.spans, styles, key, selectable)}
           </Text>
         );
       case "strike":
         return (
-          <Text key={key} selectable style={styles.strike}>
-            {renderInline(span.spans, styles, key)}
+          <Text key={key} selectable={selectable} style={styles.strike}>
+            {renderInline(span.spans, styles, key, selectable)}
           </Text>
         );
       case "link":
@@ -510,15 +521,18 @@ function renderInline(
         return (
           <Text
             key={key}
-            selectable
+            selectable={selectable}
             accessibilityRole="link"
             // No `href`: React Native Web would render a real anchor and the
             // click would navigate the app window itself. The press handler
             // routes through the host's opener instead.
-            onPress={() => openLink(span.href)}
+            onPress={(event) => {
+              event.stopPropagation();
+              void openLink(span.href);
+            }}
             style={styles.link}
           >
-            {renderInline(span.spans, styles, key)}
+            {renderInline(span.spans, styles, key, selectable)}
           </Text>
         );
     }
