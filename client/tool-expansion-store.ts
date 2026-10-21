@@ -4,6 +4,7 @@ import {
   type ExpansionEntries,
   type ToolExpansionSettings,
 } from "../shared/tool-expansion-settings";
+import { errorText } from "./error-text";
 
 type Read = (input: Record<string, never>) => Promise<
   { status: "ready"; revision: string; values: unknown } | { status: "invalid"; error: string }
@@ -43,7 +44,7 @@ export function createToolExpansionStore() {
   const listeners = new Set<() => void>();
   const publish = () => { for (const listener of listeners) listener(); };
   const report = (cause: unknown) => {
-    error = cause instanceof Error ? cause.message : String(cause);
+    error = errorText(cause) ?? "Tool expansion choice could not be saved or loaded.";
     publish();
   };
 

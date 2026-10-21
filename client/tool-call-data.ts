@@ -188,7 +188,7 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
     askAnswer = extractAskSelections(output, outputText);
   } else if (rawName === "hub") {
     toolKind = "hub";
-    title = `Hub: ${String(input.op || "operation")}`;
+    title = `Hub: ${stringValue(input.op) ?? "operation"}`;
     hub = buildHubData(input, outputText, output);
   } else if (rawName === "eval") {
     toolKind = "eval";

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useRpc } from "@getpaseo/plugin/client";
 import { imageRpc } from "../shared/image-rpc";
 import { stripFileSelector } from "../shared/file-path";
+import { errorText } from "./error-text";
 
 /** What the daemon side could tell the client about one image file. */
 export interface ImageFile {
@@ -77,7 +78,7 @@ export function useImageFile(path: string | undefined, cwd: string | null): Imag
           width: null,
           height: null,
           bytes: null,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorText(error) ?? "Image could not be loaded.",
         });
       });
     return () => {
