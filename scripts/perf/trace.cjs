@@ -13,7 +13,7 @@ async function traceScroll(cdp, filename, sample) {
   let stream;
   try {
     await cdp.send("Tracing.start", {
-      categories: "devtools.timeline,v8.execute,disabled-by-default-v8.cpu_profiler",
+      categories: "toplevel,devtools.timeline,v8.execute,disabled-by-default-v8.cpu_profiler",
       transferMode: "ReturnAsStream",
     });
     started = true;

@@ -60,6 +60,7 @@ test("scroll tracing streams CPU events around sampling without screenshots or G
       events.push(command);
       if (command === "Tracing.start") {
         assert.match(params.categories, /cpu_profiler/);
+        assert.match(params.categories, /toplevel/);
         assert.doesNotMatch(params.categories, /screenshot|snapshot|netlog/);
         assert.equal(params.transferMode, "ReturnAsStream");
       }
