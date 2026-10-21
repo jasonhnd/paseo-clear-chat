@@ -122,6 +122,33 @@ test("manual expansion survives a fresh component and module reading host settin
   assert.equal(header(fresh, replay.render()).props.accessibilityState.expanded, true);
 });
 
+for (const [status, foldFinishedSteps, expanded] of [
+  ["completed", true, true],
+  ["completed", false, false],
+  ["failed", true, false],
+]) {
+  test(`unmount flushes a manual ${expanded ? "expansion" : "collapse"} of a ${status} call before reload`, async () => {
+    const host = createExpansionHost();
+    const options = { expansionHost: host, preferences: { foldFinishedSteps } };
+    const h = createToolHarness("ios", options);
+    const first = h.mount(call(status), false);
+    await tick();
+    assert.equal(header(h, first.render()).props.accessibilityState.expanded, !expanded);
+    header(h, first.render()).props.onPress();
+    assert.equal(header(h, first.render()).props.accessibilityState.expanded, expanded);
+    assert.equal(host.calls.filter(call => call.name === "write").length, 0);
+    h.unmount();
+    await tick();
+    assert.equal(host.calls.filter(call => call.name === "write").length, 1);
+
+    const fresh = createToolHarness("ios", options);
+    const replay = fresh.mount(call(status), false);
+    await tick();
+    assert.equal(header(fresh, replay.render()).props.accessibilityState.expanded, expanded);
+    fresh.unmount();
+  });
+}
+
 test("remounting history restores the same choice without sharing it across hosts, agents or occurrences", async () => {
   const host = createExpansionHost();
   const h = createToolHarness("ios", { expansionHost: host });

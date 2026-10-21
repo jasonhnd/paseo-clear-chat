@@ -39,11 +39,13 @@ function createToolHarness(platform = "ios", options = {}) {
     useCallback: fn => fn,
     useSyncExternalStore: (_, getSnapshot) => getSnapshot(),
     useEffect(fn, deps) {
+      const owner = frame;
       const index = frame.cursor++;
       const previous = frame.values[index];
       if (!previous || deps?.some((value, i) => value !== previous[i])) {
+        owner.effects.get(index)?.();
         frame.values[index] = deps;
-        fn();
+        owner.effects.set(index, fn());
       }
     },
   };
@@ -146,7 +148,7 @@ function createToolHarness(platform = "ios", options = {}) {
     if (!element || typeof element !== "object") return element;
     if (typeof element.type === "function") {
       const key = `${path}:${element.type.name}`;
-      const owner = frames.get(key) ?? { values: [], cursor: 0 };
+      const owner = frames.get(key) ?? { values: [], cursor: 0, effects: new Map() };
       frames.set(key, owner); owner.cursor = 0;
       const parent = frame; frame = owner;
       const result = element.type(element.props); frame = parent;
@@ -165,10 +167,16 @@ function createToolHarness(platform = "ios", options = {}) {
     if (typeof tree !== "object") return String(tree);
     return text(tree.props?.children);
   }
+  function unmount() {
+    for (const owner of frames.values()) {
+      for (const effect of owner.effects.values()) effect?.();
+    }
+    frames.clear();
+  }
   return {
-    load, nodes, text, reveals, links, transformers, renderers, preferences, tokens, draw, expansionHost,
+    load, nodes, text, reveals, links, transformers, renderers, preferences, tokens, draw, expansionHost, unmount,
     mount(item, expand = true, identity = {}) {
-      frames.clear(); reveals.length = links.length = 0;
+      unmount(); reveals.length = links.length = 0;
       if (!timestamps.has(item)) timestamps.set(item, new Date(nextTimestamp++));
       const transformed = transformers.get(item.type).transform({ item, phase: "complete" });
       const pluginItem = transformed.items[0];
