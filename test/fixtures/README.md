@@ -146,3 +146,15 @@ file; the shell output reports a missing directory and exit code 1. All prose,
 paths and call IDs are fictional. A recursive comparison against the temporary
 capture confirmed identical keys, nesting, array lengths and value types.
 `test/tool-errors.test.cjs` replays both without manually opening their cards.
+
+## Captured reply footer structure
+
+`real-hermes-reply-footer.json` retains an entire four-entry projected timeline:
+user message, failed read, failed shell call, assistant reply. There is no
+wrap-up tool in this capture. Entry fields, item fields, order, source sequence
+ranges, collapsed lifecycle tags, array lengths and value types match the
+read-only capture. All prose, paths, message IDs, call IDs, turn IDs and dates
+are fictional. A recursive structure comparison reported zero differences.
+`test/reply-footer.test.cjs` uses it to keep Copy available when a later item or
+another conversation owns the global timeline tail. The existing isolated
+Claude wrap-up capture supplies the separate final-tool-reply regression.
