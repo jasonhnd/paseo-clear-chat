@@ -37,48 +37,42 @@ under `KANBAN_TMP/capture` and are removed when the process exits. A local
 `capture-report.json` in `KANBAN_TMP` records the rendered text, fixture name,
 and compressed byte count for each output. It is not committed.
 
-Outputs are `images/<group>-light.png` and `images/<group>-dark.png`. The dark
-captures also overwrite the existing 17 `docs/images/<group>.png` references,
-including settings, so the feature table keeps its existing paths. Comparison
-images are `images/compare-light.png` and `images/compare-dark.png`.
+The script reads the published image pairs from the root README and captures
+only those groups. Feature images are `docs/images/<group>-light.png` and
+`docs/images/<group>-dark.png`. Comparison images are `images/compare-light.png`
+and `images/compare-dark.png`.
+
+To verify the full output without replacing published images, redirect both
+image directories into the task's temporary directory:
+
+```sh
+SHOWCASE_OUTPUT_ROOT="$KANBAN_TMP/showcase-output" npm run capture --prefix .showcase
+```
+
+Remove the trial images and `capture-report.json` after verification.
 
 ## Fixture map
 
 Each row describes both theme captures. All data names refer to `fixtures.ts`
 unless a different file is named.
 
-| Group | Synthetic source |
-| --- | --- |
-| `compare` | `PROMPT`, `CALLS.search/read/edit/bash`, `CODE`, `REPLY`; `Baseline` in `showcase.tsx` uses the same values |
-| `thread` | The demo conversation, `REASONING`, `TASKS`, `JOB_NOTICE`, `WRAP_UP` |
-| `tool-collapsed` | `CALLS.search/read/edit/bash`, all collapsed |
-| `tool-expanded` | `CALLS.bash`, expanded |
-| `tool-bash` | `CALLS.bash/git` |
-| `tool-read` | `CALLS.read`, `CODE` |
-| `tool-image` | `CALLS.image`, `sample-image.svg` |
-| `tool-edit` | `CALLS.edit`, `DIFF` |
-| `tool-thinking` | `CALLS.thinking` |
-| `tool-mcp` | `CALLS.mcp` |
-| `tool-eval` | `CALLS.eval` |
-| `tool-ask` | `CALLS.ask` |
-| `tool-task` | `CALLS.task` |
-| `tool-sub-agent` | `CALLS.subagent` |
-| `tool-search` | `CALLS.search` |
-| `tool-fetch` | `CALLS.fetch` |
-| `tool-web-search` | `CALLS.websearch` |
-| `tool-discovery` | `CALLS.discovery` |
-| `tool-plan` | `CALLS.plan`, `TASKS` |
-| `tool-todo` | `CALLS.todo` |
-| `tool-failure` | `CALLS.failure`, expanded and collapsed |
-| `wrap-up` | `CALLS.bash`, `WRAP_UP` |
-| `generated-images` | Authored reply in `showcase.tsx`, `sample-image.svg` |
-| `hub` | Authored `demo-preview` process record in `showcase.tsx` |
-| `paseo` | Authored `Demo cart reviewer` record in `showcase.tsx` |
-| `tool-github` | `CALLS.github` |
-| `notice` | Authored demo completion and offline warnings in `showcase.tsx` |
-| `reasoning` | `REASONING` |
-| `tasks` | `TASKS` |
-| `approval` | `APPROVAL` |
-| `user` | `PROMPT`, `sample-image.svg` |
-| `syntax` | `CODE`, `DIFF` |
-| `settings` | Real `ClearChatSettingsPage`, default preferences, fictional host label |
+| Light image | Dark image | Synthetic source |
+| --- | --- | --- |
+| [`images/compare-light.png`](../images/compare-light.png) | [`images/compare-dark.png`](../images/compare-dark.png) | `PROMPT`, `CALLS.search/read/edit/bash`, `CODE`, `REPLY`; `Baseline` in `showcase.tsx` uses the same values |
+| [`docs/images/tool-bash-light.png`](../docs/images/tool-bash-light.png) | [`docs/images/tool-bash-dark.png`](../docs/images/tool-bash-dark.png) | `CALLS.bash/git` |
+| [`docs/images/tool-read-light.png`](../docs/images/tool-read-light.png) | [`docs/images/tool-read-dark.png`](../docs/images/tool-read-dark.png) | `CALLS.read`, `CODE` |
+| [`docs/images/tool-image-light.png`](../docs/images/tool-image-light.png) | [`docs/images/tool-image-dark.png`](../docs/images/tool-image-dark.png) | `CALLS.image`, `sample-image.svg` |
+| [`docs/images/tool-edit-light.png`](../docs/images/tool-edit-light.png) | [`docs/images/tool-edit-dark.png`](../docs/images/tool-edit-dark.png) | `CALLS.edit`, `DIFF` |
+| [`docs/images/tool-thinking-light.png`](../docs/images/tool-thinking-light.png) | [`docs/images/tool-thinking-dark.png`](../docs/images/tool-thinking-dark.png) | `CALLS.thinking` |
+| [`docs/images/tool-mcp-light.png`](../docs/images/tool-mcp-light.png) | [`docs/images/tool-mcp-dark.png`](../docs/images/tool-mcp-dark.png) | `CALLS.mcp` |
+| [`docs/images/tool-eval-light.png`](../docs/images/tool-eval-light.png) | [`docs/images/tool-eval-dark.png`](../docs/images/tool-eval-dark.png) | `CALLS.eval` |
+| [`docs/images/tool-ask-light.png`](../docs/images/tool-ask-light.png) | [`docs/images/tool-ask-dark.png`](../docs/images/tool-ask-dark.png) | `CALLS.ask` |
+| [`docs/images/tool-task-light.png`](../docs/images/tool-task-light.png) | [`docs/images/tool-task-dark.png`](../docs/images/tool-task-dark.png) | `CALLS.task` |
+| [`docs/images/hub-light.png`](../docs/images/hub-light.png) | [`docs/images/hub-dark.png`](../docs/images/hub-dark.png) | Authored `demo-preview` process record in `showcase.tsx` |
+| [`docs/images/paseo-light.png`](../docs/images/paseo-light.png) | [`docs/images/paseo-dark.png`](../docs/images/paseo-dark.png) | Authored `Demo cart reviewer` record in `showcase.tsx` |
+| [`docs/images/reasoning-light.png`](../docs/images/reasoning-light.png) | [`docs/images/reasoning-dark.png`](../docs/images/reasoning-dark.png) | `REASONING` |
+| [`docs/images/tasks-light.png`](../docs/images/tasks-light.png) | [`docs/images/tasks-dark.png`](../docs/images/tasks-dark.png) | `TASKS` |
+| [`docs/images/approval-light.png`](../docs/images/approval-light.png) | [`docs/images/approval-dark.png`](../docs/images/approval-dark.png) | `APPROVAL` |
+| [`docs/images/user-light.png`](../docs/images/user-light.png) | [`docs/images/user-dark.png`](../docs/images/user-dark.png) | `PROMPT`, `sample-image.svg` |
+| [`docs/images/syntax-light.png`](../docs/images/syntax-light.png) | [`docs/images/syntax-dark.png`](../docs/images/syntax-dark.png) | `CODE`, `DIFF` |
+| [`docs/images/settings-light.png`](../docs/images/settings-light.png) | [`docs/images/settings-dark.png`](../docs/images/settings-dark.png) | Real `ClearChatSettingsPage`, default preferences, fictional host label |

@@ -4,18 +4,15 @@
 const { build } = require("esbuild");
 const { chromium } = require("playwright-core");
 const { createServer } = require("node:http");
-const { readFileSync, writeFileSync, mkdirSync, rmSync, statSync, realpathSync, copyFileSync } = require("node:fs");
+const { readFileSync, writeFileSync, mkdirSync, rmSync, statSync, realpathSync } = require("node:fs");
 const { resolve, join, dirname } = require("node:path");
 const { tmpdir } = require("node:os");
 const { execFileSync } = require("node:child_process");
+const { createCapturePlan } = require("./capture-plan.cjs");
 
 const root = resolve(__dirname, "..");
-const output = join(root, "images");
-const existingDocs = new Set([
-  "tool-bash", "tool-read", "tool-edit", "tool-image", "tool-thinking", "tool-mcp",
-  "tool-eval", "tool-ask", "tool-task", "hub", "paseo", "reasoning", "tasks",
-  "approval", "user", "syntax", "settings",
-]);
+const plan = createCapturePlan(readFileSync(join(root, "README.md"), "utf8"));
+const output = resolve(process.env.SHOWCASE_OUTPUT_ROOT || root);
 const temp = process.env.KANBAN_TMP;
 if (!temp || realpathSync(temp) !== resolve(temp)) {
   throw new Error("KANBAN_TMP must be an existing, absolute task directory.");
@@ -28,7 +25,7 @@ process.env.MAGICK_TEMPORARY_PATH = temp;
 if (tmpdir() !== temp) throw new Error("Temporary directory was not redirected.");
 const work = join(temp, "capture");
 mkdirSync(work, { recursive: true });
-mkdirSync(output, { recursive: true });
+for (const group of plan) mkdirSync(dirname(join(output, group.light)), { recursive: true });
 
 async function capture() {
   const bundle = await build({
@@ -93,10 +90,10 @@ async function capture() {
       // Freeze decorative animations after component effects and fonts settle.
       await page.addStyleTag({ content: "*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; } pre { white-space: pre-wrap; overflow-wrap: anywhere; font-family: Iosevka, monospace; font-size: 12px; line-height: 20px; }" });
       if (errors.length) throw new Error(errors.join("\n"));
-      const shots = await page.locator("[id^=shot-]").all();
-      if (shots.length !== 33) throw new Error(`Expected 33 capture groups, received ${shots.length}`);
-      for (const shot of shots) {
-        const id = (await shot.getAttribute("id")).slice(5);
+      for (const group of plan) {
+        const { id } = group;
+        const shot = page.locator(`#shot-${id}`);
+        await shot.waitFor();
         const text = await shot.innerText();
         if (id === "settings") {
           for (const label of ["Fold finished steps", "Fold long output after", "Report a problem"]) {
@@ -106,7 +103,7 @@ async function capture() {
         const name = `${id}-${theme}.png`;
         const raw = join(work, name);
         await shot.screenshot({ path: raw, animations: "disabled" });
-        const destination = join(output, name);
+        const destination = join(output, group[theme]);
         execFileSync("sips", ["-s", "format", "png", raw, "--out", destination], { stdio: "pipe" });
         // Palette compression keeps large comparison/whole-turn images readable.
         if (statSync(destination).size > 500000) {
@@ -114,11 +111,8 @@ async function capture() {
         }
         const bytes = statSync(destination).size;
         if (bytes > 500000) throw new Error(`${name} exceeds 500 KB (${bytes} bytes)`);
-        if (theme === "dark" && existingDocs.has(id)) {
-          copyFileSync(destination, join(root, "docs/images", `${id}.png`));
-        }
-        report.push({ file: `images/${name}`, fixture: id, bytes, text });
-        console.log(`${name}: ${bytes} bytes`);
+        report.push({ file: group[theme], fixture: id, bytes, text });
+        console.log(`${group[theme]}: ${bytes} bytes`);
         rmSync(raw);
       }
     }
