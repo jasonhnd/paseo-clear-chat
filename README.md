@@ -83,6 +83,14 @@ bytes come from the plugin's own daemon-side RPC (`file.image`), which is the on
 reach the file; PNG, JPEG, GIF, WebP, AVIF, BMP, ICO and SVG are recognised, and anything past
 3 MB reports its size rather than inlining a data URI.
 
+Generated images also appear below tool outputs and assistant replies, including image content
+blocks, Markdown images, local file paths and remote image URLs. Each preview has a clickable
+source address: local files open in the daemon machine's file manager, remote URLs open in the
+browser, and embedded images open in an image viewer. Local paths resolve against the agent's
+working directory and support filenames with spaces. An unavailable, oversized or undecodable
+image shows an explanation and keeps its source link instead of leaving an empty image frame.
+The host must include the image block or address in the timeline payload for the plugin to show it.
+
 ![Image read](docs/images/tool-image.png)
 
 Assistant replies also render Markdown images (`![alt](url)`) from absolute HTTP(S)
