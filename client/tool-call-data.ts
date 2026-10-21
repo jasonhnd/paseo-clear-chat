@@ -9,6 +9,7 @@ import { finalToolReply } from "./tool-final-reply";
 import { recoverProjectedTool } from "./tool-projection";
 import { toolFailureMessage } from "./tool-error";
 import { extractGeneratedImages } from "./generated-images";
+import { errorText } from "./error-text";
 
 export interface LiveToolCallPayload {
   name: string;
@@ -16,7 +17,7 @@ export interface LiveToolCallPayload {
   detail?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
   callId?: string;
-  error?: string | null;
+  error?: unknown;
   phase?: string;
 }
 
@@ -217,7 +218,7 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
     tool: toolKind,
     title,
     status,
-    error: status === "failed" ? toolFailureMessage(data.error, detail, toolKind) : stringValue(data.error),
+    error: status === "failed" ? toolFailureMessage(data.error, detail, toolKind) : errorText(data.error),
     finalReply: finalToolReply(rawName, rawInput, output),
     images: extractGeneratedImages([output, detail.text]),
     filePath: skill ? undefined : filePath,

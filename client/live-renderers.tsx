@@ -23,6 +23,7 @@ import { AssistantFooter } from "./components/turn-footer";
 import { SystemCard } from "./components/system-card";
 import { parseSystemEnvelope } from "./system-envelope";
 import { useIsTimelineTail } from "./timeline-tail";
+import { toolErrorLine } from "./tool-error";
 import type {
   ReasoningTraceData,
   TaskListData,
@@ -168,7 +169,7 @@ export function LiveToolCallRenderer({
       {calloutData.finalReply ? (
         <View testID="tool-final-reply">
           <FinalToolReply text={calloutData.finalReply} cwd={cwd} tokens={tokens} variant={preferences.markdownVariant} />
-          {calloutData.error ? <Text selectable style={{ color: tokens.danger }}>{calloutData.error}</Text> : null}
+          {toolErrorLine(calloutData, "never") ? <Text testID="tool-error-line" selectable style={{ color: tokens.danger }}>{calloutData.error}</Text> : null}
         </View>
       ) : (
         <ToolCallout

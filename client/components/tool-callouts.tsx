@@ -21,6 +21,8 @@ import { isImagePath } from "../image-file";
 import type { ImageFile } from "../image-file";
 import { selectionCodeText, selectionSurface } from "./selection-actions";
 import type { ToolCalloutData } from "../../shared/contracts";
+import { useEnhancerPreferences } from "../preferences";
+import { toolErrorLine } from "../tool-error";
 
 function getToolIconName(tool: string): string {
   if (tool === "git") return "Git";
@@ -65,6 +67,8 @@ export function ToolCallout({
   onRevealPath,
   imageFile,
 }: ToolCalloutProps) {
+  const { foldLongOutputAfter } = useEnhancerPreferences();
+  const errorLine = toolErrorLine(data, foldLongOutputAfter);
   // Every branch below needs a payload. A tool that carries none — a hub op
   // with no parsed record, an unmapped kind — would otherwise draw an empty
   // panel, so the raw output takes over.
@@ -164,7 +168,7 @@ export function ToolCallout({
 
       {expanded && (
         <View testID="tool-card-body" style={styles.body}>
-          {data.error ? <Text selectable style={styles.mcpErrorText}>{data.error}</Text> : null}
+          {errorLine ? <Text testID="tool-error-line" selectable style={styles.mcpErrorText}>{errorLine}</Text> : null}
           {hasToolDetailBody(data) ? <ToolDetailBody data={data} tokens={tokens} onRevealPath={onRevealPath} /> : null}
           {(data.tool === "bash" || data.tool === "shell" || data.tool === "git") && (
             <View style={styles.terminalWindow}>
