@@ -76,6 +76,15 @@ reach the file; PNG, JPEG, GIF, WebP, AVIF, BMP, ICO and SVG are recognised, and
 
 ![Image read](docs/images/tool-image.png)
 
+Assistant replies also render Markdown images (`![alt](url)`) from absolute HTTP(S)
+addresses and `data:image/...` URLs. Images fit the message width and keep their
+aspect ratio, including in lists, quotes and table cells. A load or decode failure
+shows the alt text and the original address; HTTP(S) addresses open through the
+host's link opener, and data addresses can be pressed to copy them. Relative paths,
+file URLs and unsupported schemes show the same visible fallback with a copyable
+address instead of resolving against the Paseo app's page. Native image format
+support still depends on the device; an unsupported format uses the failure fallback.
+
 ### Edit
 
 Diff rendering where adjacent removed and added rows join into one rounded block, and only the
