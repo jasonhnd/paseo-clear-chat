@@ -3,15 +3,15 @@ import { record, stringValue, valueText } from "./tool-detail";
 export type FinalToolReplyContent =
   | { kind: "markdown"; text: string }
   | { kind: "text"; text: string }
-  | { kind: "wrap_up"; recap: string; ask?: string; actions: string[]; blocked: string[] };
+  | { kind: "wrap_up"; recap: string; ask?: string; actions: string[]; blocked: string[]; isBlocked: boolean };
 
 function actionText(value: unknown): string | undefined {
   if (typeof value === "string") return value.trim() ? value : undefined;
   const action = record(value);
   const label = stringValue(action.label, action.title, action.text);
-  if (!label || Object.keys(action).some(key => !["id", "label", "title", "text", "description"].includes(key))) return undefined;
-  if (action.description != null && typeof action.description !== "string") return undefined;
-  return action.description ? `${label}\n\n${action.description}` : label;
+  if (!label || Object.keys(action).some(key => !["id", "label", "title", "text", "description", "message"].includes(key))) return undefined;
+  if ([action.message, action.description].some(value => value != null && typeof value !== "string")) return undefined;
+  return [label, action.message, action.description].filter(value => typeof value === "string" && value.trim()).join("\n\n");
 }
 
 /** Decode the known reply envelope without hiding malformed or unfamiliar data. */
@@ -33,20 +33,27 @@ export function parseFinalToolReply(text: string): FinalToolReplyContent {
   const actions = (fields.actions ?? []) as unknown[];
   const labels = actions.map(actionText);
   if (labels.some(label => label === undefined)) return fallback;
-  const blocked = fields.blocked == null ? [] : typeof fields.blocked === "string" ? [fields.blocked] : fields.blocked;
+  const blocked = fields.blocked == null || typeof fields.blocked === "boolean" ? []
+    : typeof fields.blocked === "string" ? [fields.blocked] : fields.blocked;
   if (!Array.isArray(blocked) || blocked.some(item => typeof item !== "string")) return fallback;
   const reasons = (blocked as string[]).filter(item => item.trim());
   const ask = typeof fields.ask === "string" && fields.ask.trim() ? fields.ask : undefined;
-  if (!fields.recap.trim() && !ask && !labels.length && !reasons.length) return fallback;
-  return { kind: "wrap_up", recap: fields.recap, ask, actions: labels as string[], blocked: reasons };
+  const isBlocked = fields.blocked === true || reasons.length > 0;
+  if (!fields.recap.trim() && !ask && !labels.length && !isBlocked) return fallback;
+  return { kind: "wrap_up", recap: fields.recap, ask, actions: labels as string[], blocked: reasons, isBlocked };
 }
 
 /** Only an explicit wrap-up operation is a reply; a completed phase is not. */
-export function finalToolReply(name: string, input: Record<string, unknown>, output: unknown): string | undefined {
+export function finalToolReply(name: string, rawInput: unknown, output: unknown): string | undefined {
+  let input = record(rawInput);
+  if (typeof rawInput === "string") {
+    try { input = record(JSON.parse(rawInput)); } catch { /* Preserve an explicit reply verbatim below. */ }
+  }
   const leaf = name.toLowerCase().split(/__|[./]/).pop();
   const operation = stringValue(input.action, input.operation, input.op, input.phase, input.stage, input.type, input.kind, input.mode);
   const nested = input.wrap_up;
   if (leaf !== "wrap_up" && !(leaf === "ccd_turn" && (operation === "wrap_up" || nested !== undefined))) return undefined;
+  if (leaf === "wrap_up" && typeof rawInput === "string" && rawInput.trim()) return rawInput;
   const payload = record(nested ?? input);
   const reply = stringValue(
     typeof nested === "string" ? nested : undefined,

@@ -215,7 +215,7 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
     title,
     status,
     error: status === "failed" ? toolFailureMessage(data.error, detail) : stringValue(data.error),
-    finalReply: finalToolReply(rawName, input, output),
+    finalReply: finalToolReply(rawName, rawInput, output),
     filePath: skill ? undefined : filePath,
     lineRange: toolKind === "read" && !skill ? readLineRange(detail, input, code) : undefined,
     changes: toolKind === "edit" ? editChanges(detail, input, diff) : undefined,

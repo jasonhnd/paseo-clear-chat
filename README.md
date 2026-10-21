@@ -47,9 +47,12 @@ the complete output, and code's Copy control always copies the full source. Ordi
 stay fully expanded. Explicit `wrap_up` calls, including a `ccd_turn` operation marked
 `wrap_up`, also render their reply text outside tool and output disclosures. A completed
 transform phase alone never identifies a final reply.
-Structured wrap-up replies render `recap` as Markdown, `ask` as a question, `actions` as
-lettered options, and nonempty `blocked` reasons below them. A recap can stand on its own.
-Unrecognized or invalid structured replies remain fully visible as plain text.
+Structured wrap-up replies have a **Wrap up** card header. They render `recap` as Markdown,
+`ask` as a question, and `actions` as lettered options with each `label` and `message`.
+Boolean `blocked: true` displays a prominent **Blocked** alert; false adds no section.
+Legacy string options, option descriptions, blocked reasons and JSON string envelopes
+remain supported. A recap can stand on its own. Unrecognized or invalid structured
+replies remain fully visible as plain text inside the same expanded card.
 
 ### Shell and Git
 

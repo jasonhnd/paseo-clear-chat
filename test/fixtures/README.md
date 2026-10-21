@@ -14,6 +14,13 @@ fictional content, sample identifiers, neutral paths and example.org URLs.
 - `real-claude-session.json` contains 28 tool calls, including shell calls and
   MCP calls with nested input and output objects. This provider does not attach
   the Hermes metadata object.
+- `real-claude-wrapup.json` isolates the wrap-up item from that same 28-call
+  session, checked against the provider's local session as well as the projected
+  timeline. Its required tool name, `mcp__ccd_turn__wrap_up`, is preserved exactly.
+  The item is a `tool_call` with `detail.type: unknown`, an object `input` holding
+  `recap`, `ask`, two `actions` with `label` and `message`, and boolean `blocked`.
+  The result retains its nested `output.output` shape. All prose and the call ID
+  are fictional. Key, nesting, array-length and value-type differences are zero.
 
 Both captures used `fetchAgentTimeline(agentId, { direction: "tail", limit: 0,
 projection: "projected" })`; both returned `hasOlder: false` and
@@ -78,4 +85,9 @@ uses a dedicated query-and-results body and counts as typed rendering.
 `tool_search`, `web_search`, `terminal` and `search_files` cases in both collapsed
 and expanded states. It also covers source-prefix validation, literal colon text,
 canonical detail precedence, discovery output folding and the captured wrap-up
-reply's complete fallback content.
+reply's structured layout. `test/tool-wrapup.test.cjs` exercises the isolated
+item through the registered transformer, schema and real Markdown renderer on
+web, iOS and Android. It requires the card header, complete recap, question,
+lettered labels, option messages and boolean blocked alert, with no raw JSON or
+tool disclosure. Saved collapsed choices and output limits cannot hide a reply.
+Legacy JSON strings and unfamiliar-field fallbacks remain covered separately.

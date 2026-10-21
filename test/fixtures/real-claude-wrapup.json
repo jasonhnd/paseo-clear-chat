@@ -1,0 +1,28 @@
+{
+  "type": "tool_call",
+  "callId": "sample-wrap-up-call",
+  "name": "mcp__ccd_turn__wrap_up",
+  "detail": {
+    "type": "unknown",
+    "input": {
+      "recap": "## Checks complete\n\n**The sample change is ready.**",
+      "ask": "Which sample step should follow?",
+      "actions": [
+        {
+          "label": "Review the sample",
+          "message": "Read the sample report before continuing."
+        },
+        {
+          "label": "Prepare a follow-up",
+          "message": "Create a separate sample change."
+        }
+      ],
+      "blocked": true
+    },
+    "output": {
+      "output": "The sample reply was recorded."
+    }
+  },
+  "status": "completed",
+  "error": null
+}

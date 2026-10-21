@@ -149,7 +149,7 @@ test("explicit tool_search details retain structured output without falling back
   assert.match(h.text(byId(tree, "tool-card-body")), /open_page/);
 });
 
-test("captured Claude wrap-up content remains visible outside finished tool disclosures", () => {
+test("captured Claude wrap-up uses the structured reply card outside finished tool disclosures", () => {
   const claude = JSON.parse(readFileSync(join(__dirname, "fixtures/real-claude-session.json"), "utf8"));
   const item = claude.items.find(item => item.name?.endsWith("__wrap_up"));
   assert.ok(item);
@@ -157,5 +157,9 @@ test("captured Claude wrap-up content remains visible outside finished tool disc
   const { tree } = markdown.mount(item, false);
   assert.equal(markdown.nodes(tree, node => node.props.testID === "tool-final-reply").length, 1);
   assert.equal(markdown.nodes(tree, node => node.props.testID === "tool-summary-row").length, 0);
-  assert.ok(markdown.text(tree).includes(JSON.stringify(item.detail.input, null, 2)), "unfamiliar fields retain the complete reply");
+  assert.equal(markdown.nodes(tree, node => node.props.testID === "wrap-up-reply").length, 1);
+  assert.equal(markdown.nodes(tree, node => node.props.testID === "final-reply-header").length, 1);
+  assert.equal(markdown.nodes(tree, node => node.props.testID === "wrap-up-option").length, item.detail.input.actions.length);
+  assert.equal(markdown.nodes(tree, node => node.props.testID === "wrap-up-blocked").length, 1);
+  assert.equal(markdown.text(tree).includes(JSON.stringify(item.detail.input, null, 2)), false);
 });
