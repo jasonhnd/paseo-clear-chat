@@ -231,3 +231,17 @@ test("upstream #12: explicit wrap-up replies preview output images once", () => 
   sourceLinks(h, tree)[0].props.onPress();
   assert.deepEqual(h.links, [remote]);
 });
+
+test("upstream #12: visible tool images terminate compact collapsed-row sequences", () => {
+  const h = harness();
+  const { tree } = h.mount(call(remote), false);
+  const row = h.nodes(tree, node => node.props.testID === "tool-timeline-item")[0];
+  assert.equal(row.props.dataSet.clearchattool, "open");
+});
+
+test("upstream #12: escaped Markdown image addresses do not create a duplicate gallery preview", () => {
+  const h = harness();
+  const { tree } = h.mount({ type: "assistant_message", text: String.raw`![Square](https://example.org/square\(blue\).png)` });
+  assert.equal(pictures(h, tree).length, 1);
+  assert.equal(pictures(h, tree)[0].props.source.uri, "https://example.org/square(blue).png");
+});

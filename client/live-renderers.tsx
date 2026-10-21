@@ -77,6 +77,10 @@ export function LiveToolCallRenderer({
   const calloutData = useMemo(() => buildLiveToolCallData(data), [data]);
   const replyImages = useMemo(() => new Set(extractGeneratedImages(calloutData.finalReply)
     .map((image) => image.path ?? image.source)), [calloutData.finalReply]);
+  const generatedImages = useMemo(() => (calloutData.images ?? []).filter((image) =>
+    !replyImages.has(image.path ?? image.source) &&
+    !((calloutData.tool === "read" || calloutData.tool === "write") && image.path && image.path === calloutData.filePath)),
+  [calloutData, replyImages]);
 
   // The dock has no access to the job manager, so the timeline is its only
   // source: every job snapshot that passes through a card is republished, and
@@ -117,7 +121,7 @@ export function LiveToolCallRenderer({
   );
 
   return (
-    <View testID="tool-timeline-item" {...surfaceProps(hostFontEscape, toolRowMarker(!calloutData.finalReply && !expansion.expanded && !expansion.error))}>
+    <View testID="tool-timeline-item" {...surfaceProps(hostFontEscape, toolRowMarker(!calloutData.finalReply && !generatedImages.length && !expansion.expanded && !expansion.error))}>
       {calloutData.finalReply ? (
         <View testID="tool-final-reply">
           <FinalToolReply text={calloutData.finalReply} cwd={cwd} tokens={tokens} variant={preferences.markdownVariant} />
@@ -134,9 +138,7 @@ export function LiveToolCallRenderer({
         />
       )}
       <GeneratedImages
-        images={(calloutData.images ?? []).filter((image) =>
-          !replyImages.has(image.path ?? image.source) &&
-          !((calloutData.tool === "read" || calloutData.tool === "write") && image.path && image.path === calloutData.filePath))}
+        images={generatedImages}
         cwd={cwd}
         tokens={tokens}
       />

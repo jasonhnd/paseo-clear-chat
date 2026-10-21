@@ -97,9 +97,9 @@ Assistant replies also render Markdown images (`![alt](url)`) from absolute HTTP
 addresses and `data:image/...` URLs. Images fit the message width and keep their
 aspect ratio, including in lists, quotes and table cells. A load or decode failure
 shows the alt text and the original address; HTTP(S) addresses open through the
-host's link opener, and data addresses can be pressed to copy them. Relative paths,
-file URLs and unsupported schemes show the same visible fallback with a copyable
-address instead of resolving against the Paseo app's page. Native image format
+host's link opener, and data addresses offer both an image viewer and a copy action.
+Local image paths and file URLs use the daemon's file reader; unsupported schemes
+show a visible fallback with a copyable address. Native image format
 support still depends on the device; an unsupported format uses the failure fallback.
 
 ### Edit
