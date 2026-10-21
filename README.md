@@ -99,6 +99,13 @@ support still depends on the device; an unsupported format uses the failure fall
 Diff rendering where adjacent removed and added rows join into one rounded block, and only the
 marker column carries the red or green.
 
+When a tool supplies replacement text instead of a unified diff, the card compares
+`old_string`/`new_string`, `oldText`/`newText`, `oldString`/`newString`, or
+`old_text`/`new_text`, including replacements in an `edits` array. The summary totals
+added and removed lines. New text alone appears as additions; identical text reports
+zero changes. Generated hunk positions refer to each replacement snippet. Very large
+replacements show the changed block in full to keep comparison work bounded.
+
 ![Edit tool call](docs/images/tool-edit.png)
 
 ### Reasoning tool
