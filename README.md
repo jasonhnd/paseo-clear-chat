@@ -565,6 +565,10 @@ npm run typecheck
 paseo plugin reload clear-chat
 ```
 
+For optional Google Chrome measurements of an existing conversation, see the
+[performance script guide](scripts/perf/README.md). Plugin states are prepared
+manually; reports stay local.
+
 Rebuild the screenshots after a visual change:
 
 ```bash
