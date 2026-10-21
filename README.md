@@ -90,8 +90,31 @@ typed rather than shown as a selection.
 ### Task
 
 Subagent name, type, model, and the delegated instructions.
+The normalized `sub_agent` card shows the model when reported and labels a
+missing model as **Not reported**. Named `task` batches keep their existing roster.
 
 ![Task tool call](docs/images/tool-task.png)
+
+### Search, fetch and web search
+
+Search cards show the query, scope and match count. Each result occupies a
+clickable row that reveals its file. Fetch and web search cards show clickable
+URLs, titles and the first five lines of available content. Web search results
+open through the same platform URL helper used by reply links.
+
+### Plans, checklists and plain text
+
+Plans and todos use the checklist card, including checked, active and blocked
+steps. This covers both tool details and independent todo timeline items.
+Plain-text tools use the tool's own name as the title and preserve the original
+text, including whitespace.
+
+### Skills and other tools
+
+Hermes `skill_view` calls display **Skill: name** instead of a file path. Other
+tools show their real name and a useful argument on the summary row, such as
+**memory · add**. Expanded unknown cards list each input as `name: value` and
+show the first 15 output lines, with a note when more lines were omitted.
 
 ### Hub
 
@@ -332,8 +355,16 @@ A directory path opens that directory. A path the daemon cannot stat does nothin
 
 ## Unmapped output
 
-A tool the plugin has no typed card for still shows its output in the terminal frame, and a call
-that printed nothing says so. No card renders an empty panel.
+A tool the plugin has no typed adapter for uses the parameter table described
+above. Structured output and multiple text blocks are preserved in its preview.
+When input and output are empty, the tool name and status remain visible and the
+expanded body reports that no output was returned. Failed calls keep their error
+visible, and canceled calls retain their canceled status.
+
+All twelve tool categories have automated component coverage: shell, read, edit,
+write, search, fetch, web search, subagent, plan, todo, plain text and unknown.
+The [synthetic replay fixtures](test/fixtures/README.md) document coverage and
+generic-card counts for Hermes, Claude and Codex styles.
 
 The link cannot open Paseo's own file editor: see the first limitation below.
 
@@ -413,6 +444,9 @@ clear-chat/
     file-rpc.ts              # file.reveal contract
   client/
     live-renderers.tsx       # Timeline item to component mapping
+    tool-call-data.ts        # Normalized tool details to card data
+    tool-detail.ts           # Search, fetch, checklist and fallback extraction
+    tool-call-legacy.ts      # Existing named-tool adapters
     settings-page.tsx        # Settings screen
     preferences.ts           # Presentation preferences backed by host settings
     components/              # Cards, syntax block, glyphs, motion, theme tokens
