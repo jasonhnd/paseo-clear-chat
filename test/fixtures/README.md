@@ -160,3 +160,17 @@ are fictional. A recursive structure comparison reported zero differences.
 `test/reply-footer.test.cjs` uses it to keep Copy available when a later item or
 another conversation owns the global timeline tail. The existing isolated
 Claude wrap-up capture supplies the separate final-tool-reply regression.
+
+## Captured image listing
+
+`real-hermes-image-listing.json` preserves three entries from a read-only
+`projection: "projected"` timeline: a user message, an `execute` tool call with
+`detail.type: "shell"`, and the assistant reply. The tool output keeps the
+`terminal result` wrapper, Markdown output and exit-code fields, and `ls -la`
+permissions, link counts, owner/group columns, sizes, dates and filenames. A
+filename contains a space. The reply contains an absolute spaced path, a
+relative spaced path and an HTTP(S) URL. All prose, identities, paths and dates
+are neutral replacements. A recursive comparison of entry keys, nesting,
+array lengths and value types reported zero differences before commit.
+`test/image-output.test.cjs` checks that the listing produces no preview or
+file read while the reply retains all three complete image sources.
