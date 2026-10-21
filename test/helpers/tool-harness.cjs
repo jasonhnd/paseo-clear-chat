@@ -22,6 +22,7 @@ function createToolHarness(platform = "ios", options = {}) {
   const rpcFunctions = new Map();
   const timestamps = new WeakMap();
   let nextTimestamp = Date.parse("2026-01-01T12:00:00Z");
+  const paseo = options.paseo ?? { agents: { ref: () => ({ refresh: async () => null }) } };
   const tokens = new Proxy({ fs: n => Math.round(n * getPreferences().textScale * 2) / 2, get textScale() { return getPreferences().textScale; }, boxShadow: {}, syntax: {}, isDark: true }, { get: (obj, key) => obj[key] ?? "#888888" });
   function next(initial) {
     const index = frame.cursor++;
@@ -162,8 +163,8 @@ function createToolHarness(platform = "ios", options = {}) {
           }
           return async value => { reveals.push(value); return {}; };
         },
-        useAgent: (_, selector) => selector({ cwd: "/workspace/demo" }),
-        usePaseo: () => ({ agents: { ref: () => ({ refresh: async () => null }) } }),
+        useAgent: (_, selector) => selector(options.agent ?? { cwd: "/workspace/demo" }),
+        usePaseo: () => paseo,
       };
       if (id === "@getpaseo/plugin/client/react-native") return {
         useRevealedText: text => text,
