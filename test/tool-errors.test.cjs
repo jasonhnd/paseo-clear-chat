@@ -111,3 +111,17 @@ test("upstream #19: failed final-reply tools also show the error or fallback", (
     assert.ok(h.text(find(h, tree, "tool-final-reply")).includes(output || fallback));
   }
 });
+
+for (const [index, item] of require("./fixtures/real-hermes-errors.json").items.entries()) {
+  test(`captured Hermes ${item.name} object error keeps the failed card expanded and readable`, () => {
+    const h = createToolHarness();
+    const { tree } = h.mount(item, false);
+    const text = h.text(tree);
+    assert.doesNotMatch(text, /\[object Object\]/);
+    assert.equal(find(h, tree, "tool-summary-row").props.accessibilityState.expanded, true);
+    assert.ok(text.includes(index === 0
+      ? "Read failed: File not found: /workspace/example/missing.txt"
+      : "ls: /workspace/example/missing-directory: No such file or directory"));
+    if (index === 1) assert.match(text, /exit_code: 1/);
+  });
+}
