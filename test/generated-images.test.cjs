@@ -93,6 +93,23 @@ for (const channel of ["tool output", "assistant prose"]) {
   });
 }
 
+test("upstream #12: unquoted spaced paths stop at image boundaries and preserve adjacent URLs", async () => {
+  const h = harness();
+  const paths = ["/workspace/output/first image.png", "./artifacts/second image.webp"];
+  const extract = h.load("client/generated-images.ts").extractGeneratedImages;
+  assert.deepEqual(extract(`${paths[0]} and ${paths[1]}.`), paths.map(path => ({ source: path, path })));
+  const mounted = h.mount(call(`Saved images:\n${paths[0]} and ${paths[1]}. Ready to view.\nRemote: ${remote}`), false);
+  await settle();
+  const tree = mounted.render();
+  assert.deepEqual(h.imageReads, paths.map(path => ({ cwd: "/workspace/demo", path })));
+  assert.equal(pictures(h, tree).length, 3);
+  const links = sourceLinks(h, tree);
+  assert.deepEqual(links.map(link => h.text(link)).sort(), [...paths, remote].sort());
+  links.forEach(link => link.props.onPress());
+  assert.deepEqual(h.reveals, paths.map(path => ({ cwd: "/workspace/demo", path })));
+  assert.deepEqual(h.links, [remote]);
+});
+
 test("upstream #12: remote URLs in assistant Markdown render once and open the complete source URL", () => {
   const h = harness();
   const { tree } = h.mount({ type: "assistant_message", text: `The image is ready.\n\n![Generated square](${remote})\n\n${remote}` });

@@ -36,8 +36,9 @@ export function extractGeneratedImages(value: unknown): GeneratedImage[] {
     if (image) images.set(image.path ?? image.source, image);
   };
   const text = (source: string) => {
-    // A whole value may be a path containing spaces or a data URI.
-    if (imageSource(source) && !source.includes("\n")) add(source);
+    // Direct image addresses may fill the whole value; local paths are scanned below.
+    const whole = imageSource(source);
+    if (whole && !whole.path && !source.includes("\n")) add(source);
     let rest = source.replace(/(!?)\[[^\]\n]*\]\((<[^>\n]+>|(?:[^\s()]|\([^()\n]*\))+?)(?:\s+["'][^\n]*?["'])?\)/g,
       (match, image: string, target: string) => {
         add(target.replace(/^<|>$/g, "").replace(/\\([!-\/:-@\[-`{-~])/g, "$1"), image === "!" || target.startsWith("<"));
@@ -48,8 +49,20 @@ export function extractGeneratedImages(value: unknown): GeneratedImage[] {
       add(target, true);
       return " ";
     });
-    // Bare URLs and paths in shell output or prose. Sentence punctuation is
-    // excluded; quoted and Markdown targets above retain spaces and brackets.
+    // Consume URLs before scanning local paths so their slashes cannot be
+    // mistaken for a filesystem root.
+    rest = rest.replace(/(?:https?:\/\/|file:\/\/|blob:)[^\s<>"'`]+/gi, (target) => {
+      add(target.replace(/[),.;!]+$/, ""));
+      return " ";
+    });
+    // A path prefix fixes the starting point even when the filename contains
+    // spaces. Consume the full path before the token scan, which would otherwise
+    // rediscover its last word as a different file relative to the agent cwd.
+    rest = rest.replace(/(^|[^\w./\\:-])((?:[a-z]:[\\/]|~[\\/]|\.{1,2}[\\/]|[\\/]|[\w.-]+[\\/])[^\r\n<>"'`()[\]]*?\.(?:png|jpe?g|gif|webp|avif|bmp|ico|svg))(?=$|[\s),;!?]|\.(?:\s|$))/gi, (match, boundary: string, target: string) => {
+      add(target, true);
+      return `${boundary} `;
+    });
+    // Remaining single-token filenames keep the existing prose fallback.
     for (const match of rest.matchAll(/(?:https?:\/\/|file:\/\/|blob:)[^\s<>"'`]+|(?:[a-z]:[\\/]|[./~\\]|\b)[^\s<>"'`()[\]]*\.(?:png|jpe?g|gif|webp|avif|bmp|ico|svg)(?:[?#][^\s<>"'`()[\]]*)?/gi)) {
       add(match[0].replace(/[),.;!]+$/, ""));
     }
