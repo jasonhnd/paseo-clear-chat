@@ -401,6 +401,16 @@ New messages follow the change.
 Tool, reasoning, and checklist cards keep the plugin's styling, so Paseo's find still cannot reveal a
 match inside one of them.
 
+## Reply links
+
+Markdown links and bare HTTP(S) or `www.` URLs in replies open on the client viewing the chat.
+Desktop uses Paseo's external URL opener, with a browser fallback if it is unavailable. Web opens
+a new tab, and iOS uses the system URL handler. Markdown `mailto:` links open the email handler.
+
+On iOS, text runs containing links disable text selection so selection gestures do not intercept
+link taps. Other text remains selectable, and the newest reply's **Copy** control copies the full
+reply, including its Markdown.
+
 ## Opening files
 
 A file name in a read, write, edit, or code block is a link. Pressing it calls the plugin's own
