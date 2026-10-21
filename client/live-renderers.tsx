@@ -42,6 +42,7 @@ import { GeneratedImages } from "./components/generated-images";
 import { extractGeneratedImages, type GeneratedImage } from "./generated-images";
 import type { ApprovalStatus } from "./tool-approval";
 import { Glyph } from "./components/glyph";
+import { useReplyDuration } from "./reply-duration";
 
 export function LiveApprovalRenderer({
   item,
@@ -119,6 +120,8 @@ export function LiveToolCallRenderer({
   const data = item.data;
 
   const calloutData = useMemo(() => buildLiveToolCallData(data), [data]);
+  const durationMs = useReplyDuration(host.id, agentId, timestamp,
+    calloutData.finalReply ? { type: "tool_call", callId: data.callId, name: data.name } : null);
   const replyImages = useMemo(() => new Set(extractGeneratedImages(calloutData.finalReply)
     .map((image) => image.path ?? image.source)), [calloutData.finalReply]);
   const generatedImages = useMemo(() => (calloutData.images ?? []).filter((image) =>
@@ -170,7 +173,7 @@ export function LiveToolCallRenderer({
         <View testID="tool-final-reply">
           <FinalToolReply text={calloutData.finalReply} cwd={cwd} tokens={tokens} variant={preferences.markdownVariant} />
           {toolErrorLine(calloutData, "never") ? <Text testID="tool-error-line" selectable style={{ color: tokens.danger }}>{calloutData.error}</Text> : null}
-          <AssistantFooter text={finalToolReplyMarkdown(calloutData.finalReply)} at={timestamp} tokens={tokens} />
+          <AssistantFooter text={finalToolReplyMarkdown(calloutData.finalReply)} at={timestamp} tokens={tokens} durationMs={durationMs} />
         </View>
       ) : (
         <ToolCallout
@@ -309,6 +312,7 @@ export interface LiveAssistantPayload {
  * turn back when a reply needs any of that.
  */
 export function LiveAssistantRenderer({
+  host,
   agentId,
   item,
   theme,
@@ -324,13 +328,15 @@ export function LiveAssistantRenderer({
   usePointerGlow(preferences.pointerGlow);
 
   // Copy belongs to this reply, even when another item or conversation owns
-  // the global hub tail. Turn duration remains the host's responsibility.
+  // the global hub tail. Canonical turn timing belongs only to the final reply.
   const itemKey = `assistant:${timestamp.getTime()}`;
 
   // Job results, IRC relays and reminders arrive as replies because the host
   // files any unclaimed `custom` message under this item kind. They are not
   // the model's words, so they are drawn as a card, not as prose.
   const envelope = useMemo(() => parseSystemEnvelope(item.data.text), [item.data.text]);
+  const durationMs = useReplyDuration(host.id, agentId, timestamp,
+    envelope ? null : { type: "assistant_message", text: item.data.text });
 
   return (
     <View {...hostFontEscape}>
@@ -340,7 +346,7 @@ export function LiveAssistantRenderer({
         <MarkdownView text={item.data.text} images={item.data.images} cwd={cwd} tokens={tokens} variant={preferences.markdownVariant} />
       )}
       {!envelope ? (
-        <AssistantFooter text={item.data.text} at={timestamp} tokens={tokens} />
+        <AssistantFooter text={item.data.text} at={timestamp} tokens={tokens} durationMs={durationMs} />
       ) : null}
       <TimelineTailHub
         agentId={agentId}

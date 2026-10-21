@@ -5,18 +5,20 @@ import { Glyph } from "./glyph";
 import { unselectable } from "./selection";
 import { radius } from "./theme-tokens";
 import type { ExtendedThemeTokens } from "./theme-tokens";
+import { formatWorkedDuration } from "../reply-duration";
 
 /**
  * Reply-local copy and timestamp for content owned by the plugin. These must
  * not depend on which conversation or item currently owns the hub dock.
- * The host owns turn duration and fork controls; this component does not add
- * another turn-duration label or infer elapsed work from message timestamps.
+ * Replaced rows lose the host's duration footer, so the live renderer supplies
+ * canonical turn timing for the final reply. Fork controls remain host-owned.
  */
 interface AssistantFooterProps {
   /** The reply, copied verbatim — the same text the host would copy. */
   text: string;
   at: Date;
   tokens: ExtendedThemeTokens;
+  durationMs?: number;
 }
 
 /**
@@ -44,7 +46,7 @@ export function formatReplyTime(date: Date, now: Date = new Date()): string {
   return `${label} ${time}`;
 }
 
-export function AssistantFooter({ text, at, tokens }: AssistantFooterProps) {
+export function AssistantFooter({ text, at, tokens, durationMs }: AssistantFooterProps) {
   const { copied, handleCopy, fallbackText, setFallbackText } = useCopyText(text);
 
   const styles = useMemo(
@@ -52,6 +54,7 @@ export function AssistantFooter({ text, at, tokens }: AssistantFooterProps) {
       StyleSheet.create({
         container: {
           flexDirection: "row",
+          flexWrap: "wrap",
           alignItems: "center",
           gap: 8,
           marginTop: 6,
@@ -91,7 +94,7 @@ export function AssistantFooter({ text, at, tokens }: AssistantFooterProps) {
   const time = formatReplyTime(at);
 
   return (
-    <View style={styles.container}>
+    <View testID="reply-footer" style={styles.container}>
       <CopyFallbackDialog text={fallbackText} onClose={() => setFallbackText(null)} tokens={tokens} />
       <Pressable
         accessibilityRole="button"
@@ -107,6 +110,9 @@ export function AssistantFooter({ text, at, tokens }: AssistantFooterProps) {
         <Text style={styles.copyLabel}>{copied ? "Copied" : "Copy"}</Text>
       </Pressable>
       <Text style={styles.time}>{time}</Text>
+      {durationMs !== undefined && Number.isFinite(durationMs) && durationMs >= 0 ? (
+        <Text testID="reply-duration" style={styles.time}>{`Worked for ${formatWorkedDuration(durationMs)}`}</Text>
+      ) : null}
     </View>
   );
 }
