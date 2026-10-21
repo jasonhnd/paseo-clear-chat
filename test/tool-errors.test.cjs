@@ -222,3 +222,19 @@ test("typed GitHub, fetch, search and discovery outputs avoid duplicate error li
     assert.equal(h.text(tree).split("Request denied").length - 1, 1);
   }
 });
+
+test("image previews keep an error whose matching code is not rendered", async () => {
+  const h = createToolHarness("ios", { images: true });
+  const mounted = h.mount(call({ type: "read", filePath: "sample.png", content: "Image read failed" }, { message: "Image read failed" }), false);
+  assert.equal(h.text(find(h, mounted.tree, "tool-error-line")), "Image read failed");
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.text(find(h, mounted.render(), "tool-error-line")), "Image read failed");
+});
+
+test("failed final replies avoid repeating an error in the reply body", () => {
+  const h = createToolHarness();
+  const item = { ...call({ type: "unknown", input: { message: "Reply delivery failed" } }, { message: "Reply delivery failed" }), name: "wrap_up" };
+  const { tree } = h.mount(item, false);
+  assert.equal(find(h, tree, "tool-error-line"), undefined);
+  assert.equal(h.text(tree).split("Reply delivery failed").length - 1, 1);
+});
