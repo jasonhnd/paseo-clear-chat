@@ -127,6 +127,46 @@ test("upstream #3: image dimensions fit the available width and height without e
   }
 });
 
+for (const src of ["https://example.org/chart.png", dataImage]) {
+  test(`upstream #3: Web ${src.startsWith("data:") ? "data" : "HTTP(S)"} image load events use browser dimensions without a native source`, () => {
+    const h = createToolHarness("web", { markdown: true });
+    const mounted = h.mount({ type: "assistant_message", text: `![Chart](${src})` }, false);
+    const load = imageNodes(h, mounted.tree)[0].props.onLoad;
+    assert.doesNotThrow(() => load({ nativeEvent: { target: { naturalWidth: 800, naturalHeight: 400 } } }));
+    const frame = h.nodes(mounted.tree, node => typeof node.props.onLayout === "function")[0];
+    frame.props.onLayout({ nativeEvent: { layout: { width: 320 } } });
+    const image = imageNodes(h, mounted.render())[0];
+    assert.equal(image.props.source.uri, src);
+    assert.equal(image.props.style.width, 320);
+    assert.equal(image.props.style.height, 160);
+    assert.equal(h.text(mounted.render()).includes("could not be loaded"), false);
+  });
+}
+
+test("upstream #3: missing or invalid load dimensions keep the default visible image frame", () => {
+  for (const nativeEvent of [
+    {},
+    { target: null },
+    { target: 1 },
+    { source: null, target: {} },
+    { target: { naturalWidth: 0, naturalHeight: 400 } },
+    { target: { naturalWidth: 800, naturalHeight: -1 } },
+    { target: { naturalWidth: NaN, naturalHeight: 400 } },
+    { target: { naturalWidth: 800, naturalHeight: Infinity } },
+    { target: { naturalWidth: "800", naturalHeight: 400 } },
+    { source: { width: 0, height: 400 } },
+  ]) {
+    const h = createToolHarness("web", { markdown: true });
+    const mounted = h.mount({ type: "assistant_message", text: "![Chart](https://example.org/chart.png)" }, false);
+    h.nodes(mounted.tree, node => typeof node.props.onLayout === "function")[0].props.onLayout({ nativeEvent: { layout: { width: 320 } } });
+    assert.doesNotThrow(() => imageNodes(h, mounted.tree)[0].props.onLoad({ nativeEvent }));
+    const image = imageNodes(h, mounted.render())[0];
+    assert.equal(image.props.style.width, "100%");
+    assert.equal(image.props.style.height, 280);
+    assert.equal(image.props.resizeMode, "contain");
+  }
+});
+
 test("upstream #3: streaming source changes recover from failures and ignore stale error events", () => {
   const h = createToolHarness("ios", { markdown: true });
   const mounted = h.mount({ type: "assistant_message", text: "![Chart](https://example.org/old.png)" }, false);

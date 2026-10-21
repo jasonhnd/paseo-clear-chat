@@ -10,6 +10,11 @@ interface MarkdownImageProps {
   tokens: ExtendedThemeTokens;
 }
 
+interface ImageLoadMetadata {
+  source?: { width?: unknown; height?: unknown } | null;
+  target?: { naturalWidth?: unknown; naturalHeight?: unknown } | number | null;
+}
+
 const MAX_HEIGHT = 280;
 const styles = StyleSheet.create({
   frame: { minWidth: 0, alignSelf: "stretch" },
@@ -57,9 +62,15 @@ export function MarkdownImage({ src, alt, tokens }: MarkdownImageProps) {
           ? { width: imageWidth, height: imageWidth / ratio, borderRadius: radius.block }
           : styles.image}
         onLoad={(event) => {
-          const source = event.nativeEvent.source;
-          if (Number.isFinite(source.width) && Number.isFinite(source.height) && source.width > 0 && source.height > 0) {
-            setSize({ src, width: source.width, height: source.height });
+          // Native reports source dimensions; Web forwards the browser load event.
+          const metadata = event.nativeEvent as ImageLoadMetadata;
+          const target = typeof metadata.target === "object" ? metadata.target : null;
+          const loadedWidth = metadata.source?.width ?? target?.naturalWidth;
+          const loadedHeight = metadata.source?.height ?? target?.naturalHeight;
+          if (typeof loadedWidth === "number" && typeof loadedHeight === "number"
+            && Number.isFinite(loadedWidth) && Number.isFinite(loadedHeight)
+            && loadedWidth > 0 && loadedHeight > 0) {
+            setSize({ src, width: loadedWidth, height: loadedHeight });
           }
         }}
         onError={() => setFailedSrc(src)}
