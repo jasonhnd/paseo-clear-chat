@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { PluginClientContext } from "@getpaseo/plugin/client";
+import { errorText } from "./error-text";
 import {
   preferenceOverridesSchema,
   presentationSettings,
@@ -194,7 +195,7 @@ function enqueue(change: (values: PresentationSettings) => PresentationSettings)
     storageError = null;
     publish();
   }).catch((error: unknown) => {
-    storageError = error instanceof Error ? error.message : String(error);
+    storageError = errorText(error) ?? "Chat preferences could not be saved or loaded.";
     publish();
   });
   return pending;

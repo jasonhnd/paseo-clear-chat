@@ -1,5 +1,6 @@
 import { EMBEDDED_FONTS } from "./font-data";
 import { fontMono, fontUi } from "./theme-tokens";
+import { errorText } from "../error-text";
 
 const STYLE_ELEMENT_ID = "clear-chat-fonts";
 
@@ -90,7 +91,7 @@ export async function probeFonts(): Promise<string> {
       const faces = await fonts.load(`400 14px "${family}"`);
       parts.push(`${family}: ${faces.length > 0 ? "loaded" : "no match"}`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorText(error) ?? "Font could not be loaded.";
       parts.push(`${family}: ${message.slice(0, 48)}`);
     }
   }

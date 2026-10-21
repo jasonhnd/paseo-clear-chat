@@ -29,7 +29,7 @@ export function valueText(value: unknown): string | undefined {
   try {
     return JSON.stringify(value, null, 2);
   } catch {
-    return String(value);
+    return undefined;
   }
 }
 
@@ -41,7 +41,11 @@ export function preview(text: string | undefined, limit: number): { text?: strin
 
 function parameterValue(value: unknown): string {
   if (typeof value === "string") return value;
-  return JSON.stringify(value) ?? String(value);
+  try {
+    return JSON.stringify(value) ?? "Value unavailable";
+  } catch {
+    return "Value unavailable";
+  }
 }
 
 export function fallbackData(input: unknown, output: unknown): NonNullable<ToolCalloutData["fallback"]> {
@@ -108,7 +112,8 @@ export function searchData(
   const rows = detail.webResults ?? detail.results ?? result.results ?? result.matches
     ?? (Array.isArray(output) ? output : web && typeof result.url === "string" ? [result] : undefined);
   const content = valueText(detail.content ?? output);
-  const filePaths = Array.isArray(detail.filePaths) ? detail.filePaths : [];
+  const filePaths = Array.isArray(detail.filePaths)
+    ? detail.filePaths.filter((path): path is string => typeof path === "string") : [];
   const source = Array.isArray(rows) ? rows
     : detail.mode === "files_with_matches" && filePaths.length ? filePaths
       : content?.trim() ? content.split(/\r?\n/).filter((line) => line.trim()) : filePaths;
@@ -125,7 +130,7 @@ export function searchData(
     // passing its entire contents off as a filesystem path.
     if (!web && row.path && /\s/.test(row.path) && !row.path.includes("/")
       && !filePaths.includes(row.path) && !(typeof value === "string" && /:\d+(?::|$)/.test(value))) {
-      row.path = filePaths.length === 1 ? String(filePaths[0]) : stringValue(input.path, detail.path) ?? ".";
+      row.path = filePaths.length === 1 ? filePaths[0] : stringValue(input.path, detail.path) ?? ".";
     }
     return [row];
   });

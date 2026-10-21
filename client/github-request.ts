@@ -9,11 +9,12 @@ function readSubject(record: Record<string, unknown>): string | undefined {
   const pr = record.pr;
   // A `pr` arrives as a number, a string or an array of either, and reads as a
   // bare digit run unless it carries its hash.
-  const pullRequest = Array.isArray(pr)
-    ? pr.map((entry) => `#${String(entry).replace(/^#/, "")}`).join(" ")
-    : typeof pr === "number" || asString(pr)
-      ? `#${String(pr).replace(/^#/, "")}`
-      : undefined;
+  const numbers = (Array.isArray(pr) ? pr : [pr]).flatMap(entry => {
+    if (typeof entry === "string" && entry.trim()) return [`#${entry.replace(/^#/, "")}`];
+    if (typeof entry === "number" && Number.isFinite(entry)) return [`#${entry}`];
+    return [];
+  });
+  const pullRequest = numbers.join(" ") || undefined;
   return (
     asString(record.path) ??
     asString(record.query) ??

@@ -105,6 +105,7 @@ function createToolHarness(platform = "ios", options = {}) {
     },
   };
   if (options.settingsPage) delete stubs["client/settings-page"];
+  if (options.fonts) delete stubs["client/components/embed-fonts"];
   if (options.presentationHost) delete stubs["client/preferences"];
   if (options.markdown) delete stubs["client/components/markdown/markdown-view"];
   if (options.syntax) {
