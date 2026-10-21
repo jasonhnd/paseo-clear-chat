@@ -33,6 +33,16 @@ fictional content, sample identifiers, neutral paths and URLs on example domains
   lengths, value types, detail tags and metadata shapes match the capture.
   `test/tool-approval.test.cjs` replays both records on web, iOS and Android and
   derives pending and denied variants as additional synthetic coverage.
+- `real-hermes-patch.json` isolates two completed edits from another real
+  projected timeline. Each item has `name: edit`, `detail.type: edit`,
+  `detail.filePath`, `detail.unifiedDiff`, `metadata.kind: edit`,
+  `metadata.title`, a call ID, a status and a null error. Despite its name,
+  `unifiedDiff` contains only a two-line success message. There is no input,
+  patch text or old/new text in either item. A read-only canonical fetch returned
+  identical items. The fixture preserves this missing-data condition instead of
+  inventing patch content. Its regression tests require the original text and
+  no change count; a red/green diff requires the provider to retain the actual
+  patch or replacement text in the timeline.
 
 The full-timeline captures used `fetchAgentTimeline(agentId, { direction: "tail", limit: 0,
 projection: "projected" })`; each returned `hasOlder: false` and
@@ -83,6 +93,10 @@ registered transformer, schema, live renderer and card body, with host primitive
 animation and syntax painting supplied by a small test harness. The replay opens
 completed cards before checking that each body contains visible text. These are
 component replays, not a live Paseo integration test.
+
+Run `node --test test/edit-diff.test.cjs` for the captured Hermes patch fallback
+and the synthetic red/green replacement and unified-diff cases. The two captured
+edits cannot establish an addition or deletion count from the available data.
 
 ## Replay results
 

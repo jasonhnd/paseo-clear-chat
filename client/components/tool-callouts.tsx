@@ -367,7 +367,7 @@ export function ToolCallout({
           {data.tool === "edit" && (
             <ToolCodeBlock
               code={data.diff || data.code || "// [Edit: diff applied]"}
-              language="diff"
+              language={data.changes ? "diff" : "text"}
               filename={data.filePath}
               tokens={tokens}
               showLineNumbers

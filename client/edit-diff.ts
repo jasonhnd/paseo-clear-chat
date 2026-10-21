@@ -5,7 +5,7 @@ interface Replacement { oldText: string; newText: string }
 interface DiffLine { marker: " " | "-" | "+"; text: string }
 interface EditDiff {
   diff: string;
-  changes: NonNullable<ToolCalloutData["changes"]>;
+  changes?: ToolCalloutData["changes"];
 }
 
 const oldKeys = ["oldString", "old_string", "oldText", "old_text"];
@@ -79,19 +79,23 @@ function formatLine(row: DiffLine): string {
     : `${row.marker}${row.text}\n\\ No newline at end of file`;
 }
 
-/** Prefer a supplied diff; otherwise compare the reported replacement snippets. */
+/** Prefer a supplied diff; keep unrecognized output without inventing counts. */
 export function buildEditDiff(detail: Record<string, unknown>, input: Record<string, unknown>, diff?: string): EditDiff | undefined {
   if (diff) {
     const lines = diff.split(/\r?\n/);
-    return { diff, changes: {
+    const changes = {
       added: lines.filter(line => line.startsWith("+") && !line.startsWith("+++ ")).length,
       removed: lines.filter(line => line.startsWith("-") && !line.startsWith("--- ")).length,
-    } };
+    };
+    // Hermes can project a success message into unifiedDiff and omit the input.
+    // Zero marked rows do not prove that the tool made no changes.
+    const recognized = lines.every(line => !line || /^(?:[ +-]|@@ |diff --git |index |(?:old|new|deleted file|new file) mode |(?:similarity|dissimilarity) index |(?:rename|copy) (?:from|to) |\\ No newline at end of file$)/.test(line));
+    if (recognized && (changes.added || changes.removed)) return { diff, changes };
   }
   const edits = Array.isArray(detail.edits) ? detail.edits : input.edits;
   const replacements = Array.isArray(edits)
     ? edits.flatMap(edit => replacement([record(edit)])) : replacement([detail, input]);
-  if (!replacements.length) return undefined;
+  if (!replacements.length) return diff ? { diff } : undefined;
 
   const hunks: string[] = [];
   const changes = { added: 0, removed: 0 };

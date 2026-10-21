@@ -39,13 +39,35 @@ for (const [index, item] of realHermesPatch.items.entries()) {
       const { tree } = h.mount(item, expanded);
       assert.equal(summary(tree), "example.txt");
       assert.doesNotMatch(summary(tree), /[+−]0/);
-      if (expanded) assert.ok(h.text(tree).includes(item.detail.unifiedDiff));
+      if (expanded) {
+        const visible = h.text(tree).replace(/\n/g, "");
+        for (const line of item.detail.unifiedDiff.split("\n")) assert.ok(visible.includes(line));
+      }
       assert.equal(rows(tree, "+").length, 0);
       assert.equal(rows(tree, "-").length, 0);
     }
     assert.deepEqual(item, original);
   });
 }
+
+test("unrecognized edit output preserves the original text without diff counts or colors", () => {
+  const diff = "Patch report\n- Changed the sample file\n+ Operation succeeded";
+  const item = call({ unifiedDiff: diff });
+  const data = build(item);
+  assert.equal(data.changes, undefined);
+  assert.equal(data.diff, diff);
+  const { tree } = h.mount(item);
+  assert.equal(summary(tree), "config.ts");
+  assert.equal(rows(tree, "+").length, 0);
+  assert.equal(rows(tree, "-").length, 0);
+});
+
+test("replacement text is used when a projected diff field contains only a success message", () => {
+  const { data } = check({ unifiedDiff: "Patch completed.", input: { old_text: "before\n", new_text: "after\n" } }, 1, 1);
+  assert.match(data.diff, /^-before$/m);
+  assert.match(data.diff, /^\+after$/m);
+  assert.doesNotMatch(data.diff, /Patch completed/);
+});
 
 for (const [oldKey, newKey] of [["old_string", "new_string"], ["oldText", "newText"], ["oldString", "newString"], ["old_text", "new_text"]]) {
   for (const source of ["detail", "input"]) {
