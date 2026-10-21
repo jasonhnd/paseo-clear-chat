@@ -102,3 +102,31 @@ test("upstream #14: malformed edits are ignored without mutating timeline data",
   assert.equal(build(call({ input: { edits: [null, {}, false] } })).diff, undefined);
   assert.equal(build(call({ input: { oldText: "still streaming" } })).changes, undefined);
 });
+
+test("upstream #14: MultiEdit without a canonical detail type uses the edit card", () => {
+  const item = { type: "tool_call", name: "MultiEdit", status: "completed", detail: { input: { file_path: "src/config.ts", edits: [{ old_string: "before\n", new_string: "after\n" }] } } };
+  const { tree } = h.mount(item);
+  assert.equal(build(item).tool, "edit");
+  assert.equal(summary(tree), "config.ts · +1 −1");
+  assert.equal(rows(tree, "+").length, 1);
+  assert.equal(rows(tree, "-").length, 1);
+});
+
+test("upstream #14: large replacements preserve both versions and shared outer context", () => {
+  const before = Array.from({ length: 600 }, (_, i) => `before ${i}`).join("\n");
+  const after = Array.from({ length: 600 }, (_, i) => `after ${i}`).join("\n");
+  const oldText = `start\n${before}\nend\n`, newText = `start\n${after}\nend\n`;
+  const data = build(call({ input: { oldText, newText } }));
+  assert.deepEqual(data.changes, { added: 600, removed: 600 });
+  const lines = data.diff.split("\n").slice(1);
+  const version = marker => lines.filter(line => line[0] === " " || line[0] === marker).map(line => line.slice(1)).join("\n") + "\n";
+  assert.equal(version("-"), oldText);
+  assert.equal(version("+"), newText);
+  assert.match(data.diff, /^ start$/m);
+  assert.match(data.diff, /^ end$/m);
+});
+
+test("upstream #8: adding a final newline is a real change rather than an empty extra row", () => {
+  const { data } = check({ oldText: "same", newText: "same\n" }, 1, 1);
+  assert.match(data.diff, /-same\n\\ No newline at end of file\n\+same$/);
+});
