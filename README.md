@@ -5,7 +5,7 @@
 <p align="center"><b>A Paseo plugin that makes agent chats easy to read.</b></p>
 
 <p align="center">
-  <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=semver"></a>
+  <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=date"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
   <a href="https://paseo.sh"><img alt="Paseo 0.12.0+" src="https://img.shields.io/badge/Paseo-%3E%3D0.12.0-5b5bd6"></a>
 </p>
@@ -21,7 +21,7 @@
 
 ## Why Clear Chat
 
-- **See the answer first.** Finished steps fold into one compact row each: icon, summary, status and time. The reply that ends the turn always stays open.
+- **See the answer first.** Finished steps fold into one compact row each: icon, summary, status, and time when the agent reports it. The reply that ends the turn always stays open.
 - **Every agent, drawn right.** Claude, Codex and Hermes calls all get proper cards. All 12 tool kinds that Paseo reports have their own card, and Hermes tools such as `skill_view` and `memory` get dedicated rows. In replays of real conversations, no card is empty.
 - **Nothing gets lost.** Your Beautiful Chat settings move over unchanged, pasted images keep their count, and a failed call shows why it failed.
 - **Maintained.** Version 1.0.0 closes seven open issues and pull requests reported against the original plugin. Problems go to GitHub Issues, and every release is listed in the [changelog](CHANGELOG.md).
@@ -32,10 +32,12 @@
 ## Install
 
 ```bash
-paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v1.0.0
+paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v0.12.0.1
 ```
 
 Then open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
+
+**Version numbers.** A Clear Chat version is the Paseo version it is built and tested for, plus one more number that counts Clear Chat's releases for that Paseo version. For example, 0.12.0.1 is the first Clear Chat release for Paseo 0.12.0, and 0.12.0.2 would be the next. After Paseo releases a new version, the next Clear Chat release starts counting again: 0.12.1.1 for Paseo 0.12.1, or 0.13.0.1 for Paseo 0.13.0. Clear Chat does not release a new version just because Paseo did. Releases 1.0.0 and 1.0.1 came out before this rule; 0.12.0.1 is newer than both.
 
 > [!IMPORTANT]
 > Already using Beautiful Chat? Read [Upgrading from Beautiful Chat](#upgrading-from-beautiful-chat) **before** you install or remove anything. Removing a plugin in Paseo 0.12 also deletes its settings.
@@ -62,7 +64,7 @@ cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_back
 **2. Install**
 
 ```bash
-paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v1.0.0
+paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v0.12.0.1
 ```
 
 **3. Check, then remove the old plugin**
@@ -118,7 +120,7 @@ Changes made in Clear Chat do not sync back to Beautiful Chat. Keep both backups
 
 | | |
 |---|---|
-| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-bash-dark.png"><img alt="Shell and Git" src="docs/images/tool-bash-light.png"></picture><br>**Shell and Git.** Terminal frame, highlighted command, exit code and time. | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-read-dark.png"><img alt="Read" src="docs/images/tool-read-light.png"></picture><br>**Read.** Language icon, line numbers, copy button. The file name shows the file in your file manager. |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-bash-dark.png"><img alt="Shell and Git" src="docs/images/tool-bash-light.png"></picture><br>**Shell and Git.** Terminal frame, highlighted command, exit code, and time when the agent reports it. | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-read-dark.png"><img alt="Read" src="docs/images/tool-read-light.png"></picture><br>**Read.** Language icon, line numbers, copy button. The file name shows the file in your file manager. |
 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-edit-dark.png"><img alt="Edit" src="docs/images/tool-edit-light.png"></picture><br>**Edit.** A clean diff, also built from old and new text when no diff is given. | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-image-dark.png"><img alt="Images" src="docs/images/tool-image-light.png"></picture><br>**Images.** Read and generated images appear inline, with size and a clickable source. |
 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-thinking-dark.png"><img alt="Reasoning tool" src="docs/images/tool-thinking-light.png"></picture><br>**Reasoning tool.** Live thinking text, token count and numbered steps. | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-mcp-dark.png"><img alt="MCP" src="docs/images/tool-mcp-light.png"></picture><br>**MCP.** Server, transport, inputs and response, all highlighted. |
 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-eval-dark.png"><img alt="Eval" src="docs/images/tool-eval-light.png"></picture><br>**Eval.** Each cell's code, then what it printed. | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-ask-dark.png"><img alt="Ask" src="docs/images/tool-ask-light.png"></picture><br>**Ask.** Options with the recommended one and the chosen answer marked. |
@@ -137,9 +139,14 @@ Search, fetch and web search, plans and checklists, plain text, skills and any o
 
 ### Also included
 
-- **Folding you control.** Click any row to open or close it. Your choice is remembered after reloads. Running, failed and waiting calls open by default. Long output shows the first 15 lines, with **Show all N lines**.
+- **Step details.** Click a collapsed step to see everything about it: the full input and output, the exit code of a shell command, and how long it took when the agent reports it. Input and output have separate copy buttons, and a failed step shows its error text, which you can copy too. Very long output, even 10,000 lines, scrolls smoothly. Details open in a bottom sheet in windows narrower than 744px, a popover from 744 to 1023px, and a side panel from 1024px. When you resize the window, rotate an iPad or use Split View, the details move to the matching layout and keep the same step, your reading position and what you had open. When you switch to another step, its details start at the top. New output for the step you are reading keeps your place. To open steps inside the conversation instead, set **When a collapsed step is pressed** to **Expand inline**.
+- **Keyboard.** In a browser or the desktop app, press Tab to reach a step, Up and Down to move between steps, Enter to open its details and Escape to close them and return to where you were. Typing in text fields works as usual. This also works in an iPad browser with a hardware keyboard. The native iPhone, iPad and Android apps keep touch controls only, because the plugin API does not give plugins hardware keys there.
+- **Hover preview.** With a mouse, rest the pointer on a collapsed step for a moment to see a preview of its summary and result. File reads show up to 6 lines. Touch screens do not show previews.
+- **Step menu.** Right-click a step, or long-press it on a touch screen, for **Copy command**, **Copy path**, **Copy result** and **Open in file manager**. Each item appears only when it applies; the text written by Write and Edit is not copied as a result. The menu opens next to your pointer or finger and flips to the other side near a screen edge.
+- **Compact on phones.** On phone-width screens, titles, status text, icons and padding are smaller, so more steps fit on one screen. Buttons stay easy to tap.
+- **Folding you control.** Click an open row to close it. Click a closed row to open its details, or to open it in place with **Expand inline**. Running, failed and waiting calls open by default. Once you open or close a row, Clear Chat remembers your choice, even after reloads. Long tool output, long code blocks in replies and long prompts show the first 15 lines, with **Show all N lines**. **Copy** always copies the full text.
 - **Wrap-up replies.** Replies sent through a `wrap_up` tool show as a full reply card, with recap, question, lettered options and a **Blocked** alert.
-- **Clickable links.** Links in replies open on desktop, web and iOS, and `mailto:` links open your mail app.
+- **Clickable links.** Links in replies, including bare web addresses and image addresses, open on desktop, web and iOS, and `mailto:` links open your mail app.
 - **Find in chat.** Ctrl/Cmd+F opens a find bar that also searches tool cards. It searches the messages that are loaded, so scroll up to include older ones.
 - **Open files.** File names in cards and paths in replies show the file in Finder, Explorer or your file manager on the host computer. On phones, tablets and narrow web windows, paths in replies are copied to the clipboard instead, with a hint to open them on the host. Put a file name or path that contains spaces in inline code, or use a Markdown link.
 - **Highlight text.** `==marked text==` highlights text in replies. Inside code, the equals signs stay as they are.
@@ -156,16 +163,17 @@ Search, fetch and web search, plans and checklists, plain text, skills and any o
 | Code glyphs | Iosevka with ligatures, or plain glyphs. |
 | Code font | Default (Iosevka) (default), Iosevka, Menlo, Consolas, Fira Code or Cascadia Code. Applies to code blocks, inline code, terminal output and diffs. |
 | Fold finished steps | On by default. Off opens every step unless you chose otherwise for that call. |
-| Fold long output after | 10, 15 (default) or 30 lines, or Never. Applies to code and tool output. |
+| When a collapsed step is pressed | Open details (default) shows the step in a sheet, popover or side panel. Expand inline opens it inside the conversation. |
+| Fold long output after | 10, 15 (default) or 30 lines, or Never. Applies to tool output, code blocks in replies and prompts. Lines are counted in the source text, so wrapped lines do not count extra. |
 | Frosted glass | Blur card backgrounds, or paint them solid. |
 | Enhanced prompt bubble | Styles your prompts. Off uses Paseo's own bubble. |
 | Assistant markdown | Off hands replies back to Paseo's own renderer. |
 
 **Custom accent colour.** Tap a swatch, or enter `#RGB` or `#RRGGBB` and press **Apply**. An invalid HEX value stays in the field with an error, and the saved colour does not change. Switching to a preset remembers your custom colour. The saved HEX value never changes; only the colour you see is darkened on light themes or lightened on dark themes when text would otherwise be hard to read. Filled buttons use black or white text, whichever has more contrast.
 
-**Code font.** The plugin SDK does not give plugins Paseo's own code font setting. **Default (Iosevka)** uses Iosevka with your **Code glyphs** choice. On web and desktop, the other fonts must be installed on your computer; if one is missing, the embedded Iosevka is used. On iOS and iPadOS, code always uses Menlo, and on Android it uses the system monospace font, because plugins from the directory cannot load the embedded web fonts on these platforms.
+**Code font.** The plugin SDK does not give plugins Paseo's own code font setting. **Default (Iosevka)** uses Iosevka with your **Code glyphs** choice. On web and desktop, the other fonts must be installed on your computer; if one is missing, the embedded Iosevka is used. On iOS and iPadOS, code always uses Menlo, and on Android it uses the system monospace font, because the plugin SDK does not let plugins add fonts to the native apps.
 
-Settings are saved on the host, so every device connected to that host shares them. Accent colours and folding settings apply at once. Other changes apply to new messages; reload the chat to update older ones.
+Settings are saved on the host, so every device connected to that host shares them. Accent colours, folding and step-click settings apply at once, including to rows already shown. Other changes apply to new messages; reload the chat to update older ones.
 
 > [!NOTE]
 > **On iOS and iPadOS** you cannot select text by dragging while **Assistant markdown** or **Enhanced prompt bubble** is on. Use the **Copy** button on the reply, prompt or code block instead. If copying fails, a dialog shows the full text for you to select by hand.

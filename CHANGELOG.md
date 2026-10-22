@@ -2,7 +2,35 @@
 
 All notable changes to Clear Chat are listed here.
 
-The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and each version is the Paseo version it is built and tested for plus one number that counts Clear Chat's releases for that Paseo version, for example 0.12.0.1 for the first release for Paseo 0.12.0. Releases 1.0.0 and 1.0.1 came out before this rule.
+
+## [0.12.0.1] - Unreleased
+
+The first release numbered after the Paseo version. It needs Paseo 0.12.0 or later.
+
+### Added
+
+- **Step details.** Click a collapsed step to see its full input and output, the exit code of a shell command and the duration when the agent reports it, with separate copy buttons, in a bottom sheet on phones, a popover on tablets, or a side panel on desktop. A new setting, **When a collapsed step is pressed**, switches back to expanding steps inside the conversation.
+- Step details follow the window width (bottom sheet below 744px, popover from 744 to 1023px, side panel from 1024px) and keep the selected step and reading position when the window is resized, an iPad is rotated or Split View is used. Very long output scrolls smoothly.
+- Keyboard controls for steps in browsers and the desktop app: Up and Down move between steps, Enter opens details, Escape closes them and returns focus. Native mobile apps keep touch controls.
+- Long code blocks in replies and long prompts now fold by the **Fold long output after** setting, with **Show all N lines** and a full-text **Copy**.
+- Hover preview on desktop: rest the mouse on a collapsed step to see its summary and result. File reads show up to 6 lines.
+- Step menu: right-click or long-press a step for Copy command, Copy path, Copy result and Open in file manager. Items appear only when they apply, and the menu flips near screen edges.
+- **Custom accent colour.** Pick a swatch or enter a HEX value. The colour you see is adjusted when needed to keep text contrast at 4.5:1 or higher; the saved value stays exact.
+- **Code font** setting: Default (Iosevka), Iosevka, Menlo, Consolas, Fira Code or Cascadia Code.
+- **Highlight text.** `==marked text==` highlights text in replies.
+- A **Troubleshooting** section in the README.
+
+### Changed
+
+- Clear Chat now needs Paseo 0.12.0 or later.
+- Paths in replies open the file in the host's file manager. On phones, tablets and narrow web windows they are copied to the clipboard instead.
+- On phone-width screens, titles, status text, icons and padding are smaller, so more steps fit on one screen. Tap targets keep their size.
+
+### Fixed
+
+- Replies now use Clear Chat styling as soon as a conversation opens. Before, tool rows were styled at once but replies kept Paseo's own look until the window was resized.
+- Shell steps now show the exit code when Claude, Codex or Hermes reports one, and a failed step keeps its full error text for display and copying.
 
 ## [1.0.1] - 2026-10-22
 
@@ -44,5 +72,6 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.12.0.1]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.12.0.1
 [1.0.1]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v1.0.1
 [1.0.0]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v1.0.0

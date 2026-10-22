@@ -5,7 +5,7 @@
 <p align="center"><b>让 Agent 对话一眼就能看懂的 Paseo 插件。</b></p>
 
 <p align="center">
-  <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=semver"></a>
+  <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=date"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
   <a href="https://paseo.sh"><img alt="Paseo 0.12.0+" src="https://img.shields.io/badge/Paseo-%3E%3D0.12.0-5b5bd6"></a>
 </p>
@@ -21,7 +21,7 @@
 
 ## 为什么用 Clear Chat
 
-- **先看到结论。** 做完的步骤各收成紧凑的一行：图标、要点、状态、耗时。结束这一轮的回复始终完整展开。
+- **先看到结论。** 做完的步骤各收成紧凑的一行：图标、要点、状态，智能体报告了耗时就也显示耗时。结束这一轮的回复始终完整展开。
 - **每个 Agent 都画得对。** Claude、Codex、Hermes 的调用都有像样的卡片。Paseo 报告的 12 种工具类型各有专门的卡片，`skill_view`、`memory` 等 Hermes 工具也有专门的显示。用真实对话回放测试，没有一张空卡片。
 - **什么都不丢。** Beautiful Chat 的设置原样搬过来；粘贴的图片会显示张数；调用失败时会显示失败原因。
 - **有人维护。** 1.0.0 处理了原插件里 7 条没解决的问题和修改请求。问题请提到 GitHub Issues，每个版本的变化都记在 [CHANGELOG](CHANGELOG.md) 里。
@@ -32,10 +32,12 @@
 ## 安装
 
 ```bash
-paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v1.0.0
+paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v0.12.0.1
 ```
 
 装好后打开 **Settings → Plugins → Clear Chat**，可以选颜色、字体和折叠方式。
+
+**版本号怎么看。** Clear Chat 的版本号＝这一版对应、测过的 Paseo 版本，再加一位：在这个 Paseo 版本上是第几次发布。例如 0.12.0.1 是对应 Paseo 0.12.0 的第一个版本，下一个是 0.12.0.2。Paseo 出了新版本以后，Clear Chat 的下一次发布重新从 1 数：对应 Paseo 0.12.1 就叫 0.12.1.1，对应 0.13.0 就叫 0.13.0.1。Paseo 出新版本时，Clear Chat 没有新东西就不跟着发。1.0.0 和 1.0.1 是定这个规则之前发的，0.12.0.1 比它们都新。
 
 > [!IMPORTANT]
 > 已经在用 Beautiful Chat？安装或卸载任何插件**之前**，请先看[从 Beautiful Chat 升级](#从-beautiful-chat-升级)。在 Paseo 0.12 里卸载插件，会连它的设置一起删掉。
@@ -62,7 +64,7 @@ cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_back
 **2. 安装**
 
 ```bash
-paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v1.0.0
+paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v0.12.0.1
 ```
 
 **3. 确认后卸载旧插件**
@@ -118,7 +120,7 @@ paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref 
 
 | | |
 |---|---|
-| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-bash-dark.png"><img alt="Shell 和 Git" src="docs/images/tool-bash-light.png"></picture><br>**Shell 和 Git。** 终端外框、高亮的命令、退出码和耗时。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-read-dark.png"><img alt="读取文件" src="docs/images/tool-read-light.png"></picture><br>**读取文件。** 语言图标、行号、复制按钮。点文件名会在文件管理器里显示这个文件。 |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-bash-dark.png"><img alt="Shell 和 Git" src="docs/images/tool-bash-light.png"></picture><br>**Shell 和 Git。** 终端外框、高亮的命令、退出码；智能体报告了耗时就也显示。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-read-dark.png"><img alt="读取文件" src="docs/images/tool-read-light.png"></picture><br>**读取文件。** 语言图标、行号、复制按钮。点文件名会在文件管理器里显示这个文件。 |
 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-edit-dark.png"><img alt="编辑" src="docs/images/tool-edit-light.png"></picture><br>**编辑。** 清楚的改动对比；没有给出 diff 时，也会用新旧文字算出对比。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-image-dark.png"><img alt="图片" src="docs/images/tool-image-light.png"></picture><br>**图片。** 读取和生成的图片直接显示，带尺寸和可以点的来源地址。 |
 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-thinking-dark.png"><img alt="推理工具" src="docs/images/tool-thinking-light.png"></picture><br>**推理工具。** 实时的思考文字、token 数和编号步骤。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-mcp-dark.png"><img alt="MCP" src="docs/images/tool-mcp-light.png"></picture><br>**MCP。** 服务器、传输方式、输入和返回结果，全部高亮。 |
 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-eval-dark.png"><img alt="Eval" src="docs/images/tool-eval-light.png"></picture><br>**Eval。** 每个单元格先显示运行的代码，再显示输出。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-ask-dark.png"><img alt="提问" src="docs/images/tool-ask-light.png"></picture><br>**提问。** 列出选项，标出推荐项和最后选的答案。 |
@@ -137,9 +139,14 @@ paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref 
 
 ### 还有这些
 
-- **折叠由你决定。** 点任意一行就能展开或收起，刷新后还记得。进行中、失败和等你处理的调用默认展开。长输出先显示前 15 行，下面有 **Show all N lines**。
+- **步骤详情。** 点一个收起的步骤，就能看它的全部内容：完整的输入和输出、命令行的退出码，智能体报告了耗时就也显示耗时。输入和输出可以分开复制；失败的步骤会显示报错内容，也能复制。很长的输出（哪怕 1 万行）也能顺畅滚动。窗口窄于 744px 时详情从底部弹出，744 到 1023px 是浮出的小窗，1024px 以上是侧边面板。调整窗口大小、旋转 iPad 或分屏时，详情会换成对应的样式，还是同一个步骤，读到的位置和展开的内容都不变。换到另一个步骤时，详情从头显示；你正在看的步骤有新输出进来时，停在你读到的位置不动。想在对话里直接展开，把 **When a collapsed step is pressed** 设成 **Expand inline**。
+- **键盘操作。** 在浏览器或桌面应用里，按 Tab 移到步骤上，↑↓ 在步骤之间移动，Enter 打开详情，Esc 关闭并回到原来的位置。在输入框里打字不受影响。在 iPad 浏览器里接实体键盘也能用。iPhone、iPad 和 Android 的原生应用只能用触屏操作，因为插件接口在这些应用里拿不到实体按键。
+- **悬停预览。** 用鼠标时，指针在收起的步骤上停一下，会弹出它的要点和结果预览。读文件类最多显示 6 行。触屏上不弹预览。
+- **步骤菜单。** 在步骤上点右键，或在触屏上长按，会弹出 **Copy command**、**Copy path**、**Copy result**、**Open in file manager**。只显示用得上的几项；Write 和 Edit 写入的内容不会被当成结果复制。菜单出现在指针或手指旁边，靠近屏幕边缘时会翻到另一侧。
+- **手机上更紧凑。** 在手机宽度的屏幕上，标题、状态字、图标和留白都会缩小，一屏能看到更多步骤。按钮仍然好点。
+- **折叠由你决定。** 点一下展开的行就收起；点一下收起的行，会打开它的详情，设成 **Expand inline** 时则在原地展开。进行中、失败和等你处理的调用默认展开。你展开或收起过的行，会记住你的选择，刷新后也不变。很长的工具输出、回复里的长代码块和长提问，都先显示前 15 行，下面有 **Show all N lines**。**Copy** 总是复制全文。
 - **收尾回复。** 通过 `wrap_up` 工具发出的回复，会显示成完整的回复卡片：小结、问题、带字母的选项，以及 **Blocked** 提醒。
-- **链接能点。** 回复里的链接在桌面、网页和 iOS 上都能打开，`mailto:` 链接会打开邮件应用。
+- **链接能点。** 回复里的链接（包括直接写出的网址和图片地址）在桌面、网页和 iOS 上都能打开，`mailto:` 链接会打开邮件应用。
 - **对话内查找。** Ctrl/Cmd+F 打开查找栏，工具卡片里的内容也能搜到。只搜已经加载的消息，要搜更早的请先往上滚。
 - **打开文件。** 点卡片里的文件名或回复里的路径，会在主机上的 Finder、资源管理器或文件管理器里显示这个文件。在手机、平板和窄的网页窗口里，点回复里的路径会改为复制到剪贴板，并提示你到主机上打开。文件名或路径里有空格时，请写成行内代码，或用 Markdown 链接。
 - **高亮文字。** 回复里写 `==要标出的文字==` 会加上高亮。代码里的等号照原样显示。
@@ -156,16 +163,17 @@ paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref 
 | Code glyphs | 带连字的 Iosevka，或普通字形。 |
 | Code font | Default (Iosevka)（默认）、Iosevka、Menlo、Consolas、Fira Code 或 Cascadia Code。对代码块、行内代码、终端输出和差异对比生效。 |
 | Fold finished steps | 默认开。关掉后所有步骤都展开，你单独设过的调用除外。 |
-| Fold long output after | 10、15（默认）、30 行，或 Never。对代码和工具输出生效。 |
+| When a collapsed step is pressed | Open details（默认）：在底部弹窗、浮出小窗或侧边面板里显示步骤详情。Expand inline：在对话里直接展开。 |
+| Fold long output after | 10、15（默认）、30 行，或 Never。对工具输出、回复里的代码块和提问生效。按原文的行数算，自动换行不多算。 |
 | Frosted glass | 卡片背景做毛玻璃效果，或用纯色。 |
 | Enhanced prompt bubble | 给你的提问加样式。关掉就用 Paseo 自带的气泡。 |
 | Assistant markdown | 关掉后，回复交回 Paseo 自己显示。 |
 
 **自定强调色。** 点一个色块，或输入 `#RGB`、`#RRGGBB` 后按 **Apply**。HEX 写错时会留在输入框里并提示错误，已保存的颜色不变。切换到预设色后，你的自定颜色仍会记住。保存的 HEX 值始终不变；只有文字可能看不清时，显示出来的颜色才会在浅色主题下调深、在深色主题下调浅。实心按钮上的文字用黑或白，哪个对比度高用哪个。
 
-**代码字体。** 插件 SDK 读不到 Paseo 自己的代码字体设置。**Default (Iosevka)** 使用 Iosevka，并沿用你在 **Code glyphs** 里的选择。在网页和桌面上，其他字体要先装在电脑上；没装的话改用内置的 Iosevka。在 iOS 和 iPadOS 上，代码一律用 Menlo；在 Android 上用系统的等宽字体，因为从插件目录安装的插件在这些平台上加载不了内置的网页字体。
+**代码字体。** 插件 SDK 读不到 Paseo 自己的代码字体设置。**Default (Iosevka)** 使用 Iosevka，并沿用你在 **Code glyphs** 里的选择。在网页和桌面上，其他字体要先装在电脑上；没装的话改用内置的 Iosevka。在 iOS 和 iPadOS 上，代码一律用 Menlo；在 Android 上用系统的等宽字体，因为插件 SDK 不能让插件往原生应用里加字体。
 
-设置保存在主机上，连到同一台主机的设备都共用。强调色和折叠相关的设置马上生效；其他改动对新消息生效，要更新之前的消息请重新加载对话。
+设置保存在主机上，连到同一台主机的设备都共用。强调色、折叠和点击步骤相关的设置马上生效，已经显示的行也会跟着变；其他改动对新消息生效，要更新之前的消息请重新加载对话。
 
 > [!NOTE]
 > **在 iOS 和 iPadOS 上**，开着 **Assistant markdown** 或 **Enhanced prompt bubble** 时，不能拖动选择文字。请用回复、提问或代码块上的 **Copy** 按钮。复制失败时，会弹出一个显示全文的窗口，可以手动选择复制。

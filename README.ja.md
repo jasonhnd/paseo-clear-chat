@@ -5,7 +5,7 @@
 <p align="center"><b>エージェントとのチャットをひと目で読みやすくする Paseo プラグインです。</b></p>
 
 <p align="center">
-  <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=semver"></a>
+  <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=date"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
   <a href="https://paseo.sh"><img alt="Paseo 0.12.0+" src="https://img.shields.io/badge/Paseo-%3E%3D0.12.0-5b5bd6"></a>
 </p>
@@ -21,7 +21,7 @@
 
 ## Clear Chat を選ぶ理由
 
-- **まず結論が見えます。** 終わったステップは 1 行ずつにまとまります（アイコン、要点、状態、時間）。ターンの最後の返信はいつも全文表示です。
+- **まず結論が見えます。** 終わったステップは 1 行ずつにまとまります（アイコン、要点、状態。エージェントが時間を伝えた場合は時間も）。ターンの最後の返信はいつも全文表示です。
 - **どのエージェントも正しく表示します。** Claude、Codex、Hermes の呼び出しをすべてきちんとしたカードで表示します。Paseo が伝える 12 種類のツールにはそれぞれ専用カードがあり、`skill_view` や `memory` などの Hermes ツールにも専用の表示があります。実際の会話を再生したテストでは、空のカードは 1 枚もありません。
 - **何もなくなりません。** Beautiful Chat の設定はそのまま引き継がれます。貼り付けた画像は枚数が表示され、失敗した呼び出しには失敗の理由が表示されます。
 - **メンテナンスしています。** 1.0.0 では、元のプラグインで未対応だった Issue と PR を 7 件対応しました。問題は GitHub Issues で受け付け、リリースごとの変更は [CHANGELOG](CHANGELOG.md) にまとめています。
@@ -32,10 +32,12 @@
 ## インストール
 
 ```bash
-paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v1.0.0
+paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v0.12.0.1
 ```
 
 インストール後、**Settings → Plugins → Clear Chat** で色、フォント、折りたたみを選べます。
+
+**バージョン番号について。** Clear Chat のバージョンは、対応してテストした Paseo のバージョンに、その Paseo のバージョンで何回目のリリースかを表す番号を 1 つ足したものです。たとえば 0.12.0.1 は Paseo 0.12.0 向けの最初のリリースで、次は 0.12.0.2 です。Paseo の新しいバージョンが出たら、Clear Chat の次のリリースから数え直します。Paseo 0.12.1 向けなら 0.12.1.1、0.13.0 向けなら 0.13.0.1 です。Paseo が新しくなっても、Clear Chat に新しい変更がなければリリースはしません。1.0.0 と 1.0.1 はこのルールの前に出したもので、0.12.0.1 のほうが新しい版です。
 
 > [!IMPORTANT]
 > すでに Beautiful Chat を使っていますか？プラグインのインストールや削除を**する前に**、[Beautiful Chat からのアップグレード](#beautiful-chat-からのアップグレード)をお読みください。Paseo 0.12 ではプラグインを削除すると、その設定も一緒に消えます。
@@ -62,7 +64,7 @@ cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_back
 **2. インストール**
 
 ```bash
-paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v1.0.0
+paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v0.12.0.1
 ```
 
 **3. 確認してから古いプラグインを削除**
@@ -118,7 +120,7 @@ Clear Chat で変えた設定は Beautiful Chat には戻りません。バッ�
 
 | | |
 |---|---|
-| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-bash-dark.png"><img alt="Shell と Git" src="docs/images/tool-bash-light.png"></picture><br>**Shell と Git。** ターミナル風の枠、色分けしたコマンド、終了コード、時間を表示します。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-read-dark.png"><img alt="ファイルの読み込み" src="docs/images/tool-read-light.png"></picture><br>**ファイルの読み込み。** 言語アイコン、行番号、コピーボタン。ファイル名を押すとファイルマネージャーでそのファイルを表示します。 |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-bash-dark.png"><img alt="Shell と Git" src="docs/images/tool-bash-light.png"></picture><br>**Shell と Git。** ターミナル風の枠、色分けしたコマンド、終了コードを表示します。エージェントが時間を伝えた場合は時間も表示します。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-read-dark.png"><img alt="ファイルの読み込み" src="docs/images/tool-read-light.png"></picture><br>**ファイルの読み込み。** 言語アイコン、行番号、コピーボタン。ファイル名を押すとファイルマネージャーでそのファイルを表示します。 |
 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-edit-dark.png"><img alt="編集" src="docs/images/tool-edit-light.png"></picture><br>**編集。** 見やすい差分を表示します。差分がないときは、変更前と変更後の文字から差分を作ります。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-image-dark.png"><img alt="画像" src="docs/images/tool-image-light.png"></picture><br>**画像。** 読み込んだ画像や生成した画像をその場で表示し、サイズと押せる参照元を添えます。 |
 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-thinking-dark.png"><img alt="推論ツール" src="docs/images/tool-thinking-light.png"></picture><br>**推論ツール。** 考えている途中の文章、トークン数、番号付きのステップを表示します。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-mcp-dark.png"><img alt="MCP" src="docs/images/tool-mcp-light.png"></picture><br>**MCP。** サーバー、通信方式、入力、応答を色分けして表示します。 |
 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-eval-dark.png"><img alt="Eval" src="docs/images/tool-eval-light.png"></picture><br>**Eval。** セルごとに、実行したコードとその出力を表示します。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-ask-dark.png"><img alt="質問" src="docs/images/tool-ask-light.png"></picture><br>**質問。** 選択肢を並べ、おすすめと選んだ答えに印を付けます。 |
@@ -137,9 +139,14 @@ Clear Chat で変えた設定は Beautiful Chat には戻りません。バッ�
 
 ### そのほか
 
-- **折りたたみは自由に。** どの行も押すと開いたり閉じたりでき、再読み込みしても覚えています。実行中・失敗・対応待ちの呼び出しは最初から開いています。長い出力は最初の 15 行だけ表示し、**Show all N lines** で全部見られます。
+- **ステップの詳細。** 折りたたまれたステップを押すと、そのすべてを表示します。入力と出力の全文、コマンドの終了コード、エージェントが伝えた場合はかかった時間が見られます。入力と出力は別々にコピーでき、失敗したステップではエラーの内容も表示されてコピーできます。1 万行あるような長い出力もなめらかにスクロールします。ウィンドウの幅が 744px 未満なら下から出るシート、744〜1023px ならポップオーバー、1024px 以上ならサイドパネルで表示します。ウィンドウの大きさを変えたり、iPad を回転したり Split View にしたりしても、表示の形だけが切り替わり、同じステップ、読んでいる位置、開いている内容はそのままです。別のステップに切り替えると、詳細は先頭から表示します。読んでいるステップに新しい出力が届いても、読んでいる位置はそのままです。会話の中でその場で開きたいときは、**When a collapsed step is pressed** を **Expand inline** にしてください。
+- **キーボード操作。** ブラウザーやデスクトップアプリでは、Tab でステップに移り、↑↓ でステップ間を移動、Enter で詳細を開き、Esc で閉じて元の場所に戻ります。入力欄での入力はいつもどおりです。iPad のブラウザーにハードウェアキーボードをつないだときも使えます。iPhone、iPad、Android のネイティブアプリはタッチ操作のみです。プラグインの API では、これらのアプリでハードウェアキーを受け取れないためです。
+- **ホバーでプレビュー。** マウスでは、折りたたまれたステップにポインターを少し置くと、要点と結果のプレビューが出ます。ファイルの読み込みは最大 6 行まで表示します。タッチ画面ではプレビューは出ません。
+- **ステップのメニュー。** ステップを右クリックするか、タッチ画面で長押しすると、**Copy command**、**Copy path**、**Copy result**、**Open in file manager** のメニューが出ます。使える項目だけが表示され、Write や Edit で書き込んだ内容が結果としてコピーされることはありません。メニューはポインターや指のそばに出て、画面の端では反対側に開きます。
+- **スマートフォンではコンパクトに。** スマートフォンの幅では、タイトル、状態の文字、アイコン、余白を小さくして、1 画面に多くのステップが入るようにします。ボタンは押しやすい大きさのままです。
+- **折りたたみは自由に。** 開いている行を押すと閉じます。閉じている行を押すと詳細を表示し、**Expand inline** のときはその場で開きます。実行中・失敗・対応待ちの呼び出しは最初から開いています。一度開いたり閉じたりした行は、その状態を再読み込みしても覚えています。長いツールの出力、返信の中の長いコードブロック、長いプロンプトは最初の 15 行だけ表示し、**Show all N lines** で全部見られます。**Copy** はいつも全文をコピーします。
 - **まとめの返信。** `wrap_up` ツールで送られた返信は、まとめ・質問・記号付きの選択肢・**Blocked** の警告を含む返信カードとして表示します。
-- **リンクを押せます。** 返信の中のリンクはデスクトップ、Web、iOS で開けます。`mailto:` リンクはメールアプリで開きます。
+- **リンクを押せます。** 返信の中のリンク（そのまま書かれた URL や画像のアドレスも含む）は、デスクトップ、Web、iOS で開けます。`mailto:` リンクはメールアプリで開きます。
 - **会話内の検索。** Ctrl/Cmd+F で検索バーを開くと、ツールのカードの中も検索できます。検索するのは読み込み済みのメッセージだけなので、古いものは先に上にスクロールしてください。
 - **ファイルを開く。** カードのファイル名や返信の中のパスを押すと、ホストのコンピューターの Finder やエクスプローラーなどのファイルマネージャーでそのファイルを表示します。スマートフォン、タブレット、幅の狭い Web ウィンドウでは、返信の中のパスはクリップボードにコピーされ、ホストで開くよう案内が出ます。空白を含むファイル名やパスは、インラインコードにするか Markdown のリンクにしてください。
 - **文字のハイライト。** 返信の中で `==強調したい文字==` と書くとハイライトされます。コードの中の等号はそのまま表示します。
@@ -156,16 +163,17 @@ Clear Chat で変えた設定は Beautiful Chat には戻りません。バッ�
 | Code glyphs | 合字ありの Iosevka か、普通の字形を使います。 |
 | Code font | Default (Iosevka)（初期値）、Iosevka、Menlo、Consolas、Fira Code、Cascadia Code から選びます。コードブロック、インラインコード、ターミナルの出力、差分に効きます。 |
 | Fold finished steps | 最初はオンです。オフにすると、個別に選んだ呼び出しを除いてすべてのステップを開きます。 |
-| Fold long output after | 10・15（初期値）・30 行、または Never。コードとツールの出力に効きます。 |
+| When a collapsed step is pressed | Open details（初期値）は、シート・ポップオーバー・サイドパネルでステップの詳細を表示します。Expand inline は会話の中でその場で開きます。 |
+| Fold long output after | 10・15（初期値）・30 行、または Never。ツールの出力、返信の中のコードブロック、プロンプトに効きます。行数は元のテキストで数えるので、折り返しの分は数えません。 |
 | Frosted glass | カードの背景をすりガラス風にするか、単色にします。 |
 | Enhanced prompt bubble | プロンプトに装飾を付けます。オフにすると Paseo の標準の吹き出しを使います。 |
 | Assistant markdown | オフにすると、返信の表示を Paseo に戻します。 |
 
 **カスタムのアクセントカラー。** 色見本を押すか、`#RGB` または `#RRGGBB` を入力して **Apply** を押します。HEX の値が正しくないときは入力欄に残ったままエラーが表示され、保存済みの色は変わりません。プリセットに切り替えても、カスタムの色は覚えています。保存した HEX の値は変わりません。文字が読みにくくなるときだけ、表示する色をライトテーマでは暗く、ダークテーマでは明るく調整します。塗りつぶしのボタンの文字は、黒と白のうちコントラストが高いほうを使います。
 
-**コードのフォント。** プラグイン SDK からは Paseo 自体のコードフォント設定を読めません。**Default (Iosevka)** は Iosevka を使い、**Code glyphs** の選択もそのまま使います。Web とデスクトップでは、ほかのフォントはコンピューターにインストールされている必要があり、ない場合は内蔵の Iosevka で表示します。iOS と iPadOS ではコードは常に Menlo、Android ではシステムの等幅フォントになります。ディレクトリから入れたプラグインは、これらの環境では内蔵の Web フォントを読み込めないためです。
+**コードのフォント。** プラグイン SDK からは Paseo 自体のコードフォント設定を読めません。**Default (Iosevka)** は Iosevka を使い、**Code glyphs** の選択もそのまま使います。Web とデスクトップでは、ほかのフォントはコンピューターにインストールされている必要があり、ない場合は内蔵の Iosevka で表示します。iOS と iPadOS ではコードは常に Menlo、Android ではシステムの等幅フォントになります。プラグイン SDK では、ネイティブアプリにフォントを追加できないためです。
 
-設定はホストに保存されるので、同じホストにつないだ端末どうしで共有されます。アクセントカラーと折りたたみの設定はすぐに反映されます。そのほかの変更は新しいメッセージから反映され、前のメッセージを更新するには会話を再読み込みしてください。
+設定はホストに保存されるので、同じホストにつないだ端末どうしで共有されます。アクセントカラー、折りたたみ、ステップを押したときの設定はすぐに反映され、表示済みの行にも効きます。そのほかの変更は新しいメッセージから反映され、前のメッセージを更新するには会話を再読み込みしてください。
 
 > [!NOTE]
 > **iOS と iPadOS では**、**Assistant markdown** または **Enhanced prompt bubble** がオンのとき、ドラッグで文字を選べません。返信、プロンプト、コードブロックの **Copy** ボタンを使ってください。コピーに失敗したときは全文を表示する画面が出るので、そこから手で選んでコピーできます。
