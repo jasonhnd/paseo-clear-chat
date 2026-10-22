@@ -319,3 +319,82 @@ The transparent host **Drop files here** layer is not the plugin preview.
 Locate the visible tooltip associated with the hovered row and check its
 nonzero bounds, opacity and background instead of selecting an arbitrary host
 overlay. None of these earlier-version controls requires a plugin code change.
+
+### Current-version control and exact negative reproduction
+
+The same desktop input checks on `046d86e` produced the same menu (+4,+4),
+opaque tooltip and shell-to-read focus transition as the earlier control.
+With a single live CDP metrics owner, explicit panel/history waits and completed
+scroll events, all ten long-output rotations passed:
+
+| Trial | 820px presentation / bounds | 1180px presentation / bounds | Offsets |
+| --- | --- | --- | --- |
+| 1 | popover, x=70, width=680 | side, x=860, width=320 | 400 / 400 |
+| 2 | popover, x=70, width=680 | side, x=860, width=320 | 400 / 400 |
+| 3 | popover, x=70, width=680 | side, x=860, width=320 | 400 / 400 |
+| 4 | popover, x=70, width=680 | side, x=860, width=320 | 400 / 400 |
+| 5 | popover, x=70, width=680 | side, x=860, width=320 | 400 / 400 |
+| 6 | popover, x=70, width=680 | side, x=860, width=320 | 400 / 400 |
+| 7 | popover, x=70, width=680 | side, x=860, width=320 | 400 / 400 |
+| 8 | popover, x=70, width=680 | side, x=860, width=320 | 400 / 400 |
+| 9 | popover, x=70, width=680 | side, x=860, width=320 | 400 / 400 |
+| 10 | popover, x=70, width=680 | side, x=860, width=320 | 400 / 400 |
+
+A deliberate negative control reproduced the previously reported geometry on
+unchanged `046d86e`. The browser context's original viewport was 820×900.
+After the successful runner disconnected, it returned to 820px and the plugin
+correctly rendered a popover. Each negative trial created a new CDP session,
+requested 1180×900 and immediately evaluated layout without waiting for React's
+responsive handoff, then disconnected again. Ten consecutive trials all read:
+
+```text
+Before new override: innerWidth=820
+Immediately after new override: innerWidth=1180
+Plugin presentation=popover, x=250, width=680, scrollTop=400
+```
+
+Thus the negative control had **0/10 side panels**, with the same centered
+680px shape and retained reading position as the disputed acceptance result.
+The workspace route and selected conversation were unchanged throughout this
+control. Missing workspace was not needed to reproduce the discrepancy.
+This is a measurement lifecycle problem: changing the browser viewport and
+completing the plugin's responsive handoff are separate events. A persistent
+session with explicit state waits gives 10/10 on both tested revisions; repeated
+session teardown recreates the exact misleading observation. No plugin product
+code was changed for this investigation.
+
+The setup waits matter independently of CDP ownership. An initial fixed-delay
+current-version run produced nine complete successes and one trial with no
+opened detail after a close/reopen race. Replacing the delay with a DOM offset
+check alone still resized before the scroll handler saved the offset, yielding
+side presentation at offset zero. The final runner waits for `scrollend` and two
+animation frames after setting the offset, waits for popover before reopening,
+and waits for both panel disappearance and
+`!history.state?.clearChatStepDetail` after Escape. These are state/event waits,
+not periodic refreshes or increased timeouts.
+
+For a reliable implementation of step 5 above:
+
+```js
+// Keep the same CDP connection alive for this entire sequence.
+await setMetrics(820, 900);
+await waitForPopover();
+await openCollapsedStep();
+await setScrollAndWaitForScrollEnd(400);
+await nextTwoAnimationFrames();
+const baseline = await readPanelAndViewport();
+await setMetrics(1180, 900);
+await waitForSidePanelWithOffset(baseline.scrollTop);
+const result = await readPanelAndViewport();
+await setMetrics(820, 900);
+await waitForPopover();
+await pressEscape();
+await waitForPanelAndHistoryCleanup();
+```
+
+Local verification on the unchanged product: dependency installs passed,
+1,097 tests passed with zero failures/skips/todo, root and showcase typechecks
+passed, and in-memory production builds completed with zero errors (server
+1,553,429 bytes; client 863,156 bytes). There is no npm build script or CI
+workflow. The test host was restored to enabled/running `046d86e` after the
+older-version control.
