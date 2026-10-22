@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { PluginClientContext } from "@getpaseo/plugin/client";
-import { errorText } from "./error-text";
+import { STARTUP_MESSAGES } from "../shared/startup-diagnostics";
 import {
   preferenceOverridesSchema,
   presentationSettings,
@@ -147,6 +147,14 @@ let localVersion = 0;
 let ready = false;
 let storageError: string | null = null;
 
+class SettingsFailure extends Error {}
+
+function parseSettings(values: unknown): PresentationSettings {
+  const parsed = presentationSettings.schema.safeParse(values);
+  if (!parsed.success) throw new SettingsFailure(STARTUP_MESSAGES.settingsInvalid);
+  return parsed.data;
+}
+
 function publish(): void {
   for (const listener of listeners) listener();
 }
@@ -166,23 +174,25 @@ export function getEnhancerPreferencesError(): string | null {
 async function savePreferences(
   change: (values: PresentationSettings) => PresentationSettings,
 ): Promise<PresentationSettings> {
-  if (!invoke) throw new Error("Preference storage is not connected to a host.");
+  if (!invoke) throw new SettingsFailure(STARTUP_MESSAGES.incompatibleHost);
   // Every write merges against a fresh revision. Retry bounded conflicts so
   // another client's unrelated changes are retained rather than overwritten.
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const result = await invoke(presentationSettingsRpc.read, {});
-    if (result.status !== "ready") throw new Error(result.error);
-    const current = presentationSettings.schema.parse(result.values);
+    const result = await invoke(presentationSettingsRpc.read, {}).catch(() => {
+      throw new SettingsFailure(STARTUP_MESSAGES.settingsRead);
+    });
+    if (result.status !== "ready") throw new SettingsFailure(STARTUP_MESSAGES.settingsInvalid);
+    const current = parseSettings(result.values);
     const next = change(current);
     if (next === current) return current;
     const saved = await invoke(presentationSettingsRpc.write, {
       revision: result.revision,
       values: next,
-    });
-    if (saved.status === "saved") return presentationSettings.schema.parse(saved.values);
-    if (saved.status === "invalid") throw new Error(saved.error);
+    }).catch(() => { throw new SettingsFailure(STARTUP_MESSAGES.settingsWrite); });
+    if (saved.status === "saved") return parseSettings(saved.values);
+    if (saved.status === "invalid") throw new SettingsFailure(STARTUP_MESSAGES.settingsInvalid);
   }
-  throw new Error("Preferences changed in another client. Please try again.");
+  throw new SettingsFailure(STARTUP_MESSAGES.settingsConflict);
 }
 
 function enqueue(change: (values: PresentationSettings) => PresentationSettings): Promise<void> {
@@ -195,7 +205,7 @@ function enqueue(change: (values: PresentationSettings) => PresentationSettings)
     storageError = null;
     publish();
   }).catch((error: unknown) => {
-    storageError = errorText(error) ?? "Chat preferences could not be saved or loaded.";
+    storageError = error instanceof SettingsFailure ? error.message : STARTUP_MESSAGES.settingsRead;
     publish();
   });
   return pending;
@@ -218,6 +228,13 @@ export function initializeEnhancerPreferences(rpc: PluginClientContext["rpc"]): 
       legacyMigrated: true,
     };
   });
+}
+
+export function retryEnhancerPreferences(): Promise<void> {
+  if (invoke) return initializeEnhancerPreferences(invoke);
+  storageError = STARTUP_MESSAGES.incompatibleHost;
+  publish();
+  return Promise.resolve();
 }
 
 export function updateEnhancerPreferences(update: Partial<EnhancerPreferences>): Promise<void> {

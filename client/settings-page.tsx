@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef } from "react";
 import { Animated, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { hostFontEscape } from "./components/host-font-escape";
+import { SettingsFailureNotice } from "./components/settings-failure-notice";
 import { openLink } from "./components/open-link";
 import { radius, buildThemeTokens, type ExtendedThemeTokens } from "./components/theme-tokens";
 import {
@@ -9,6 +10,7 @@ import {
   TEXT_SIZE_OPTIONS,
   OUTPUT_LINE_OPTIONS,
   resetEnhancerPreferences,
+  retryEnhancerPreferences,
   updateEnhancerPreferences,
   useEnhancerPreferences,
   useEnhancerPreferencesError,
@@ -241,9 +243,7 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
       </View>
 
       {storageError ? (
-        <Text accessibilityRole="alert" style={[styles.description, { color: tokens.foreground }]}>
-          Preferences could not be saved or loaded: {storageError} Try changing the setting again.
-        </Text>
+        <SettingsFailureNotice message={storageError} onRetry={retryEnhancerPreferences} tokens={tokens} />
       ) : null}
 
       <View

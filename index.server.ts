@@ -10,6 +10,7 @@ import { presentationSettings } from "./shared/settings";
 import { toolExpansionSettings } from "./shared/tool-expansion-settings";
 import { migrateHostSettings } from "./server/settings-migration";
 import { stripFileSelector } from "./shared/file-path";
+import { requireHostMethods, STARTUP_MESSAGES } from "./shared/startup-diagnostics";
 
 /**
  * Image types worth inlining, and the mime each one needs in its data URI.
@@ -447,6 +448,15 @@ function tokenize(
 }
 
 export default function contribute(server: PluginServerContext) {
+  requireHostMethods(server, ["registerSettings", "handle"]);
+  try {
+    return registerServer(server);
+  } catch {
+    throw new Error(STARTUP_MESSAGES.startupFailed);
+  }
+}
+
+function registerServer(server: PluginServerContext) {
   migrateHostSettings();
   server.registerSettings(presentationSettings);
   server.registerSettings(toolExpansionSettings);

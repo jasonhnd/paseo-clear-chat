@@ -1,5 +1,6 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { z } from "zod";
+import { requireHostMethods, STARTUP_MESSAGES } from "./shared/startup-diagnostics";
 import { ClearChatSettingsPage } from "./client/settings-page";
 import { embedFonts } from "./client/components/embed-fonts";
 import { installFrostedGlass } from "./client/components/frosted";
@@ -33,6 +34,15 @@ function toJsonValue(value: unknown): JsonValue {
 }
 
 export default function contribute(client: PluginClientContext) {
+  requireHostMethods(client, ["rpc", "addSettingsScreen", "addTimelineTransformer", "addTimelineRenderer"]);
+  try {
+    return registerClient(client);
+  } catch {
+    throw new Error(STARTUP_MESSAGES.startupFailed);
+  }
+}
+
+function registerClient(client: PluginClientContext) {
   void initializeEnhancerPreferences((contract, input) => client.rpc(contract, input));
   // Install the bundled faces before any surface paints.
   const removeFonts = embedFonts();

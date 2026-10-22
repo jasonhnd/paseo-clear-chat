@@ -56,14 +56,13 @@ function fixture(t, { env = {}, fsOverrides = {} } = {}) {
   return { root, load, path, seed, errors };
 }
 
-function assertMigrationError(h, expected) {
+function assertMigrationError(h) {
   assert.equal(h.errors.length, 1);
-  const [message, error] = h.errors[0];
+  const [message, ...details] = h.errors[0];
   assert.equal(typeof message, "string");
-  assert.ok(message.includes(h.path(LEGACY_PLUGIN_ID)), "Log must identify the source path");
-  assert.ok(message.includes(h.path(PLUGIN_ID)), "Log must identify the target path");
-  if (typeof expected === "string") assert.equal(error.code, expected);
-  else assert.equal(error, expected, "Log must preserve the original error");
+  assert.match(message, /could not copy the Beautiful Chat settings.*back them up.*read and write access.*reload Clear Chat to retry/);
+  assert.equal(message.includes(h.root), false, "Log must not expose private paths");
+  assert.deepEqual(details, [], "Log must not include an error or stack trace");
 }
 
 test("host migration copies the SDK envelope and keeps the old settings", (t) => {

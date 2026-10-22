@@ -62,7 +62,9 @@ for (const [label, cause, expected] of [
   test(`preference RPC ${label} failures display readable text`, async () => {
     const h = createToolHarness("ios", { presentationHost: { rpc: async () => { throw cause; } } });
     await settle();
-    assert.equal(h.load("client/preferences.ts").useEnhancerPreferencesError(), expected ?? "Chat preferences could not be saved or loaded.");
+    const message = h.load("client/preferences.ts").useEnhancerPreferencesError();
+    assert.match(message, /cannot read.*settings.*Reconnect.*Retry/);
+    assert.doesNotMatch(message, /Connection lost|\[object Object\]|"code"/);
   });
 
   test(`expansion RPC ${label} failures display readable text`, async () => {

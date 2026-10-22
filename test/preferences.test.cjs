@@ -304,7 +304,7 @@ test("write errors are visible and a later edit retries", async () => {
   await p.initializeEnhancerPreferences(server.rpc);
   server.failWrites = true;
   await p.updateEnhancerPreferences({ assistantMarkdown: true });
-  assert.match(p.getEnhancerPreferencesError(), /Host unavailable/);
+  assert.match(p.getEnhancerPreferencesError(), /cannot save.*write access.*try the setting again/);
   server.failWrites = false;
   await p.updateEnhancerPreferences({ assistantMarkdown: true });
   assert.equal(p.getEnhancerPreferencesError(), null);
@@ -348,7 +348,7 @@ test("text transformers defer to the host while saved preferences are unavailabl
   await new Promise(setImmediate);
   assert.equal(h.transformers.get("omp-enhanced-assistant").transform({ item: { type: "assistant_message", text: "Hi" } }), undefined);
   assert.equal(h.transformers.get("omp-enhanced-user-message").transform({ item: { type: "user_message", text: "Hi", images: [] } }), undefined);
-  assert.match(h.preferences.getEnhancerPreferencesError(), /Host unavailable/);
+  assert.match(h.preferences.getEnhancerPreferencesError(), /cannot read.*Reconnect.*Retry/);
   cleanup();
 });
 
@@ -393,7 +393,7 @@ test("failed migration is retried rather than marked complete", async () => {
   await p.initializeEnhancerPreferences(server.rpc);
   assert.equal(server.values.legacyMigrated, false);
   assert.equal(p.areEnhancerPreferencesReady(), false);
-  assert.match(p.getEnhancerPreferencesError(), /Host unavailable/);
+  assert.match(p.getEnhancerPreferencesError(), /cannot save.*write access.*try the setting again/);
   server.failWrites = false;
   await p.initializeEnhancerPreferences(server.rpc);
   assert.equal(server.values.legacyMigrated, true);
@@ -419,7 +419,7 @@ test("invalid SDK settings stay visible as an error and do not take over text ro
   const { preferences: p } = harness("web");
   await p.initializeEnhancerPreferences(async () => ({ status: "invalid", revision: "0", error: "Invalid settings" }));
   assert.equal(p.areEnhancerPreferencesReady(), false);
-  assert.match(p.getEnhancerPreferencesError(), /Invalid settings/);
+  assert.match(p.getEnhancerPreferencesError(), /settings are invalid.*Back up.*Retry/);
 });
 
 

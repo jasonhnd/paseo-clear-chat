@@ -3,6 +3,7 @@ import { linkSync, lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } f
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { presentationSettings } from "../shared/settings";
+import { STARTUP_MESSAGES } from "../shared/startup-diagnostics";
 
 const LEGACY_PLUGIN_ID = "beautiful-chat";
 const PLUGIN_ID = "clear-chat";
@@ -56,7 +57,7 @@ export function migrateHostSettings(): void {
     } finally {
       rmSync(temporary, { force: true });
     }
-  } catch (error) {
-    console.error(`[clear-chat] Failed to migrate host settings from ${source} to ${target}; continuing plugin startup.`, error);
+  } catch {
+    console.error(STARTUP_MESSAGES.migrationFailed);
   }
 }
