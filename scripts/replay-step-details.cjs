@@ -94,7 +94,10 @@ async function replay() {
     await page.route("**/*", route => new URL(route.request().url()).hostname === "127.0.0.1" ? route.continue() : route.abort());
     const panel = page.getByTestId("step-detail-panel");
     const row = page.getByTestId("tool-summary-row");
-    const waitClosed = () => panel.waitFor({ state: "detached" });
+    const waitClosed = async () => {
+      await panel.waitFor({ state: "detached" });
+      await page.waitForFunction(() => !history.state?.clearChatStepDetail);
+    };
     const waitOpen = async () => {
       await panel.waitFor();
       await page.waitForFunction(() => {
@@ -107,14 +110,21 @@ async function replay() {
       });
     };
     async function detailScroll(top) {
-      return panel.evaluate(async (element, top) => {
-        const scroll = Array.from(element.querySelectorAll("div")).find(node =>
-          ["auto", "scroll"].includes(getComputedStyle(node).overflowY) && node.clientHeight > 0);
-        if (!scroll) throw new Error("Step details must have a scrollable body");
-        if (top !== undefined) {
+      if (top !== undefined) {
+        await page.waitForFunction(() => document.fonts.status === "loaded");
+        await panel.getByTestId("step-detail-scroll").evaluate((scroll, top) => {
+          scroll.dataset.replayScrollComplete = String(scroll.scrollTop === top);
+          if (scroll.scrollTop === top) return;
+          // Observe completion of the browser's scroll, including scroll anchoring.
+          // Two animation frames can still leave a pending final scroll event.
+          scroll.addEventListener("scrollend", () => { scroll.dataset.replayScrollComplete = "true"; }, { once: true });
           scroll.scrollTop = top;
-          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-        }
+        }, top);
+        await page.waitForFunction(() => document.querySelector('[data-testid="step-detail-scroll"]')?.dataset.replayScrollComplete === "true");
+      }
+      return panel.evaluate(element => {
+        const scroll = element.querySelector('[data-testid="step-detail-scroll"]');
+        if (!scroll?.clientHeight) throw new Error("Step details must have a scrollable body");
         const body = element.querySelector('[data-testid="tool-card-body"]');
         const viewportTop = scroll.getBoundingClientRect().top;
         const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
@@ -131,7 +141,27 @@ async function replay() {
         return { top: scroll.scrollTop, height: scroll.clientHeight, contentHeight: scroll.scrollHeight,
           bodyTop: body.getBoundingClientRect().top, viewportTop,
           visibleCodeLine };
-      }, top);
+      });
+    }
+    async function startReading(top = 1000) {
+      const position = await detailScroll(top);
+      // Chrome can anchor a virtual list by one pixel after the requested scroll.
+      // All subsequent checks compare the measured starting offset exactly.
+      assert.ok(Math.abs(position.top - top) <= 1, `Reading setup must reach ${top}px: ${JSON.stringify(position)}`);
+      return position;
+    }
+    async function waitReading(top) {
+      try {
+        await page.waitForFunction(expected => {
+          const scroll = document.querySelector('[data-testid="step-detail-scroll"]');
+          return scroll?.clientHeight > 0 && scroll.scrollTop === expected;
+        }, top);
+      } catch (error) {
+        console.error(JSON.stringify({ checkpoint: "detail reading position", viewport: page.viewportSize(),
+          expectedScrollTop: top, actual: await detailScroll() }));
+        throw error;
+      }
+      return detailScroll();
     }
     for (const width of [1440, 1024, 820, 390]) {
       await page.setViewportSize({ width, height: 844 });
@@ -166,6 +196,8 @@ async function replay() {
         await page.screenshot({ path: join(work, `fields-${index}-${width}.png`) });
         report.push({ width, source: ["claude", "hermes", "codex", "explicit-streams", "hermes-multiline"][index], exitCode: index === 0 ? 1 : 0,
           duration: index === 3 ? "1.25s" : "omitted", stderr: index === 3 ? "separate, copy verified" : "omitted", bounds });
+        await page.getByTestId("step-detail-close").click();
+        await waitClosed();
       }
     }
     assert.deepEqual(errors, []);
@@ -178,10 +210,11 @@ async function replay() {
       await rows.nth(0).click();
       await waitOpen();
       assert.ok((await panel.textContent()).includes("Step A start"));
-      assert.equal((await detailScroll(1000)).top, 1000, "Long step A must scroll before switching");
+      const reading = await startReading();
       await page.getByTestId("preview-update-step").click();
       await panel.getByText("Updated sample output", { exact: false }).waitFor();
-      assert.equal((await detailScroll()).top, 1000, "Output updates to the same step must preserve the reader's position");
+      const updated = await detailScroll();
+      assert.equal(updated.top, reading.top, "Output updates to the same step must preserve the reader's position");
       await rows.nth(1).click();
       assert.ok((await panel.textContent()).includes("Step B start"));
       const next = await detailScroll();
@@ -193,7 +226,7 @@ async function replay() {
       assert.equal((await detailScroll()).top, 0, "Switching back to step A must also start at the top");
       assert.equal(await rows.nth(0).getAttribute("aria-expanded"), "false");
       assert.equal(await rows.nth(1).getAttribute("aria-expanded"), "false");
-      report.push({ width, stepSwitching: "A -> B -> A starts at top", liveOutputUpdate: "keeps scrollTop 1000" });
+      report.push({ width, stepSwitching: "A -> B -> A starts at top", liveOutputUpdate: { before: reading.top, after: updated.top } });
     }
     for (const width of [1440, 1024, 820, 390]) {
       await page.setViewportSize({ width, height: 844 });
@@ -263,7 +296,9 @@ async function replay() {
       assert.ok(await page.getByTestId("preview-chat").evaluate(element => element.scrollTop > 0), "Chat must already be scrolled beneath the host header");
       await row.first().click();
       await waitOpen();
-      await detailScroll(1000);
+      // Include an exact 999px baseline so a hard-coded 1000px wait fails deterministically.
+      const reading = await startReading(widths[0] === 820 ? 999 : 1000);
+      report.push({ rotation: widths, width: widths[0], scrollTop: reading.top, phase: "before resize" });
       for (const width of widths.slice(1)) {
         await page.setViewportSize({ width, height: width === 820 ? 1180 : 844 });
         const presentation = width < 744 ? "sheet" : width < 1024 ? "popover" : "side";
@@ -273,16 +308,15 @@ async function replay() {
         }, presentation);
         await waitOpen();
         assert.ok((await panel.textContent()).includes("Step A start"), "Rotation must keep the selected step");
-        await page.waitForFunction(() => document.querySelector('[data-testid="step-detail-scroll"]')?.scrollTop === 1000);
-        const position = await detailScroll();
-        assert.equal(position.top, 1000, `Rotation to ${width}px must preserve the reader's detail scroll position`);
+        const position = await waitReading(reading.top);
+        assert.equal(position.top, reading.top, `Rotation to ${width}px must preserve the reader's detail scroll position`);
         assert.equal(await page.getByTestId("step-detail-backdrop").count(), presentation === "side" ? 0 : 1, "Only modal presentations have a backdrop");
         const box = await panel.boundingBox();
         assert.ok(box.x >= 0 && box.x + box.width <= width + 1);
         assert.ok(box.y >= 0 && box.y + box.height <= (width === 820 ? 1180 : 844) + 1);
         const chat = await page.getByTestId("preview-chat").boundingBox();
         if (presentation === "side") assert.ok(chat.x + chat.width <= box.x + 1);
-        report.push({ rotation: widths, width, presentation, panel: box, scrollTop: 1000 });
+        report.push({ rotation: widths, width, presentation, panel: box, scrollTop: position.top });
       }
       await page.getByTestId("step-detail-close").click();
       await waitClosed();
@@ -383,8 +417,9 @@ async function replay() {
         if (width === 820) {
           let expandedSheet = false;
           let codeAnchor;
+          let reading;
           if (index === 2) await panel.getByRole("button", { name: "Hide the image" }).click();
-          else codeAnchor = (await detailScroll(1000)).visibleCodeLine;
+          else { reading = await startReading(); codeAnchor = reading.visibleCodeLine; }
           if (index === 1) assert.ok(codeAnchor, "The expanded code must expose a visible source line");
           for (const resized of [600, 1180, 820, 600, 820]) {
             await page.setViewportSize({ width: resized, height: 844 });
@@ -400,15 +435,14 @@ async function replay() {
               assert.equal(await panel.locator("img").count(), 0, "Hidden images must stay hidden through resize");
             } else {
               await panel.getByTestId("step-detail-output").first().waitFor();
-              await page.waitForFunction(() => document.querySelector('[data-testid="step-detail-scroll"]')?.scrollTop === 1000);
-              const position = await detailScroll();
+              const position = await waitReading(reading.top);
               // Reflow of this long file header can shift the first visible code line by up to three lines.
               if (index === 1) {
                 assert.ok(position.top > 0 && position.visibleCodeLine, "Expanded code must retain a scrolled reading region");
                 assert.ok(Math.abs(Number(position.visibleCodeLine.match(/\d+$/)[0]) - Number(codeAnchor.match(/\d+$/)[0])) <= 3,
                   "Resize must keep the same code reading region after header wrapping");
               }
-              else assert.equal(position.top, 1000, "Expanded output must keep its reading position");
+              else assert.equal(position.top, reading.top, "Expanded output must keep its reading position");
             }
             if (resized === 600 && index === 0) {
               if (!expandedSheet) {
