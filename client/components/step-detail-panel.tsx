@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Modal, PanResponder, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View,
+  Modal, PanResponder, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View,
   useWindowDimensions,
 } from "react-native";
-import type { ViewProps } from "react-native";
+import type { ViewProps, ViewStyle } from "react-native";
 import type { StepDetailPresentation } from "../breakpoints";
 import { installStepDetailBack } from "../step-detail-back";
 import type { ToolCalloutData } from "../../shared/contracts";
@@ -110,7 +110,7 @@ export function StepDetailPanel({ step, open, onOpenChange, presentation, tokens
             else setSnap("half");
           }}
           {...resize.panHandlers}
-          style={styles.handle}
+          style={[styles.handle, touchGestureStyle]}
         >
           <View style={[styles.grip, { backgroundColor: tokens.foregroundMuted }]} />
         </View>
@@ -153,11 +153,14 @@ export function StepDetailPanel({ step, open, onOpenChange, presentation, tokens
             {panel}
           </View>
         </SafeAreaView>
-        <View testID="step-detail-back-edge" {...backEdge.panHandlers} style={styles.backEdge} accessible={false} />
+        <View testID="step-detail-back-edge" {...backEdge.panHandlers} style={[styles.backEdge, touchGestureStyle]} accessible={false} />
       </View>
     </Modal>
   );
 }
+
+// Keep browser scrolling from canceling the dedicated resize and back gestures.
+const touchGestureStyle = Platform.OS === "web" ? { touchAction: "none" } as ViewStyle : undefined;
 
 const styles = StyleSheet.create({
   overlay: { flex: 1 },

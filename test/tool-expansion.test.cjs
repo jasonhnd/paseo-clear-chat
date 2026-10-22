@@ -1,7 +1,12 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { createToolHarness } = require("./helpers/tool-harness.cjs");
+const { createToolHarness: createHarness } = require("./helpers/tool-harness.cjs");
 const { createExpansionHost } = require("./helpers/expansion-host.cjs");
+
+// These regressions exercise the optional original, persisted inline behavior.
+function createToolHarness(platform, options = {}) {
+  return createHarness(platform, { ...options, preferences: { collapsedStepAction: "inline", ...options.preferences } });
+}
 
 function setup(host = createExpansionHost()) {
   const h = createToolHarness("ios", { expansionHost: host });

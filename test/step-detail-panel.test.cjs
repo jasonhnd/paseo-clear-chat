@@ -8,6 +8,14 @@ const find = (h, tree, id) => h.nodes(tree, node => node.props.testID === id)[0]
 const row = (h, tree) => find(h, tree, "tool-summary-row");
 const tick = () => new Promise(setImmediate);
 
+test("detail breakpoints use the shared phone, tablet and desktop boundaries", () => {
+  const h = createToolHarness();
+  const { PHONE_MAX, TABLET_MIN, DESKTOP_MIN, stepDetailPresentation } = h.load("client/breakpoints.ts");
+  assert.deepEqual([PHONE_MAX, TABLET_MIN, DESKTOP_MIN], [743, 744, 1024]);
+  assert.deepEqual([390, 743, 744, 820, 1023, 1024, 1440].map(stepDetailPresentation),
+    ["sheet", "sheet", "popover", "popover", "popover", "side", "side"]);
+});
+
 for (const platform of ["web", "ios", "android"]) {
   for (const [width, presentation] of [[1440, "side"], [1024, "side"], [820, "popover"], [390, "sheet"]]) {
     test(`${platform} ${width}: a collapsed step opens details, keeps the row folded and closes`, async () => {
@@ -86,6 +94,27 @@ test("the same open detail changes presentation when the viewport crosses breakp
     assert.equal(panels[0].props.dataSet.presentation, presentation);
   }
   h.unmount();
+});
+
+test("a selected desktop call updates its existing panel when new output arrives", () => {
+  const h = createToolHarness("web", { dimensions: { width: 1440 } });
+  const mounted = h.mount(call);
+  const next = { ...mounted.data, detail: { ...mounted.data.detail, output: "Updated sample output" } };
+  const tree = mounted.render(next);
+  assert.ok(h.text(find(h, tree, "tool-card-body")).includes("Updated sample output"));
+  assert.equal(h.panelOpens.length, 1);
+  h.unmount();
+});
+
+test("a host without a usable panel context falls back to a dismissible popover", () => {
+  for (const options of [{ agent: { cwd: "/workspace/demo" } }, { panelError: true }]) {
+    const h = createToolHarness("web", { ...options, dimensions: { width: 1440 } });
+    const mounted = h.mount(call);
+    assert.equal(find(h, mounted.tree, "step-detail-panel").props.dataSet.presentation, "popover");
+    find(h, mounted.tree, "step-detail-close").props.onPress();
+    assert.equal(find(h, mounted.render(), "step-detail-panel"), undefined);
+    h.unmount();
+  }
 });
 
 test("inline preference restores the original expansion and persisted folding behavior", async () => {

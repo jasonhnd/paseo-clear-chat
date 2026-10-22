@@ -108,6 +108,8 @@ export function ToolCallout({
       accessibilityLabel={`${expanded ? "Collapse" : onOpenDetail ? "View details:" : "Expand"} ${toolSummary(data)}`}
       accessibilityHint={!expanded && onOpenDetail ? "Opens step details" : undefined}
       accessibilityState={{ expanded }}
+      aria-expanded={expanded}
+      aria-haspopup={!expanded && onOpenDetail ? "dialog" : undefined}
       {...stepMenu.rowProps}
       onPress={() => {
         if (stepMenu.consumePress()) return;
