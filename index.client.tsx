@@ -106,6 +106,8 @@ function registerClient(client: PluginClientContext) {
               name: item.name,
               status: item.status,
               detail: toJsonValue(item.detail),
+              ...("agentMessage" in item && item.agentMessage
+                ? { agentMessage: toJsonValue(item.agentMessage) } : {}),
               ...("metadata" in item && item.metadata && typeof item.metadata === "object"
                 ? { metadata: toJsonValue(item.metadata) } : {}),
               ...(item.callId ? { callId: item.callId } : {}),
@@ -125,6 +127,7 @@ function registerClient(client: PluginClientContext) {
       name: z.string(),
       status: z.string(),
       detail: z.record(z.string(), z.unknown()).optional(),
+      agentMessage: z.unknown().optional(),
       metadata: z.record(z.string(), z.unknown()).optional(),
       callId: z.string().optional(),
       error: z.unknown().optional(),

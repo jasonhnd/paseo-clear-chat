@@ -407,6 +407,8 @@ export interface ToolCalloutData {
   tool: ToolCallKind;
   title: string;
   status: "running" | "completed" | "failed" | "canceled" | "waiting";
+  /** A delivered agent instruction or lifecycle notification, with message presentation. */
+  agentMessage?: boolean;
   error?: string;
   /** A reply explicitly delivered by a wrap-up tool, outside step disclosures. */
   finalReply?: string;

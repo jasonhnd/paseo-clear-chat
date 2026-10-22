@@ -129,7 +129,7 @@ export function ToolCallout({
       style={{ ...styles.header, ...(compact ? styles.compactHeaderTarget : {}), ...keyboard.focusStyle }}
     >
       <View style={styles.headerLeft}>
-        <Glyph name={getToolIconName(data.tool)} size={phone ? 11 : 13} color={iconColor} />
+        <Glyph name={data.agentMessage ? "MessageSquare" : getToolIconName(data.tool)} size={phone ? 11 : 13} color={iconColor} />
         <Text selectable={false} testID="tool-summary-text" style={[styles.titleText, stepSummaryTextStyle]} numberOfLines={1}>
           {toolSummary(data)}
         </Text>

@@ -11,11 +11,13 @@ import { toolFailureMessage } from "./tool-error";
 import { extractGeneratedImages } from "./generated-images";
 import { errorText } from "./error-text";
 import { stepInputText, stepOutputText } from "./step-detail-data";
+import { agentMessageCallout } from "./agent-message";
 
 export interface LiveToolCallPayload {
   name: string;
   status: string;
   detail?: Record<string, unknown>;
+  agentMessage?: unknown;
   metadata?: Record<string, unknown>;
   callId?: string;
   error?: unknown;
@@ -23,6 +25,8 @@ export interface LiveToolCallPayload {
 }
 
 export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutData {
+  const delivery = agentMessageCallout(data);
+  if (delivery) return delivery;
   const projected = recoverProjectedTool(stringValue(data.name)?.trim() ?? "tool", record(data.detail), data.metadata);
   const toolName = projected.name;
   const rawName = toolName.toLowerCase();
