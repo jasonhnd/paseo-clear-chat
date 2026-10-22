@@ -155,8 +155,9 @@ included the closing fence. Thus these historical results cannot demonstrate
 source lines 260 or 1200. This is a missing provider/host payload, independently
 of virtual scrolling. The parser removes a recognized numbered wrapper while
 retaining the explicit truncation notice, without assigning that notice a file
-line number. Copy output retains the notice too, so partial content cannot be
-mistaken for a complete file.
+line number. Copy output contains only the available file content; the detail
+list keeps the notice visible so partial content is not mistaken for a complete
+file.
 
 For a complete response, check the first and last source numbers against the
 actual payload. A constructed complete 1200-line variant of the captured item
@@ -195,5 +196,5 @@ await cdp.send("Input.dispatchKeyEvent", {
 
 Read the real clipboard after the event and compare it with the selected file
 text. Check that the nonselectable gutter is absent. Test the Copy output button
-separately: it must include all available lines and any upstream truncation
-notice, with no Read header, outer fences or provider numeric prefixes.
+separately: it must include all available file lines, with no upstream truncation
+notice, Read header, outer fences or provider numeric prefixes.
