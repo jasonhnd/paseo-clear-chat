@@ -233,7 +233,8 @@ the reader's scroll position. Other hosts that change the selection should use
 the same key pattern.
 The selected row also supplies a stable `StepDetailState` from
 `step-detail-state.ts`. It carries vertical scroll, the sheet's half/full size,
-output disclosures and image visibility across presentation-root changes.
+and image visibility across presentation-root changes. Full input and output stay
+unfolded in details; the virtual list shares the same saved scroll offset.
 Scroll offsets restore after the new scroll viewport and content are laid out;
 incoming output for the current step keeps the current offset. Explicitly
 selecting another step resets its reading state. These values stay in memory

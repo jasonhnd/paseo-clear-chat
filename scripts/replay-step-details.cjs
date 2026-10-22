@@ -110,11 +110,20 @@ async function replay() {
         }
         const body = element.querySelector('[data-testid="tool-card-body"]');
         const viewportTop = scroll.getBoundingClientRect().top;
-        const visibleCodeLine = Array.from(body.querySelectorAll("div")).find(node =>
-          /^\d+\s*export const sample\d+\s*=/.test(node.textContent) && node.getBoundingClientRect().top >= viewportTop);
+        const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+        let visibleCodeLine, node;
+        while (!visibleCodeLine && (node = walker.nextNode())) {
+          for (const match of node.textContent.matchAll(/export const sample\d+/g)) {
+            const range = document.createRange();
+            range.setStart(node, match.index);
+            range.setEnd(node, match.index + match[0].length);
+            const rect = range.getBoundingClientRect();
+            if (rect.top >= viewportTop && rect.top < viewportTop + scroll.clientHeight) { visibleCodeLine = match[0]; break; }
+          }
+        }
         return { top: scroll.scrollTop, height: scroll.clientHeight, contentHeight: scroll.scrollHeight,
           bodyTop: body.getBoundingClientRect().top, viewportTop,
-          visibleCodeLine: visibleCodeLine?.textContent.match(/export const sample\d+/)?.[0] };
+          visibleCodeLine };
       }, top);
     }
     for (const width of [1440, 1024]) {
@@ -290,8 +299,8 @@ async function replay() {
         await rows.nth(index).click();
         await waitOpen();
         if (index < 2) {
-          await panel.getByRole("button", { name: /^Show all / }).first().click();
-          await panel.getByRole("button", { name: "Show fewer lines" }).first().waitFor();
+          await panel.getByTestId("step-detail-output").first().waitFor();
+          assert.equal(await panel.getByRole("button", { name: /^Show all / }).count(), 0, "Step details always expose the full output");
         } else {
           await panel.getByRole("button", { name: "Hide the image" }).waitFor();
           await panel.locator("img").waitFor({ state: "attached" });
@@ -344,7 +353,7 @@ async function replay() {
               await panel.getByRole("button", { name: "Show the image" }).waitFor();
               assert.equal(await panel.locator("img").count(), 0, "Hidden images must stay hidden through resize");
             } else {
-              await panel.getByRole("button", { name: "Show fewer lines" }).first().waitFor();
+              await panel.getByTestId("step-detail-output").first().waitFor();
               const position = await detailScroll();
               // Reflow of this long file header can shift the first visible code line by up to three lines.
               if (index === 1) {

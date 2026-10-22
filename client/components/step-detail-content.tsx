@@ -46,8 +46,13 @@ export function StepDetailContent({ step, tokens, onRevealPath, imageFile }: {
 }) {
   const readingState = useContext(StepDetailStateContext);
   const list = useRef<FlatList<DetailRow>>(null);
+  // Restore after mounting or resizing; virtual cell measurements keep the current position.
+  const restoreTarget = useRef(readingState?.scrollOffset);
+  const layout = useRef({ width: 0, height: 0, contentHeight: 0 });
   const restoreScroll = () => {
-    if (readingState) list.current?.scrollToOffset({ offset: readingState.scrollOffset, animated: false });
+    if (restoreTarget.current === undefined || !list.current || !layout.current.height || !layout.current.contentHeight) return;
+    list.current.scrollToOffset({ offset: restoreTarget.current, animated: false });
+    restoreTarget.current = undefined;
   };
   const rows = useMemo(() => {
     const result: DetailRow[] = [];
@@ -75,8 +80,13 @@ export function StepDetailContent({ step, tokens, onRevealPath, imageFile }: {
       updateCellsBatchingPeriod={16}
       scrollEventThrottle={16}
       contentOffset={{ x: 0, y: readingState?.scrollOffset ?? 0 }}
-      onLayout={restoreScroll}
-      onContentSizeChange={restoreScroll}
+      onLayout={event => {
+        const { width, height } = event.nativeEvent.layout;
+        if (layout.current.width && (width !== layout.current.width || height !== layout.current.height)) restoreTarget.current = readingState?.scrollOffset;
+        Object.assign(layout.current, { width, height });
+        restoreScroll();
+      }}
+      onContentSizeChange={(_, contentHeight) => { layout.current.contentHeight = contentHeight; restoreScroll(); }}
       onScroll={event => { if (readingState) readingState.scrollOffset = event.nativeEvent.contentOffset.y; }}
       keyboardShouldPersistTaps="handled"
       contentInsetAdjustmentBehavior="automatic"
