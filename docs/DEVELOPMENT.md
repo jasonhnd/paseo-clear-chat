@@ -240,8 +240,13 @@ until a user performs them; the replay does not certify native gesture handling.
 
 ## Plugin SDK limitations found while building this
 
-Measured against `@getpaseo/plugin` 0.8.0 and the Paseo 0.8.0 desktop build. Each entry names the
-evidence and the workaround this plugin uses.
+The current SDK and minimum supported host are 0.12.0. See the
+[0.8.0 to 0.12.0 API audit](SDK-0.12.md) for newly available interfaces, feature
+applications, compatibility changes, and current spacing/grouping/font limits.
+
+The historical findings below were measured against `@getpaseo/plugin` 0.8.0 and
+the Paseo 0.8.0 desktop build. Each entry names the evidence and the workaround
+this plugin uses; consult the audit before applying these findings to newer hosts.
 
 1. **No file navigation.** Timeline renderer props are exactly `{agentId, theme, host, layout,
 timestamp, item}`, and plugin navigation offers only `openSettings`, `openSurface`,
