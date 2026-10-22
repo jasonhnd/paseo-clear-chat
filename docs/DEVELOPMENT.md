@@ -48,8 +48,10 @@ current client. Commands and paths retain their original whitespace. Results
 come from the complete step payload, independently of output folding or typed
 previews: strings stay verbatim, pure text-block results include every block,
 and other structured results use full formatted JSON. Empty string results can
-also be copied. Clipboard failure opens the existing read-only text fallback.
-Steps without a file path have neither path action.
+also be copied. Steps with no reported result omit **Copy result**; Write file
+contents and Edit patch inputs never stand in for a result. Clipboard failure
+opens the existing read-only text fallback. Steps without a file path have
+neither path action.
 
 **Open in file manager** uses the existing daemon-side file reveal action. It is
 available only to web/desktop clients at least 1024px wide with a reveal callback.

@@ -31,6 +31,12 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
   const rawInput = detail.input ?? detail.arguments ?? detail.args;
   const input = record(rawInput);
   const output = detail.output ?? detail.result ?? detail.content ?? "";
+  // Typed read/search bodies are results; write content and edit patches are
+  // inputs. Keep copying separate from display fallbacks and empty defaults.
+  const result = detail.output ?? detail.result
+    ?? (["read", "search", "web_search"].includes(detailType) ? detail.content
+      : detailType === "plain_text" ? detail.text
+      : ["sub_agent", "worktree_setup"].includes(detailType) ? detail.log : undefined);
 
   // Universal path extraction across OMP, Paseo, Claude, and Codex formats
   const filePath: string | undefined =
@@ -222,7 +228,7 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
 
   return {
     id: `live-${rawName}`,
-    copyResult: stepResultText(detail.output ?? detail.result ?? detail.content ?? detail.text),
+    copyResult: stepResultText(result),
     tool: toolKind,
     title,
     status,

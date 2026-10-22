@@ -12,4 +12,3 @@ export function stepResultText(value: unknown): string | undefined {
   }
   return JSON.stringify(value, null, 2);
 }
-

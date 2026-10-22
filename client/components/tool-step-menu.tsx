@@ -22,8 +22,7 @@ export function useToolStepMenu(data: ToolCalloutData, tokens: ExtendedThemeToke
   const toast = useToast();
   const command = data.shell?.command ?? data.command;
   const path = data.filePath;
-  const result = data.copyResult ?? data.output ?? data.fallback?.output
-    ?? ([data.shell?.stdout, data.shell?.stderr].filter(text => text !== undefined).join("\n") || undefined);
+  const result = data.copyResult;
   const hasActions = Boolean(command || path || result !== undefined);
   const show = () => {
     if (!hasActions) return;
