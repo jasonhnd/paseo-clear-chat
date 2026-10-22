@@ -10,12 +10,14 @@ const activePreviews = new WeakMap<Document, () => void>();
 let nextPreviewId = 0;
 
 function snippet(text: string, lines: number, characters: number): string {
-  const head = text.slice(0, characters).split(/\r?\n/).slice(0, lines).join("\n");
-  return head.length < text.length ? `${head}\n…` : head;
+  const rows = text.slice(0, characters).split(/\r?\n/);
+  const head = rows.slice(0, lines).join("\n");
+  return text.length > characters || rows.length > lines ? `${head}\n…` : head;
 }
 
 function outputPreview(data: ToolCalloutData): string {
-  const streams = [data.error, data.shell?.stdout, data.shell?.stderr].filter(Boolean).join("\n");
+  const streams = [data.error, data.shell?.stdout, data.shell?.stderr]
+    .filter((text): text is string => Boolean(text)).map(text => text.slice(0, 801)).join("\n");
   const text = streams || data.diff || data.output || data.plainText || data.skill?.text
     || data.search?.preview || data.fetch?.preview || data.toolSearch?.text
     || data.thinking?.text || data.cells?.[0]?.output || data.code || data.fallback?.output

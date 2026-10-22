@@ -160,6 +160,8 @@ test("each captured step previews its own content without mounting its full body
     const m = mount(1440, "web", true, item);
     m.enter(); m.tick(300);
     assert.ok(m.preview(), item.callId);
+    const data = m.h.load("client/tool-call-data.ts").buildLiveToolCallData(m.mounted.data);
+    assert.ok(m.preview().textContent.includes(m.h.load("client/tool-summary.ts").toolSummary(data)), item.callId);
     assert.ok(m.preview().textContent.includes("Sample") || m.preview().textContent.includes("sample"), item.callId);
     assert.equal(m.h.nodes(m.mounted.tree, node => node.props.testID === "tool-card-body").length, 0);
     m.h.unmount();
@@ -176,5 +178,27 @@ test("detached or recycled rows cannot leave stale previews", () => {
   assert.ok(m.preview());
   m.mounted.render({ ...m.mounted.data, callId: "another-sample", title: "Another step" });
   assert.equal(m.preview(), undefined);
+  m.h.unmount();
+});
+
+for (const [label, output, truncated] of [["short CRLF", "One\r\nTwo", false], ["four lines", "One\nTwo\nThree\nFour", false], ["large single line", "Sample ".repeat(10000), true]]) {
+  test(`${label} output reports truncation only when content is omitted`, () => {
+    const item = { ...calls[0], detail: { ...calls[0].detail, output } };
+    const m = mount(1440, "web", true, item);
+    m.enter(); m.tick(300);
+    assert.ok(m.preview());
+    assert.equal(m.preview().textContent.endsWith("…"), truncated);
+    assert.ok(m.preview().textContent.length < 1100);
+    m.h.unmount();
+  });
+}
+
+test("a preview preserves and restores the row's existing accessible description", () => {
+  const m = mount();
+  m.target.setAttribute("aria-describedby", "step-status");
+  m.enter(); m.tick(300);
+  assert.ok(m.target.getAttribute("aria-describedby").startsWith("step-status clear-chat-tool-preview-"));
+  m.row.props.onPointerLeave();
+  assert.equal(m.target.getAttribute("aria-describedby"), "step-status");
   m.h.unmount();
 });
