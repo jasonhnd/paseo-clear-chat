@@ -86,6 +86,28 @@ Reports, screenshots, the bundle and the temporary Chrome profile stay under
 outputs after reading the report. Native fallback coverage runs in
 `node --test test/code-font.test.cjs`; physical iOS/iPadOS/Android checks remain manual.
 
+## Hover preview replay
+
+After installing the root and showcase dependencies, run:
+
+```sh
+export TMPDIR="$KANBAN_TMP"
+node .showcase/hover-preview.cjs
+```
+
+This bundles the actual tool components in memory and replays the sanitized
+`real-hermes-session.json` fixture in headless Google Chrome. It checks mouse
+hover at 1440, 1024, 820 and 390px, first-line output, pointer-lane clearance at
+the top edge, scroll cleanup, clicking, data replacement and unmounting. Touch
+replays use iOS, iPadOS and Android device profiles; they require no preview and
+preserve tap behavior. Component tests separately exercise native platforms,
+the exact 300ms delay, pen input and cancellation before the delay elapses.
+Real-device checks remain separate from Chrome emulation.
+
+Chrome uses the first available debugging port in 9444–9499. Its profile stays
+under `KANBAN_TMP` and is deleted when the replay exits. No live host is read
+or changed, and external network requests are blocked.
+
 ## Fixture map
 
 Each row describes both theme captures. All data names refer to `fixtures.ts`
