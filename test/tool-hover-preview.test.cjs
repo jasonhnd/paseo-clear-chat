@@ -1,0 +1,180 @@
+const assert = require("node:assert/strict");
+const test = require("node:test");
+const { createToolHarness } = require("./helpers/tool-harness.cjs");
+const fixture = require("./fixtures/real-hermes-session.json");
+
+const calls = fixture.items.filter(item => item.type === "tool_call");
+const find = (h, tree) => h.nodes(tree, node => node.props.testID === "tool-summary-row")[0];
+
+function hoverDocument(width = 1440, mouse = true) {
+  const timers = new Map(), listeners = new Map();
+  let now = 0, serial = 0;
+  class Element {
+    constructor(tag) { this.tagName = tag; this.style = {}; this.children = []; this.attributes = {}; }
+    appendChild(child) { child.parentNode = this; this.children.push(child); return child; }
+    remove() { this.parentNode?.children.splice(this.parentNode.children.indexOf(this), 1); this.parentNode = null; }
+    setAttribute(name, value) { this.attributes[name] = value; }
+    getAttribute(name) { return this.attributes[name] ?? null; }
+    removeAttribute(name) { delete this.attributes[name]; }
+    get isConnected() { return this === doc.body || Boolean(this.parentNode?.isConnected); }
+    get textContent() { return (this.text ?? "") + this.children.map(child => child.textContent).join("\n"); }
+    set textContent(value) { this.text = value; this.children = []; }
+    getBoundingClientRect() { return this.rect ?? { left: 0, right: 420, top: 0, bottom: 142, width: 420, height: 142 }; }
+  }
+  const media = {
+    get matches() { return doc.defaultView.innerWidth >= 1024 && mouse; },
+    addEventListener: (type, fn) => on(`media:${type}`, fn),
+    removeEventListener: (type, fn) => off(`media:${type}`, fn),
+  };
+  function on(type, fn) { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type).add(fn); }
+  function off(type, fn) { listeners.get(type)?.delete(fn); }
+  const doc = {
+    body: new Element("body"),
+    createElement: tag => new Element(tag),
+    addEventListener: on, removeEventListener: off,
+    defaultView: {
+      innerWidth: width, innerHeight: 900, matchMedia: () => media,
+      setTimeout(fn, delay) { timers.set(++serial, { fn, at: now + delay }); return serial; },
+      clearTimeout: id => timers.delete(id),
+      addEventListener: on, removeEventListener: off,
+    },
+  };
+  const target = doc.body.appendChild(new Element("button"));
+  target.rect = { left: 40, right: width - 40, top: 360, bottom: 382, width: width - 80, height: 22 };
+  return {
+    doc, target, timers,
+    preview: () => doc.body.children.find(child => child.getAttribute("data-testid") === "tool-hover-preview"),
+    tick(ms) {
+      now += ms;
+      for (const [id, job] of timers) if (job.at <= now) { timers.delete(id); job.fn(); }
+    },
+    emit(type) { for (const fn of [...listeners.get(type) ?? []]) fn({}); },
+    listenerCount: () => [...listeners.values()].reduce((sum, set) => sum + set.size, 0),
+  };
+}
+
+function mount(width = 1440, platform = "web", mouse = true, item = calls[0]) {
+  const dom = hoverDocument(width, mouse);
+  const h = createToolHarness(platform, { globals: { document: dom.doc } });
+  const mounted = h.mount(item, false);
+  const row = find(h, mounted.tree);
+  const enter = (pointerType = "mouse") => row.props.onPointerEnter?.({
+    currentTarget: dom.target, nativeEvent: { pointerType, clientX: 200, clientY: 370 },
+  });
+  return { ...dom, h, mounted, row, enter };
+}
+
+for (const width of [1440, 1024]) {
+  test(`a collapsed step at ${width}px previews after 300ms and clears on leave`, () => {
+    const m = mount(width);
+    assert.equal(typeof m.row.props.onPointerEnter, "function");
+    m.enter();
+    m.tick(299);
+    assert.equal(m.preview(), undefined);
+    m.tick(1);
+    const preview = m.preview();
+    assert.ok(preview);
+    assert.match(preview.textContent, /terminal: git log/);
+    assert.match(preview.textContent, /Sample text line 1\./);
+    assert.doesNotMatch(preview.textContent, /Sample text line 5\./);
+    assert.equal(preview.style.pointerEvents, "none");
+    assert.equal(m.row.props.accessibilityState.expanded, false);
+    assert.equal(m.h.expansionHost.calls.filter(call => call.name === "write").length, 0);
+    m.row.props.onPointerLeave();
+    assert.equal(m.preview(), undefined);
+    m.h.unmount();
+    assert.equal(m.listenerCount(), 0);
+  });
+}
+
+for (const width of [820, 390]) {
+  test(`${width}px never starts a hover preview`, () => {
+    const m = mount(width);
+    m.enter(); m.tick(1000);
+    assert.equal(m.preview(), undefined);
+    assert.equal(m.timers.size, 0);
+    m.h.unmount();
+  });
+}
+
+for (const [label, platform, width] of [["iOS", "ios", 390], ["iPadOS", "ios", 1440], ["Android", "android", 1024], ["touch web", "web", 1440]]) {
+  test(`${label} does not preview without a mouse`, () => {
+    const m = mount(width, platform, false);
+    m.enter(); m.tick(1000);
+    assert.equal(m.preview(), undefined);
+    assert.equal(m.timers.size, 0);
+    m.h.unmount();
+  });
+}
+
+for (const pointer of ["touch", "pen", ""]) {
+  test(`${pointer || "synthetic"} input cannot preview on a desktop with a mouse`, () => {
+    const m = mount();
+    m.enter(pointer); m.tick(1000);
+    assert.equal(m.preview(), undefined);
+    assert.equal(m.timers.size, 0);
+    m.h.unmount();
+  });
+}
+
+test("a short visit and unmount cancel pending work", () => {
+  const m = mount();
+  assert.equal(typeof m.row.props.onPointerLeave, "function");
+  m.enter(); m.tick(100); m.row.props.onPointerLeave(); m.tick(1000);
+  assert.equal(m.preview(), undefined);
+  m.enter(); m.h.unmount(); m.tick(1000);
+  assert.equal(m.preview(), undefined);
+  assert.equal(m.timers.size, 0);
+  assert.equal(m.listenerCount(), 0);
+});
+
+for (const event of ["scroll", "resize", "blur", "pointerdown", "keydown", "media:change"]) {
+  for (const delay of [100, 300]) {
+    test(`${event} clears a ${delay === 100 ? "pending" : "visible"} preview`, () => {
+      const m = mount();
+      m.enter(); m.tick(delay);
+      if (delay === 300) assert.ok(m.preview());
+      else assert.equal(m.timers.size, 1);
+      m.emit(event); m.tick(1000);
+      assert.equal(m.preview(), undefined);
+      assert.equal(m.timers.size, 0);
+      m.h.unmount();
+      assert.equal(m.listenerCount(), 0);
+    });
+  }
+}
+
+test("expanded rows never preview and clicking still expands a collapsed row", () => {
+  const m = mount();
+  m.row.props.onPress();
+  const expanded = find(m.h, m.mounted.render());
+  expanded.props.onPointerEnter?.({ currentTarget: m.target, nativeEvent: { pointerType: "mouse" } });
+  m.tick(1000);
+  assert.equal(m.preview(), undefined);
+  assert.equal(expanded.props.accessibilityState.expanded, true);
+  m.h.unmount();
+});
+
+test("each captured step previews its own content without mounting its full body", () => {
+  for (const item of calls) {
+    const m = mount(1440, "web", true, item);
+    m.enter(); m.tick(300);
+    assert.ok(m.preview(), item.callId);
+    assert.ok(m.preview().textContent.includes("Sample") || m.preview().textContent.includes("sample"), item.callId);
+    assert.equal(m.h.nodes(m.mounted.tree, node => node.props.testID === "tool-card-body").length, 0);
+    m.h.unmount();
+    assert.equal(m.preview(), undefined);
+  }
+});
+
+test("detached or recycled rows cannot leave stale previews", () => {
+  const m = mount();
+  m.enter(); m.target.remove(); m.tick(300);
+  assert.equal(m.preview(), undefined);
+  m.doc.body.appendChild(m.target);
+  m.enter(); m.tick(300);
+  assert.ok(m.preview());
+  m.mounted.render({ ...m.mounted.data, callId: "another-sample", title: "Another step" });
+  assert.equal(m.preview(), undefined);
+  m.h.unmount();
+});
