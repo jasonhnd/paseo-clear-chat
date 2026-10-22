@@ -25,6 +25,7 @@ import type { ToolCalloutData } from "../../shared/contracts";
 import { useEnhancerPreferences, type OutputLineLimit } from "../preferences";
 import { toolErrorLine } from "../tool-error";
 import { stepSummaryTextStyle, useToolStepMenu } from "./tool-step-menu";
+import { useToolHoverPreview } from "./tool-hover-preview";
 
 function getToolIconName(tool: string): string {
   if (tool === "git") return "Git";
@@ -70,6 +71,7 @@ export function ToolCallout({
   imageFile,
 }: ToolCalloutProps) {
   const stepMenu = useToolStepMenu(data, tokens, onRevealPath);
+  const hoverPreview = useToolHoverPreview(data, expanded, tokens);
   const { foldLongOutputAfter } = useEnhancerPreferences();
   const [visibleOutputs, setVisibleOutputs] = useState<{ limit: OutputLineLimit; texts: ReadonlySet<string> }>();
   const reportVisibility = useCallback((text: string, visible: boolean) => {
@@ -146,6 +148,7 @@ export function ToolCallout({
 
   const header = (
     <Pressable
+      {...hoverPreview}
       testID="tool-summary-row"
       accessibilityRole="button"
       accessibilityLabel={`${expanded ? "Collapse" : "Expand"} ${toolSummary(data)}`}

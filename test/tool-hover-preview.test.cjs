@@ -74,7 +74,7 @@ for (const width of [1440, 1024]) {
     m.tick(1);
     const preview = m.preview();
     assert.ok(preview);
-    assert.match(preview.textContent, /terminal: git log/);
+    assert.match(preview.textContent, /\$ git log/);
     assert.match(preview.textContent, /Sample text line 1\./);
     assert.doesNotMatch(preview.textContent, /Sample text line 5\./);
     assert.equal(preview.style.pointerEvents, "none");

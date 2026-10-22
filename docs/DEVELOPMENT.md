@@ -11,6 +11,17 @@ status, and duration when the provider reports one. Running calls spin; failed c
 cross, completed calls a check, and canceled calls a separate label. Running, failed and
 waiting-for-user calls default to expanded. Click a row to expand or collapse it.
 At widths of 744px and above, collapsed rows occupy 26px including their borders and vertical spacing.
+
+On web at widths of at least 1024px, a mouse hovering over a collapsed row for
+300ms shows its summary and the first four output lines. Touch and pen input
+never trigger this preview, even on a device with an attached mouse. The
+preview sits above the row when possible; near the top edge it moves to the
+side of the pointer so the next row remains visible beneath it. It accepts no
+pointer input. Leaving the row, scrolling, pressing, resizing, switching input
+capabilities or leaving the window cancels pending and visible previews.
+Opening or replacing a step also removes its preview. Hovering does not change
+the saved expansion choice or the row's click and long-press gestures.
+
 On web, adjacent collapsed tool rows have a 30px center pitch with the host's
 16px timeline gap: `26 + 16 - 12 = 30`. The plugin reads the preceding host
 frame's actual gap and applies up to 12px of negative top margin to its own
