@@ -136,3 +136,64 @@ passed, the full existing browser replay passed, and both production bundles
 built in memory without errors. The added input mode passed five trials; its
 wrong-viewport and edge-flip negative controls failed the intended assertions.
 No README, changelog, plugin runtime code or dependency lock was changed.
+
+## Read line numbers, virtual scrolling and clipboard controls
+
+First inspect the read-only projected timeline response, using the same projection
+as the host. A tool's `total lines` header describes the source file, not the
+amount of content delivered to the plugin. Preserve provider truncation notices
+in fixtures and reports. Do not rebuild missing lines from an assistant reply,
+read the current file as a substitute, or count a file header as proof that all
+file lines reached the renderer.
+
+The captured Hermes read results used for the offset replay were already
+truncated upstream. Both projected and canonical responses contained the same
+partial strings: the read starting at 150 ended partway through source line 244,
+and the whole-file read ended partway through source line 102. Their notices
+reported 5742 and 58946 original characters, respectively. Neither response
+included the closing fence. Thus these historical results cannot demonstrate
+source lines 260 or 1200. This is a missing provider/host payload, independently
+of virtual scrolling. The parser removes a recognized numbered wrapper while
+retaining the explicit truncation notice, without assigning that notice a file
+line number. Copy output retains the notice too, so partial content cannot be
+mistaken for a complete file.
+
+For a complete response, check the first and last source numbers against the
+actual payload. A constructed complete 1200-line variant of the captured item
+shape checks every list row and the complete Copy output string in the component
+suite. This control does not replace hosted verification of a complete payload.
+
+The detail body owns its scrolling in `[data-testid="step-detail-scroll"]`.
+Send real wheel events over its measured bounds, not over the chat or page.
+After each wheel event, allow the virtual list to mount and measure its next
+batch. Repeat until `scrollTop + clientHeight` reaches `scrollHeight` and those
+values remain stable across another wheel event. Then inspect the last mounted
+`step-detail-line-number` and adjacent `step-detail-output`. Initial mounted
+rows, or a single large wheel event before content height settles, do not prove
+that the list ends there. Copy output uses the full available payload regardless
+of which rows are mounted.
+
+For clipboard checks in headless Chrome, grant `clipboardReadWrite` and
+`clipboardSanitizedWrite` with `Browser.grantPermissions` for the application
+origin. Keep the same attached CDP session. Seed a sentinel, select actual text
+with mouse input, and verify `window.getSelection().toString()` before copying.
+A nonempty selection and an unchanged clipboard alone do not establish a
+product defect. In the macOS headless control, Meta+C key events with the proper
+key codes still left the sentinel unchanged. The same selected text copied when
+the key-down event included Chromium's editing command:
+
+```js
+await cdp.send("Input.dispatchKeyEvent", {
+  type: "keyDown", key: "c", code: "KeyC", modifiers: 4,
+  windowsVirtualKeyCode: 67, nativeVirtualKeyCode: 8, commands: ["copy"],
+});
+await cdp.send("Input.dispatchKeyEvent", {
+  type: "keyUp", key: "c", code: "KeyC", modifiers: 4,
+  windowsVirtualKeyCode: 67, nativeVirtualKeyCode: 8,
+});
+```
+
+Read the real clipboard after the event and compare it with the selected file
+text. Check that the nonselectable gutter is absent. Test the Copy output button
+separately: it must include all available lines and any upstream truncation
+notice, with no Read header, outer fences or provider numeric prefixes.
