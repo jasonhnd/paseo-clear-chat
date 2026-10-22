@@ -154,7 +154,7 @@ client saving settings can strip it. It is never imported from browser legacy se
 
 ### Step keyboard controls
 
-On web and desktop, Tab to a step. Up and Down focus the previous or next mounted,
+In a browser or Electron, Tab to a step. Up and Down focus the previous or next mounted,
 visible step in the same host and conversation, scrolling it into view. Navigation
 stops at the first and last mounted rows; it does not load virtualized history.
 The accent outline appears for keyboard focus and clears for pointer or touch
@@ -169,15 +169,34 @@ installed. Escape dismisses the top open detail and restores the opening control
 focus; this also covers the desktop host panel. Panels expose a labeled dialog
 or region, and step rows retain their button role and descriptive label.
 
-The browser implementation also applies to an iPad browser with a hardware
-keyboard. Native rows remain focusable buttons with a focus border and the
-existing accessibility Escape action. React Native 0.81 View exposes focus/blur
-but no raw hardware-key event, and the plugin SDK 0.12 has no keyboard-command
-bridge. Consequently, custom Up/Down/Enter/Escape dispatch is **web only**; the
-native iPad app still needs a host keyboard bridge for the same guaranteed
-shortcuts. Native component replay verifies focusability, activation and
-accessibility dismissal, not native hardware-key delivery. Physical iOS,
-iPadOS and Android keyboard checks remain pending.
+The supported keyboard scope is browsers and Electron, including Paseo opened
+in an iPad browser with a hardware keyboard. Native iPad, iPhone and Android apps
+do not support these custom hardware shortcuts through the current plugin API.
+Native hardware-key support is outside this plugin's scope; it requires a change
+to the Paseo host. Native touch controls remain accessible buttons, open and close
+the shared details, and never draw this plugin's keyboard focus outline or border.
+
+#### Native capability audit
+
+The supported interfaces were checked against SDK 0.12.0 and React Native 0.81:
+
+| Evidence | Finding |
+| --- | --- |
+| [SDK client contracts at 0.12.0](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/plugin/src/client/contracts.ts) | `PluginClientContext` exposes UI registrations, navigation and RPC, with no hardware-key command registration or subscription. |
+| [SDK React Native exports at 0.12.0](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/plugin/src/client/react-native.ts) | Modal, scrolling, text input, clipboard and toast helpers provide no physical-key event bridge. |
+| [React Native 0.81 View](https://reactnative.dev/docs/0.81/view) and [View event types](https://github.com/facebook/react-native/blob/v0.81.5/packages/react-native/Libraries/Components/View/ViewPropTypes.d.ts) | Focusability and focus notifications do not provide a View `onKeyDown`/`onKeyDownCapture` event on native. A web event prop cast cannot create a native event source. |
+| [React Native 0.81 Keyboard](https://reactnative.dev/docs/0.81/keyboard) | Its listeners report software-keyboard visibility and frame changes, not individual physical Up, Down, Enter or Escape presses. |
+| [Paseo 0.12 runtime module loader](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/app/src/plugins/evaluate.ts#L439-L464) | The host injects an explicit module set. Installing a JavaScript key-listener dependency in this plugin cannot register a new native module in the app. |
+
+Together these contracts rule out a supported plugin-only implementation of
+native hardware-key dispatch. Adding that capability requires a native bridge
+and a public command interface in the Paseo host.
+
+The native replay covers touch activation, Close, accessible labels and absence
+of custom keyboard styling at all four widths, even after a native focus
+notification. It is a component replay, not a hardware-key test. Chrome keyboard
+replay verifies only the web implementation. iPad Safari and native touch behavior
+still require a physical-device check; no native hardware-key claim is made.
 
 ### SDK integration and limits
 
