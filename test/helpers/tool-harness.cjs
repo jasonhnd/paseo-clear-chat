@@ -62,6 +62,7 @@ function createToolHarness(platform = "ios", options = {}) {
     interpolate() { return this.value; }
   }
   const native = {
+    Modal: "Native.Modal", useWindowDimensions: () => ({ width: options.width ?? 1440, height: options.height ?? 900 }),
     View: "View", Text: "Text", Pressable: "Pressable", Image: "Image", ScrollView: "ScrollView",
     Platform: { OS: platform }, StyleSheet: { create: value => value },
     Animated: { Value, View: "Animated.View", timing: () => ({ start: noop, stop: noop }) },
@@ -111,6 +112,7 @@ function createToolHarness(platform = "ios", options = {}) {
       ] }),
     },
   };
+  if (options.realSelection) delete stubs["client/components/selection"];
   if (options.settingsPage) delete stubs["client/settings-page"];
   if (options.fonts) delete stubs["client/components/embed-fonts"];
   if (options.presentationHost) delete stubs["client/preferences"];

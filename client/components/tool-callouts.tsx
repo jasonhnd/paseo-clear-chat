@@ -23,6 +23,7 @@ import { selectionCodeText, selectionSurface } from "./selection-actions";
 import type { ToolCalloutData } from "../../shared/contracts";
 import { useEnhancerPreferences, type OutputLineLimit } from "../preferences";
 import { toolErrorLine } from "../tool-error";
+import { stepSummaryTextStyle, useToolStepMenu } from "./tool-step-menu";
 
 function getToolIconName(tool: string): string {
   if (tool === "git") return "Git";
@@ -67,6 +68,7 @@ export function ToolCallout({
   onRevealPath,
   imageFile,
 }: ToolCalloutProps) {
+  const stepMenu = useToolStepMenu(data, tokens, onRevealPath);
   const { foldLongOutputAfter } = useEnhancerPreferences();
   const [visibleOutputs, setVisibleOutputs] = useState<{ limit: OutputLineLimit; texts: ReadonlySet<string> }>();
   const reportVisibility = useCallback((text: string, visible: boolean) => {
@@ -150,12 +152,13 @@ export function ToolCallout({
         accessibilityRole="button"
         accessibilityLabel={`${expanded ? "Collapse" : "Expand"} ${toolSummary(data)}`}
         accessibilityState={{ expanded }}
-        onPress={() => onExpandedChange(!expanded)}
+        {...stepMenu.rowProps}
+        onPress={() => { if (!stepMenu.consumePress()) onExpandedChange(!expanded); }}
         style={styles.header}
       >
         <View style={styles.headerLeft}>
           <Glyph name={getToolIconName(data.tool)} size={13} color={iconColor} />
-          <Text selectable testID="tool-summary-text" style={styles.titleText} numberOfLines={1}>
+          <Text selectable={false} testID="tool-summary-text" style={[styles.titleText, stepSummaryTextStyle]} numberOfLines={1}>
             {toolSummary(data)}
           </Text>
         </View>
@@ -176,6 +179,8 @@ export function ToolCallout({
           </Rotate>
         </View>
       </Pressable>
+
+      {stepMenu.menu}
 
       {expanded && (
         <ToolOutputVisibility.Provider value={reportVisibility}>

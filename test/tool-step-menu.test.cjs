@@ -44,6 +44,7 @@ for (const platform of ["web", "ios", "android"]) {
     open(h, file);
     await copy(h, file, "step-copy-result", read.detail.content);
     if (platform === "web") {
+      open(h, file);
       byId(h, file.render(), "step-open-path").props.onPress();
       assert.deepEqual(h.reveals.at(-1), { cwd: "/workspace/demo", path: read.detail.filePath });
     } else assert.equal(byId(h, file.render(), "step-open-path"), undefined);

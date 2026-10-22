@@ -420,6 +420,8 @@ export interface ToolCalloutData {
   language?: string;
   diff?: string;
   output?: string;
+  /** Complete result for copying, independent of typed previews and folding. */
+  copyResult?: string;
   images?: GeneratedImage[];
   search?: {
     query: string;

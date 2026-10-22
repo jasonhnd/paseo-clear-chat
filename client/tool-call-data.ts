@@ -10,6 +10,7 @@ import { recoverProjectedTool } from "./tool-projection";
 import { toolFailureMessage } from "./tool-error";
 import { extractGeneratedImages } from "./generated-images";
 import { errorText } from "./error-text";
+import { stepResultText } from "./tool-step-copy";
 
 export interface LiveToolCallPayload {
   name: string;
@@ -221,6 +222,7 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
 
   return {
     id: `live-${rawName}`,
+    copyResult: stepResultText(detail.output ?? detail.result ?? detail.content ?? detail.text),
     tool: toolKind,
     title,
     status,
