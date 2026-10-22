@@ -157,3 +157,13 @@ test("file reveal surfaces a missing platform opener without an unhandled proces
   assert.match(result.error, /could not be shown on the host/);
   assert.doesNotMatch(result.error, /Private opener error/);
 });
+
+
+test("inline filenames retain their line selectors as one file action", async () => {
+  const h = createToolHarness("web", { markdown: true });
+  const { tree } = h.mount({ type: "assistant_message", text: "`README.md:55:3`" });
+  const links = fileLinks(h, tree);
+  assert.equal(links.length, 1);
+  await press(links[0]);
+  assert.deepEqual(h.reveals, [{ cwd: "/workspace/demo", path: "README.md:55:3" }]);
+});
