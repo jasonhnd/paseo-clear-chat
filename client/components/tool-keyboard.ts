@@ -9,13 +9,13 @@ export function useToolKeyboard(scope: string, activate: () => void, tokens: Ext
   const web = Platform.OS === "web";
   const rowProps = {
     focusable: true,
-    onFocus: (event: { currentTarget: unknown; target: unknown }) => {
-      if (event.target !== event.currentTarget) return;
-      const node = event.currentTarget as HTMLElement;
-      setFocused(web ? Boolean(node.matches?.(":focus-visible")) : true);
-    },
-    onBlur: () => setFocused(false),
     ...(web ? {
+      onFocus: (event: { currentTarget: unknown; target: unknown }) => {
+        if (event.target !== event.currentTarget) return;
+        const node = event.currentTarget as HTMLElement;
+        setFocused(Boolean(node.matches?.(":focus-visible")));
+      },
+      onBlur: () => setFocused(false),
       dataSet: { clearChatStep: scope },
       onKeyDownCapture: (event: KeyboardEvent<HTMLElement>) => {
         const row = event.currentTarget;
@@ -46,6 +46,6 @@ export function useToolKeyboard(scope: string, activate: () => void, tokens: Ext
   } as PressableProps;
   const focusStyle = web ? {
     outlineStyle: focused ? "solid" : "none", outlineColor: tokens.accent, outlineWidth: 2, outlineOffset: -2,
-  } as ViewStyle : focused ? { borderWidth: 2, borderColor: tokens.accent } : undefined;
+  } as ViewStyle : undefined;
   return { rowProps, focusStyle, clearFocus: () => setFocused(false) };
 }

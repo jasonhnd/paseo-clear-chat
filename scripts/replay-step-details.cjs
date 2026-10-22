@@ -190,12 +190,12 @@ async function replay() {
       await page.keyboard.press("Escape"); await waitClosed();
       await active(1);
       await page.keyboard.press("ArrowUp"); await active(0);
-      if (width === 390) {
-        await rows.nth(0).tap(); await waitOpen();
-        await page.getByTestId("step-detail-close").tap(); await waitClosed();
-        assert.equal(await rows.nth(0).evaluate(node => getComputedStyle(node).outlineStyle), "none", "Touch must not draw a keyboard focus ring");
-      }
-      report.push({ width, keyboard: "arrows scoped to steps; Enter opens; Escape closes and restores focus", inputs: "input, textarea, contenteditable keep arrows and Enter", ring, panel: box, headerHeight: header.height, chatScrollTop: scrolled, touchRing: width === 390 ? "hidden" : "not applicable" });
+      await rows.nth(0).tap(); await waitOpen();
+      assert.equal(await rows.nth(0).evaluate(node => getComputedStyle(node).outlineStyle), "none", "Touch must not draw a keyboard focus ring");
+      await page.getByTestId("step-detail-close").tap(); await waitClosed();
+      assert.equal(await rows.nth(0).evaluate(node => getComputedStyle(node).outlineStyle), "none", "Closing touch details must not leave a keyboard focus ring");
+
+      report.push({ width, keyboard: "arrows scoped to steps; Enter opens; Escape closes and restores focus", inputs: "input, textarea, contenteditable keep arrows and Enter", ring, panel: box, headerHeight: header.height, chatScrollTop: scrolled, touchRing: "hidden" });
     }
     for (const widths of [[1180, 820, 1180], [820, 600, 820], [1024, 1023, 1024, 744, 743, 744]]) {
       await page.setViewportSize({ width: widths[0], height: 844 });
