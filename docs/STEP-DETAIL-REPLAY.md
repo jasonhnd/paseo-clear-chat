@@ -378,8 +378,9 @@ For a reliable implementation of step 5 above:
 ```js
 // Keep the same CDP connection alive for this entire sequence.
 await setMetrics(820, 900);
-await waitForPopover();
+await waitForCollapsedStep();
 await openCollapsedStep();
+await waitForPopover();
 await setScrollAndWaitForScrollEnd(400);
 await nextTwoAnimationFrames();
 const baseline = await readPanelAndViewport();
