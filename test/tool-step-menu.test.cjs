@@ -147,3 +147,34 @@ test("platform Back closes the menu without changing the disclosure", () => {
   assert.equal(byId(h, mounted.render(), "tool-summary-row").props.accessibilityState.expanded, false);
   h.unmount();
 });
+
+
+for (const platform of ["web", "ios", "android"]) {
+  const fileSteps = fixture("claude-session.json").filter(item => ["write", "edit"].includes(item.detail?.type));
+  test(`${platform}: Write and Edit without reported results only copy the original path`, async () => {
+    const h = createToolHarness(platform);
+    assert.deepEqual(fileSteps.map(item => item.detail.type).sort(), ["edit", "write"]);
+    for (const item of fileSteps) {
+      const mounted = h.mount(item, false);
+      open(h, mounted, platform === "web" ? "context" : "long");
+      assert.equal(byId(h, mounted.render(), "step-copy-result"), undefined, `${item.name}: no result action`);
+      assert.deepEqual(h.copies, [], "opening the menu does not copy input or a fabricated empty result");
+      await copy(h, mounted, "step-copy-path", item.detail.filePath);
+      assert.deepEqual(h.copies, [item.detail.filePath], "the SDK receives only the original path");
+    }
+    h.unmount();
+  });
+
+  test(`${platform}: Write and Edit copy reported results instead of their file or patch inputs`, async () => {
+    const h = createToolHarness(platform);
+    for (const item of fileSteps) {
+      for (const [field, result] of [["output", "  File updated.\n  "], ["result", "  Edit applied.\n"], ["output", ""]]) {
+        const mounted = h.mount({ ...item, detail: { ...item.detail, [field]: result } }, false);
+        open(h, mounted);
+        await copy(h, mounted, "step-copy-result", result);
+        assert.deepEqual(h.copies, [result], `${item.name}: verbatim ${field}`);
+      }
+    }
+    h.unmount();
+  });
+}
