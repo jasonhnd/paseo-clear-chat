@@ -3,7 +3,7 @@ const test = require("node:test");
 const { createToolHarness: createHarness } = require("./helpers/tool-harness.cjs");
 const fixture = require("./fixtures/real-claude-session.json");
 
-const createToolHarness = (platform, options = {}) => createHarness(platform, { ...options, dimensions: { width: 390, height: 844, ...options.dimensions } });
+const createToolHarness = (platform, options = {}) => createHarness(platform, { ...options, preferences: { collapsedStepAction: "details", ...options.preferences }, dimensions: { width: 390, height: 844, ...options.dimensions } });
 
 const call = fixture.items.find(item => item.type === "tool_call" && item.detail.type === "shell" && item.status === "completed");
 const find = (h, tree, id) => h.nodes(tree, node => node.props.testID === id)[0];
@@ -113,15 +113,14 @@ for (const platform of ["web", "ios", "android"]) {
     h.unmount();
   });
 
-  test(`${platform}: expanded output survives transfer from a tablet overlay to the host pane`, () => {
+  test(`${platform}: full output survives transfer from a tablet overlay to the host pane`, () => {
     const h = createToolHarness(platform, { dimensions: { width: 820 }, isPad: platform === "ios" });
     const mounted = h.mount(call);
-    const disclosure = tree => h.nodes(tree, node => node.props.accessibilityLabel?.startsWith("Show all ") || node.props.accessibilityLabel === "Show fewer lines")[0];
-    disclosure(mounted.render()).props.onPress();
-    assert.equal(disclosure(mounted.render()).props.accessibilityState.expanded, true);
+    assert.ok(h.text(find(h, mounted.render(), "step-detail-output")).includes("Sample text line 24."));
     h.dimensions.width = 1180;
     mounted.render();
-    assert.equal(disclosure(mounted.render()).props.accessibilityState.expanded, true);
+    assert.ok(h.text(find(h, mounted.render(), "step-detail-output")).includes("Sample text line 24."));
+    assert.equal(h.nodes(mounted.render(), node => node.props.accessibilityLabel?.startsWith("Show all ")).length, 0);
     h.unmount();
   });
 
@@ -130,7 +129,7 @@ for (const platform of ["web", "ios", "android"]) {
     const mounted = h.mount(call);
     find(h, mounted.render(), "step-detail-drag-handle").props.onAccessibilityAction({ nativeEvent: { actionName: "increment" } });
     let tree = mounted.render();
-    const scroll = h.nodes(tree, node => node.type === "ScrollView")[0];
+    const scroll = find(h, tree, "step-detail-scroll");
     scroll.props.onScroll?.({ nativeEvent: { contentOffset: { y: 250 } } });
     for (const width of [820, 1180, 820, 600]) {
       h.dimensions.width = width;
@@ -140,7 +139,7 @@ for (const platform of ["web", "ios", "android"]) {
       assert.ok(h.text(find(h, tree, "tool-card-body")).includes(call.detail.command));
     }
     assert.equal(find(h, tree, "step-detail-panel").props.dataSet.snap, "full");
-    const restored = h.nodes(tree, node => node.type === "ScrollView")[0];
+    const restored = find(h, tree, "step-detail-scroll");
     assert.equal(restored.props.contentOffset.y, 250);
     find(h, tree, "step-detail-close").props.onPress();
     assert.equal(find(h, mounted.render(), "step-detail-panel"), undefined);

@@ -2,7 +2,8 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const { readFileSync } = require("node:fs");
 const { join } = require("node:path");
-const { createToolHarness } = require("./helpers/tool-harness.cjs");
+const { createToolHarness: createHarness } = require("./helpers/tool-harness.cjs");
+const createToolHarness = (platform, options = {}) => createHarness(platform, { ...options, preferences: { collapsedStepAction: "details", ...options.preferences } });
 
 const fixture = name => JSON.parse(readFileSync(join(__dirname, "fixtures", name), "utf8")).items;
 const shell = fixture("real-claude-session.json").find(item => item.detail?.type === "shell");

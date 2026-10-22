@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { createToolHarness } = require("./helpers/tool-harness.cjs");
+const { createToolHarness: createHarness } = require("./helpers/tool-harness.cjs");
+const createToolHarness = (platform, options = {}) => createHarness(platform, { ...options, preferences: { collapsedStepAction: "details", ...options.preferences } });
 const fixture = require("./fixtures/real-claude-session.json");
 const call = fixture.items.find(item => item.type === "tool_call" && item.detail.type === "shell" && item.status === "completed");
 const find = (h, tree, id) => h.nodes(tree, node => node.props.testID === id)[0];

@@ -56,7 +56,7 @@ function hoverDocument(width = 1440, mouse = true) {
 
 function mount(width = 1440, platform = "web", mouse = true, item = calls[0], options = {}) {
   const dom = hoverDocument(width, mouse);
-  const h = createToolHarness(platform, { ...options, width, globals: { document: dom.doc } });
+  const h = createToolHarness(platform, { ...options, width, preferences: { collapsedStepAction: "details", ...options.preferences }, globals: { document: dom.doc } });
   const mounted = h.mount(item, false);
   const row = find(h, mounted.tree);
   const enter = (pointerType = "mouse") => row.props.onPointerEnter?.({

@@ -19,7 +19,8 @@ function createToolHarness(platform = "ios", options = {}) {
   const passthrough = props => props.children ?? null;
   const noop = () => {};
   const cleanup = () => noop;
-  const preferences = { enhancedUserBubble: true, assistantMarkdown: true, markdownVariant: "document", textScale: 1, foldFinishedSteps: true, foldLongOutputAfter: 15, collapsedStepAction: "details", ...options.preferences };
+  // Body replays exercise inline cards; detail/gesture suites opt into details explicitly.
+  const preferences = { enhancedUserBubble: true, assistantMarkdown: true, markdownVariant: "document", textScale: 1, foldFinishedSteps: true, foldLongOutputAfter: 15, collapsedStepAction: "inline", ...options.preferences };
   const getPreferences = () => options.presentationHost ? load("client/preferences.ts").getEnhancerPreferences() : preferences;
   const expansionHost = options.expansionHost ?? createExpansionHost();
   const rpcFunctions = new Map();
@@ -66,6 +67,9 @@ function createToolHarness(platform = "ios", options = {}) {
   }
   const native = {
     View: "View", Text: "Text", Pressable: "Pressable", Image: "Image", ScrollView: "ScrollView",
+    FlatList: props => jsx("Native.FlatList", { ...props, children: [props.ListHeaderComponent,
+      props.data.slice(0, props.initialNumToRender ?? 10).map((item, index) => props.renderItem({ item, index })),
+      props.ListFooterComponent] }),
     SafeAreaView: "SafeAreaView",
     Modal: props => props.visible ? jsx("Native.Modal", props) : null,
     useWindowDimensions: () => {

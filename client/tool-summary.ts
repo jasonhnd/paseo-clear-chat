@@ -1,7 +1,10 @@
 import type { ToolCalloutData } from "../shared/contracts";
 import { stringValue } from "./tool-detail";
 
-const singleLine = (text: string) => text.replace(/\s+/g, " ").trim();
+const singleLine = (text: string) => {
+  const line = text.replace(/\s+/g, " ").trim();
+  return line.length > 240 ? `${line.slice(0, 239).replace(/[\ud800-\udbff]$/, "")}…` : line;
+};
 
 export function toolStatus(status: string): ToolCalloutData["status"] {
   if (status === "running" || status === "in_progress") return "running";

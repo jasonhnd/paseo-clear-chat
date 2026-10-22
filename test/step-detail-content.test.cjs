@@ -101,3 +101,38 @@ test("copy rejection retains the complete output in the selectable fallback", as
   assert.equal(fallback.props.readOnly, true);
   h.unmount();
 });
+
+test("bounded chunks preserve all characters, CRLF, tabs, blank lines and supplementary Unicode", () => {
+  const h = harness("web");
+  const { stepTextChunks } = h.load("client/step-detail-data.ts");
+  for (const text of ["", "\r\n\t\n  ", `${"x".repeat(2047)}\u{1f680}last\r\n`, `${"x".repeat(2047)}\r\nlast`,
+    Array.from({ length: 10000 }, (_, index) => `line ${index + 1}\t\u{1f680}\r\n`).join("")]) {
+    const chunks = stepTextChunks(text);
+    assert.equal(chunks.join(""), text);
+    assert.ok(chunks.every(chunk => chunk.length <= 2050));
+    assert.ok(chunks.every(chunk => !/[\ud800-\udbff]$/.test(chunk) && !/^[\udc00-\udfff]/.test(chunk)));
+  }
+  h.unmount();
+});
+
+for (const platform of ["web", "ios", "android"]) {
+  test(`${platform}: a ten-thousand-line input and output mount a bounded window and copy every character`, async () => {
+    const h = harness(platform, 820);
+    const input = Array.from({ length: 10000 }, (_, index) => `argument line ${index + 1}\n`).join("");
+    const output = Array.from({ length: 10000 }, (_, index) => `result line ${index + 1}\n`).join("");
+    const mounted = h.mount({ ...shell, detail: { type: "shell", input, output } });
+    const list = byId(h, mounted.tree, "step-detail-scroll");
+    for (const [section, text] of [["input", input], ["output", output]]) {
+      const chunks = list.props.data.filter(row => row.section === section && row.kind === "text");
+      assert.equal(chunks.map(row => row.text).join(""), text, "The virtual document retains the full source");
+      const tail = h.draw(list.props.renderItem({ item: chunks.at(-1) }), `tail-${section}`);
+      assert.ok(h.text(tail).includes("line 10000"));
+      const header = list.props.data.find(row => row.section === section && row.kind === "heading");
+      const controls = h.draw(list.props.renderItem({ item: header }), `copy-${section}`);
+      await byId(h, controls, `step-detail-copy-${section}`).props.onPress();
+      assert.equal(h.copies.at(-1), text);
+    }
+    assert.ok(h.text(mounted.tree).length < 20000, "Mounting does not lay out the full document");
+    h.unmount();
+  });
+}

@@ -131,9 +131,28 @@ Android still need a final device check.
 
 The shared breakpoints in `client/breakpoints.ts` select one presentation from the
 window width: below 744px is a bottom sheet, 744–1023px is a centered popover, and
-1024px and above is a side panel. All three render the existing `ToolCalloutBody`
-from `client/components/tool-callouts.tsx`; file links, output disclosures and
-error text use the same implementations as expanded cards.
+1024px and above is a side panel. All three use the same `StepDetailPanel` and
+`StepDetailContent`. Details show the complete available input and output,
+independently of the timeline's output folding setting. Input and Output each
+have a Copy button that passes the complete source to the SDK clipboard and
+uses the existing selectable fallback if copying fails.
+
+`step-detail-data.ts` retains all structured arguments, result fields and text
+blocks. Typed projections separate Read results from Write content and Edit
+patch inputs; a missing result is labeled as missing rather than fabricated.
+Strings preserve whitespace, and structured values use formatted JSON. Duration
+and process exit code appear only when explicitly reported and valid, including
+zero. HTTP status codes are not process exit codes. A projected timeline cannot
+restore arguments or output that its provider omitted.
+
+The body is one React Native `FlatList`, with no nested scroll containers or
+syntax-highlighting work for large results. Text chunks contain at most 48 source
+lines or about 2 KiB, preserving surrogate pairs and CRLF boundaries. Wrapped
+chunk heights are measured by the list at the current width. Only the viewport
+window and a small initial batch stay mounted; input and output both use this
+path. Copying does not depend on which chunks are mounted. Header summaries are
+bounded while their full invocation remains in the body. Existing file actions,
+image previews, theme fonts and status/error text remain available.
 
 `client/components/step-detail-panel.tsx` exports the controlled `StepDetailPanel`:
 
@@ -248,6 +267,12 @@ the registered transformer, schema and live renderer on web, iOS and Android at
 1440, 1024, 820 and 390px. It checks opening/closing, half/full/dismiss gestures,
 platform Back, left-edge Back, inline fallback and responsive transitions. Native
 primitives are stubbed; real-device iPhone, iPad and Android checks remain pending.
+`test/step-detail-content.test.cjs` adds full-content/copy replays at all four
+widths on all three platforms, missing/zero/invalid metrics, structured results,
+copy rejection, and 10,000-line inputs and outputs. The generic tool harness
+defaults to inline expansion for typed card body tests; detail and gesture suites
+explicitly select the details preference. Native list primitives simulate the
+initial batch; actual virtualization and scrolling are checked in Chrome.
 
 For layout measurements and actual browser touch gestures, install the isolated
 showcase dependencies and run the offline preview:

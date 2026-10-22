@@ -420,6 +420,8 @@ export interface ToolCalloutData {
   language?: string;
   diff?: string;
   output?: string;
+  /** Complete invocation for step details, independent of summary adapters. */
+  input?: string;
   /** Complete result for copying, independent of typed previews and folding. */
   copyResult?: string;
   images?: GeneratedImage[];

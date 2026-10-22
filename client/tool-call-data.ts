@@ -10,7 +10,7 @@ import { recoverProjectedTool } from "./tool-projection";
 import { toolFailureMessage } from "./tool-error";
 import { extractGeneratedImages } from "./generated-images";
 import { errorText } from "./error-text";
-import { stepResultText } from "./tool-step-copy";
+import { stepInputText, stepOutputText } from "./step-detail-data";
 
 export interface LiveToolCallPayload {
   name: string;
@@ -31,12 +31,6 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
   const rawInput = detail.input ?? detail.arguments ?? detail.args;
   const input = record(rawInput);
   const output = detail.output ?? detail.result ?? detail.content ?? "";
-  // Typed read/search bodies are results; write content and edit patches are
-  // inputs. Keep copying separate from display fallbacks and empty defaults.
-  const result = detail.output ?? detail.result
-    ?? (["read", "search", "web_search"].includes(detailType) ? detail.content
-      : detailType === "plain_text" ? detail.text
-      : ["sub_agent", "worktree_setup"].includes(detailType) ? detail.log : undefined);
 
   // Universal path extraction across OMP, Paseo, Claude, and Codex formats
   const filePath: string | undefined =
@@ -78,8 +72,10 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
         (output && typeof output === "object"
           ? extractContentText(output as Record<string, unknown>)
           : undefined);
+  const resultRecord = record(output);
   const reportedDuration = typeof detail.durationMs === "number" ? detail.durationMs
-    : typeof detail.durationSeconds === "number" ? detail.durationSeconds * 1000 : extractEvalDuration(output);
+    : typeof detail.durationSeconds === "number" ? detail.durationSeconds * 1000
+    : resultRecord.durationMs ?? (typeof resultRecord.durationSeconds === "number" ? resultRecord.durationSeconds * 1000 : extractEvalDuration(output));
   const durationMs = typeof reportedDuration === "number" && Number.isFinite(reportedDuration) && reportedDuration >= 0
     ? reportedDuration : undefined;
   let toolKind: ToolCallKind = "unknown";
@@ -212,12 +208,11 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
   if (toolKind === "unknown") title = unknownTitle(title, input);
   const edit = toolKind === "edit" ? buildEditDiff(detail, input, diff) : undefined;
 
-  const exitCodeCandidate =
-    typeof detail.exitCode === "number"
-      ? detail.exitCode
-      : typeof detail.code === "number"
-        ? detail.code
-        : undefined;
+  // A fetch's numeric `code` is an HTTP status, not a process exit code.
+  const exitCodeCandidate = [detail.exitCode,
+    ["shell", "bash", "git"].includes(toolKind) ? detail.code : undefined,
+    resultRecord.exitCode, resultRecord.exit_code, record(resultRecord.details).exitCode,
+  ].find((value): value is number => typeof value === "number" && Number.isInteger(value));
   const status = toolStatus(data.status);
   const finalReply = finalToolReply(rawName, rawInput, output);
   // Reading or writing an image file is previewed from filePath by the renderer.
@@ -228,7 +223,8 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
 
   return {
     id: `live-${rawName}`,
-    copyResult: stepResultText(result),
+    input: stepInputText(detail),
+    copyResult: stepOutputText(detail),
     tool: toolKind,
     title,
     status,

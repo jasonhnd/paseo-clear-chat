@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Modal, PanResponder, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View,
+  Modal, PanResponder, Platform, Pressable, SafeAreaView, StyleSheet, Text, View,
   useWindowDimensions,
 } from "react-native";
 import type { ViewProps, ViewStyle } from "react-native";
@@ -10,7 +10,7 @@ import { installStepDetailKeyboard } from "../step-detail-keyboard";
 import type { ToolCalloutData } from "../../shared/contracts";
 import type { ImageFile } from "../image-file";
 import type { ExtendedThemeTokens } from "./theme-tokens";
-import { ToolCalloutBody } from "./tool-callouts";
+import { StepDetailContent } from "./step-detail-content";
 import { toolSummary } from "../tool-summary";
 import { Glyph } from "./glyph";
 import { hostFontEscape } from "./host-font-escape";
@@ -50,8 +50,6 @@ export function StepDetailPanel({ step, open, onOpenChange, presentation, tokens
   const [snap, updateSnap] = useState<SheetSnap>(state.snap);
   const setSnap = (value: SheetSnap) => { state.snap = value; updateSnap(value); };
   const [drag, setDrag] = useState(0);
-  const scroll = useRef<ScrollView>(null);
-  const restoreScroll = () => scroll.current?.scrollTo({ y: state.scrollOffset, animated: false });
   const onChange = useRef(onOpenChange);
   onChange.current = onOpenChange;
   const close = useCallback(() => onChange.current(false), []);
@@ -147,13 +145,9 @@ export function StepDetailPanel({ step, open, onOpenChange, presentation, tokens
           <Glyph name="X" size={18} color={tokens.foregroundMuted} />
         </Pressable>
       </View>
-      <ScrollView ref={scroll} style={styles.scroll} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"
-        contentOffset={{ x: 0, y: state.scrollOffset }} onLayout={restoreScroll} onContentSizeChange={restoreScroll}
-        onScroll={event => { state.scrollOffset = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={16}>
-        <StepDetailStateContext.Provider value={state}>
-          <ToolCalloutBody data={step} tokens={tokens} onRevealPath={onRevealPath} imageFile={imageFile} />
-        </StepDetailStateContext.Provider>
-      </ScrollView>
+      <StepDetailStateContext.Provider value={state}>
+        <StepDetailContent step={step} tokens={tokens} onRevealPath={onRevealPath} imageFile={imageFile} />
+      </StepDetailStateContext.Provider>
     </View>
   );
 
@@ -196,7 +190,5 @@ const styles = StyleSheet.create({
   button: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   handle: { height: 28, alignItems: "center", justifyContent: "center" },
   grip: { width: 40, height: 4, borderRadius: 2 },
-  scroll: { flex: 1, minHeight: 0 },
-  content: { padding: 8, paddingBottom: 24 },
   backEdge: { position: "absolute", left: 0, top: 0, bottom: 0, width: 20 },
 });
