@@ -25,6 +25,26 @@ for (const platform of ["web", "ios", "android"]) {
       assert.ok(text.includes("The sample checks are complete"), "the assistant reply remains visible");
       h.dispose();
     });
+
+    test(`${platform} ${width}px: delivery details display and copy the instruction once`, async t => {
+      const h = createToolHarness(platform, { width, isPad: platform === "ios" && width >= 744,
+        preferences: { collapsedStepAction: "details" } });
+      t.after(() => h.unmount());
+      const mounted = h.mount(delivery);
+      mounted.render();
+      const tree = mounted.render();
+      const panel = h.nodes(tree, n => n.props.testID === "step-detail-panel");
+      assert.equal(panel.length, 1);
+      const text = h.text(tree);
+      assert.ok(!text.includes("agent_message"));
+      assert.ok(text.includes("Message received"));
+      assert.equal(text.split(delivery.agentMessage.text).length - 1, 1);
+      const output = h.nodes(tree, n => n.props.testID === "step-detail-output")[0];
+      const expected = `From agent: sample-coordinator\n\n${delivery.agentMessage.text}`;
+      assert.equal(h.text(output), expected);
+      await h.nodes(tree, n => n.props.testID === "step-detail-copy-output")[0].props.onPress();
+      assert.deepEqual(h.copies, [expected]);
+    });
   }
 }
 
