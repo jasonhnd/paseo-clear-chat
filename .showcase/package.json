@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "capture": "node capture.cjs",
+    "test:reply-links": "node reply-links.cjs",
     "typecheck": "tsc --project tsconfig.json"
   },
   "devDependencies": {

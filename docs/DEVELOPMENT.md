@@ -132,6 +132,75 @@ assistant replies and explicit wrap-up replies through the real Markdown rendere
 
 A file link cannot open Paseo's own file editor: see the first limitation below.
 
+## Opening reply links
+
+Markdown links, bare HTTP(S)/`www.` URLs and `mailto:` URLs use the same inline
+`Text` press handler. Mail links retain their encoded subject, body and recipient
+parameters. Code spans and fenced code remain literal. Selection and long-press
+behaviour follow the existing platform rules.
+
+| Client | Opener and arguments |
+| --- | --- |
+| Browser | `globalThis.open(url, "_blank", "noopener,noreferrer")`, directly during the press |
+| Electron | `paseoDesktop.opener.openUrl(url)`, with the browser fallback if the bridge fails |
+| iOS and iPadOS | `Linking.openURL(url)` from the host-injected `react-native` module |
+| Android | The same `Linking.openURL(url)`, with one URL argument |
+
+The [Paseo 0.12 runtime](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/app/src/plugins/evaluate.ts)
+injects React Native into plugins. The pinned 0.8 SDK has no external URL helper;
+newer hosts expose `openExternalUrl`, but their
+[helper accepts only HTTP(S)](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/app/src/utils/open-external-url.ts),
+so it cannot replace this reply opener's mail support. Android needs no separate
+SDK or `sendIntent` call. We call `openURL` directly and handle rejection:
+[React Native's Linking reference](https://reactnative.dev/docs/0.81/linking)
+documents HTTP(S) and mail on both platforms, and notes that a `canOpenURL`
+preflight on Android 11+ can reject without host manifest intent queries.
+
+Run the registered-transformer replay and the offline browser geometry check:
+
+```sh
+node --test test/reply-links.test.cjs
+npm ci --include=dev --prefix .showcase
+KANBAN_TMP="$TMPDIR" npm run test:reply-links --prefix .showcase
+```
+
+Set `TMPDIR` to the authorized task directory first. The browser check uses
+installed headless Google Chrome, a free debugging port from 9444 to 9499, and
+no daemon connection. It replays the unchanged captured replies plus a separate
+synthetic mail reply at 1440, 1024, 820 and 390px, in both themes and all three
+Markdown variants. It checks every link fragment's viewport bounds and nine
+hit-test points, then clicks or taps once and requires the exact opener arguments.
+Real Markdown images and the reply footer remain mounted to catch overlap.
+External requests are intercepted locally. The report stays in
+`KANBAN_TMP/reply-links-report.json`; the browser profile is removed on exit.
+
+Native replay covers `Platform.OS` values `ios`, `android` and `web`, including
+`Platform.isPad` on iOS. These tests check dispatch rather than launching real
+device applications. Before device sign-off, prepare a disposable test
+conversation named **Reply link check** with the two replies from
+`test/fixtures/real-assistant-links.json` and the synthetic reply in
+`test/helpers/reply-link-cases.cjs`. Keep mail handlers configured on each device.
+On an iPhone, iPad and Android device connected to that test host:
+
+1. Open **Reply link check** after the test host's owner has loaded the candidate
+   plugin and reloaded the conversation with **Assistant markdown** enabled.
+2. In the first reply, tap **Sample guide** and
+   `https://example.com/sample/project` once each; return to the conversation
+   after each browser or OS handler opens.
+3. In the image reply, tap each image address and the project URL below them.
+   The adjacent image and Copy control must not intercept the tap.
+4. In the synthetic reply, tap **Email support** and the bare `mailto:` URL.
+   Each should open a compose view for `hello@example.org`, subject `Reply links`,
+   body `One tap & done`. Dismiss the draft without sending. Also tap the `www.`
+   and HTTP URLs once each.
+5. Repeat the iPad check in portrait and landscape. Confirm that the existing
+   selection, long-press and Copy behaviour remains unchanged.
+
+Reserved example domains may show a missing page; this check concerns the
+correct browser or mail application receiving the exact URL. Record native OS
+and Paseo app versions with the result. Physical-device checks remain pending
+until a user performs them; the replay does not certify native gesture handling.
+
 
 ## Plugin SDK limitations found while building this
 

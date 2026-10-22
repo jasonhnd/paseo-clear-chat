@@ -16,8 +16,8 @@ import { Linking, Platform } from "react-native";
  *    needs no separate Android opener. Call it directly: a `canOpenURL`
  *    preflight can reject on Android 11+ without manifest intent queries.
  *
- * The scheme allowlist mirrors the host's: a link in a model's reply is
- * untrusted input, and `javascript:` or `file:` must never reach a sink.
+ * Reply links also permit mailto. A link in a model's reply is untrusted
+ * input, and `javascript:` or `file:` must never reach a sink.
  */
 const ALLOWED = new Set(["http:", "https:", "mailto:"]);
 

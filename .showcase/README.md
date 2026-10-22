@@ -51,6 +51,23 @@ SHOWCASE_OUTPUT_ROOT="$KANBAN_TMP/showcase-output" npm run capture --prefix .sho
 
 Remove the trial images and `capture-report.json` after verification.
 
+## Reply link replay
+
+With the same dependencies and authorized `KANBAN_TMP`, run:
+
+```sh
+npm run test:reply-links --prefix .showcase
+```
+
+This mounts the real Markdown and reply footer with sanitized link captures and
+a synthetic mail reply. Headless Google Chrome checks link line boxes and opens
+every link once at 1440, 1024, 820 and 390px in both themes and all three variants.
+The narrower viewports use touch input. Openers are recorded and external image
+requests are intercepted locally. No live host is contacted or changed.
+The JSON report is saved under `KANBAN_TMP`; the Chrome profile is removed.
+See [Opening reply links](../docs/DEVELOPMENT.md#opening-reply-links) for platform
+dispatch details and the pending physical-device steps.
+
 ## Fixture map
 
 Each row describes both theme captures. All data names refer to `fixtures.ts`
