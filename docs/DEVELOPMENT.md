@@ -28,6 +28,14 @@ capabilities or leaving the window cancels pending and visible previews.
 Opening or replacing a step also removes its preview. Hovering does not change
 the saved expansion choice or the row's click and long-press gestures.
 
+After installing the offline harness dependencies below, run
+`node .showcase/hover-preview.cjs` with `KANBAN_TMP` set to the task directory.
+It checks both themes with glass on and off at 1440, 1024, 820 and 390px,
+measures opacity and text contrast, replays the captured read envelope and
+checks mouse, touch and step-menu interactions. Its JSON report and desktop
+screenshots stay in that directory; inspect the screenshots and delete them.
+Touch emulation and native component replays still need device verification.
+
 On web, adjacent collapsed tool rows have a 30px center pitch with the host's
 16px timeline gap: `26 + 16 - 12 = 30`. The plugin reads the preceding host
 frame's actual gap and applies up to 12px of negative top margin to its own

@@ -5,7 +5,7 @@ const { build } = require("esbuild");
 const { chromium, devices } = require("playwright-core");
 const { createServer } = require("node:http");
 const { createServer: createPortProbe } = require("node:net");
-const { readFileSync, mkdirSync, rmSync, realpathSync } = require("node:fs");
+const { readFileSync, writeFileSync, mkdirSync, rmSync, realpathSync } = require("node:fs");
 const { resolve, join, dirname } = require("node:path");
 
 const root = resolve(__dirname, "..");
@@ -40,7 +40,8 @@ async function replay() {
     nodePaths: [join(__dirname, "node_modules")],
   });
   console.log(`Browser bundle passed (${bundle.outputFiles[0].contents.length} bytes).`);
-  const calls = JSON.parse(readFileSync(join(root, "test/fixtures/real-hermes-session.json"), "utf8")).items.filter(item => item.type === "tool_call");
+  const calls = ["real-hermes-session.json", "real-hermes-hover.json"].flatMap(file =>
+    JSON.parse(readFileSync(join(root, "test/fixtures", file), "utf8")).items.filter(item => item.type === "tool_call"));
   const html = `<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1"><div id="root"></div><script id="fixtures" type="application/json">${JSON.stringify(calls).replace(/</g, "\\u003c")}</script><script src="/replay.js"></script>`;
   const server = createServer((request, response) => {
     response.setHeader("Content-Type", request.url === "/replay.js" ? "text/javascript" : "text/html");
@@ -62,35 +63,79 @@ async function replay() {
     const url = `http://127.0.0.1:${server.address().port}`;
     const preview = page.getByTestId("tool-hover-preview");
     const row = page.locator("#middle [data-step='0']").getByTestId("tool-summary-row");
+    const capturedRead = page.locator(`#middle [data-step='${calls.length - 1}']`).getByTestId("tool-summary-row");
     const absent = async () => assert.equal(await preview.count(), 0);
     const show = async (target = row) => {
       await page.mouse.move(0, 0);
       await target.hover();
       await preview.waitFor({ state: "visible" });
     };
-    for (const width of [1440, 1024, 820, 390]) {
-      await page.setViewportSize({ width, height: 900 });
-      await page.goto(url);
-      await row.waitFor();
-      await row.hover();
-      let geometry;
-      if (width >= 1024) {
-        await preview.waitFor({ state: "visible" });
-        assert.match(await preview.innerText(), /\$ git log/);
-        assert.match(await preview.innerText(), /Sample text line 1\./);
-        assert.doesNotMatch(await preview.innerText(), /Sample text line 5\./);
-        const box = await preview.boundingBox(), anchor = await row.boundingBox();
-        geometry = { row: anchor, preview: box };
-        assert.ok(box.y + box.height < anchor.y);
-        assert.equal(await page.locator("#middle [data-step='0']").getByTestId("tool-card-body").count(), 0);
-        await page.mouse.move(0, 0);
-        await absent();
-      } else {
-        await page.waitForTimeout(400);
-        await absent();
+    for (const theme of ["light", "dark"]) {
+      for (const glass of [false, true]) {
+        for (const width of [1440, 1024, 820, 390]) {
+          await page.setViewportSize({ width, height: 900 });
+          await page.goto(`${url}?theme=${theme}&glass=${glass}`);
+          await row.waitFor();
+          await row.hover();
+          let geometry;
+          if (width >= 1024) {
+            await preview.waitFor({ state: "visible" });
+            assert.match(await preview.innerText(), /\$ git log/);
+            assert.match(await preview.innerText(), /Sample text line 1\./);
+            assert.match(await preview.innerText(), /Sample text line 6\./);
+            assert.doesNotMatch(await preview.innerText(), /Sample text line 7\./);
+            const box = await preview.boundingBox(), anchor = await row.boundingBox();
+            geometry = { row: anchor, preview: box };
+            assert.ok(box.y + box.height < anchor.y);
+            assert.equal(await page.locator("#middle [data-step='0']").getByTestId("tool-card-body").count(), 0);
+            await page.mouse.move(0, 0);
+            await absent();
+            await show(capturedRead);
+            const text = await preview.innerText();
+            assert.match(text, /\/workspace\/sample\/src\/sample\.js/);
+            assert.match(text, /1\|export function sampleTotal\(items\) \{/);
+            assert.match(text, /2\|  return items\.reduce/);
+            assert.match(text, /3\|\}/);
+            assert.doesNotMatch(text, /total lines|```/);
+            const style = await preview.evaluate(node => {
+              const css = getComputedStyle(node);
+              const rgba = color => color.match(/[\d.]+/g).map(Number);
+              const background = rgba(css.backgroundColor);
+              const alpha = background[3] ?? 1;
+              const luminance = channels => channels.slice(0, 3).map(value => {
+                const c = value / 255;
+                return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+              }).reduce((sum, value, i) => sum + value * [0.2126, 0.7152, 0.0722][i], 0);
+              const bg = luminance(background);
+              const ratios = [node, ...node.querySelectorAll("div")].map(element => {
+                const fg = luminance(rgba(getComputedStyle(element).color));
+                return (Math.max(bg, fg) + 0.05) / (Math.min(bg, fg) + 0.05);
+              });
+              return { alpha, minContrast: Math.min(...ratios), background: css.backgroundColor,
+                border: css.borderTopStyle, shadow: css.boxShadow, clipped: node.scrollHeight > node.clientHeight };
+            });
+            assert.equal(style.alpha, 1);
+            assert.ok(style.minContrast >= 4.5, JSON.stringify(style));
+            assert.equal(style.border, "solid");
+            assert.notEqual(style.shadow, "none");
+            assert.equal(style.clipped, false);
+            geometry.readStyle = style;
+            const code = await page.locator("#behind-preview pre").boundingBox();
+            const readBox = await preview.boundingBox();
+            assert.ok(code.y < readBox.y + readBox.height && code.y + code.height > readBox.y,
+              "the screenshot must exercise code behind the preview");
+            const screenshot = join(temp, `hover-${theme}-${glass ? "glass" : "solid"}-${width}.png`);
+            await page.screenshot({ path: screenshot });
+            await page.mouse.move(0, 0);
+            await absent();
+          } else {
+            await page.waitForTimeout(400);
+            await absent();
+          }
+          report.push({ theme, glass, width, mouse: true, preview: width >= 1024, delay: "300ms (component timer coverage)", leave: "cleared", geometry });
+          console.log(`${theme}, glass ${glass}, width ${width}: hover ${width >= 1024 ? "opaque, multiline, readable and cleared" : "disabled"}.`);
+        }
       }
-      report.push({ width, mouse: true, preview: width >= 1024, delay: "300ms (component timer coverage)", leave: "cleared", geometry });
-      console.log(`Width ${width}: hover ${width >= 1024 ? "shown and cleared" : "disabled"}.`);
     }
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(url);
@@ -166,6 +211,7 @@ async function replay() {
         report.push({ device: name, width, hover: "none", touch: "none", tap: "preserved", realDevice: "pending" });
       } finally { await touch.close(); }
     }
+    writeFileSync(join(temp, "hover-preview-report.json"), JSON.stringify(report, null, 2) + "\n");
     console.log(JSON.stringify(report, null, 2));
   } finally {
     await context?.close();
