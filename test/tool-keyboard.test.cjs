@@ -127,7 +127,9 @@ test("keyboard focus has a visible ring; touch focus does not", () => {
   assert.equal(styles().some(style => style.outlineStyle === "solid"), false);
   target.keyboard = true;
   find(h, mounted.render(), "tool-summary-row").props.onFocus({ currentTarget: target, target });
-  find(h, mounted.render(), "tool-summary-row").props.onPressIn({});
+  find(h, mounted.render(), "tool-summary-row").props.onPressIn({ nativeEvent: { key: " " } });
+  assert.ok(styles().some(style => style.outlineStyle === "solid"), "Keyboard activation keeps its focus ring");
+  find(h, mounted.render(), "tool-summary-row").props.onPressIn({ nativeEvent: {} });
   assert.equal(styles().some(style => style.outlineStyle === "solid"), false, "Pointer activation clears a previous keyboard ring");
   h.unmount();
 });

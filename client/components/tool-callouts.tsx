@@ -119,7 +119,7 @@ export function ToolCallout({
       {...stepMenu.rowProps}
       {...keyboard.rowProps}
       onPressIn={event => {
-        keyboard.clearFocus();
+        if (!("key" in (event?.nativeEvent ?? {}))) keyboard.clearFocus();
         stepMenu.rowProps.onPressIn?.(event);
       }}
       onPress={() => {

@@ -52,7 +52,7 @@ function Preview() {
           item={{ type: "plugin", kind: "omp-tool-call", version: 1, data: samples[0]! }}
         /></div>
         <label>Message<input data-testid="preview-input" defaultValue="Sample message" /></label>
-        <label>Notes<textarea data-testid="preview-textarea" defaultValue="First line\nSecond line" /></label>
+        <label>Notes<textarea data-testid="preview-textarea" defaultValue={"First line\nSecond line"} /></label>
         <div data-testid="preview-editable" contentEditable suppressContentEditableWarning role="textbox" aria-label="Draft">Editable draft</div>
       </> : null}
       {samples.length > 1 ? <button data-testid="preview-update-step" onClick={() => setSamples(previous => previous.map((sample, index) => index ? sample : {
