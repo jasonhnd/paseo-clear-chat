@@ -10,13 +10,22 @@ Finished calls open as compact, single-line rows: tool icon, command or file/que
 status, and duration when the provider reports one. Running calls spin; failed calls show a
 cross, completed calls a check, and canceled calls a separate label. Running, failed and
 waiting-for-user calls default to expanded. Click a row to expand or collapse it.
-Collapsed rows occupy 26px including their borders and vertical spacing.
+At widths of 744px and above, collapsed rows occupy 26px including their borders and vertical spacing.
 On web, adjacent collapsed tool rows have a 30px center pitch with the host's
 16px timeline gap: `26 + 16 - 12 = 30`. The plugin reads the preceding host
 frame's actual gap and applies up to 12px of negative top margin to its own
 root, leaving at least 4px of that gap. Expanded tools, replies, messages,
 footers and auxiliary content end a compact sequence. Smaller gaps receive
 less compensation, so rows never overlap. Host styles are not modified.
+
+Below 744px, the same component uses 11px summary text (never smaller than 11px
+at a reduced text setting), smaller icons and horizontal padding, and a 24px
+visual footprint. A transparent, centered 28px button extends past the 20px
+header slot into the existing gap; the collapsed card allows this overflow.
+The button is a real layout box, rather than a clipped `hitSlop` region. With
+the existing web gap compensation its center pitch is 28px; the compensation
+algorithm and host margins are unchanged. Expanded phone cards use an ordinary
+28px header. Native apps retain their host's original inter-item spacing.
 
 Explicit choices, including a manual collapse of an active call, survive reloads and history
 navigation. They are saved on the selected host, independently for each host, agent and call;
@@ -347,6 +356,27 @@ they do not replace native-device checks. The JSON report stays in `KANBAN_TMP`.
 For optional Google Chrome measurements of an existing conversation, see the
 [performance script guide](../scripts/perf/README.md). Plugin states are prepared
 manually; reports stay local.
+
+Compare tool row density against a release without a live daemon:
+
+```bash
+npm ci --include=dev
+npm ci --include=dev --prefix .showcase
+export TMPDIR="$KANBAN_TMP"
+node .showcase/measure-tool-rows.cjs v1.0.1
+```
+
+This builds both revisions in memory and replays the 28 tool calls from
+`test/fixtures/real-claude-session.json`, folded in their original order, with a
+64px top inset and 16px host gaps. Headless Google Chrome measures an 844px-high
+viewport at 1440, 1024, 820, 744, 743 and 390px in both themes. The check requires
+pixel-identical tablet/desktop captures, more fully visible phone rows, 11px
+minimum summary text, 28px buttons, and no overlapping targets or horizontal
+overflow. It clicks both edges of phone buttons to check clipping and row
+identity. Results and screenshots stay in `KANBAN_TMP/tool-rows`; Chrome uses a
+free debugging port from 9444 through 9499 and its temporary profile is removed.
+The component tests separately replay phone iOS, phone Android and tablet iOS
+layouts; physical iOS, iPadOS and Android verification remains a device check.
 
 Rebuild the screenshots after a visual change:
 

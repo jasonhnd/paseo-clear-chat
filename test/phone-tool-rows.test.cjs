@@ -68,3 +68,32 @@ test("tablet and desktop row geometry stays unchanged at and above 744px", () =>
     assert.deepEqual(h.nodes(row, item => item.type === "Glyph").map(item => item.props.size), [13, 14]);
   }
 });
+
+test("iPadOS replays the same real steps with the existing tablet layout", () => {
+  const h = createToolHarness("ios", { width: 820 });
+  for (const call of calls) {
+    const { tree, render } = h.mount(call, false);
+    const row = node(h, tree, "tool-summary-row");
+    if (!row) continue;
+    assert.equal(row.props.style.height, 22);
+    assert.equal(node(h, tree, "tool-summary-slot"), undefined);
+    row.props.onPress();
+    assert.ok(node(h, render(), "tool-card-body"));
+    node(h, render(), "tool-summary-row").props.onPress();
+    assert.equal(node(h, render(), "tool-card-body"), undefined);
+  }
+});
+
+test("resizing the mounted component switches layout without losing expansion", () => {
+  const options = { width: 390 };
+  const h = createToolHarness("ios", options);
+  const { render } = h.mount(calls[1], false);
+  options.width = 820;
+  assert.equal(node(h, render(), "tool-summary-slot"), undefined);
+  node(h, render(), "tool-summary-row").props.onPress();
+  options.width = 390;
+  assert.ok(node(h, render(), "tool-card-body"));
+  assert.equal(node(h, render(), "tool-summary-slot"), undefined);
+  node(h, render(), "tool-summary-row").props.onPress();
+  assert.ok(node(h, render(), "tool-summary-slot"));
+});
