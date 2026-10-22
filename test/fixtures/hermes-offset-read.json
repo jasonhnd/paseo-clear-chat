@@ -1,0 +1,21 @@
+{
+  "provenance": "Constructed offset/limit variant of the captured Hermes projected read format. Content and identifiers are fictional; this is not an additional host capture.",
+  "item": {
+    "type": "tool_call",
+    "callId": "sample-offset-read",
+    "name": "read",
+    "detail": {
+      "type": "read",
+      "filePath": "/workspace/sample/src/sample.js",
+      "content": "Read /workspace/sample/src/sample.js \u2014 120 total lines\n\n```javascript\n50|export const sample = 50;\n51|\n52|export const ready = true;\n```",
+      "offset": 50,
+      "limit": 3
+    },
+    "metadata": {
+      "kind": "read",
+      "title": "read_file: /workspace/sample/src/sample.js"
+    },
+    "status": "completed",
+    "error": null
+  }
+}
