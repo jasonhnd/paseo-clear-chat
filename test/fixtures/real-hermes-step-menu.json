@@ -1,0 +1,38 @@
+{
+  "style": "hermes",
+  "provenance": "Two completed tool items from a read-only projected timeline capture. Keys, nesting, arrays and value types match the source. All content, identifiers and paths are fictional.",
+  "items": [
+    {
+      "type": "tool_call",
+      "callId": "sample-menu-call-1",
+      "name": "execute",
+      "detail": {
+        "type": "shell",
+        "command": "printf sample",
+        "output": "terminal result\n\n**output:**\nsample\n**exit_code:**\n0"
+      },
+      "metadata": {
+        "kind": "execute",
+        "title": "terminal: printf sample"
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-menu-call-2",
+      "name": "read",
+      "detail": {
+        "type": "read",
+        "filePath": "src/sample.ts",
+        "content": "Read file: src/sample.ts\n```typescript\n1: export const sample = true;\n2: export const total = 2;\n3: export const label = \"Sample\";\n4: export const ready = true;\n```"
+      },
+      "metadata": {
+        "kind": "read",
+        "title": "read_file: src/sample.ts"
+      },
+      "status": "completed",
+      "error": null
+    }
+  ]
+}

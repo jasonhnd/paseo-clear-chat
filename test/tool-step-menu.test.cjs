@@ -7,10 +7,11 @@ const { createToolHarness } = require("./helpers/tool-harness.cjs");
 const fixture = name => JSON.parse(readFileSync(join(__dirname, "fixtures", name), "utf8")).items;
 const shell = fixture("real-claude-session.json").find(item => item.detail?.type === "shell");
 const read = fixture("real-hermes-session.json").find(item => item.detail?.type === "read");
+const menuSteps = fixture("real-hermes-step-menu.json");
 const byId = (h, tree, id) => h.nodes(tree, node => node.props.testID === id)[0];
-function open(h, mounted, gesture = "long") {
+function open(h, mounted, gesture = "long", coordinates = {}) {
   const row = byId(h, mounted.render(), "tool-summary-row");
-  const event = { nativeEvent: {}, preventDefault() { this.prevented = true; }, stopPropagation() {} };
+  const event = { nativeEvent: coordinates, preventDefault() { this.prevented = true; }, stopPropagation() {} };
   if (gesture === "context") {
     assert.equal(typeof row.props.onContextMenu, "function");
     row.props.onContextMenu(event);
@@ -21,6 +22,65 @@ function open(h, mounted, gesture = "long") {
   }
   assert.ok(byId(h, mounted.render(), "tool-step-menu"));
 }
+
+for (const platform of ["web", "ios", "android"]) {
+  test(`${platform}: menu follows gesture coordinates and flips at viewport edges`, () => {
+    for (const width of [1440, 1024, 820, 390]) {
+      const h = createToolHarness(platform, { width, height: 800 });
+      const mounted = h.mount(menuSteps.find(item => item.detail?.type === "read"), false);
+      for (const point of [{ x: 48, y: 157 }, { x: width - 24, y: 780 }]) {
+        const coordinates = platform === "web"
+          ? { clientX: point.x, clientY: point.y, pageX: point.x + 31, pageY: point.y + 183 }
+          : { pageX: point.x, pageY: point.y, locationX: 12, locationY: 10 };
+        open(h, mounted, platform === "web" ? "context" : "long", coordinates);
+        let menu = byId(h, mounted.render(), "tool-step-menu");
+        menu.props.onLayout?.({ nativeEvent: { layout: { x: 0, y: 0, width: 280, height: 178 } } });
+        menu = byId(h, mounted.render(), "tool-step-menu");
+        const style = Object.assign({}, ...[menu.props.style].flat());
+        const flip = point.y === 780;
+        assert.ok(Math.abs((flip ? style.left + 280 : style.left) - point.x) <= 8, `${width}: horizontal anchor`);
+        assert.ok(Math.abs((flip ? style.top + 178 : style.top) - point.y) <= 8, `${width}: vertical anchor`);
+        assert.ok(style.left >= 8 && style.left + 280 <= width - 8);
+        assert.ok(style.top >= 8 && style.top + 178 <= 792);
+        byId(h, mounted.render(), "step-menu-dismiss").props.onPress();
+      }
+      h.unmount();
+    }
+  });
+}
+
+test("web touch converts document coordinates once and suppresses only the long-press release", () => {
+  const previous = { x: globalThis.scrollX, y: globalThis.scrollY };
+  const h = createToolHarness("web", { width: 390, height: 800 });
+  try {
+    globalThis.scrollX = 31;
+    globalThis.scrollY = 183;
+    const mounted = h.mount(menuSteps.find(item => item.detail?.type === "read"), false);
+    const event = { nativeEvent: { pageX: 79, pageY: 340 } };
+    let row = byId(h, mounted.render(), "tool-summary-row");
+    row.props.onPressIn(event);
+    row.props.onLongPress(event);
+    let menu = byId(h, mounted.render(), "tool-step-menu");
+    menu.props.onLayout({ nativeEvent: { layout: { width: 280, height: 134 } } });
+    menu = byId(h, mounted.render(), "tool-step-menu");
+    const style = Object.assign({}, ...[menu.props.style].flat());
+    assert.equal(style.left, 52);
+    assert.equal(style.top, 161);
+    let prevented = false;
+    row.props.onTouchEnd({ preventDefault() { prevented = true; } });
+    assert.equal(prevented, true, "release cannot click the newly mounted backdrop");
+    byId(h, mounted.render(), "step-menu-dismiss").props.onPress();
+    row = byId(h, mounted.render(), "tool-summary-row");
+    row.props.onPressIn(event);
+    prevented = false;
+    row.props.onTouchEnd({ preventDefault() { prevented = true; } });
+    assert.equal(prevented, false, "ordinary taps retain their default behavior");
+  } finally {
+    if (previous.x === undefined) delete globalThis.scrollX; else globalThis.scrollX = previous.x;
+    if (previous.y === undefined) delete globalThis.scrollY; else globalThis.scrollY = previous.y;
+    h.unmount();
+  }
+});
 async function copy(h, mounted, id, expected) {
   const action = byId(h, mounted.render(), id);
   assert.ok(action, id);
@@ -29,6 +89,21 @@ async function copy(h, mounted, id, expected) {
 }
 
 for (const platform of ["web", "ios", "android"]) {
+  test(`${platform}: captured host-replay steps copy their original command, path and complete result`, async () => {
+    const h = createToolHarness(platform);
+    for (const item of menuSteps) {
+      const mounted = h.mount(item, false);
+      const actions = item.detail.type === "shell"
+        ? [["step-copy-command", item.detail.command], ["step-copy-result", item.detail.output]]
+        : [["step-copy-path", item.detail.filePath], ["step-copy-result", item.detail.content]];
+      for (const [id, expected] of actions) {
+        open(h, mounted, platform === "web" ? "context" : "long");
+        await copy(h, mounted, id, expected);
+      }
+    }
+    h.unmount();
+  });
+
   test(`${platform}: captured steps copy complete commands, paths and results through the SDK`, async () => {
     const h = createToolHarness(platform);
     const mounted = h.mount(shell, false);
