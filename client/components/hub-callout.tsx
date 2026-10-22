@@ -7,6 +7,7 @@ import type { ExtendedThemeTokens } from "./theme-tokens";
 import { selectableSurface, unselectable } from "./selection";
 import { selectionSurface, selectionCodeText } from "./selection-actions";
 import { renderTerminalOutput } from "./syntax-highlight";
+import { ToolOutput } from "./tool-output";
 import { Breathe } from "./breathe";
 import { shimmering } from "./shimmer";
 import { normalizeProvider } from "./provider-logo";
@@ -272,10 +273,7 @@ function TerminalBlock({
   );
 }
 
-/** A `hub jobs` snapshot carries one result per job, and a bash result is a
- * whole terminal transcript. Unclipped, fourteen of those turn one card into a
- * page, so every long body opens on demand. */
-const CLIP_LINES = 6;
+/** Keep rosters short independently of the configurable output line limit. */
 const ROW_CAP = 8;
 
 // An Image style, kept out of the themed sheet: `StyleSheet.create` widens an
@@ -311,29 +309,10 @@ function ClippedTerminal({
   styles: HubStyles;
   footer?: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
-  const lines = text.split("\n");
-  const hidden = Math.max(0, lines.length - CLIP_LINES);
-  const shown = open || hidden === 0 ? text : lines.slice(0, CLIP_LINES).join("\n");
-
   return (
-    <TerminalBlock
-      text={shown}
-      tokens={tokens}
-      styles={styles}
-      footer={
-        <>
-          {footer ?? null}
-          {hidden > 0 ? (
-            <MoreControl
-              label={open ? "show less" : `show ${hidden} more ${hidden === 1 ? "line" : "lines"}`}
-              onPress={() => setOpen((previous) => !previous)}
-              styles={styles}
-            />
-          ) : null}
-        </>
-      }
-    />
+    <ToolOutput text={text} tokens={tokens}>
+      {shown => <TerminalBlock text={shown} tokens={tokens} styles={styles} footer={footer} />}
+    </ToolOutput>
   );
 }
 
@@ -1160,7 +1139,7 @@ function useHubStyles(tokens: ExtendedThemeTokens): HubStyles {
         },
         opBadge: {
           fontFamily: tokens.fontUi,
-          fontSize: 10,
+          fontSize: tokens.fs(10),
           fontWeight: "700",
           textTransform: "uppercase",
           letterSpacing: 0.5,
@@ -1172,7 +1151,7 @@ function useHubStyles(tokens: ExtendedThemeTokens): HubStyles {
         },
         headline: {
           fontFamily: tokens.fontUi,
-          fontSize: 12,
+          fontSize: tokens.fs(12),
           fontWeight: "600",
           color: tokens.foreground,
           flexShrink: 1,
@@ -1219,7 +1198,7 @@ function useHubStyles(tokens: ExtendedThemeTokens): HubStyles {
 
         chip: {
           fontFamily: tokens.fontUi,
-          fontSize: 10,
+          fontSize: tokens.fs(10),
           fontWeight: "700",
           textTransform: "uppercase",
           letterSpacing: 0.4,
@@ -1230,7 +1209,7 @@ function useHubStyles(tokens: ExtendedThemeTokens): HubStyles {
         },
         chipPlain: {
           fontFamily: tokens.fontUi,
-          fontSize: 10,
+          fontSize: tokens.fs(10),
           fontWeight: "600",
           paddingHorizontal: 6,
           paddingVertical: 2,
@@ -1241,26 +1220,26 @@ function useHubStyles(tokens: ExtendedThemeTokens): HubStyles {
         // chip or a duration off the card.
         rowLabel: {
           fontFamily: tokens.fontMono,
-          fontSize: 12,
+          fontSize: tokens.fs(12),
           color: tokens.foreground,
           flex: 1,
           minWidth: 0,
         },
         sender: {
           fontFamily: tokens.fontUi,
-          fontSize: 12,
+          fontSize: tokens.fs(12),
           fontWeight: "700",
           color: tokens.accent,
         },
         figure: {
           fontFamily: tokens.fontUi,
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           color: tokens.foregroundSubtle,
           flexShrink: 1,
         },
         marker: {
           fontFamily: tokens.fontUi,
-          fontSize: 10,
+          fontSize: tokens.fs(10),
           fontWeight: "700",
           textTransform: "uppercase",
           letterSpacing: 0.4,
@@ -1269,7 +1248,7 @@ function useHubStyles(tokens: ExtendedThemeTokens): HubStyles {
         },
         sectionLabel: {
           fontFamily: tokens.fontUi,
-          fontSize: 10,
+          fontSize: tokens.fs(10),
           fontWeight: "700",
           textTransform: "uppercase",
           letterSpacing: 0.5,
@@ -1278,30 +1257,30 @@ function useHubStyles(tokens: ExtendedThemeTokens): HubStyles {
         },
         errorText: {
           fontFamily: tokens.fontUi,
-          fontSize: 11,
-          lineHeight: 16,
+          fontSize: tokens.fs(11),
+          lineHeight: tokens.fs(16),
           color: tokens.danger,
           flexShrink: 1,
         },
         bodyText: {
           fontFamily: tokens.fontUi,
-          fontSize: 12,
-          lineHeight: 18,
+          fontSize: tokens.fs(12),
+          lineHeight: tokens.fs(18),
           color: tokens.foreground,
           flex: 1,
           minWidth: 0,
         },
         subtleBody: {
           fontFamily: tokens.fontUi,
-          fontSize: 11,
-          lineHeight: 16,
+          fontSize: tokens.fs(11),
+          lineHeight: tokens.fs(16),
           color: tokens.foregroundMuted,
           flex: 1,
           minWidth: 0,
         },
         placeholder: {
           fontFamily: tokens.fontUi,
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           fontStyle: "italic",
           color: tokens.foregroundSubtle,
           ...unselectable,
@@ -1315,8 +1294,8 @@ function useHubStyles(tokens: ExtendedThemeTokens): HubStyles {
         },
         messageText: {
           fontFamily: tokens.fontMono,
-          fontSize: 12,
-          lineHeight: 18,
+          fontSize: tokens.fs(12),
+          lineHeight: tokens.fs(18),
           color: tokens.foreground,
         },
         replyBox: {
@@ -1329,8 +1308,8 @@ function useHubStyles(tokens: ExtendedThemeTokens): HubStyles {
         },
         replyText: {
           fontFamily: tokens.fontUi,
-          fontSize: 12,
-          lineHeight: 18,
+          fontSize: tokens.fs(12),
+          lineHeight: tokens.fs(18),
           color: tokens.foregroundMuted,
         },
         codeBlock: {
@@ -1343,13 +1322,13 @@ function useHubStyles(tokens: ExtendedThemeTokens): HubStyles {
         },
         codeText: {
           fontFamily: tokens.fontMono,
-          fontSize: 11,
-          lineHeight: 16,
+          fontSize: tokens.fs(11),
+          lineHeight: tokens.fs(16),
           color: tokens.foregroundMuted,
         },
         moreLabel: {
           fontFamily: tokens.fontUi,
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           fontWeight: "500",
           color: tokens.accent,
           ...unselectable,

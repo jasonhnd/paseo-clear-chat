@@ -1,300 +1,181 @@
-# Beautiful Chat
+<p align="right"><b>English</b> | <a href="README.zh-CN.md">简体中文</a> | <a href="README.ja.md">日本語</a></p>
 
-A Paseo plugin that redraws the Oh My Pi (OMP) chat stream: tool calls, reasoning, prompts, approvals,
-and checklists. It replaces the host rendering of OMP timeline items with typed, syntax-aware cards
-that follow the active Paseo theme.
+<h1 align="center">Clear Chat</h1>
 
-![A prompt, a tool call, a finished background job, and the reply that closes the turn](images/hero.png)
+<p align="center"><b>A Paseo plugin that makes agent chats easy to read.</b></p>
 
-Every screenshot here is a capture of the real component, rendered by the harness in `.showcase/`.
-[One whole turn, top to bottom](images/thread.png) shows the cards in the order the timeline draws
-them.
+<p align="center">
+  <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=semver"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
+  <a href="https://paseo.sh"><img alt="Paseo 0.8.0+" src="https://img.shields.io/badge/Paseo-%3E%3D0.8.0-5b5bd6"></a>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="images/compare-dark.png">
+    <img alt="The same conversation without the plugin (left) and with Clear Chat (right)" src="images/compare-light.png">
+  </picture>
+</p>
+
+<p align="center"><sub>Left: the same conversation without the plugin. Right: with Clear Chat. Every screenshot uses sample data.</sub></p>
+
+## Why Clear Chat
+
+- **See the answer first.** Finished steps fold into one compact row each: icon, summary, status and time. The reply that ends the turn always stays open.
+- **Every agent, drawn right.** Claude, Codex and Hermes calls all get proper cards. All 12 tool kinds that Paseo reports have their own card, and Hermes tools such as `skill_view` and `memory` get dedicated rows. In replays of real conversations, no card is empty.
+- **Nothing gets lost.** Your Beautiful Chat settings move over unchanged, pasted images keep their count, and a failed call shows why it failed.
+- **Maintained.** Version 1.0.0 closes seven open issues and pull requests reported against the original plugin. Problems go to GitHub Issues, and every release is listed in the [changelog](CHANGELOG.md).
+- **Fast.** In our test, a 221-step conversation shows its first screen in about 1.3 seconds, about the same as Paseo without the plugin (also about 1.3 seconds). Scrolling a long conversation stays smooth, with no stutter.<sup>1</sup>
+
+<sub>1. Median of five runs in headless Google Chrome on one machine. Your numbers will differ. The method is in [scripts/perf/README.md](scripts/perf/README.md).</sub>
 
 ## Install
 
 ```bash
-paseo plugin install ABorakati/beautiful-chat
+paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v1.0.0
 ```
 
-The manifest requires Paseo `>=0.8.0`. Open **Settings → Plugins → Beautiful Chat** for the
-accent, fonts, frosted glass, and prompt bubble options.
+Then open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
 
----
+> [!IMPORTANT]
+> Already using Beautiful Chat? Read [Upgrading from Beautiful Chat](#upgrading-from-beautiful-chat) **before** you install or remove anything. Removing a plugin in Paseo 0.12 also deletes its settings.
 
-## Tool calls
+## Upgrading from Beautiful Chat
 
-### Shell and Git
+1. **Back up** your Beautiful Chat settings.
+2. **Install Clear Chat** while Beautiful Chat is still installed. On first start, Clear Chat copies your settings.
+3. **Check** that your settings look right, then remove Beautiful Chat.
 
-Terminal frame, Bash syntax, exit code, duration, and the Git brand mark. A command that prints
-nothing says so rather than showing an empty panel.
+<details>
+<summary><b>Exact commands, rollback, and how the migration works</b></summary>
 
-![Shell and Git tool calls](docs/images/tool-bash.png)
+The commands use `PASEO_HOME` and fall back to `$HOME/.paseo`. If your daemon uses only `--home`, set `PASEO_HOME` to that path first. Stop if a backup or check fails.
 
-### Read
+**1. Back up**
 
-The file's own language logo, a wrapped path, line numbers, and a copy button. The path is a link:
-pressing it shows the file in the machine's file manager.
+```bash
+legacy_backup="${PASEO_HOME:-$HOME/.paseo}/backups/plugin-settings-beautiful-chat-$(date +%Y%m%d-%H%M%S)"
+mkdir -p "${PASEO_HOME:-$HOME/.paseo}/backups"
+cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_backup"
+```
 
-![Read tool call](docs/images/tool-read.png)
+**2. Install**
 
-### Images
+```bash
+paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v1.0.0
+```
 
-A read of a `.png` carries no bytes through the timeline, so the host draws it as an empty code
-block with a language badge. This card draws the file instead: a picture mark, the path as a link,
-the pixel size and file size read from the header, and an eye control that hides the thumbnail. The
-bytes come from the plugin's own daemon-side RPC (`file.image`), which is the only side that can
-reach the file; PNG, JPEG, GIF, WebP, AVIF, BMP, ICO and SVG are recognised, and anything past
-3 MB reports its size rather than inlining a data URI.
+**3. Check, then remove the old plugin**
 
-![Image read](docs/images/tool-image.png)
+Confirm that `${PASEO_HOME:-$HOME/.paseo}/plugin-settings/clear-chat/presentation.json` exists and matches `$legacy_backup/presentation.json`. An existing Clear Chat settings file is never overwritten. If the file is missing or differs, keep Beautiful Chat and the backup, and check the migration error in the log.
 
-### Edit
+```bash
+paseo plugin remove beautiful-chat
+```
 
-Diff rendering where adjacent removed and added rows join into one rounded block, and only the
-marker column carries the red or green.
+Keep the backup.
 
-![Edit tool call](docs/images/tool-edit.png)
+**Rollback**
 
-### Reasoning tool
+Back up Clear Chat's current settings, then remove it:
 
-Live thinking text, a token badge, and numbered steps.
+```bash
+clear_chat_backup="${PASEO_HOME:-$HOME/.paseo}/backups/plugin-settings-clear-chat-$(date +%Y%m%d-%H%M%S)"
+mkdir -p "${PASEO_HOME:-$HOME/.paseo}/backups"
+cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/clear-chat" "$clear_chat_backup"
+paseo plugin remove clear-chat
+```
 
-![Thinking tool call](docs/images/tool-thinking.png)
+If Beautiful Chat's settings folder is gone, restore it from the upgrade backup. Replace `YYYYMMDD-HHMMSS` with your backup's timestamp. An existing folder is never overwritten.
 
-### MCP
+```bash
+legacy_backup="${PASEO_HOME:-$HOME/.paseo}/backups/plugin-settings-beautiful-chat-YYYYMMDD-HHMMSS"
+test ! -e "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" &&
+  cp -a "$legacy_backup" "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat"
+```
 
-Server badge, transport, input parameters, and the response payload, each syntax-highlighted.
+Then install the last Beautiful Chat version:
 
-![MCP tool call](docs/images/tool-mcp.png)
+```bash
+paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref 2bf25e8
+```
 
-### Eval
+Changes made in Clear Chat do not sync back to Beautiful Chat. Keep both backups.
 
-One card per kernel cell: the source that ran, then the text it printed.
+**How the migration works**
 
-![Eval tool call](docs/images/tool-eval.png)
+- On first start, the server copies Beautiful Chat's `presentation.json` into Clear Chat's settings folder if Clear Chat has none yet. It never deletes or overwrites either file.
+- If copying fails, the error is logged with both paths, and Clear Chat starts with default settings. The next start tries again.
+- Settings are then upgraded from version 1 to version 2. Your choices stay; the two new folding settings start at their defaults.
+- In a browser, older preferences stored in the browser are imported once. Settings saved on the host always win.
+- Migration expects the default installation IDs. An installation with a custom `--id`, or a daemon home set only with `--home`, needs its settings copied by hand.
 
-### Ask
+</details>
 
-Option cards with the recommended badge, the chosen answer marked, and a typed reply labelled as
-typed rather than shown as a selection.
+## Features
 
-![Ask tool call](docs/images/tool-ask.png)
+### Tool calls
 
-### Task
+| | |
+|---|---|
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-bash-dark.png"><img alt="Shell and Git" src="docs/images/tool-bash-light.png"></picture><br>**Shell and Git.** Terminal frame, highlighted command, exit code and time. | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-read-dark.png"><img alt="Read" src="docs/images/tool-read-light.png"></picture><br>**Read.** Language icon, line numbers, copy button. The file name shows the file in your file manager. |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-edit-dark.png"><img alt="Edit" src="docs/images/tool-edit-light.png"></picture><br>**Edit.** A clean diff, also built from old and new text when no diff is given. | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-image-dark.png"><img alt="Images" src="docs/images/tool-image-light.png"></picture><br>**Images.** Read and generated images appear inline, with size and a clickable source. |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-thinking-dark.png"><img alt="Reasoning tool" src="docs/images/tool-thinking-light.png"></picture><br>**Reasoning tool.** Live thinking text, token count and numbered steps. | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-mcp-dark.png"><img alt="MCP" src="docs/images/tool-mcp-light.png"></picture><br>**MCP.** Server, transport, inputs and response, all highlighted. |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-eval-dark.png"><img alt="Eval" src="docs/images/tool-eval-light.png"></picture><br>**Eval.** Each cell's code, then what it printed. | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-ask-dark.png"><img alt="Ask" src="docs/images/tool-ask-light.png"></picture><br>**Ask.** Options with the recommended one and the chosen answer marked. |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tool-task-dark.png"><img alt="Task" src="docs/images/tool-task-light.png"></picture><br>**Subagents.** Name, type, model and the task it was given. | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/hub-dark.png"><img alt="Hub" src="docs/images/hub-light.png"></picture><br>**Hub.** Process, message and job cards for every hub operation. |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/paseo-dark.png"><img alt="Paseo tools" src="docs/images/paseo-light.png"></picture><br>**Paseo tools.** Paseo's mark, with the provider's mark on created agents. | |
 
-Subagent name, type, model, and the delegated instructions.
+Search, fetch and web search, plans and checklists, plain text, skills and any other tool also get their own cards. An unknown tool shows its name, its inputs as `name: value` and a preview of its output. It is never an empty box.
 
-![Task tool call](docs/images/tool-task.png)
+### Conversation
 
-### Hub
+| | |
+|---|---|
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/reasoning-dark.png"><img alt="Reasoning trace" src="docs/images/reasoning-light.png"></picture><br>**Reasoning trace.** Collapsible steps with time per step and a token total. | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tasks-dark.png"><img alt="Checklist" src="docs/images/tasks-light.png"></picture><br>**Checklist.** Phase, status per task and the reason a task is blocked. |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/approval-dark.png"><img alt="Approval" src="docs/images/approval-light.png"></picture><br>**Approvals.** Risk, the exact command and target. Past approvals stay as short status rows. | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/user-dark.png"><img alt="Prompt bubble" src="docs/images/user-light.png"></picture><br>**Prompt bubble.** Copy button, token usage and pasted images, such as "3 images attached". |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/syntax-dark.png"><img alt="Syntax block" src="docs/images/syntax-light.png"></picture><br>**Code.** Language detection, line numbers, diff colours and a full-source copy. | |
 
-Every `hub` op is mapped: `start`, `stop`, `restart`, `ps`, `logs`, and `describe` render the
-process card with its launch line, readiness, and recent output; `send`, `wait`, `inbox`, and
-`list` render the message card; `jobs` and `cancel` render the job snapshot. The cards report;
-they carry no buttons, because a plugin cannot restart or cancel anything.
+### Also included
 
-![Hub tool calls](docs/images/hub.png)
-
-### Paseo tools
-
-Paseo's own mark leads the card, and the created agent's provider carries its brand mark.
-
-![Paseo tool call](docs/images/paseo.png)
-
----
-
-## Stream components
-
-### Reasoning trace
-
-A collapsible trace with a connected step rail, per-step duration, and a token total.
-
-![Reasoning trace](docs/images/reasoning.png)
-
-### Checklist
-
-Phase name, per-task status, durations, and a blocked task with its reason.
-
-![Checklist](docs/images/tasks.png)
-
-### Approval card
-
-Risk classification, the exact command, target path, working directory, and the approve or deny
-actions the host owns.
-
-![Approval card](docs/images/approval.png)
-
-### Prompt bubble
-
-The authored turn on a raised theme surface with a square tail, a copy button, and the turn's token
-usage.
-
-![Prompt bubble](docs/images/user.png)
-
-### Syntax block
-
-Shared by every card that shows code: language detection from the path, line numbers, diff tints,
-Devicon brand marks, and the file-manager link.
-
-![Syntax block](docs/images/syntax.png)
-
----
+- **Folding you control.** Click any row to open or close it. Your choice is remembered after reloads. Running, failed and waiting calls open by default. Long output shows the first 15 lines, with **Show all N lines**.
+- **Wrap-up replies.** Replies sent through a `wrap_up` tool show as a full reply card, with recap, question, lettered options and a **Blocked** alert.
+- **Clickable links.** Links in replies open on desktop, web and iOS, and `mailto:` links open your mail app.
+- **Find in chat.** Ctrl/Cmd+F opens a find bar that also searches tool cards. It searches the messages that are loaded, so scroll up to include older ones.
+- **Open files.** A file name in a card shows that file in Finder, Explorer, or your file manager.
 
 ## Settings
 
-![Settings screen](docs/images/settings.png)
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/settings-dark.png"><img alt="Settings screen" src="docs/images/settings-light.png"></picture>
 
-| Setting                | Effect                                                             |
-| ---------------------- | ------------------------------------------------------------------ |
-| Accent colour          | Follow the Paseo theme, or pick Jade, Violet, Amber, or Rose.      |
-| Interface font         | Embedded Inter, or the system interface face.                      |
-| Code glyphs            | Iosevka with ligatures, or literal glyphs.                         |
-| Frosted glass          | Blur card surfaces, or paint them solid.                           |
-| Enhanced prompt bubble | Off hands prompts back to Paseo, whose bubble shows pasted images. |
-| Assistant markdown     | Off hands replies back to Paseo's own markdown renderer.           |
+| Setting | Effect |
+|---|---|
+| Accent colour | Follow the Paseo theme, or pick Jade, Violet, Amber or Rose. |
+| Interface font | Embedded Inter, or your system font. |
+| Text size | Small (90%), Default (100%), Large (115%) or XL (130%). Icons keep their size. |
+| Code glyphs | Iosevka with ligatures, or plain glyphs. |
+| Fold finished steps | On by default. Off opens every step unless you chose otherwise for that call. |
+| Fold long output after | 10, 15 (default) or 30 lines, or Never. Applies to code and tool output. |
+| Frosted glass | Blur card backgrounds, or paint them solid. |
+| Enhanced prompt bubble | Styles your prompts. Off uses Paseo's own bubble. |
+| Assistant markdown | Off hands replies back to Paseo's own renderer. |
 
----
+Settings are saved on the host, so every device connected to that host shares them. The folding settings apply at once. Other changes apply to new messages; reload the chat to update older ones.
 
-## Finding text
+> [!NOTE]
+> **On iOS and iPadOS** you cannot select text by dragging while **Assistant markdown** or **Enhanced prompt bubble** is on. Use the **Copy** button on the reply, prompt or code block instead. If copying fails, a dialog shows the full text for you to select by hand.
 
-Paseo's own chat find (Ctrl/Cmd+F) cannot reach a prompt or reply this plugin draws (see
-[limitation 14](#plugin-sdk-limitations-found-while-building-this)). The plugin therefore takes
-Ctrl/Cmd+F on desktop and web and opens its own find bar over the chat. The bar searches
-everything the chat has rendered, including tool cards. Enter moves to the next match, Shift+Enter
-to the previous one, and Escape closes the bar.
+## Reporting problems
 
-The bar searches only messages the chat has loaded. Scroll up first to include older history.
+Something wrong, or an idea? [Open an issue on GitHub](https://github.com/jasonhnd/paseo-clear-chat/issues/new/choose). You can also use **Report a problem** at the bottom of the settings page. Chinese and Japanese are welcome too.
 
-To keep Paseo's native search, which also searches unloaded history, turn off **Assistant
-markdown** and **Enhanced prompt bubble** in **Settings -> Plugins -> Beautiful Chat**. Paseo then
-draws replies and prompts itself, and Ctrl/Cmd+F opens Paseo's find instead of the plugin's bar.
-New messages follow the change.
-Tool, reasoning, and checklist cards keep the plugin's styling, so Paseo's find still cannot reveal a
-match inside one of them.
+## Credits
 
-## Opening files
+Clear Chat is based on [Beautiful Chat](https://github.com/ABorakati/beautiful-chat) by ABorakati, under the MIT License. The original copyright notice is kept in [LICENSE](LICENSE).
 
-A file name in a read, write, edit, or code block is a link. Pressing it calls the plugin's own
-daemon-side RPC (`file.reveal`), which resolves the path against the agent's working directory and
-asks the platform shell to show it:
+Thanks to Moyf for the [text size contribution](https://github.com/ABorakati/beautiful-chat/pull/9), adapted here to host settings.
 
-| Platform | Behaviour                                              |
-| -------- | ------------------------------------------------------ |
-| Windows  | `explorer.exe /select,<file>` selects the file.        |
-| macOS    | `open -R <file>` selects the file in Finder.           |
-| Other    | `xdg-open <directory>` opens the containing directory. |
-
-A directory path opens that directory. A path the daemon cannot stat does nothing.
-
-## Unmapped output
-
-A tool the plugin has no typed card for still shows its output in the terminal frame, and a call
-that printed nothing says so. No card renders an empty panel.
-
-The link cannot open Paseo's own file editor: see the first limitation below.
-
----
-
-## Plugin SDK limitations found while building this
-
-Measured against `@getpaseo/plugin` 0.8.0 and the Paseo 0.8.0 desktop build. Each entry names the
-evidence and the workaround this plugin uses.
-
-1. **No file navigation.** Timeline renderer props are exactly `{agentId, theme, host, layout,
-timestamp, item}`, and plugin navigation offers only `openSettings`, `openSurface`,
-   `openWorkspacePanel`, `openAgentPanel`, `openAgent`, and `openWorkspace`. The host's own file tab
-   target (`{kind:"file", path}`, reachable in-app through `?open=file:<path>`) is not exposed, and
-   the `paseo://` scheme only carries agent deep links. Workaround: a daemon-side RPC that reveals
-   the path in the operating system's file manager.
-2. **Transformers see a stripped item.** The app maps its stream item to the plugin item before any
-   transformer runs, and a user message keeps only `text`, `messageId`, and `clientMessageId`. Pasted
-   images never reach plugin code, and the daemon timeline row stores the same item, so a server RPC
-   cannot recover them either. Workaround: the **Enhanced prompt bubble** setting returns prompts to
-   the host.
-3. **Interception is all or nothing.** A transformer replaces the host item completely. There is no
-   way to decorate an item or keep host affordances that the plugin does not reimplement. Returning
-   `undefined` is the only opt-out.
-4. **Transform results are cached per item.** Changing a preference does not re-run transformers for
-   items already on screen. New items follow the change; existing ones need a reload.
-5. **Renderers get no workspace.** Props carry `agentId` only, so `cwd` and `workspaceId` need a
-   second lookup through `useAgent`.
-6. **Token usage is live-only.** Usage is not persisted on timeline items, so a turn this client did
-   not observe live shows no figures.
-7. **RPC names are validated late.** The host requires `^[a-z][a-z0-9._-]*$`. A camelCase name such
-   as `revealPath` typechecks, then fails the whole plugin at install or reload with
-   `Invalid plugin RPC method`.
-8. **The React Native runtime module is a stub in the package.** `@getpaseo/plugin/client/react-native`
-   ships as `export {}`; the host injects the implementations. Bundling or testing plugin UI outside
-   Paseo needs a shim, which is what `.showcase/shims` provides.
-9. **The theme carries six colours.** `PluginTheme` exposes `surface0`–`surface2`, `border`,
-   `foreground`, `foregroundMuted`, `accent`, `accentForeground`, and three status colours. Every
-   other surface, including code backgrounds and diff tints, must be derived with alpha; that is what
-   `client/components/theme-tokens.ts` exists for.
-10. **No CSS escape hatch.** React Native styles drop unknown keys, so `backdrop-filter` is
-    impossible through the style API. Frosted glass is a hand-injected `<style>` rule matched by a
-    data attribute.
-11. **No font registration.** Faces are embedded as data URIs in an injected `@font-face` rule, and
-    every surface needs a wrapper that escapes the host's own font cascade.
-12. **A closed module allowlist, and no SVG renderer.** Plugin client code may import only
-    `react`, `react/jsx-runtime`, `react-native`, `@tanstack/react-query`, `zod`,
-    `@getpaseo/plugin`, `@getpaseo/plugin/client`, `@getpaseo/plugin/client/react-native`, and
-    `@getpaseo/plugin/client/ui`. Anything else throws
-    `Module "x" is not available in plugin client code` when the bundle loads, so
-    `react-native-svg` and `lucide-react-native` are out of reach. Lucide icons still work,
-    because the host renders them: `Icon` from `@getpaseo/plugin/client/react-native` takes any
-    Lucide name. Brand marks are not in Lucide, and React Native's `<Image>` decodes PNG, JPEG,
-    GIF, and WebP but never SVG, so a data-URI SVG renders on web and stays blank on iOS and
-    Android. Those marks ship as PNG rasters in `client/components/mark-bitmaps.ts`.
-13. **Settings are host-scoped only.** `defineSettings` rejects any scope other than `host`, so
-    per-workspace or per-agent presentation settings are impossible. This plugin keeps presentation
-    preferences in client storage instead.
-14. **Paseo's chat find cannot reach replaced rows.** Paseo 0.9.1 finds a match by its original
-    message id, then waits for a row carrying that id. A transformed row always carries
-    `<pluginId>/<itemId>` instead, so Ctrl+F on a styled prompt or reply never reveals the match.
-    Workaround: the plugin's own find bar, described in [Finding text](#finding-text).
-
----
-
-## Project structure
-
-```text
-beautiful-chat/
-  paseo-plugin.json          # Manifest: id and Paseo requirement
-  index.client.tsx           # Timeline transformers, renderers, settings screen
-  index.server.ts            # Daemon-side RPCs (file.reveal)
-  shared/
-    contracts.ts             # Data contracts shared by client and server
-    file-rpc.ts              # file.reveal contract
-  client/
-    live-renderers.tsx       # Timeline item to component mapping
-    settings-page.tsx        # Settings screen
-    preferences.ts           # Client-side presentation preferences
-    components/              # Cards, syntax block, glyphs, motion, theme tokens
-      mark-bitmaps.ts        # GENERATED PNG rasters of every brand mark
-      devicon-data.ts        # Vendor SVG sources, read only by the generator
-      lobe-marks.ts          # Vendor SVG sources, read only by the generator
-  .showcase/                 # Offline harness used to capture the screenshots
-  docs/images/               # Screenshots in this README
-```
-
-## Development
-
-```bash
-npm install
-npm run typecheck
-paseo plugin reload beautiful-chat
-```
-
-Rebuild the screenshots after a visual change:
-
-```bash
-esbuild .showcase/showcase.tsx --bundle --outfile=.showcase/showcase.js --jsx=automatic \
-  --alias:react-native=react-native-web \
-  --alias:@getpaseo/plugin/client/react-native=./.showcase/shims/plugin-react-native.tsx
-```
-
-Then serve `.showcase/` and capture each `#shot-*` element.
+For developers: build steps, project layout and the Paseo plugin SDK limits found along the way are in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## License
 
-MIT
+[MIT](LICENSE)

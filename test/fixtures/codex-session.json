@@ -1,0 +1,200 @@
+{
+  "style": "codex",
+  "provenance": "Handwritten synthetic session. All names, paths, text and URLs are fictional.",
+  "items": [
+    {
+      "id": "codex-prompt",
+      "type": "user_message",
+      "text": "Update the sample plugin configuration and document the result."
+    },
+    {
+      "id": "codex-1",
+      "type": "tool_call",
+      "callId": "codex-call-1",
+      "name": "update_plan",
+      "status": "completed",
+      "error": null,
+      "detail": {
+        "type": "plan",
+        "text": "- [x] Inspect the sample\n- [-] Update configuration\n- [ ] Run checks"
+      }
+    },
+    {
+      "id": "codex-2",
+      "type": "tool_call",
+      "callId": "codex-call-2",
+      "name": "exec_command",
+      "status": "completed",
+      "error": null,
+      "detail": {
+        "type": "shell",
+        "command": "cat src/settings.json",
+        "cwd": "/workspace/sample",
+        "output": "{\"enabled\":false}",
+        "exitCode": 0
+      }
+    },
+    {
+      "id": "codex-3",
+      "type": "tool_call",
+      "callId": "codex-call-3",
+      "name": "read_file",
+      "status": "completed",
+      "error": null,
+      "detail": {
+        "type": "read",
+        "filePath": "src/settings.json",
+        "content": "{\"enabled\":false}"
+      }
+    },
+    {
+      "id": "codex-4",
+      "type": "tool_call",
+      "callId": "codex-call-4",
+      "name": "exec_command",
+      "status": "completed",
+      "error": null,
+      "detail": {
+        "type": "search",
+        "query": "enabled",
+        "content": "src/settings.json:1:{\"enabled\":false}",
+        "filePaths": [
+          "src/settings.json"
+        ],
+        "numMatches": 1
+      }
+    },
+    {
+      "id": "codex-5",
+      "type": "tool_call",
+      "callId": "codex-call-5",
+      "name": "apply_patch",
+      "status": "completed",
+      "error": null,
+      "detail": {
+        "type": "edit",
+        "filePath": "src/settings.json",
+        "unifiedDiff": "@@ -1 +1 @@\n-{\"enabled\":false}\n+{\"enabled\":true}"
+      }
+    },
+    {
+      "id": "codex-6",
+      "type": "tool_call",
+      "callId": "codex-call-6",
+      "name": "write_file",
+      "status": "completed",
+      "error": null,
+      "detail": {
+        "type": "write",
+        "filePath": "docs/settings.md",
+        "content": "# Settings\nEnable the sample feature."
+      }
+    },
+    {
+      "id": "codex-7",
+      "type": "tool_call",
+      "callId": "codex-call-7",
+      "name": "web.run",
+      "status": "completed",
+      "error": null,
+      "detail": {
+        "type": "web_search",
+        "query": "sample settings reference",
+        "results": [
+          {
+            "title": "Settings reference",
+            "url": "https://example.org/settings",
+            "snippet": "Use the enabled setting for the sample."
+          }
+        ]
+      }
+    },
+    {
+      "id": "codex-8",
+      "type": "tool_call",
+      "callId": "codex-call-8",
+      "name": "fetch_reference",
+      "status": "completed",
+      "error": null,
+      "detail": {
+        "type": "fetch",
+        "url": "https://example.org/settings",
+        "result": "# Settings reference\nThe enabled setting accepts true or false."
+      }
+    },
+    {
+      "id": "codex-9",
+      "type": "tool_call",
+      "callId": "codex-call-9",
+      "name": "spawn_agent",
+      "status": "completed",
+      "error": null,
+      "detail": {
+        "type": "sub_agent",
+        "description": "Check the sample settings and documentation.",
+        "subAgentType": "explorer",
+        "log": "Both use the enabled setting."
+      },
+      "metadata": {
+        "model": "sample-explorer-model"
+      }
+    },
+    {
+      "id": "codex-10",
+      "type": "tool_call",
+      "callId": "codex-call-10",
+      "name": "progress",
+      "status": "completed",
+      "error": null,
+      "detail": {
+        "type": "plain_text",
+        "text": "  Sample settings updated.\nChecks are next.\n"
+      }
+    },
+    {
+      "id": "codex-11",
+      "type": "tool_call",
+      "callId": "codex-call-11",
+      "name": "exec_command",
+      "status": "completed",
+      "error": null,
+      "detail": {
+        "type": "shell",
+        "command": "npm test",
+        "output": "All sample tests passed.",
+        "exitCode": 0
+      }
+    },
+    {
+      "id": "codex-12",
+      "type": "tool_call",
+      "callId": "codex-call-12",
+      "name": "read_file",
+      "status": "canceled",
+      "error": null,
+      "detail": {
+        "type": "read",
+        "filePath": "docs/optional.md"
+      }
+    },
+    {
+      "id": "codex-checklist",
+      "type": "todo",
+      "items": [
+        {
+          "text": "Update settings",
+          "completed": true
+        },
+        {
+          "text": "Run sample checks",
+          "completed": true
+        }
+      ]
+    },
+    {
+      "id": "codex-reply",
+      "type": "assistant_message",
+      "text": "The sample configuration and documentation are ready for review."
+    }
+  ]
+}

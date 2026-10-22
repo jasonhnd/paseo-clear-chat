@@ -1,6 +1,6 @@
 import type { ViewProps } from "react-native";
 
-const STYLE_ELEMENT_ID = "beautiful-chat-frosted";
+const STYLE_ELEMENT_ID = "clear-chat-frosted";
 
 /**
  * `backdrop-filter` has no React Native style equivalent, and React Native Web

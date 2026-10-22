@@ -12,10 +12,11 @@
  * Pure module: no React, no runtime imports.
  */
 
-/** One inline run. `text` is the only leaf; every other kind carries runs. */
+/** Inline text, code and images are leaves; formatting and links carry runs. */
 export type MdInline =
   | { kind: "text"; text: string }
   | { kind: "codeSpan"; text: string }
+  | { kind: "image"; alt: string; src: string }
   | { kind: "strong"; spans: MdInline[] }
   | { kind: "emphasis"; spans: MdInline[] }
   | { kind: "strike"; spans: MdInline[] }
@@ -67,7 +68,9 @@ const TRAILING_SPACE_RE = /[ \t]+$/;
 // ASCII punctuation is exactly what a backslash may escape in markdown.
 const ESCAPABLE_RE = /[!-\/:-@\[-`{-~]/;
 // Sticky, so a candidate is tested in place instead of slicing the line.
-const URL_RE = /(?:https?:\/\/|www\.)[^\s<>()[\]]+/y;
+const URL_RE = /(?:https?:\/\/|www\.)[^\s<>()[\]`"\u2018\u2019\u201c\u201d\u3001\u3002\uff01\uff08\uff09\uff0c\uff0e\uff1a\uff1b\uff1f]+/y;
+// Unicode letters are words; fullwidth punctuation is a valid URL boundary.
+const URL_WORD_RE = /[\p{L}\p{M}\p{N}_]/u;
 
 /** Emphasis inside emphasis is rare and cheap to bound; deeper text stays flat. */
 const MAX_INLINE_DEPTH = 4;
@@ -584,7 +587,11 @@ function parseInline(src: string, depth = 0): MdInline[] {
           const href = cleanHref(src.slice(labelEnd + 2, hrefEnd));
           const label = src.slice(open + 1, labelEnd);
           flush();
-          out.push({
+          out.push(ch === "!" ? {
+            kind: "image",
+            src: unescapePunctuation(href),
+            alt: unescapePunctuation(label),
+          } : {
             kind: "link",
             href,
             spans: label === "" ? [{ kind: "text", text: href }] : parseInline(label, depth + 1),
@@ -595,7 +602,7 @@ function parseInline(src: string, depth = 0): MdInline[] {
       }
     }
 
-    if ((ch === "h" || ch === "w") && !isWordChar(src[index - 1] ?? "")) {
+    if ((ch === "h" || ch === "w") && !URL_WORD_RE.test(src[index - 1] ?? "")) {
       URL_RE.lastIndex = index;
       const match = URL_RE.exec(src);
       if (match !== null) {
@@ -669,6 +676,10 @@ function matchBracket(src: string, start: number, open: string, close: string): 
 
 function cleanHref(raw: string): string {
   let href = raw.trim();
+  if (href.startsWith("<")) {
+    const end = href.indexOf(">");
+    if (end > 0) return href.slice(1, end);
+  }
   // A link title follows the target after whitespace: `(url "title")`.
   const space = href.search(/\s/);
   if (space > -1) href = href.slice(0, space);
@@ -676,11 +687,16 @@ function cleanHref(raw: string): string {
   return href;
 }
 
+function unescapePunctuation(text: string): string {
+  return text.replace(/\\([!-\/:-@\[-`{-~])/g, "$1");
+}
+
 /** The text a reader sees, for measuring and for copy targets. */
 export function inlineToText(spans: MdInline[]): string {
   let out = "";
   for (const span of spans) {
     if (span.kind === "text" || span.kind === "codeSpan") out += span.text;
+    else if (span.kind === "image") out += span.alt;
     else out += inlineToText(span.spans);
   }
   return out;

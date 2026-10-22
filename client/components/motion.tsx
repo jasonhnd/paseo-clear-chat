@@ -20,15 +20,21 @@ interface RotateProps {
  */
 export function Rotate({ children, active, degrees = 180, durationMs = 180 }: RotateProps) {
   const progress = useRef(new Animated.Value(active ? 1 : 0)).current;
+  const transition = useRef({ active, pending: false });
 
   useEffect(() => {
+    // Virtualized history mounts already have the requested angle. Animate
+    // actual changes only, while allowing an interrupted transition to resume.
+    if (transition.current.active === active && !transition.current.pending) return;
+    const current = { active, pending: true };
+    transition.current = current;
     const animation = Animated.timing(progress, {
       toValue: active ? 1 : 0,
       duration: durationMs,
       easing: Easing.out(Easing.cubic),
       useNativeDriver,
     });
-    animation.start();
+    animation.start(({ finished }) => { if (finished) current.pending = false; });
     return () => {
       animation.stop();
     };

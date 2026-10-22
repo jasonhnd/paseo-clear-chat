@@ -1,0 +1,23 @@
+name: Feature request
+description: Suggest something Clear Chat could do better.
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea. English is preferred, but 中文、日本語でも OK.
+  - type: textarea
+    id: what
+    attributes:
+      label: What would you like?
+      description: Describe what you would like Clear Chat to show or do.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why do you want it?
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true

@@ -1,0 +1,71 @@
+name: Bug report
+description: Something in Clear Chat looks wrong or does not work.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. English is preferred, but 中文、日本語でも OK.
+
+        Please remove anything private (names, file paths, keys, company data) from text and screenshots before you submit.
+  - type: input
+    id: paseo-version
+    attributes:
+      label: Paseo version
+      description: Shown in Paseo's settings, or run `paseo --version`.
+      placeholder: "0.12.0"
+    validations:
+      required: true
+  - type: input
+    id: clear-chat-version
+    attributes:
+      label: Clear Chat version
+      description: Run `paseo plugin ls`, or see Settings → Plugins.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent
+      description: Which agent was the chat with? Choose all that apply.
+      multiple: true
+      options:
+        - Claude
+        - Codex
+        - Hermes
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: client
+    attributes:
+      label: Where did it happen?
+      description: Choose all that apply.
+      multiple: true
+      options:
+        - Desktop app
+        - Web
+        - iOS
+        - Android
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you see, and what did you expect to see? Steps to make it happen again help a lot.
+      placeholder: |
+        1. Open a chat with ...
+        2. ...
+        I expected ..., but ...
+    validations:
+      required: true
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Optional. Drag images here. Please hide any private content first.
+    validations:
+      required: false

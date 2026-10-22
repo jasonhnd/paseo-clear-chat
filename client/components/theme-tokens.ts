@@ -34,6 +34,15 @@ export interface ExtendedThemeTokens {
   fontCode: string;
   fontUi: string;
 
+  /** The user's text size multiplier; 1 renders the authored sizes. */
+  textScale: number;
+  /**
+   * Scales a font size or text line height by `textScale`, snapped to half
+   * points so derived line-height math stays tidy. Layout dimensions (chip
+   * heights, gutters) do not go through this: only what a reader reads.
+   */
+  fs(base: number): number;
+
   // Surfaces
   surface0: string;
   surface1: string;
@@ -162,10 +171,27 @@ function isDarkSurface(color: string): boolean {
 // PluginTheme only carries six colours, so every other surface is derived from
 // the host foreground/accent with alpha. That keeps the plugin on-theme for any
 // Paseo theme instead of hard-coding a palette that matches only one of them.
+const themeCache = new Map<string, ExtendedThemeTokens>();
+const THEME_CACHE_LIMIT = 8;
+
 export function buildThemeTokens(
   colors: PluginSurfaceColors,
   preferences: EnhancerPreferences = DEFAULT_PREFERENCES,
 ): ExtendedThemeTokens {
+  // History virtualization remounts rows. Share immutable derived tokens across
+  // those mounts, even when the host supplies equivalent new input objects.
+  const key = JSON.stringify([
+    colors.surface0, colors.foreground, colors.foregroundMuted,
+    colors.accent, colors.accentForeground, colors.statusDanger,
+    preferences.accent, preferences.uiFont, preferences.codeFont,
+    preferences.textScale, preferences.frostedGlass,
+  ]);
+  const cached = themeCache.get(key);
+  if (cached) {
+    themeCache.delete(key);
+    themeCache.set(key, cached);
+    return cached;
+  }
   const isDark = isDarkSurface(colors.surface0);
   const fg = colors.foreground;
   const accent = ACCENT_PRESETS[preferences.accent] ?? colors.accent;
@@ -174,12 +200,16 @@ export function buildThemeTokens(
   const danger = colors.statusDanger;
   const tint = isDark ? 0.1 : 0.08;
   const edge = isDark ? 0.22 : 0.18;
+  const textScale = preferences.textScale;
 
-  return {
+  const tokens: ExtendedThemeTokens = {
     isDark,
     fontMono,
     fontCode: preferences.codeFont === "plain" ? fontMono : fontCode,
     fontUi: preferences.uiFont === "system" ? "System" : fontUi,
+
+    textScale,
+    fs: (base) => Math.round(base * textScale * 2) / 2,
 
     surface0: colors.surface0,
     surface1: withAlpha(fg, isDark ? 0.03 : 0.025),
@@ -247,4 +277,7 @@ export function buildThemeTokens(
       hunk: withAlpha(colors.foregroundMuted, 0.7),
     },
   };
+  themeCache.set(key, tokens);
+  if (themeCache.size > THEME_CACHE_LIMIT) themeCache.delete(themeCache.keys().next().value!);
+  return tokens;
 }

@@ -1,0 +1,12 @@
+[
+  {
+    "type": "assistant_message",
+    "text": "1. Markdown link\uff1a[Sample guide](https://example.com/guide)\n2. Bare link\uff1ahttps://example.com/sample/project\n3. Note\uff1aOpen the sample links\u3002",
+    "messageId": "sample-list-reply"
+  },
+  {
+    "type": "assistant_message",
+    "text": "![Sample diagram](https://example.com/diagram.png?mode=sample)\n![Sample preview](https://example.com/preview.png)\nProject\uff1ahttps://example.com/sample/project",
+    "messageId": "sample-image-reply"
+  }
+]

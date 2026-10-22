@@ -30,21 +30,26 @@ function allowed(url: string): boolean {
   }
 }
 
-export function openLink(url: string): void {
+export async function openLink(url: string): Promise<void> {
   if (!allowed(url)) return;
 
-  if (Platform.OS === "web") {
-    const bridge = (globalThis as { paseoDesktop?: DesktopOpener }).paseoDesktop;
-    const openUrl = bridge?.opener?.openUrl;
-    if (typeof openUrl === "function") {
-      void openUrl(url);
+  try {
+    if (Platform.OS === "web") {
+      const opener = (globalThis as { paseoDesktop?: DesktopOpener }).paseoDesktop?.opener;
+      if (typeof opener?.openUrl === "function") {
+        try {
+          await opener.openUrl(url);
+          return;
+        } catch {
+          // An unavailable desktop bridge can still use the browser fallback.
+        }
+      }
+      globalThis.open?.(url, "_blank", "noopener,noreferrer");
       return;
     }
-    globalThis.open?.(url, "_blank", "noopener,noreferrer");
-    return;
-  }
 
-  void Linking.openURL(url).catch(() => {
-    // No handler for the scheme on this device; nothing useful to show.
-  });
+    await Linking.openURL(url);
+  } catch {
+    // Opening can be denied or have no registered handler on this client.
+  }
 }

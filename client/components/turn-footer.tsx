@@ -1,32 +1,25 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
-import { copyText } from "@getpaseo/plugin/client/react-native";
+import { CopyFallbackDialog, copyTouchTarget, useCopyText } from "./copy-feedback";
 import { Glyph } from "./glyph";
 import { unselectable } from "./selection";
 import { radius } from "./theme-tokens";
 import type { ExtendedThemeTokens } from "./theme-tokens";
+import { formatWorkedDuration } from "../reply-duration";
 
 /**
- * The host's own reply footer — copy, fork and the turn's time — is drawn by
- * the stream layout, not by the message renderer: it walks up from the newest
- * item looking for a `assistant_message` stream item
- * (`agent-stream/layout.ts:102`). A transformed item is projected as
- * `kind: "plugin"` (`plugins/timeline/projection.ts:96`), so once this plugin
- * renders the reply the host finds no assistant and draws no footer.
- *
- * This is the part a plugin can rebuild. Fork is not: it needs the daemon
- * client and a timeline cursor (`hooks/use-fork-agent.ts`), and the plugin SDK
- * exposes neither. Turning "Assistant markdown" off in settings hands the reply
- * back to the host, which brings the full footer with it.
+ * Reply-local copy and timestamp for content owned by the plugin. These must
+ * not depend on which conversation or item currently owns the hub dock.
+ * Replaced rows lose the host's duration footer, so the live renderer supplies
+ * canonical turn timing for the final reply. Fork controls remain host-owned.
  */
 interface AssistantFooterProps {
   /** The reply, copied verbatim — the same text the host would copy. */
   text: string;
   at: Date;
   tokens: ExtendedThemeTokens;
+  durationMs?: number;
 }
-
-const COPIED_MS = 1600;
 
 /**
  * Matches `utils/time.ts:formatMessageTimestamp`: bare time today, weekday and
@@ -53,30 +46,21 @@ export function formatReplyTime(date: Date, now: Date = new Date()): string {
   return `${label} ${time}`;
 }
 
-export function AssistantFooter({ text, at, tokens }: AssistantFooterProps) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = useCallback(() => {
-    void copyText(text)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), COPIED_MS);
-      })
-      .catch(() => {
-        // Clipboard access can be denied; the label simply does not change.
-      });
-  }, [text]);
+export function AssistantFooter({ text, at, tokens, durationMs }: AssistantFooterProps) {
+  const { copied, handleCopy, fallbackText, setFallbackText } = useCopyText(text);
 
   const styles = useMemo(
     () =>
       StyleSheet.create({
         container: {
           flexDirection: "row",
+          flexWrap: "wrap",
           alignItems: "center",
           gap: 8,
           marginTop: 6,
         },
         copyButton: {
+          ...copyTouchTarget,
           // Pull the button's own padding back so its icon starts on the text
           // column, the way the host footer does.
           marginLeft: -6,
@@ -90,14 +74,14 @@ export function AssistantFooter({ text, at, tokens }: AssistantFooterProps) {
         },
         copyLabel: {
           fontFamily: tokens.fontUi,
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           fontWeight: "500",
           color: copied ? tokens.success : tokens.foregroundMuted,
           ...unselectable,
         },
         time: {
           fontFamily: tokens.fontUi,
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           color: tokens.foregroundSubtle,
           ...unselectable,
         },
@@ -110,7 +94,8 @@ export function AssistantFooter({ text, at, tokens }: AssistantFooterProps) {
   const time = formatReplyTime(at);
 
   return (
-    <View style={styles.container}>
+    <View testID="reply-footer" style={styles.container}>
+      <CopyFallbackDialog text={fallbackText} onClose={() => setFallbackText(null)} tokens={tokens} />
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={copied ? "Reply copied" : "Copy reply"}
@@ -125,6 +110,9 @@ export function AssistantFooter({ text, at, tokens }: AssistantFooterProps) {
         <Text style={styles.copyLabel}>{copied ? "Copied" : "Copy"}</Text>
       </Pressable>
       <Text style={styles.time}>{time}</Text>
+      {durationMs !== undefined && Number.isFinite(durationMs) && durationMs >= 0 ? (
+        <Text testID="reply-duration" style={styles.time}>{`Worked for ${formatWorkedDuration(durationMs)}`}</Text>
+      ) : null}
     </View>
   );
 }

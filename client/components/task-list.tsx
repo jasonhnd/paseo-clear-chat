@@ -22,6 +22,7 @@ interface TaskListProps {
 export function TaskList({ data, tokens, onToggleTask }: TaskListProps) {
   const [tasks, setTasks] = useState<TaskItemData[]>(data.tasks);
   const [expandedBlockedId, setExpandedBlockedId] = useState<string | null>(null);
+  useEffect(() => setTasks(data.tasks), [data.tasks]);
 
   const completedCount = tasks.filter((t) => t.status === "completed").length;
   const totalCount = tasks.length;
@@ -134,11 +135,11 @@ export function TaskList({ data, tokens, onToggleTask }: TaskListProps) {
         },
         icon: {
           fontFamily: tokens.fontUi,
-          fontSize: 16,
+          fontSize: tokens.fs(16),
         },
         phaseBadge: {
           fontFamily: tokens.fontUi,
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           fontWeight: "600",
           textTransform: "uppercase",
           letterSpacing: 0.5,
@@ -150,12 +151,12 @@ export function TaskList({ data, tokens, onToggleTask }: TaskListProps) {
         },
         headerTitle: {
           fontFamily: tokens.fontUi,
-          fontSize: 14,
+          fontSize: tokens.fs(14),
           fontWeight: "700",
           color: tokens.foreground,
         },
         progressRatio: {
-          fontSize: 12,
+          fontSize: tokens.fs(12),
           fontWeight: "600",
           fontFamily: tokens.fontUi,
           color: tokens.foregroundMuted,
@@ -172,7 +173,7 @@ export function TaskList({ data, tokens, onToggleTask }: TaskListProps) {
         },
         statusText: {
           fontFamily: tokens.fontUi,
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           fontWeight: "600",
           color: tokens.accent,
         },
@@ -230,8 +231,8 @@ export function TaskList({ data, tokens, onToggleTask }: TaskListProps) {
         },
         taskTitle: {
           fontFamily: tokens.fontUi,
-          fontSize: 13,
-          lineHeight: 18,
+          fontSize: tokens.fs(13),
+          lineHeight: tokens.fs(18),
           color: tokens.foreground,
         },
         taskTitleCompleted: {
@@ -249,13 +250,13 @@ export function TaskList({ data, tokens, onToggleTask }: TaskListProps) {
         },
         statusLabel: {
           fontFamily: tokens.fontUi,
-          fontSize: 10,
+          fontSize: tokens.fs(10),
           fontWeight: "600",
           textTransform: "uppercase",
           letterSpacing: 0.5,
         },
         durationBadge: {
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           fontFamily: tokens.fontUi,
           color: tokens.foregroundSubtle,
         },
@@ -269,9 +270,9 @@ export function TaskList({ data, tokens, onToggleTask }: TaskListProps) {
         },
         blockedReasonText: {
           fontFamily: tokens.fontUi,
-          fontSize: 12,
+          fontSize: tokens.fs(12),
           color: tokens.warning,
-          lineHeight: 16,
+          lineHeight: tokens.fs(16),
         },
       }),
     [tokens],
@@ -306,7 +307,7 @@ export function TaskList({ data, tokens, onToggleTask }: TaskListProps) {
                   {data.phaseName}
                 </Text>
                 <Text selectable style={styles.phaseBadge}>
-                  OMP todo
+                  Checklist
                 </Text>
               </View>
             </View>

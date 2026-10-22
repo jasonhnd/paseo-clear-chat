@@ -1,0 +1,40 @@
+{
+  "items": [
+    {
+      "type": "tool_call",
+      "callId": "sample-read-failure",
+      "name": "read",
+      "detail": {
+        "type": "read",
+        "filePath": "/workspace/example/missing.txt",
+        "content": "Read failed: File not found: /workspace/example/missing.txt"
+      },
+      "metadata": {
+        "kind": "read",
+        "title": "read_file: /workspace/example/missing.txt"
+      },
+      "status": "failed",
+      "error": {
+        "message": "Tool call failed"
+      }
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-shell-failure",
+      "name": "execute",
+      "detail": {
+        "type": "shell",
+        "command": "ls /workspace/example/missing-directory",
+        "output": "terminal result\n- **output:** ls: /workspace/example/missing-directory: No such file or directory\n- **exit_code:** 1"
+      },
+      "metadata": {
+        "kind": "execute",
+        "title": "terminal: ls /workspace/example/missing-directory"
+      },
+      "status": "failed",
+      "error": {
+        "message": "Tool call failed"
+      }
+    }
+  ]
+}

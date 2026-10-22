@@ -1,6 +1,6 @@
-import React, { useMemo, useCallback, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { View, Text, Pressable, StyleSheet, Image } from "react-native";
-import { copyText } from "@getpaseo/plugin/client/react-native";
+import { CopyFallbackDialog, copyTouchTarget, useCopyText } from "./copy-feedback";
 import { Glyph } from "./glyph";
 import { Pop } from "./motion";
 import { radius } from "./theme-tokens";
@@ -21,6 +21,8 @@ interface UserMessageProps {
   timestamp?: Date;
   /** Pasted or attached images, as anything `<Image>` accepts. */
   images?: string[];
+  /** Total attachments, including images whose data is unavailable. */
+  imageCount?: number;
   tokens: ExtendedThemeTokens;
   /** Absent until the turn reports usage, and absent entirely for turns this
    * client did not observe live — usage is not persisted on timeline items. */
@@ -83,21 +85,14 @@ export function UserMessage({
   text,
   timestamp,
   images,
+  imageCount,
   tokens,
   usage,
   pending = false,
 }: UserMessageProps) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = useCallback(() => {
-    // The host owns clipboard access. Reaching for navigator directly would
-    // only work on web and would bypass its permission handling.
-    copyText(text)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1600);
-      })
-      .catch(() => {});
-  }, [text]);
+  const { copied, handleCopy, fallbackText, setFallbackText } = useCopyText(text);
+  const [failedImages, setFailedImages] = useState<ReadonlySet<string>>(() => new Set());
+  const attachmentCount = Math.max(imageCount ?? 0, images?.length ?? 0);
 
   const styles = useMemo(
     () =>
@@ -128,25 +123,26 @@ export function UserMessage({
         },
         label: {
           fontFamily: tokens.fontUi,
-          fontSize: 10,
+          fontSize: tokens.fs(10),
           fontWeight: "600",
           letterSpacing: 0.4,
           textTransform: "uppercase",
           color: tokens.userTextMuted,
         },
         copyButton: {
+          ...copyTouchTarget,
           paddingHorizontal: 4,
           paddingVertical: 2,
         },
         clock: {
           fontFamily: tokens.fontUi,
-          fontSize: 10,
+          fontSize: tokens.fs(10),
           color: tokens.userTextMuted,
         },
         text: {
           fontFamily: tokens.fontUi,
-          fontSize: 13.5,
-          lineHeight: 20,
+          fontSize: tokens.fs(13.5),
+          lineHeight: tokens.fs(20),
           color: tokens.userText,
         },
         imageRow: {
@@ -161,6 +157,11 @@ export function UserMessage({
           borderRadius: radius.block,
           backgroundColor: tokens.userBorder,
         },
+        attachmentCount: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(12),
+          color: tokens.userTextMuted,
+        },
         usageRow: {
           flexDirection: "row",
           alignItems: "center",
@@ -174,12 +175,12 @@ export function UserMessage({
         },
         usageKey: {
           fontFamily: tokens.fontUi,
-          fontSize: 10,
+          fontSize: tokens.fs(10),
           color: tokens.userTextMuted,
         },
         usageValue: {
           fontFamily: tokens.fontUi,
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           fontWeight: "600",
           color: tokens.userText,
         },
@@ -189,6 +190,7 @@ export function UserMessage({
 
   return (
     <View {...selectionSurface} style={styles.container}>
+      <CopyFallbackDialog text={fallbackText} onClose={() => setFallbackText(null)} tokens={tokens} />
       <View style={styles.body}>
         <View style={styles.metaRow}>
           <Text selectable style={styles.label}>
@@ -217,15 +219,19 @@ export function UserMessage({
         <Text selectable style={styles.text}>
           {text}
         </Text>
-        {images?.length ? (
+        {attachmentCount > 0 ? (
           <View style={styles.imageRow}>
-            {images.map((uri) => (
+            <Text selectable style={styles.attachmentCount}>
+              {attachmentCount} {attachmentCount === 1 ? "image" : "images"} attached
+            </Text>
+            {images?.filter((uri) => !failedImages.has(uri)).map((uri) => (
               <Image
                 key={uri}
                 source={{ uri }}
                 style={styles.image}
                 resizeMode="contain"
                 accessibilityLabel="Attached image"
+                onError={() => setFailedImages((previous) => new Set(previous).add(uri))}
               />
             ))}
           </View>

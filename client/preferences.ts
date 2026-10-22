@@ -1,4 +1,13 @@
 import { useSyncExternalStore } from "react";
+import type { PluginClientContext } from "@getpaseo/plugin/client";
+import { errorText } from "./error-text";
+import {
+  preferenceOverridesSchema,
+  presentationSettings,
+  presentationSettingsRpc,
+  type PresentationSettings,
+  type PreferenceOverrides,
+} from "../shared/settings";
 
 export const ACCENT_PRESETS = {
   host: undefined,
@@ -12,11 +21,29 @@ export type AccentPreset = keyof typeof ACCENT_PRESETS;
 export type UiFontPreference = "inter" | "system";
 export type CodeFontPreference = "code" | "plain";
 export type MarkdownVariantPreference = "document" | "compact" | "terminal";
+export type OutputLineLimit = 10 | 15 | 30 | "never";
+
+export const OUTPUT_LINE_OPTIONS = [
+  { value: "10", label: "10 lines" },
+  { value: "15", label: "15 lines" },
+  { value: "30", label: "30 lines" },
+  { value: "never", label: "Never" },
+] as const;
+
+/** Multiplier applied to every font size the plugin draws. */
+export const TEXT_SIZE_OPTIONS = [
+  { value: "0.9", label: "Small" },
+  { value: "1", label: "Default" },
+  { value: "1.15", label: "Large" },
+  { value: "1.3", label: "XL" },
+] as const;
 
 export interface EnhancerPreferences {
   accent: AccentPreset;
   uiFont: UiFontPreference;
   codeFont: CodeFontPreference;
+  /** Scales every text style the plugin renders; 1 is the authored size. */
+  textScale: number;
   frostedGlass: boolean;
   /**
    * A light that follows the pointer across a card. Web and desktop only:
@@ -24,10 +51,9 @@ export interface EnhancerPreferences {
    */
   pointerGlow: boolean;
   /**
-   * Paseo maps a stream item to the plugin timeline item before any transformer
-   * runs, and that mapping carries only the text. Pasted images therefore never
-   * reach plugin code, so the enhanced bubble cannot draw them. Turning this off
-   * hands prompts back to the host, whose own bubble still shows them.
+   * Style prompts when the host supplies attachment metadata. Older hosts strip
+   * it entirely, so those prompts automatically stay native to preserve images.
+   * Turning this off always hands prompts back to the host.
    */
   enhancedUserBubble: boolean;
   /**
@@ -45,20 +71,26 @@ export interface EnhancerPreferences {
   assistantMarkdown: boolean;
   /** Which look the markdown renderer uses. */
   markdownVariant: MarkdownVariantPreference;
+  foldFinishedSteps: boolean;
+  foldLongOutputAfter: OutputLineLimit;
 }
 
-const STORAGE_KEY = "paseo/beautiful-chat/preferences/v1";
+const STORAGE_KEY = "paseo/clear-chat/preferences/v1";
+const LEGACY_STORAGE_KEY = "paseo/beautiful-chat/preferences/v1";
 
 export const DEFAULT_PREFERENCES: Readonly<EnhancerPreferences> = {
   accent: "host",
   uiFont: "inter",
   codeFont: "code",
+  textScale: 1,
   frostedGlass: true,
   pointerGlow: true,
   enhancedUserBubble: true,
   selectionActions: true,
   assistantMarkdown: true,
   markdownVariant: "document",
+  foldFinishedSteps: true,
+  foldLongOutputAfter: 15,
 };
 
 const listeners = new Set<() => void>();
@@ -68,50 +100,52 @@ function storage(): Storage | undefined {
   return candidate.localStorage;
 }
 
-function isAccentPreset(value: unknown): value is AccentPreset {
-  return typeof value === "string" && value in ACCENT_PRESETS;
-}
-
-function loadPreferences(): EnhancerPreferences {
+function migrateBrowserPreferences(): string | null | undefined {
   try {
-    const stored = storage()?.getItem(STORAGE_KEY);
-    if (!stored) return { ...DEFAULT_PREFERENCES };
-    const candidate = JSON.parse(stored) as Partial<EnhancerPreferences>;
-    return {
-      accent: isAccentPreset(candidate.accent) ? candidate.accent : DEFAULT_PREFERENCES.accent,
-      uiFont: candidate.uiFont === "system" ? "system" : DEFAULT_PREFERENCES.uiFont,
-      codeFont: candidate.codeFont === "plain" ? "plain" : DEFAULT_PREFERENCES.codeFont,
-      frostedGlass:
-        typeof candidate.frostedGlass === "boolean"
-          ? candidate.frostedGlass
-          : DEFAULT_PREFERENCES.frostedGlass,
-      pointerGlow:
-        typeof candidate.pointerGlow === "boolean"
-          ? candidate.pointerGlow
-          : DEFAULT_PREFERENCES.pointerGlow,
-      enhancedUserBubble:
-        typeof candidate.enhancedUserBubble === "boolean"
-          ? candidate.enhancedUserBubble
-          : DEFAULT_PREFERENCES.enhancedUserBubble,
-      selectionActions:
-        typeof candidate.selectionActions === "boolean"
-          ? candidate.selectionActions
-          : DEFAULT_PREFERENCES.selectionActions,
-      assistantMarkdown:
-        typeof candidate.assistantMarkdown === "boolean"
-          ? candidate.assistantMarkdown
-          : DEFAULT_PREFERENCES.assistantMarkdown,
-      markdownVariant:
-        candidate.markdownVariant === "compact" || candidate.markdownVariant === "terminal"
-          ? candidate.markdownVariant
-          : DEFAULT_PREFERENCES.markdownVariant,
-    };
+    const browserStorage = storage();
+    if (!browserStorage) return undefined;
+    const current = browserStorage.getItem(STORAGE_KEY);
+    // Even an empty or invalid new value is an existing choice and takes precedence.
+    if (current !== null) return current;
+    const legacy = browserStorage.getItem(LEGACY_STORAGE_KEY);
+    // localStorage has no cross-tab compare-and-swap: this best-effort snapshot
+    // copy can race another tab's first write. Host settings remain authoritative,
+    // with revision-checked writes; this snapshot cannot replace saved host choices.
+    if (legacy !== null) browserStorage.setItem(STORAGE_KEY, legacy);
+    return legacy;
   } catch {
-    return { ...DEFAULT_PREFERENCES };
+    // Unavailable storage or a failed copy must not consume the host's migration
+    // marker. A later browser initialization can retry; the old key stays intact.
+    return undefined;
   }
 }
 
-let preferences = loadPreferences();
+function loadLegacyPreferences(): PreferenceOverrides | undefined {
+  const stored = migrateBrowserPreferences();
+  if (stored === undefined) return undefined;
+  if (!stored) return {};
+  try {
+    const candidate: unknown = JSON.parse(stored);
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return {};
+    const valid: Record<string, unknown> = {};
+    for (const [key, schema] of Object.entries(preferenceOverridesSchema.shape)) {
+      // New host-only preferences must never come from a browser import snapshot.
+      if (key === "textScale" || key === "foldFinishedSteps" || key === "foldLongOutputAfter") continue;
+      const parsed = schema.safeParse((candidate as Record<string, unknown>)[key]);
+      if (parsed.success && parsed.data !== undefined) valid[key] = parsed.data;
+    }
+    return preferenceOverridesSchema.parse(valid);
+  } catch {
+    return {};
+  }
+}
+
+let preferences: EnhancerPreferences = { ...DEFAULT_PREFERENCES };
+let invoke: PluginClientContext["rpc"] | undefined;
+let pending = Promise.resolve();
+let localVersion = 0;
+let ready = false;
+let storageError: string | null = null;
 
 function publish(): void {
   for (const listener of listeners) listener();
@@ -121,33 +155,100 @@ export function getEnhancerPreferences(): EnhancerPreferences {
   return preferences;
 }
 
-export function updateEnhancerPreferences(update: Partial<EnhancerPreferences>): void {
-  preferences = { ...preferences, ...update };
-  try {
-    storage()?.setItem(STORAGE_KEY, JSON.stringify(preferences));
-  } catch {
-    // Browser storage can be disabled. Keep the change alive for this session.
-  }
-  publish();
+export function areEnhancerPreferencesReady(): boolean {
+  return ready;
 }
 
-export function resetEnhancerPreferences(): void {
-  preferences = { ...DEFAULT_PREFERENCES };
-  try {
-    storage()?.removeItem(STORAGE_KEY);
-  } catch {
-    // Keep the default session value if storage is unavailable.
+export function getEnhancerPreferencesError(): string | null {
+  return storageError;
+}
+
+async function savePreferences(
+  change: (values: PresentationSettings) => PresentationSettings,
+): Promise<PresentationSettings> {
+  if (!invoke) throw new Error("Preference storage is not connected to a host.");
+  // Every write merges against a fresh revision. Retry bounded conflicts so
+  // another client's unrelated changes are retained rather than overwritten.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const result = await invoke(presentationSettingsRpc.read, {});
+    if (result.status !== "ready") throw new Error(result.error);
+    const current = presentationSettings.schema.parse(result.values);
+    const next = change(current);
+    if (next === current) return current;
+    const saved = await invoke(presentationSettingsRpc.write, {
+      revision: result.revision,
+      values: next,
+    });
+    if (saved.status === "saved") return presentationSettings.schema.parse(saved.values);
+    if (saved.status === "invalid") throw new Error(saved.error);
   }
+  throw new Error("Preferences changed in another client. Please try again.");
+}
+
+function enqueue(change: (values: PresentationSettings) => PresentationSettings): Promise<void> {
+  const version = localVersion;
+  pending = pending.then(async () => {
+    const values = await savePreferences(change);
+    // A queued edit must not be replaced by an older read/write response.
+    if (version === localVersion) preferences = { ...DEFAULT_PREFERENCES, ...values.preferences };
+    ready = true;
+    storageError = null;
+    publish();
+  }).catch((error: unknown) => {
+    storageError = errorText(error) ?? "Chat preferences could not be saved or loaded.";
+    publish();
+  });
+  return pending;
+}
+
+export function initializeEnhancerPreferences(rpc: PluginClientContext["rpc"]): Promise<void> {
+  invoke = rpc;
+  // Copy the browser key even if host settings were already migrated. The host
+  // remains authoritative; the new browser key is only the import snapshot.
+  const legacy = loadLegacyPreferences();
+  return enqueue((values) => {
+    if (values.legacyMigrated) return values;
+    // Native has no browser storage. Leave migration available until a web
+    // client connects, or an explicit edit/reset makes SDK settings authoritative.
+    if (legacy === undefined) return values;
+    // Existing SDK choices win over legacy values. The host marker prevents
+    // stale localStorage from restoring settings after an edit or reset.
+    return {
+      preferences: { ...legacy, ...values.preferences },
+      legacyMigrated: true,
+    };
+  });
+}
+
+export function updateEnhancerPreferences(update: Partial<EnhancerPreferences>): Promise<void> {
+  const patch = preferenceOverridesSchema.parse(update);
+  localVersion += 1;
+  preferences = { ...preferences, ...patch };
   publish();
+  return enqueue((values) => ({
+    preferences: { ...values.preferences, ...patch },
+    legacyMigrated: true,
+  }));
+}
+
+export function resetEnhancerPreferences(): Promise<void> {
+  localVersion += 1;
+  preferences = { ...DEFAULT_PREFERENCES };
+  publish();
+  // SDK reset would also clear the migration marker, so write an empty set of
+  // explicit choices instead. Each platform then uses its own defaults.
+  return enqueue(() => ({ preferences: {}, legacyMigrated: true }));
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
 }
 
 export function useEnhancerPreferences(): EnhancerPreferences {
-  return useSyncExternalStore(
-    (listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-    getEnhancerPreferences,
-    getEnhancerPreferences,
-  );
+  return useSyncExternalStore(subscribe, getEnhancerPreferences, getEnhancerPreferences);
+}
+
+export function useEnhancerPreferencesError(): string | null {
+  return useSyncExternalStore(subscribe, getEnhancerPreferencesError, getEnhancerPreferencesError);
 }

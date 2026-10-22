@@ -112,7 +112,7 @@ export function ReasoningTrace({ data, tokens, defaultExpanded = false }: Reason
         },
         titleText: {
           fontFamily: tokens.fontUi,
-          fontSize: 13,
+          fontSize: tokens.fs(13),
           fontWeight: "600",
           color: tokens.foreground,
         },
@@ -123,7 +123,7 @@ export function ReasoningTrace({ data, tokens, defaultExpanded = false }: Reason
           marginTop: 2,
         },
         badge: {
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           fontFamily: tokens.fontUi,
           paddingHorizontal: 5,
           paddingVertical: 1,
@@ -132,7 +132,7 @@ export function ReasoningTrace({ data, tokens, defaultExpanded = false }: Reason
           color: tokens.foregroundMuted,
         },
         modelBadge: {
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           fontFamily: tokens.fontUi,
           color: tokens.foregroundMuted,
         },
@@ -148,7 +148,7 @@ export function ReasoningTrace({ data, tokens, defaultExpanded = false }: Reason
         },
         statusText: {
           fontFamily: tokens.fontUi,
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           fontWeight: "600",
           color: tokens.accent,
         },
@@ -198,20 +198,20 @@ export function ReasoningTrace({ data, tokens, defaultExpanded = false }: Reason
         },
         stepTitle: {
           fontFamily: tokens.fontUi,
-          fontSize: 13,
+          fontSize: tokens.fs(13),
           fontWeight: "600",
           color: tokens.foreground,
         },
         stepDuration: {
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           color: tokens.foregroundSubtle,
           fontFamily: tokens.fontUi,
         },
         stepContent: {
           fontFamily: tokens.fontUi,
           marginTop: 6,
-          fontSize: 12,
-          lineHeight: 18,
+          fontSize: tokens.fs(12),
+          lineHeight: tokens.fs(18),
           color: tokens.foregroundMuted,
         },
         footer: {
@@ -225,7 +225,7 @@ export function ReasoningTrace({ data, tokens, defaultExpanded = false }: Reason
         },
         footerText: {
           fontFamily: tokens.fontUi,
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           color: tokens.foregroundSubtle,
         },
       }),

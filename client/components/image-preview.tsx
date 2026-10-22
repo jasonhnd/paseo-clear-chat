@@ -14,6 +14,9 @@ interface ImagePreviewProps {
   tokens: ExtendedThemeTokens;
   /** Shows the file in the machine's own file manager. */
   onReveal?: () => void;
+  revealLabel?: string;
+  /** Explicit reply images retain a reason and address; guessed cards disappear. */
+  unavailable?: React.ReactNode;
 }
 
 /** The tallest a thumbnail grows. Past this the image scales down to fit. */
@@ -37,8 +40,11 @@ function formatBytes(bytes: number): string {
  * falls back to a fixed box when the header could not be read: an image that
  * loads but reports no size still has to occupy an honest amount of room.
  */
-export function ImagePreview({ path, file, tokens, onReveal }: ImagePreviewProps) {
+export function ImagePreview({ path, file, tokens, onReveal, revealLabel, unavailable }: ImagePreviewProps) {
   const [shown, setShown] = useState(true);
+  const [failedUri, setFailedUri] = useState<string | null>(null);
+  const failed = Boolean(file?.dataUri && failedUri === file.dataUri);
+  const label = path.startsWith("data:") ? `${path.slice(0, path.indexOf(",") + 1)}…` : path;
 
   const styles = useMemo(
     () =>
@@ -60,7 +66,7 @@ export function ImagePreview({ path, file, tokens, onReveal }: ImagePreviewProps
         },
         path: {
           fontFamily: tokens.fontMono,
-          fontSize: 11.5,
+          fontSize: tokens.fs(11.5),
           color: tokens.accent,
           textDecorationLine: "underline",
           flexShrink: 1,
@@ -68,7 +74,7 @@ export function ImagePreview({ path, file, tokens, onReveal }: ImagePreviewProps
         },
         plainPath: {
           fontFamily: tokens.fontMono,
-          fontSize: 11.5,
+          fontSize: tokens.fs(11.5),
           color: tokens.foregroundMuted,
           flexShrink: 1,
           minWidth: 0,
@@ -76,7 +82,7 @@ export function ImagePreview({ path, file, tokens, onReveal }: ImagePreviewProps
         chips: { flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 0 },
         chip: {
           fontFamily: tokens.fontUi,
-          fontSize: 10,
+          fontSize: tokens.fs(10),
           color: tokens.foregroundSubtle,
           backgroundColor: tokens.surface1,
           paddingHorizontal: 6,
@@ -95,7 +101,7 @@ export function ImagePreview({ path, file, tokens, onReveal }: ImagePreviewProps
         },
         eyeLabel: {
           fontFamily: tokens.fontUi,
-          fontSize: 10,
+          fontSize: tokens.fs(10),
           fontWeight: "500",
           color: tokens.foregroundMuted,
           ...unselectable,
@@ -111,12 +117,6 @@ export function ImagePreview({ path, file, tokens, onReveal }: ImagePreviewProps
           backgroundColor: tokens.surface0,
         },
         image: { width: "100%", height: MAX_HEIGHT },
-        message: {
-          fontFamily: tokens.fontUi,
-          fontSize: 11.5,
-          color: tokens.foregroundMuted,
-          padding: 10,
-        },
       }),
     [tokens],
   );
@@ -139,6 +139,10 @@ export function ImagePreview({ path, file, tokens, onReveal }: ImagePreviewProps
         }
       : styles.image;
 
+  // Keep the caller's guessed-versus-explicit policy on daemon and decode errors.
+  // Never render the raw file.error or native image error event.
+  if (!file?.dataUri || file.error || failed) return unavailable ?? null;
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -146,16 +150,16 @@ export function ImagePreview({ path, file, tokens, onReveal }: ImagePreviewProps
         {onReveal ? (
           <Pressable
             accessibilityRole="link"
-            accessibilityLabel={`Show ${path} in the file manager`}
-            onPress={onReveal}
+            accessibilityLabel={revealLabel ?? `Show ${path} in the file manager`}
+            onPress={(event) => { event?.stopPropagation?.(); onReveal(); }}
           >
             <Text style={styles.path} numberOfLines={1}>
-              {path}
+              {label}
             </Text>
           </Pressable>
         ) : (
           <Text selectable style={styles.plainPath} numberOfLines={1}>
-            {path}
+            {label}
           </Text>
         )}
         <View style={styles.spacer} />
@@ -166,7 +170,7 @@ export function ImagePreview({ path, file, tokens, onReveal }: ImagePreviewProps
             </Text>
           ))}
         </View>
-        {file?.dataUri ? (
+        {file?.dataUri && !failed ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={shown ? "Hide the image" : "Show the image"}
@@ -179,17 +183,14 @@ export function ImagePreview({ path, file, tokens, onReveal }: ImagePreviewProps
         ) : null}
       </View>
 
-      {file === null ? (
-        <Text style={styles.message}>Reading the file…</Text>
-      ) : file.dataUri === null ? (
-        <Text style={styles.message}>{file.error ?? "The image could not be read."}</Text>
-      ) : shown ? (
+      {shown ? (
         <View style={styles.canvas}>
           <Image
             source={{ uri: file.dataUri }}
             style={frame}
             resizeMode="contain"
             accessibilityLabel={path}
+            onError={() => setFailedUri(file.dataUri)}
           />
         </View>
       ) : null}
