@@ -1,6 +1,6 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { z } from "zod";
-import { BeautifulChatSettingsPage } from "./client/settings-page";
+import { ClearChatSettingsPage } from "./client/settings-page";
 import { embedFonts } from "./client/components/embed-fonts";
 import { installFrostedGlass } from "./client/components/frosted";
 import { installShimmer } from "./client/components/shimmer";
@@ -8,9 +8,17 @@ import { installPointerGlow } from "./client/components/glow";
 import { installHostNoticeStyle } from "./client/components/host-notice";
 import { installChatFind } from "./client/components/chat-find";
 import { extractPromptImages } from "./client/prompt-images";
-import { getEnhancerPreferences } from "./client/preferences";
+import { installCompactToolSpacing } from "./client/tool-row-spacing";
+import { extractGeneratedImages } from "./client/generated-images";
+import { projectedApprovalStatus } from "./client/tool-approval";
+import {
+  areEnhancerPreferencesReady,
+  getEnhancerPreferences,
+  initializeEnhancerPreferences,
+} from "./client/preferences";
 import {
   LiveToolCallRenderer,
+  LiveApprovalRenderer,
   LiveReasoningRenderer,
   LiveTodoRenderer,
   LiveUserMessageRenderer,
@@ -25,6 +33,7 @@ function toJsonValue(value: unknown): JsonValue {
 }
 
 export default function contribute(client: PluginClientContext) {
+  void initializeEnhancerPreferences((contract, input) => client.rpc(contract, input));
   // Install the bundled faces before any surface paints.
   const removeFonts = embedFonts();
   const removeFrost = installFrostedGlass();
@@ -34,6 +43,7 @@ export default function contribute(client: PluginClientContext) {
   const removeNoticeStyle = installHostNoticeStyle();
   // Paseo's Ctrl+F cannot reveal rows this plugin draws; this bar can.
   const removeChatFind = installChatFind();
+  const removeToolSpacing = installCompactToolSpacing();
 
   // Configuration lives in the host Settings area. The plugin has no showcase
   // surface, panels, or Command Center item.
@@ -41,7 +51,7 @@ export default function contribute(client: PluginClientContext) {
     id: "chat-presentation",
     title: "Chat presentation",
     icon: "Blocks",
-    Component: BeautifulChatSettingsPage,
+    Component: ClearChatSettingsPage,
   });
 
   // Live chat timeline interception: render real tool calls, reasoning, and todos with enhanced UI.
@@ -50,6 +60,17 @@ export default function contribute(client: PluginClientContext) {
     query: { itemType: "tool_call" },
     transform({ item, phase }) {
       if (item.type !== "tool_call") return undefined;
+      const approval = projectedApprovalStatus(item);
+      if (approval) {
+        return {
+          items: [{
+            type: "plugin" as const,
+            kind: "omp-approval",
+            version: 1,
+            data: { status: approval },
+          }],
+        };
+      }
       return {
         items: [
           {
@@ -60,8 +81,10 @@ export default function contribute(client: PluginClientContext) {
               name: item.name,
               status: item.status,
               detail: toJsonValue(item.detail),
+              ...("metadata" in item && item.metadata && typeof item.metadata === "object"
+                ? { metadata: toJsonValue(item.metadata) } : {}),
               ...(item.callId ? { callId: item.callId } : {}),
-              error: item.error ? String(item.error) : null,
+              error: toJsonValue(item.error ?? null),
               phase,
             },
           },
@@ -77,11 +100,19 @@ export default function contribute(client: PluginClientContext) {
       name: z.string(),
       status: z.string(),
       detail: z.record(z.string(), z.unknown()).optional(),
+      metadata: z.record(z.string(), z.unknown()).optional(),
       callId: z.string().optional(),
-      error: z.string().nullable().optional(),
+      error: z.unknown().optional(),
       phase: z.string().optional(),
     }),
     Component: LiveToolCallRenderer,
+  });
+
+  const removeApprovalRenderer = client.addTimelineRenderer({
+    kind: "omp-approval",
+    version: 1,
+    schema: z.object({ status: z.enum(["approved", "denied", "waiting"]) }),
+    Component: LiveApprovalRenderer,
   });
 
   const removeReasoningTransformer = client.addTimelineTransformer({
@@ -151,14 +182,11 @@ export default function contribute(client: PluginClientContext) {
     query: { itemType: "user_message" },
     transform({ item }) {
       if (item.type !== "user_message") return undefined;
-      // The host strips images while mapping the stream item, so an enhanced
-      // bubble would silently swallow a pasted screenshot. The preference lets
-      // the reader trade the bubble for the host's image previews.
-      if (!getEnhancerPreferences().enhancedUserBubble) return undefined;
+      if (!areEnhancerPreferencesReady() || !getEnhancerPreferences().enhancedUserBubble) return undefined;
       const images = extractPromptImages(item);
-      // Replacing the item drops whatever this renderer does not carry, so a
-      // message with an attachment it cannot show is left to the host.
-      if (images.hasUnrenderable) return undefined;
+      // Older hosts strip all attachment metadata. Returning the original item
+      // preserves their previews when this plugin cannot even know the count.
+      if (images.count === null || images.hasOtherAttachments) return undefined;
       // `messageId` rides along so the renderer can carry the host's own
       // `data-history-row-id`, which is the id the chat outline scrolls to.
       // Replacing the item leaves the outline nothing to find otherwise.
@@ -171,6 +199,7 @@ export default function contribute(client: PluginClientContext) {
             data: toJsonValue({
               text: item.text,
               ...(images.uris.length > 0 ? { images: images.uris } : {}),
+              ...(images.count > 0 ? { imageCount: images.count } : {}),
               ...(item.messageId ? { messageId: item.messageId } : {}),
             }),
           },
@@ -185,6 +214,7 @@ export default function contribute(client: PluginClientContext) {
     schema: z.object({
       text: z.string(),
       images: z.array(z.string()).optional(),
+      imageCount: z.number().int().nonnegative().optional(),
       messageId: z.string().optional(),
     }),
     Component: LiveUserMessageRenderer,
@@ -198,15 +228,16 @@ export default function contribute(client: PluginClientContext) {
     query: { itemType: "assistant_message" },
     transform({ item }) {
       if (item.type !== "assistant_message") return undefined;
-      if (!getEnhancerPreferences().assistantMarkdown) return undefined;
-      if (!item.text.trim()) return undefined;
+      if (!areEnhancerPreferencesReady() || !getEnhancerPreferences().assistantMarkdown) return undefined;
+      const images = extractGeneratedImages({ ...item, text: undefined });
+      if (!item.text.trim() && !images.length) return undefined;
       return {
         items: [
           {
             type: "plugin" as const,
             kind: "omp-assistant",
             version: 1,
-            data: { text: item.text },
+            data: { text: item.text, images: toJsonValue(images) },
           },
         ],
       };
@@ -216,7 +247,7 @@ export default function contribute(client: PluginClientContext) {
   const removeAssistantRenderer = client.addTimelineRenderer({
     kind: "omp-assistant",
     version: 1,
-    schema: z.object({ text: z.string() }),
+    schema: z.object({ text: z.string(), images: z.array(z.object({ source: z.string(), path: z.string().optional() })).optional() }),
     Component: LiveAssistantRenderer,
   });
 
@@ -264,8 +295,10 @@ export default function contribute(client: PluginClientContext) {
     removeGlow();
     removeNoticeStyle();
     removeChatFind();
+    removeToolSpacing();
     removeToolTransformer();
     removeToolRenderer();
+    removeApprovalRenderer();
     removeReasoningTransformer();
     removeReasoningRenderer();
     removeTodoTransformer();

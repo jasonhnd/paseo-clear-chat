@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="240" viewBox="0 0 480 240">
+  <rect width="480" height="240" rx="16" fill="#edf4f0"/>
+  <rect x="28" y="28" width="424" height="184" rx="12" fill="#fff"/>
+  <text x="48" y="61" font-family="sans-serif" font-size="19" font-weight="bold" fill="#172a23">Demo cart</text>
+  <rect x="48" y="82" width="60" height="60" rx="8" fill="#d6e8df"/>
+  <path d="M65 96h21v25a10 10 0 0 1-21 0z M86 101h6a7 7 0 0 1 0 14h-6" fill="none" stroke="#287554" stroke-width="3"/>
+  <text x="124" y="104" font-family="sans-serif" font-size="15" fill="#172a23">Sample mug × 2</text>
+  <text x="124" y="129" font-family="sans-serif" font-size="13" fill="#617168">$25.00 each</text>
+  <text x="382" y="105" font-family="sans-serif" font-size="16" fill="#172a23">$50</text>
+  <rect x="48" y="159" width="384" height="32" rx="6" fill="#e0f3e8"/>
+  <text x="64" y="181" font-family="sans-serif" font-size="14" font-weight="bold" fill="#21724e">✓ Free shipping</text>
+</svg>

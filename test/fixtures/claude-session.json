@@ -1,0 +1,202 @@
+{
+  "style": "claude",
+  "provenance": "Handwritten synthetic session. All names, paths, text and URLs are fictional.",
+  "items": [
+    {
+      "id": "claude-prompt",
+      "type": "user_message",
+      "text": "Update the sample plugin configuration and document the result."
+    },
+    {
+      "id": "claude-1",
+      "type": "tool_call",
+      "callId": "claude-call-1",
+      "name": "Read",
+      "status": "completed",
+      "error": null,
+      "detail": {
+        "type": "read",
+        "filePath": "src/config.ts",
+        "content": "export const enabled = false;"
+      }
+    },
+    {
+      "id": "claude-2",
+      "type": "tool_call",
+      "callId": "claude-call-2",
+      "name": "Glob",
+      "status": "completed",
+      "error": null,
+      "detail": {
+        "type": "search",
+        "toolName": "glob",
+        "query": "**/*.ts",
+        "filePaths": [
+          "src/config.ts",
+          "src/index.ts"
+        ],
+        "numFiles": 2
+      }
+    },
+    {
+      "id": "claude-3",
+      "type": "tool_call",
+      "callId": "claude-call-3",
+      "name": "Read",
+      "status": "completed",
+      "error": null,
+      "detail": {
+        "type": "read",
+        "filePath": "src/index.ts",
+        "content": "export { enabled } from \"./config\";"
+      }
+    },
+    {
+      "id": "claude-4",
+      "type": "tool_call",
+      "callId": "claude-call-4",
+      "name": "Edit",
+      "status": "completed",
+      "error": null,
+      "detail": {
+        "type": "edit",
+        "filePath": "src/config.ts",
+        "unifiedDiff": "@@ -1 +1 @@\n-export const enabled = false;\n+export const enabled = true;"
+      }
+    },
+    {
+      "id": "claude-5",
+      "type": "tool_call",
+      "callId": "claude-call-5",
+      "name": "Write",
+      "status": "completed",
+      "error": null,
+      "detail": {
+        "type": "write",
+        "filePath": "docs/sample.md",
+        "content": "# Sample\nThe feature is enabled."
+      }
+    },
+    {
+      "id": "claude-6",
+      "type": "tool_call",
+      "callId": "claude-call-6",
+      "name": "Bash",
+      "status": "completed",
+      "error": null,
+      "detail": {
+        "type": "shell",
+        "command": "npm test",
+        "output": "Sample checks passed.",
+        "exitCode": 0
+      }
+    },
+    {
+      "id": "claude-7",
+      "type": "tool_call",
+      "callId": "claude-call-7",
+      "name": "WebSearch",
+      "status": "completed",
+      "error": null,
+      "detail": {
+        "type": "search",
+        "toolName": "web_search",
+        "query": "sample release guide",
+        "webResults": [
+          {
+            "title": "Release guide",
+            "url": "https://example.org/releases"
+          }
+        ]
+      }
+    },
+    {
+      "id": "claude-8",
+      "type": "tool_call",
+      "callId": "claude-call-8",
+      "name": "WebFetch",
+      "status": "completed",
+      "error": null,
+      "detail": {
+        "type": "fetch",
+        "url": "https://example.org/releases",
+        "prompt": "Summarize the release steps.",
+        "result": "# Release guide\nReview the notes.\nRun the checks."
+      }
+    },
+    {
+      "id": "claude-9",
+      "type": "tool_call",
+      "callId": "claude-call-9",
+      "name": "Task",
+      "status": "completed",
+      "error": null,
+      "detail": {
+        "type": "sub_agent",
+        "subAgentType": "Explore",
+        "description": "Inspect the sample entry point.",
+        "log": "The configuration is exported."
+      },
+      "metadata": {
+        "model": "sample-explore-model"
+      }
+    },
+    {
+      "id": "claude-10",
+      "type": "tool_call",
+      "callId": "claude-call-10",
+      "name": "ExitPlanMode",
+      "status": "completed",
+      "error": null,
+      "detail": {
+        "type": "plan",
+        "text": "1. Review the configuration\n2. Confirm the sample output"
+      }
+    },
+    {
+      "id": "claude-11",
+      "type": "tool_call",
+      "callId": "claude-call-11",
+      "name": "progress_note",
+      "status": "completed",
+      "error": null,
+      "detail": {
+        "type": "plain_text",
+        "text": "The sample checks passed.\nThe work is ready for review."
+      }
+    },
+    {
+      "id": "claude-12",
+      "type": "tool_call",
+      "callId": "claude-call-12",
+      "name": "Bash",
+      "status": "completed",
+      "error": null,
+      "detail": {
+        "type": "shell",
+        "command": "git diff --check",
+        "output": "",
+        "exitCode": 0
+      }
+    },
+    {
+      "id": "claude-checklist",
+      "type": "todo",
+      "items": [
+        {
+          "text": "Update configuration",
+          "completed": true
+        },
+        {
+          "text": "Run sample checks",
+          "completed": true
+        }
+      ]
+    },
+    {
+      "id": "claude-reply",
+      "type": "assistant_message",
+      "text": "The sample configuration and documentation are ready for review."
+    }
+  ]
+}

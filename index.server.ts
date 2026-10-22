@@ -1,10 +1,15 @@
 import { spawn } from "node:child_process";
 import { open, stat, type FileHandle } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
+import { homedir } from "node:os";
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { revealPathRpc } from "./shared/file-rpc";
 import { type HighlightLine, type HighlightToken, highlightRpc } from "./shared/highlight-rpc";
 import { imageRpc } from "./shared/image-rpc";
+import { presentationSettings } from "./shared/settings";
+import { toolExpansionSettings } from "./shared/tool-expansion-settings";
+import { migrateHostSettings } from "./server/settings-migration";
+import { stripFileSelector } from "./shared/file-path";
 
 /**
  * Image types worth inlining, and the mime each one needs in its data URI.
@@ -84,14 +89,9 @@ function readImageSize(bytes: Buffer, kind: string): { width: number; height: nu
   return null;
 }
 
-/** Strips the selector a tool appends to a path, such as `main.ts:55-85`. */
-function stripSelector(path: string): string {
-  const trimmed = path.trim();
-  const windowsDrive = /^[a-zA-Z]:[\\/]/.test(trimmed);
-  const head = windowsDrive ? trimmed.slice(0, 3) : "";
-  const tail = windowsDrive ? trimmed.slice(3) : trimmed;
-  const cut = tail.search(/[\s:?#]/);
-  return cut === -1 ? trimmed : head + tail.slice(0, cut);
+function requestedFile(path: string): string {
+  const clean = stripFileSelector(path);
+  return clean.startsWith("~/") ? resolve(homedir(), clean.slice(2)) : clean;
 }
 
 /**
@@ -447,8 +447,12 @@ function tokenize(
 }
 
 export default function contribute(server: PluginServerContext) {
+  migrateHostSettings();
+  server.registerSettings(presentationSettings);
+  server.registerSettings(toolExpansionSettings);
+
   server.handle(revealPathRpc, async (input) => {
-    const requested = stripSelector(input.path);
+    const requested = requestedFile(input.path);
     if (!requested) return { revealed: null, error: "No path" };
 
     const target = isAbsolute(requested) ? requested : resolve(input.cwd, requested);
@@ -466,7 +470,7 @@ export default function contribute(server: PluginServerContext) {
 
   server.handle(imageRpc, async (input) => {
     const empty = { dataUri: null, mime: null, width: null, height: null, bytes: null };
-    const requested = stripSelector(input.path);
+    const requested = requestedFile(input.path);
     if (!requested) return { ...empty, error: "No path" };
 
     const kind = requested.slice(requested.lastIndexOf(".") + 1).toLowerCase();

@@ -3,7 +3,8 @@ import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Glyph } from "./glyph";
 import { radius } from "./theme-tokens";
 import type { ExtendedThemeTokens } from "./theme-tokens";
-import { SyntaxHighlightBlock, renderTerminalOutput } from "./syntax-highlight";
+import { renderTerminalOutput } from "./syntax-highlight";
+import { ToolCodeBlock, ToolOutput } from "./tool-output";
 import { unselectable } from "./selection";
 import { selectionCodeText } from "./selection-actions";
 import { openLink } from "./open-link";
@@ -40,15 +41,15 @@ export function GitHubBody({ data, tokens, running }: GitHubBodyProps) {
         },
         label: {
           fontFamily: tokens.fontMono,
-          fontSize: 11.5,
+          fontSize: tokens.fs(11.5),
           color: tokens.foreground,
           flexShrink: 1,
           minWidth: 0,
         },
-        value: { fontFamily: tokens.fontUi, fontSize: 11, color: tokens.foregroundMuted },
+        value: { fontFamily: tokens.fontUi, fontSize: tokens.fs(11), color: tokens.foregroundMuted },
         okValue: {
           fontFamily: tokens.fontUi,
-          fontSize: 10,
+          fontSize: tokens.fs(10),
           color: tokens.success,
           backgroundColor: tokens.successBg,
           paddingHorizontal: 6,
@@ -57,7 +58,7 @@ export function GitHubBody({ data, tokens, running }: GitHubBodyProps) {
         },
         badValue: {
           fontFamily: tokens.fontUi,
-          fontSize: 10,
+          fontSize: tokens.fs(10),
           color: tokens.danger,
           backgroundColor: tokens.dangerBg,
           paddingHorizontal: 6,
@@ -67,7 +68,7 @@ export function GitHubBody({ data, tokens, running }: GitHubBodyProps) {
         spacer: { flex: 1, minWidth: 8 },
         link: {
           fontFamily: tokens.fontMono,
-          fontSize: 11,
+          fontSize: tokens.fs(11),
           color: tokens.accent,
           textDecorationLine: "underline",
         },
@@ -80,11 +81,11 @@ export function GitHubBody({ data, tokens, running }: GitHubBodyProps) {
         },
         terminalText: {
           fontFamily: tokens.fontMono,
-          fontSize: 11.5,
-          lineHeight: 17,
+          fontSize: tokens.fs(11.5),
+          lineHeight: tokens.fs(17),
           color: tokens.foregroundMuted,
         },
-        note: { fontFamily: tokens.fontUi, fontSize: 11, color: tokens.foregroundSubtle },
+        note: { fontFamily: tokens.fontUi, fontSize: tokens.fs(11), color: tokens.foregroundSubtle },
         toggle: {
           flexDirection: "row",
           alignItems: "center",
@@ -97,7 +98,7 @@ export function GitHubBody({ data, tokens, running }: GitHubBodyProps) {
         },
         toggleLabel: {
           fontFamily: tokens.fontUi,
-          fontSize: 10,
+          fontSize: tokens.fs(10),
           color: tokens.foregroundMuted,
           ...unselectable,
         },
@@ -116,7 +117,7 @@ export function GitHubBody({ data, tokens, running }: GitHubBodyProps) {
   return (
     <View style={styles.container}>
       {data.file ? (
-        <SyntaxHighlightBlock
+        <ToolCodeBlock
           code={data.file.code}
           language={data.file.language ?? "text"}
           filename={data.file.name}
@@ -149,9 +150,9 @@ export function GitHubBody({ data, tokens, running }: GitHubBodyProps) {
 
       {data.text ? (
         <View style={styles.terminal}>
-          <Text selectable {...selectionCodeText} style={styles.terminalText}>
-            {renderTerminalOutput(data.text, tokens)}
-          </Text>
+          <ToolOutput text={data.text} tokens={tokens}>
+            {shown => <Text selectable {...selectionCodeText} style={styles.terminalText}>{renderTerminalOutput(shown, tokens)}</Text>}
+          </ToolOutput>
         </View>
       ) : null}
 
@@ -185,7 +186,7 @@ export function GitHubBody({ data, tokens, running }: GitHubBodyProps) {
             <Text style={styles.toggleLabel}>request</Text>
           </Pressable>
           {showRequest ? (
-            <SyntaxHighlightBlock code={data.request} language="json" tokens={tokens} compact />
+            <ToolCodeBlock code={data.request} language="json" tokens={tokens} compact />
           ) : null}
         </View>
       ) : null}

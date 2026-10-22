@@ -1,0 +1,38 @@
+{
+  "style": "hermes",
+  "provenance": "Sanitized real projected timeline fetched read-only from a Paseo daemon. Both edit items retain the original keys, detail types, nesting, nulls and metadata shapes. All text, paths and call identifiers are fictional. The source contains a success message in unifiedDiff and no patch input or replacement text; no missing data has been invented.",
+  "items": [
+    {
+      "type": "tool_call",
+      "callId": "sample-hermes-patch-1",
+      "name": "edit",
+      "detail": {
+        "type": "edit",
+        "filePath": "/workspace/sample/example.txt",
+        "unifiedDiff": "Patch completed for `/workspace/sample/example.txt`\nFile: `/workspace/sample/example.txt`"
+      },
+      "metadata": {
+        "kind": "edit",
+        "title": "patch: /workspace/sample/example.txt"
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-hermes-patch-2",
+      "name": "edit",
+      "detail": {
+        "type": "edit",
+        "filePath": "/workspace/sample/example.txt",
+        "unifiedDiff": "Patch completed for `/workspace/sample/example.txt`\nFile: `/workspace/sample/example.txt`"
+      },
+      "metadata": {
+        "kind": "edit",
+        "title": "patch: /workspace/sample/example.txt"
+      },
+      "status": "completed",
+      "error": null
+    }
+  ]
+}

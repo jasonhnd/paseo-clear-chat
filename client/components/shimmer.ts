@@ -1,6 +1,6 @@
 import type { ViewProps } from "react-native";
 
-const STYLE_ELEMENT_ID = "beautiful-chat-shimmer";
+const STYLE_ELEMENT_ID = "clear-chat-shimmer";
 
 /**
  * A sweeping highlight for a row that is still working.

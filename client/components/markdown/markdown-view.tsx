@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { View, Text, ScrollView, StyleSheet } from "react-native";
+import { View, Text, ScrollView, StyleSheet, Platform } from "react-native";
 import type { TextStyle, ViewStyle } from "react-native";
 import { Glyph } from "../glyph";
 import { radius, withAlpha, type ExtendedThemeTokens } from "../theme-tokens";
@@ -7,7 +7,10 @@ import { selectableSurface, unselectable } from "../selection";
 import { selectionSurface } from "../selection-actions";
 import { SyntaxHighlightBlock } from "../syntax-highlight";
 import { openLink } from "../open-link";
+import { extractGeneratedImages, imageSource, type GeneratedImage } from "../../generated-images";
+import { GeneratedImages } from "../generated-images";
 import { parseMarkdown, type MdAlign, type MdBlock, type MdInline, type MdListItem } from "./parse";
+import { ImageFallback, MarkdownImage } from "./markdown-image";
 
 /**
  * The assistant's own prose, drawn by the plugin instead of the host. Three
@@ -22,6 +25,8 @@ export interface MarkdownViewProps {
   text: string;
   tokens: ExtendedThemeTokens;
   variant: MarkdownVariant;
+  images?: GeneratedImage[];
+  cwd?: string | null;
 }
 
 type MdTableBlock = Extract<MdBlock, { kind: "table" }>;
@@ -193,21 +198,88 @@ interface RenderContext {
   styles: MarkdownStyles;
   tokens: ExtendedThemeTokens;
   metrics: VariantMetrics;
+  cwd?: string | null;
 }
 
-export function MarkdownView({ text, tokens, variant }: MarkdownViewProps) {
+/**
+ * Scales every metric by the text-size preference. Spacing joins the type
+ * sizes: a body drawn a size larger inside the authored gaps reads cramped,
+ * and column estimates below already derive from `bodySize`.
+ */
+function scaleMetrics(metrics: VariantMetrics, scale: number): VariantMetrics {
+  if (scale === 1) return metrics;
+  return {
+    bodySize: metrics.bodySize * scale,
+    bodyLineHeight: metrics.bodyLineHeight * scale,
+    mono: metrics.mono,
+    blockGap: metrics.blockGap * scale,
+    headingSizes: metrics.headingSizes.map((size) => size * scale) as [
+      number,
+      number,
+      number,
+      number,
+    ],
+    headingGap: metrics.headingGap * scale,
+    headingRule: metrics.headingRule,
+    headingHash: metrics.headingHash,
+    markerWidth: metrics.markerWidth * scale,
+    itemGap: metrics.itemGap * scale,
+    indentStep: metrics.indentStep * scale,
+    tableGap: metrics.tableGap * scale,
+    columnMin: metrics.columnMin * scale,
+    columnMax: metrics.columnMax * scale,
+    glyphSize: metrics.glyphSize,
+    codeCompact: metrics.codeCompact,
+    codeLineNumbers: metrics.codeLineNumbers,
+  };
+}
+
+export function MarkdownView({ text, tokens, variant, images = [], cwd }: MarkdownViewProps) {
   const blocks = useMemo(() => parseMarkdown(text), [text]);
-  const styles = useMemo(() => buildStyles(tokens, variant), [tokens, variant]);
+  const previews = useMemo(() => {
+    const inline = markdownImageKeys(blocks);
+    return [...new Map([...extractGeneratedImages(text), ...images]
+      .filter((image) => !inline.has(image.path ?? image.source))
+      .map((image) => [image.path ?? image.source, image])).values()];
+  }, [text, images, blocks]);
+  const metrics = useMemo(
+    () => scaleMetrics(VARIANT_METRICS[variant], tokens.textScale),
+    [variant, tokens],
+  );
+  const styles = useMemo(() => buildStyles(tokens, variant, metrics), [tokens, variant, metrics]);
   const context = useMemo<RenderContext>(
-    () => ({ styles, tokens, metrics: VARIANT_METRICS[variant] }),
-    [styles, tokens, variant],
+    () => ({ styles, tokens, metrics, cwd }),
+    [styles, tokens, metrics, cwd],
   );
 
   return (
     <View {...selectionSurface} style={styles.root}>
       {blocks.map((block, index) => renderBlock(block, `b${index}`, index === 0, context))}
+      {/* Written reply paths are explicit, so unreadable images keep a reason and address. */}
+      <GeneratedImages images={previews} cwd={cwd} tokens={tokens}
+        renderUnavailable={(image) => <ImageFallback src={image.source} alt="" tokens={tokens} unsupported={false} />} />
     </View>
   );
+}
+
+/** Inline Markdown images keep their position; the gallery owns other sources. */
+function markdownImageKeys(blocks: MdBlock[]): Set<string> {
+  const keys = new Set<string>();
+  const visit = (spans: MdInline[]) => {
+    for (const span of spans) {
+      if (span.kind === "image") {
+        const image = imageSource(span.src, true);
+        keys.add(image?.path ?? image?.source ?? span.src);
+      } else if ("spans" in span) visit(span.spans);
+    }
+  };
+  for (const block of blocks) {
+    if (block.kind === "heading" || block.kind === "paragraph") visit(block.spans);
+    else if (block.kind === "list") block.items.forEach((item) => visit(item.spans));
+    else if (block.kind === "quote") block.paragraphs.forEach(visit);
+    else if (block.kind === "table") [...block.header, ...block.rows.flat()].forEach(visit);
+  }
+  return keys;
 }
 
 function renderBlock(
@@ -223,23 +295,18 @@ function renderBlock(
       const headingStyle = styles[HEADING_KEYS[block.level - 1] ?? "h4"];
       return (
         <View key={key} style={first ? styles.headingBlockFirst : styles.headingBlock}>
-          <Text selectable style={headingStyle}>
-            {metrics.headingHash ? (
+          {renderFlow(block.spans, headingStyle, key, context, {
+            prefix: metrics.headingHash ? (
               <Text style={styles.headingHash}>{HASH_LABELS[block.level - 1] ?? "# "}</Text>
-            ) : null}
-            {renderInline(block.spans, styles, key)}
-          </Text>
+            ) : null,
+          })}
           {metrics.headingRule && block.level <= 2 ? <View style={styles.headingRule} /> : null}
         </View>
       );
     }
 
     case "paragraph":
-      return (
-        <Text key={key} selectable style={styles.paragraph}>
-          {renderInline(block.spans, styles, key)}
-        </Text>
-      );
+      return renderFlow(block.spans, styles.paragraph, key, context);
 
     case "list": {
       const numberWidth = orderedColumnWidth(block.items, metrics);
@@ -255,11 +322,7 @@ function renderBlock(
     case "quote":
       return (
         <View key={key} style={styles.quote}>
-          {block.paragraphs.map((spans, index) => (
-            <Text key={`${key}q${index}`} selectable style={styles.quoteText}>
-              {renderInline(spans, styles, `${key}q${index}`)}
-            </Text>
-          ))}
+          {block.paragraphs.map((spans, index) => renderFlow(spans, styles.quoteText, `${key}q${index}`, context))}
         </View>
       );
 
@@ -304,11 +367,9 @@ function renderItem(
   const indentStyle = styles[INDENT_KEYS[depth] ?? "indent0"];
   // The body is the flexible column, so a wrapped second line starts under the
   // item's first character instead of under its marker.
-  const body = (
-    <Text selectable style={item.checked === true ? styles.itemTextDone : styles.itemText}>
-      {renderInline(item.spans, styles, key)}
-    </Text>
-  );
+  const body = renderFlow(item.spans, item.checked === true ? styles.itemTextDone : styles.itemText, key, context, {
+    containerStyle: { flex: 1 },
+  });
 
   if (item.checked !== undefined) {
     return (
@@ -367,38 +428,22 @@ function renderTable(block: MdTableBlock, key: string, context: RenderContext): 
         <View style={styles.tableHeaderRow}>
           {block.header.map((cell, column) => {
             const cellKey = `${key}h${column}`;
-            return (
-              <Text
-                key={cellKey}
-                selectable
-                style={[
-                  styles.tableHeaderCell,
-                  styles[ALIGN_KEYS[block.align[column] ?? "left"]],
-                  { width: widths[column] ?? metrics.columnMin },
-                ]}
-              >
-                {renderInline(cell, styles, cellKey)}
-              </Text>
-            );
+            return renderFlow(cell, [
+              styles.tableHeaderCell,
+              styles[ALIGN_KEYS[block.align[column] ?? "left"]],
+              { width: widths[column] ?? metrics.columnMin },
+            ], cellKey, context, { containerStyle: { width: widths[column] ?? metrics.columnMin } });
           })}
         </View>
         {block.rows.map((row, rowIndex) => (
           <View key={`${key}r${rowIndex}`} style={styles.tableRow}>
             {row.map((cell, column) => {
               const cellKey = `${key}r${rowIndex}c${column}`;
-              return (
-                <Text
-                  key={cellKey}
-                  selectable
-                  style={[
-                    styles.tableCell,
-                    styles[ALIGN_KEYS[block.align[column] ?? "left"]],
-                    { width: widths[column] ?? metrics.columnMin },
-                  ]}
-                >
-                  {renderInline(cell, styles, cellKey)}
-                </Text>
-              );
+              return renderFlow(cell, [
+                styles.tableCell,
+                styles[ALIGN_KEYS[block.align[column] ?? "left"]],
+                { width: widths[column] ?? metrics.columnMin },
+              ], cellKey, context, { containerStyle: { width: widths[column] ?? metrics.columnMin } });
             })}
           </View>
         ))}
@@ -407,38 +452,100 @@ function renderTable(block: MdTableBlock, key: string, context: RenderContext): 
   );
 }
 
+type ImageSpan = Extract<MdInline, { kind: "image" }>;
+type FlowRun = { kind: "prose"; spans: MdInline[] } | ImageSpan;
+
+/** Keep surrounding prose formatting while lifting images out of Text. */
+function imageRuns(spans: MdInline[]): FlowRun[] {
+  const runs: FlowRun[] = [];
+  let prose: MdInline[] = [];
+  const flush = () => {
+    if (prose.length) runs.push({ kind: "prose", spans: prose });
+    prose = [];
+  };
+  for (const span of spans) {
+    if (span.kind === "image") {
+      flush();
+      runs.push(span);
+    } else if ("spans" in span) {
+      for (const run of imageRuns(span.spans)) {
+        if (run.kind === "image") {
+          flush();
+          runs.push(run);
+        } else prose.push({ ...span, spans: run.spans });
+      }
+    } else prose.push(span);
+  }
+  flush();
+  return runs;
+}
+
+function renderFlow(
+  spans: MdInline[],
+  textStyle: TextStyle | TextStyle[],
+  key: string,
+  context: RenderContext,
+  options: { containerStyle?: ViewStyle; prefix?: React.ReactNode } = {},
+): React.ReactNode {
+  const runs = imageRuns(spans);
+  if (!runs.some(run => run.kind === "image")) {
+    return <Text key={key} selectable={canSelectInline(spans)} style={textStyle}>{options.prefix}{renderInline(spans, context.styles, key)}</Text>;
+  }
+  return (
+    <View key={key} style={[{ minWidth: 0, gap: 8 }, options.containerStyle]}>
+      {options.prefix}
+      {runs.map((run, index) => run.kind === "image"
+        ? <MarkdownImage key={`${key}i${index}:${run.src}`} src={run.src} alt={run.alt} cwd={context.cwd} tokens={context.tokens} />
+        : <Text key={`${key}t${index}`} selectable={canSelectInline(run.spans)} style={[textStyle, { flex: 0 }]}>{renderInline(run.spans, context.styles, `${key}t${index}`)}</Text>)}
+    </View>
+  );
+}
+
+function hasLink(spans: MdInline[]): boolean {
+  return spans.some((span) => span.kind === "link" || ("spans" in span && hasLink(span.spans)));
+}
+
+function canSelectInline(spans: MdInline[]): boolean {
+  // iOS selection recognizers compete with nested Text presses. Keep the
+  // entire linked text run tappable; other runs and the reply copy still work.
+  return Platform.OS !== "ios" || !hasLink(spans);
+}
+
 function renderInline(
   spans: MdInline[],
   styles: MarkdownStyles,
   keyPrefix: string,
+  selectable = canSelectInline(spans),
 ): React.ReactNode[] {
   return spans.map((span, index) => {
     const key = `${keyPrefix}i${index}`;
     switch (span.kind) {
       case "text":
         return span.text;
+      case "image":
+        return span.alt;
       case "codeSpan":
         return (
-          <Text key={key} selectable style={styles.codeSpan}>
+          <Text key={key} selectable={selectable} style={styles.codeSpan}>
             {span.text}
           </Text>
         );
       case "strong":
         return (
-          <Text key={key} selectable style={styles.strong}>
-            {renderInline(span.spans, styles, key)}
+          <Text key={key} selectable={selectable} style={styles.strong}>
+            {renderInline(span.spans, styles, key, selectable)}
           </Text>
         );
       case "emphasis":
         return (
-          <Text key={key} selectable style={styles.emphasis}>
-            {renderInline(span.spans, styles, key)}
+          <Text key={key} selectable={selectable} style={styles.emphasis}>
+            {renderInline(span.spans, styles, key, selectable)}
           </Text>
         );
       case "strike":
         return (
-          <Text key={key} selectable style={styles.strike}>
-            {renderInline(span.spans, styles, key)}
+          <Text key={key} selectable={selectable} style={styles.strike}>
+            {renderInline(span.spans, styles, key, selectable)}
           </Text>
         );
       case "link":
@@ -448,15 +555,18 @@ function renderInline(
         return (
           <Text
             key={key}
-            selectable
+            selectable={selectable}
             accessibilityRole="link"
             // No `href`: React Native Web would render a real anchor and the
             // click would navigate the app window itself. The press handler
             // routes through the host's opener instead.
-            onPress={() => openLink(span.href)}
+            onPress={(event) => {
+              event.stopPropagation();
+              void openLink(span.href);
+            }}
             style={styles.link}
           >
-            {renderInline(span.spans, styles, key)}
+            {renderInline(span.spans, styles, key, selectable)}
           </Text>
         );
     }
@@ -494,6 +604,9 @@ function inlineWidth(spans: MdInline[], size: number, ratio: number): number {
       case "text":
         width += span.text.length * size * ratio;
         break;
+      case "image":
+        width += span.alt.length * size * ratio;
+        break;
       case "codeSpan":
         width += span.text.length * size * CHAR_RATIO_MONO + CODE_CHIP_PADDING * 2;
         break;
@@ -527,8 +640,11 @@ function columnWidths(block: MdTableBlock, metrics: VariantMetrics): number[] {
   return widths;
 }
 
-function buildStyles(tokens: ExtendedThemeTokens, variant: MarkdownVariant): MarkdownStyles {
-  const metrics = VARIANT_METRICS[variant];
+function buildStyles(
+  tokens: ExtendedThemeTokens,
+  variant: MarkdownVariant,
+  metrics: VariantMetrics,
+): MarkdownStyles {
   const bodyFont = metrics.mono ? tokens.fontMono : tokens.fontUi;
   const [size1, size2, size3, size4] = metrics.headingSizes;
   // The terminal variant's headings sit within a point of body size, so the

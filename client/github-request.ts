@@ -9,11 +9,12 @@ function readSubject(record: Record<string, unknown>): string | undefined {
   const pr = record.pr;
   // A `pr` arrives as a number, a string or an array of either, and reads as a
   // bare digit run unless it carries its hash.
-  const pullRequest = Array.isArray(pr)
-    ? pr.map((entry) => `#${String(entry).replace(/^#/, "")}`).join(" ")
-    : typeof pr === "number" || asString(pr)
-      ? `#${String(pr).replace(/^#/, "")}`
-      : undefined;
+  const numbers = (Array.isArray(pr) ? pr : [pr]).flatMap(entry => {
+    if (typeof entry === "string" && entry.trim()) return [`#${entry.replace(/^#/, "")}`];
+    if (typeof entry === "number" && Number.isFinite(entry)) return [`#${entry}`];
+    return [];
+  });
+  const pullRequest = numbers.join(" ") || undefined;
   return (
     asString(record.path) ??
     asString(record.query) ??
@@ -70,7 +71,7 @@ const CHECK_LINE =
 /** A search hit as the op prints it: `path/to/file.ts:12: const x = 1`. */
 const SEARCH_LINE = /^([\w./\\-]+\.[\w]+):(\d+):/;
 
-/** `#125 Add beautiful-chat`, or the number inside a pull-request URL. */
+/** `#125 Add clear-chat`, or the number inside a pull-request URL. */
 const PR_LINE = /(?:^|\s)#(\d+)\b\s*(.*)$/;
 const PR_URL = /\/pull\/(\d+)\b/;
 
