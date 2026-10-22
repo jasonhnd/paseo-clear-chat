@@ -98,6 +98,31 @@ test("the same open detail changes presentation when the viewport crosses breakp
   h.unmount();
 });
 
+for (const platform of ["web", "ios", "android"]) {
+  test(`${platform}: split view retains the sheet size and restores its reading position`, () => {
+    const h = createToolHarness(platform, { isPad: platform === "ios" });
+    const mounted = h.mount(call);
+    find(h, mounted.render(), "step-detail-drag-handle").props.onAccessibilityAction({ nativeEvent: { actionName: "increment" } });
+    let tree = mounted.render();
+    const scroll = h.nodes(tree, node => node.type === "ScrollView")[0];
+    scroll.props.onScroll?.({ nativeEvent: { contentOffset: { y: 250 } } });
+    for (const width of [820, 1180, 820, 600]) {
+      h.dimensions.width = width;
+      mounted.render();
+      tree = mounted.render();
+      assert.equal(h.nodes(tree, node => node.props.testID === "step-detail-panel").length, 1);
+      assert.ok(h.text(find(h, tree, "tool-card-body")).includes(call.detail.command));
+    }
+    assert.equal(find(h, tree, "step-detail-panel").props.dataSet.snap, "full");
+    const restored = h.nodes(tree, node => node.type === "ScrollView")[0];
+    assert.equal(restored.props.contentOffset.y, 250);
+    find(h, tree, "step-detail-close").props.onPress();
+    assert.equal(find(h, mounted.render(), "step-detail-panel"), undefined);
+    assert.equal(find(h, mounted.render(), "step-detail-backdrop"), undefined);
+    h.unmount();
+  });
+}
+
 test("a selected desktop call updates its existing panel when new output arrives", () => {
   const h = createToolHarness("web", { dimensions: { width: 1440 } });
   const mounted = h.mount(call);

@@ -53,7 +53,7 @@ async function replay() {
   const html = samples => `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body,#root{margin:0;width:100%;height:100%}*{box-sizing:border-box}</style></head><body><div id="root"></div><script>window.__stepDetailSamples=${JSON.stringify(samples).replace(/</g, "\\u003c")}</script><script src="/preview.js"></script></body></html>`;
   const server = createServer((request, response) => {
     response.setHeader("Content-Type", request.url === "/preview.js" ? "text/javascript" : "text/html");
-    response.end(request.url === "/preview.js" ? bundle.outputFiles[0].contents : html(["/switching", "/keyboard"].includes(request.url) ? longSamples : [sample]));
+    response.end(request.url === "/preview.js" ? bundle.outputFiles[0].contents : html(["/switching", "/keyboard", "/rotation"].includes(request.url) ? longSamples : [sample]));
   });
   let browser;
   const report = [];
@@ -181,7 +181,37 @@ async function replay() {
       }
       report.push({ width, keyboard: "arrows scoped to steps; Enter opens; Escape closes and restores focus", inputs: "input, textarea, contenteditable keep arrows and Enter", ring, panel: box, headerHeight: header.height, chatScrollTop: scrolled, touchRing: width === 390 ? "hidden" : "not applicable" });
     }
-    for (const [width, presentation] of [[1440, "side"], [1024, "side"], [820, "popover"], [390, "sheet"]]) {
+    for (const widths of [[1180, 820, 1180], [820, 600, 820], [1024, 1023, 1024, 744, 743, 744]]) {
+      await page.setViewportSize({ width: widths[0], height: 844 });
+      await page.goto(`http://127.0.0.1:${server.address().port}/rotation`, { waitUntil: "networkidle" });
+      assert.ok(await page.getByTestId("preview-chat").evaluate(element => element.scrollTop > 0), "Chat must already be scrolled beneath the host header");
+      await row.first().click();
+      await waitOpen();
+      await detailScroll(1000);
+      for (const width of widths.slice(1)) {
+        await page.setViewportSize({ width, height: width === 820 ? 1180 : 844 });
+        const presentation = width < 744 ? "sheet" : width < 1024 ? "popover" : "side";
+        await page.waitForFunction(expected => {
+          const panels = document.querySelectorAll('[data-testid="step-detail-panel"]');
+          return panels.length === 1 && panels[0].getAttribute("data-presentation") === expected;
+        }, presentation);
+        await waitOpen();
+        assert.ok((await panel.textContent()).includes("Step A start"), "Rotation must keep the selected step");
+        assert.equal((await detailScroll()).top, 1000, "Rotation must preserve the reader's detail scroll position");
+        assert.equal(await page.getByTestId("step-detail-backdrop").count(), presentation === "side" ? 0 : 1, "Only modal presentations have a backdrop");
+        const box = await panel.boundingBox();
+        assert.ok(box.x >= 0 && box.x + box.width <= width + 1);
+        assert.ok(box.y >= 0 && box.y + box.height <= (width === 820 ? 1180 : 844) + 1);
+        const chat = await page.getByTestId("preview-chat").boundingBox();
+        if (presentation === "side") assert.ok(chat.x + chat.width <= box.x + 1);
+        report.push({ rotation: widths, width, presentation, panel: box, scrollTop: 1000 });
+      }
+      await page.getByTestId("step-detail-close").click();
+      await waitClosed();
+      await page.getByTestId("step-detail-backdrop").waitFor({ state: "detached" });
+      await page.getByTestId("preview-action").click();
+    }
+    for (const [width, presentation] of [[1440, "side"], [1180, "side"], [1024, "side"], [820, "popover"], [390, "sheet"]]) {
       await page.setViewportSize({ width, height: 844 });
       await page.goto(`http://127.0.0.1:${server.address().port}/`, { waitUntil: "networkidle" });
       await row.waitFor();

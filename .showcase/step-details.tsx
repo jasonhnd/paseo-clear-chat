@@ -1,4 +1,5 @@
 import React, { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useWindowDimensions } from "react-native";
 import { createRoot } from "react-dom/client";
 import type { PluginAgentPanelProps, PluginClientContext, PluginWorkspacePanelContribution } from "@getpaseo/plugin/client";
 import { LiveToolCallRenderer } from "../client/live-renderers";
@@ -6,6 +7,7 @@ import type { LiveToolCallPayload } from "../client/tool-call-data";
 import { installStepDetailPanel } from "../client/components/step-detail-host";
 import { embedFonts } from "../client/components/embed-fonts";
 import { initializeEnhancerPreferences, updateEnhancerPreferences, useEnhancerPreferences } from "../client/preferences";
+import { DESKTOP_MIN, TABLET_MIN } from "../client/breakpoints";
 
 declare global { interface Window { __stepDetailSamples: LiveToolCallPayload[] } }
 
@@ -27,6 +29,7 @@ installStepDetailPanel({
 } as unknown as PluginClientContext);
 
 function Preview() {
+  const { width } = useWindowDimensions();
   const [samples, setSamples] = useState(window.__stepDetailSamples);
   const chat = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => { if (chat.current) chat.current.scrollTop = 360; }, []);
@@ -37,11 +40,11 @@ function Preview() {
     <header data-testid="preview-host-header" style={{ height: 64, flexShrink: 0, padding: 20, borderBottom: `1px solid ${colors.border}` }}>Conversation</header>
     <main style={{ display: "flex", flex: 1, minHeight: 0 }}>
     <div ref={chat} data-testid="preview-chat" style={{ flex: 1, minWidth: 0, padding: 16, overflow: "auto" }}>
-      <div style={{ height: 360 }} aria-hidden="true" />
+      <div style={{ height: 460 }} aria-hidden="true" />
       <p>Offline component replay · sanitized conversation</p>
       {samples.map((sample, index) => <LiveToolCallRenderer
         key={sample.callId}
-        agentId="demo-agent" host={host} layout={{ compact: innerWidth < 744, platform: "web" }} theme={{ colors }}
+        agentId="demo-agent" host={host} layout={{ compact: width < TABLET_MIN, platform: "web" }} theme={{ colors }}
         timestamp={new Date(Date.parse("2026-01-01T12:00:00Z") + index)}
         item={{ type: "plugin", kind: "omp-tool-call", version: 1, data: sample }}
       />)}
@@ -63,8 +66,9 @@ function Preview() {
       <button data-testid="preview-action" onClick={() => updateEnhancerPreferences({ collapsedStepAction: preferences.collapsedStepAction === "details" ? "inline" : "details" })}>
         {preferences.collapsedStepAction === "details" ? "Use inline expansion" : "Use step details"}
       </button>
+      <div style={{ height: 700 }}>Later conversation</div>
     </div>
-    {showPanel ? <aside data-testid="preview-host-panel" style={{ width: "40vw", maxWidth: 440, flexShrink: 0, display: "flex", flexDirection: "column", borderLeft: `1px solid ${colors.border}` }}>
+    {showPanel ? <aside data-testid="preview-host-panel" style={{ width: "40vw", maxWidth: 440, flexShrink: 0, display: width >= DESKTOP_MIN ? "flex" : "none", flexDirection: "column", borderLeft: `1px solid ${colors.border}` }}>
       <button data-testid="preview-host-close" onClick={() => { visible = false; publish(); }}>Close host panel</button>
       <Component host={host} agentId="demo-agent" workspaceId="demo-workspace" context="agent" layout={{ compact: false, platform: "web" }} theme={{ colors }} />
     </aside> : null}
