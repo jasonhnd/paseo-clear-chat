@@ -4,7 +4,8 @@ export function stepResultText(value: unknown): string | undefined {
   if (value === undefined || value === null) return undefined;
   const blocks = Array.isArray(value) ? value : (value as { content?: unknown }).content;
   if (Array.isArray(blocks) && blocks.length > 0 && blocks.every(block =>
-    block && typeof block === "object" && block.type === "text" && typeof block.text === "string")) {
+    block && typeof block === "object" && block.type === "text" && typeof block.text === "string"
+    && Object.keys(block).every(key => key === "type" || key === "text"))) {
     // Preserve additional structured result fields instead of dropping them.
     if (Array.isArray(value) || Object.keys(value).every(key => key === "content")) {
       return blocks.map(block => block.text).join("\n");
