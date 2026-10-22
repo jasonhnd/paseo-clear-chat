@@ -22,6 +22,7 @@ const fieldSamples = JSON.parse(readFileSync(join(root, "test/fixtures/real-shel
 fieldSamples.push(JSON.parse(readFileSync(join(root, "test/fixtures/codex-session.json"), "utf8")).items.find(item => item.detail?.type === "shell"));
 fieldSamples.push({ ...sample, callId: "sample-explicit-streams", detail: { type: "shell", command: "sample", durationMs: 1250,
   output: { stdout: " sample stdout\n  ", stderr: " sample stderr\n  ", exitCode: 0 } } });
+fieldSamples.push(JSON.parse(readFileSync(join(root, "test/fixtures/real-hermes-step-menu.json"), "utf8")).items[0]);
 const fieldsOnly = process.argv.includes("--fields-only");
 // Preserve the sanitized real shell shape, with deterministic long output for scrolling.
 const longSamples = ["A", "B"].map(label => ({
@@ -154,11 +155,16 @@ async function replay() {
             assert.equal(await page.evaluate(() => navigator.clipboard.readText()), item.detail.output[stream]);
           }
         }
+        if (index === 4) {
+          assert.equal(await page.getByTestId("step-detail-output").textContent(), item.detail.output);
+          await page.getByTestId("step-detail-copy-output").click();
+          assert.equal(await page.evaluate(() => navigator.clipboard.readText()), item.detail.output);
+        }
         const bounds = await panel.boundingBox();
         assert.ok(bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= width + 1 && bounds.y + bounds.height <= 845);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
         await page.screenshot({ path: join(work, `fields-${index}-${width}.png`) });
-        report.push({ width, source: ["claude", "hermes", "codex", "explicit-streams"][index], exitCode: index === 0 ? 1 : 0,
+        report.push({ width, source: ["claude", "hermes", "codex", "explicit-streams", "hermes-multiline"][index], exitCode: index === 0 ? 1 : 0,
           duration: index === 3 ? "1.25s" : "omitted", stderr: index === 3 ? "separate, copy verified" : "omitted", bounds });
       }
     }

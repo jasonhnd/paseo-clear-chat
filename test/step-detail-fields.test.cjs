@@ -3,11 +3,29 @@ const test = require("node:test");
 const { createToolHarness } = require("./helpers/tool-harness.cjs");
 const captures = require("./fixtures/real-shell-details.json").entries;
 const hermesFailure = require("./fixtures/real-hermes-errors.json").items[1];
+const hermesMultiline = require("./fixtures/real-hermes-step-menu.json").items[0];
 const codex = require("./fixtures/codex-session.json").items.find(item => item.detail?.type === "shell");
 const byId = (h, tree, id) => h.nodes(tree, node => node.props.testID === id)[0];
 
 for (const platform of ["web", "ios", "android"]) {
   for (const width of [1440, 1024, 820, 390]) {
+    test(`${platform} ${width}: existing multiline Hermes capture shows its exit code and copies unchanged output`, async t => {
+      const h = createToolHarness(platform, { dimensions: { width, height: 844 },
+        preferences: { collapsedStepAction: "details" } });
+      t.after(() => h.unmount());
+      const before = structuredClone(hermesMultiline);
+      const build = h.load("client/tool-call-data.ts").buildLiveToolCallData;
+      assert.equal(build(hermesMultiline).exitCode, 0);
+      const { tree } = h.mount(hermesMultiline);
+      assert.equal(h.text(byId(h, tree, "step-detail-exit-code")), "Exit code: 0");
+      assert.equal(h.text(byId(h, tree, "step-detail-output")), hermesMultiline.detail.output);
+      assert.equal(byId(h, tree, "step-detail-duration"), undefined);
+      assert.equal(byId(h, tree, "step-detail-stderr"), undefined);
+      await byId(h, tree, "step-detail-copy-output").props.onPress();
+      assert.deepEqual(h.copies, [hermesMultiline.detail.output]);
+      assert.deepEqual(hermesMultiline, before);
+    });
+
     test(`${platform} ${width}: captured shell fields and failure text remain visible and copyable`, async t => {
       const h = createToolHarness(platform, { dimensions: { width, height: 844 },
         preferences: { collapsedStepAction: "details" } });
@@ -92,7 +110,11 @@ test("exit codes require recognized result envelopes and never come from command
   }
   const hermes = captures[1].item;
   for (const output of ["- exit_code: 9", "terminal result\n- output: sample\n- exit_code: 1.5",
-    "terminal result\n- output: sample\n- exit_code: 9\nextra", "Exit code 9\ncommand output"]) {
+    "terminal result\n- output: sample\n- exit_code: 9\nextra", "Exit code 9\ncommand output",
+    "**exit_code:**\n9", "terminal result\n\n**exit_code:**\n9",
+    "terminal result\n\n**output:**\nsample\n**exit_code:**\n1.5",
+    "terminal result\n\n**output:**\nsample\n**exit_code:**\n9\nextra",
+    "Quoted text\nterminal result\n\n**output:**\nsample\n**exit_code:**\n9"]) {
     assert.equal(build({ ...hermes, detail: { ...hermes.detail, output } }).exitCode, undefined);
   }
   const body = "terminal result\n- output: literal\n- exit_code: 99\n- exit_code: 0";
@@ -102,4 +124,8 @@ test("exit codes require recognized result envelopes and never come from command
   assert.equal(build({ ...claude, timestamp: 100, startedAt: 0, endedAt: 100 }).durationMs, undefined);
   assert.equal(build({ ...claude, error: { ...claude.error, content: [{ type: "text", text: "Exit code 2\r\nSample error" }] } }).exitCode, 2);
   assert.equal(build({ ...hermes, detail: { ...hermes.detail, output: "terminal result\r\n- output: sample\r\n- exit_code: 0\r\n" } }).exitCode, 0);
+  assert.equal(build({ ...hermesMultiline, detail: { ...hermesMultiline.detail, output: hermesMultiline.detail.output.replace(/\n/g, "\r\n") + "\r\n" } }).exitCode, 0);
+  const multilineBody = "terminal result\n\n**output:**\nliteral\n**exit_code:**\n99\n**exit_code:**\n1";
+  assert.equal(build({ ...hermesMultiline, detail: { ...hermesMultiline.detail, output: multilineBody } }).exitCode, 1);
+  assert.equal(build({ ...hermesMultiline, detail: { ...hermesMultiline.detail, exitCode: 7 } }).exitCode, 7);
 });

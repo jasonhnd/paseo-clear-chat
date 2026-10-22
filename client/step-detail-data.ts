@@ -43,6 +43,8 @@ export function claudeResultError(error: unknown): string | undefined {
 export function shellResultExitCode(output: unknown, error: unknown): number | undefined {
   const terminal = typeof output === "string" ? output.match(
     /^terminal result\r?\n- (?:output:|\*\*output:\*\*)[\s\S]*\r?\n- (?:exit_code:|\*\*exit_code:\*\*) (-?\d+)(?:\r?\n)?$/,
+  ) ?? output.match(
+    /^terminal result\r?\n\r?\n\*\*output:\*\*\r?\n[\s\S]*\r?\n\*\*exit_code:\*\*\r?\n(-?\d+)(?:\r?\n)?$/,
   ) : undefined;
   const claude = claudeResultError(error)?.match(/^Exit code (-?\d+)(?:\r?\n|$)/);
   const value = terminal?.[1] ?? claude?.[1];

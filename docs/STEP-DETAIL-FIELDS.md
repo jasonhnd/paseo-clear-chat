@@ -9,7 +9,7 @@ all its tools supply the same fields.
 | --- | --- | --- | --- |
 | Claude | No duration on shell calls. Conditional on other tools: Glob and WebFetch retain `detail.durationMs`; WebSearch retains `detail.durationSeconds`. None occurs in the captured shell failure. [Schema](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/protocol/src/agent-types.ts#L215-L268), [conversion](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/tool-call-detail-primitives.ts#L889-L920), [fetch conversion](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/tool-call-detail-primitives.ts#L955-L974). | Available when `detail.exitCode` survives conversion. In the captured failure it is instead an explicit `Exit code 1` header in `error.content`, inside a failed `tool_result` envelope. [Fixture](../test/fixtures/real-shell-details.json#L9-L19), [shell conversion](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/tool-call-detail-primitives.ts#L183-L211). | Not separate in the shell projection or captured failure. Its error text survives in `error.content`; the plugin displays it as Error without claiming it is stderr. [Failure mapping](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/claude/agent.ts#L5571-L5601), [discarded normal output on error](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/claude/agent.ts#L5638-L5645). |
 | Codex | Not retained by the native command-execution mapping or shell schema; absent from the existing shell fixture. [Mapper](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/codex/tool-call-mapper.ts#L679-L706), [parser](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/codex/tool-call-detail-parser.ts#L83-L119). | Yes: native `exitCode` becomes `detail.exitCode`, including zero. [Fixture](../test/fixtures/codex-session.json#L23-L35), [mapper](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/codex/tool-call-mapper.ts#L688-L695). | No separate stream in the native shell projection: `aggregatedOutput` becomes `detail.output`. [Mapper](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/codex/tool-call-mapper.ts#L679-L695). |
-| Hermes (ACP) | No duration in the standard ACP shell projection, nor in the new captured listing. [ACP conversion](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/acp-agent.ts#L3895-L3907). | Yes when ACP supplies `detail.exitCode`; otherwise the captured `detail.output` has a complete `terminal result` envelope ending with `- **exit_code:** 0`. Existing failed-shell capture reports 1. [New capture](../test/fixtures/real-shell-details.json#L35-L50), [failure capture](../test/fixtures/real-hermes-errors.json#L23-L39), [ACP conversion](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/acp-agent.ts#L3895-L3907). | No separate stream in these captures or the ACP shell conversion. The merged `detail.output` remains Output. [New capture](../test/fixtures/real-shell-details.json#L40-L44), [ACP conversion](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/acp-agent.ts#L3895-L3907). |
+| Hermes (ACP) | No duration in the standard ACP shell projection, nor in the new captured listing. [ACP conversion](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/acp-agent.ts#L3895-L3907). | Yes when ACP supplies `detail.exitCode`; otherwise the captured `detail.output` has a complete `terminal result` envelope ending with either inline `- **exit_code:** 0` or a multiline `**exit_code:**` heading followed by the integer. Existing failed-shell capture reports 1. [New capture](../test/fixtures/real-shell-details.json#L35-L50), [failure capture](../test/fixtures/real-hermes-errors.json#L23-L39), [multiline capture](../test/fixtures/real-hermes-step-menu.json#L5-L19), [ACP conversion](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/acp-agent.ts#L3895-L3907). | No separate stream in these captures or the ACP shell conversion. The merged `detail.output` remains Output. [New capture](../test/fixtures/real-shell-details.json#L40-L44), [ACP conversion](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/acp-agent.ts#L3895-L3907). |
 
 The shell wire schema also contains only `command`, `cwd`, `output` and
 `exitCode`: [messages.ts:531](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/protocol/src/messages.ts#L531-L539).
@@ -22,8 +22,9 @@ structured results, but their presence must be checked on the individual call.
 - Read valid explicit `durationMs` or `durationSeconds` and process exit-code
   fields first. Zero remains a valid reported value. HTTP `code` is never a
   process exit code.
-- For shell tools only, recover an integer from a complete terminal-result
-  envelope or the leading `Exit code N` header in a failed Claude `tool_result`.
+- For shell tools only, recover an integer from either complete terminal-result
+  format (inline list labels or multiline Markdown labels) or the leading
+  `Exit code N` header in a failed Claude `tool_result`.
   A command, status, arbitrary output line or timestamp cannot provide a code.
   Structured codes take precedence over text envelopes.
 - Preserve the full Claude `error.content` for display and Copy error. Failure
@@ -65,9 +66,9 @@ these checks do not replace physical-device validation.
 For Chrome layout and real clipboard checks, install the documented showcase
 dependencies and run `node scripts/replay-step-details.cjs --fields-only` with
 `KANBAN_TMP` set. This builds the preview in memory, uses an available debugging
-port in 9444–9499, checks all four widths with the three provider samples plus
-an explicit-stream compatibility sample, and stores its report/screenshots in
-the task's temporary directory. The existing full replay remains available
+port in 9444–9499, checks all four widths with four provider samples, including
+both Hermes formats, plus an explicit-stream compatibility sample, and stores
+its report/screenshots in the task's temporary directory. The existing full replay remains available
 without the flag.
 
 The complete browser replay also has a known rotation/scroll restoration
@@ -84,3 +85,19 @@ passed 979 tests before integration and 1,010 after rebasing onto the latest
 feature branch, including its agent-delivery regressions. Main and showcase
 TypeScript checks passed. Client and server entrypoints also bundle in memory
 with external runtime dependencies, matching the host's supplied SDK model.
+
+The existing `real-hermes-step-menu.json:12` capture uses `terminal result`,
+a blank line, an `**output:**` heading and a final `**exit_code:**` heading
+with the integer on the following line. Both this format and the inline
+list format now yield separate exit-code metadata. The multiline sample
+previously yielded no exit code; it now shows Exit code 0 while retaining
+the complete original result for display and copying. Twelve explicit panel
+regressions cover this sample across all four widths on web, iOS and Android.
+Malformed or partial wrappers, fractional codes and trailing prose remain
+rejected; CRLF, literal labels inside output and typed-code precedence are
+covered as well.
+
+After adding the multiline capture, the field suite has 34 tests: 21 passed
+and 13 failed before the parser fix, then all 34 passed. The full suite passes
+1,022 tests. Chrome field replay passes 20 cases, including the multiline
+sample at 1440, 1024, 820 and 390px with exact full-result clipboard checks.
