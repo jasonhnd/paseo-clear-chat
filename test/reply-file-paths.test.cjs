@@ -167,3 +167,9 @@ test("inline filenames retain their line selectors as one file action", async ()
   await press(links[0]);
   assert.deepEqual(h.reveals, [{ cwd: "/workspace/demo", path: "README.md:55:3" }]);
 });
+
+test("spaced paths stop at fullwidth punctuation before the next sentence", () => {
+  const h = createToolHarness("web", { markdown: true });
+  const { tree } = h.mount({ type: "assistant_message", text: "Report: /workspace/sample/monthly report.pdf\u3002 Next: ./notes.txt" });
+  assert.deepEqual(fileLinks(h, tree).map(link => link.props.accessibilityLabel.replace(/^Show file path: /, "")), ["/workspace/sample/monthly report.pdf", "./notes.txt"]);
+});
