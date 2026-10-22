@@ -114,6 +114,7 @@ function createToolHarness(platform = "ios", options = {}) {
   };
   if (options.realSelection) delete stubs["client/components/selection"];
   if (options.settingsPage) delete stubs["client/settings-page"];
+  if (options.themeTokens) delete stubs["client/components/theme-tokens"];
   if (options.fonts) delete stubs["client/components/embed-fonts"];
   if (options.presentationHost) delete stubs["client/preferences"];
   if (options.markdown) delete stubs["client/components/markdown/markdown-view"];
@@ -232,7 +233,7 @@ function createToolHarness(platform = "ios", options = {}) {
       const pluginItem = transformed.items[0];
       const renderer = renderers.get(pluginItem.kind);
       const data = renderer.schema.parse(pluginItem.data);
-      const render = (nextData = data) => draw(jsx(renderer.Component, { agentId: "demo-agent", host: { id: "demo-host" }, item: { ...pluginItem, data: nextData }, theme: { colors: {} }, timestamp: timestamps.get(item), ...identity }));
+      const render = (nextData = data) => draw(jsx(renderer.Component, { agentId: "demo-agent", host: { id: "demo-host" }, item: { ...pluginItem, data: nextData }, theme: { colors: options.themeColors ?? {} }, timestamp: timestamps.get(item), ...identity }));
       let tree = render();
       if (expand) {
         const button = nodes(tree, node => node.props.testID === "tool-summary-row" && node.props.accessibilityState?.expanded === false)[0];
