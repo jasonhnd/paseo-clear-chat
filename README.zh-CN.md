@@ -141,7 +141,8 @@ paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref 
 - **收尾回复。** 通过 `wrap_up` 工具发出的回复，会显示成完整的回复卡片：小结、问题、带字母的选项，以及 **Blocked** 提醒。
 - **链接能点。** 回复里的链接在桌面、网页和 iOS 上都能打开，`mailto:` 链接会打开邮件应用。
 - **对话内查找。** Ctrl/Cmd+F 打开查找栏，工具卡片里的内容也能搜到。只搜已经加载的消息，要搜更早的请先往上滚。
-- **打开文件。** 点卡片里的文件名，会在 Finder、资源管理器或文件管理器里显示这个文件。
+- **打开文件。** 点卡片里的文件名或回复里的路径，会在主机上的 Finder、资源管理器或文件管理器里显示这个文件。在手机、平板和窄的网页窗口里，点回复里的路径会改为复制到剪贴板，并提示你到主机上打开。文件名或路径里有空格时，请写成行内代码，或用 Markdown 链接。
+- **高亮文字。** 回复里写 `==要标出的文字==` 会加上高亮。代码里的等号照原样显示。
 
 ## 设置
 
@@ -149,20 +150,40 @@ paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref 
 
 | 设置项 | 作用 |
 |---|---|
-| Accent colour | 跟随 Paseo 主题，或选 Jade、Violet、Amber、Rose。 |
+| Accent colour | 跟随 Paseo 主题，选 Jade、Violet、Amber、Rose，或选 **Custom** 用色板和 HEX 输入框自定颜色。自定颜色会自动调整，保证文字对比度不低于 4.5:1。 |
 | Interface font | 内置的 Inter 字体，或系统字体。 |
 | Text size | Small (90%)、Default (100%)、Large (115%)、XL (130%)。图标大小不变。 |
 | Code glyphs | 带连字的 Iosevka，或普通字形。 |
+| Code font | Default (Iosevka)（默认）、Iosevka、Menlo、Consolas、Fira Code 或 Cascadia Code。对代码块、行内代码、终端输出和差异对比生效。 |
 | Fold finished steps | 默认开。关掉后所有步骤都展开，你单独设过的调用除外。 |
 | Fold long output after | 10、15（默认）、30 行，或 Never。对代码和工具输出生效。 |
 | Frosted glass | 卡片背景做毛玻璃效果，或用纯色。 |
 | Enhanced prompt bubble | 给你的提问加样式。关掉就用 Paseo 自带的气泡。 |
 | Assistant markdown | 关掉后，回复交回 Paseo 自己显示。 |
 
-设置保存在主机上，连到同一台主机的设备都共用。折叠相关的设置马上生效；其他改动对新消息生效，要更新之前的消息请重新加载对话。
+**自定强调色。** 点一个色块，或输入 `#RGB`、`#RRGGBB` 后按 **Apply**。HEX 写错时会留在输入框里并提示错误，已保存的颜色不变。切换到预设色后，你的自定颜色仍会记住。保存的 HEX 值始终不变；只有文字可能看不清时，显示出来的颜色才会在浅色主题下调深、在深色主题下调浅。实心按钮上的文字用黑或白，哪个对比度高用哪个。
+
+**代码字体。** 插件 SDK 读不到 Paseo 自己的代码字体设置。**Default (Iosevka)** 使用 Iosevka，并沿用你在 **Code glyphs** 里的选择。在网页和桌面上，其他字体要先装在电脑上；没装的话改用内置的 Iosevka。在 iOS 和 iPadOS 上，代码一律用 Menlo；在 Android 上用系统的等宽字体，因为从插件目录安装的插件在这些平台上加载不了内置的网页字体。
+
+设置保存在主机上，连到同一台主机的设备都共用。强调色和折叠相关的设置马上生效；其他改动对新消息生效，要更新之前的消息请重新加载对话。
 
 > [!NOTE]
 > **在 iOS 和 iPadOS 上**，开着 **Assistant markdown** 或 **Enhanced prompt bubble** 时，不能拖动选择文字。请用回复、提问或代码块上的 **Copy** 按钮。复制失败时，会弹出一个显示全文的窗口，可以手动选择复制。
+
+## 常见问题
+
+| 问题 | 怎么办 |
+|---|---|
+| 用 Cafe 插件安装失败，或 Paseo 提示缺少 `@shikijs/core` 等 Shiki 依赖。 | 用[安装](#安装)里的 Paseo CLI 命令重试，仓库和版本标签保持不变。Clear Chat 用 `npm ci --include=dev` 安装依赖，所以运行 daemon 的主机上要有 Node.js 和 npm，网络也要能连到 npm 仓库。如果代码目录是你自己管理的，请先在那里运行 `npm ci --include=dev` 再重试。 |
+| Paseo 拒绝这个插件版本，或 Clear Chat 提示缺少插件设置或时间线支持。 | 把运行 daemon 的主机和所有连着的应用都更新到新版 Paseo，再重新加载 Clear Chat。Clear Chat 需要的 Paseo 版本写在 `paseo-plugin.json` 里。 |
+| 插件注册失败，Clear Chat 启动不了。 | 更新 Paseo，再重新加载 Clear Chat。还不行的话，先备份插件设置，再用 CLI 重新安装。 |
+| Clear Chat 读不到主机上的设置。 | 重新连接主机，在 **Settings → Plugins → Clear Chat** 里点 **Retry**。还不行的话，检查 daemon 能不能访问插件设置文件夹。 |
+| Clear Chat 提示设置无效或格式不支持。 | 先备份设置。用一份正常的备份恢复，或在 daemon 主机上修好设置文件，再点 **Retry**。Clear Chat 不会自己删掉这个文件。 |
+| Clear Chat 保存不了设置。 | 检查 daemon 主机上的写入权限和剩余磁盘空间，重新连接后再改一次。**Retry** 只会重新读取设置，不会重发刚才失败的修改。 |
+| 设置被另一个客户端不停改动。 | 等另一边改完，再改一次。 |
+| Beautiful Chat 的设置没有搬过来。 | 保留 Beautiful Chat 原来的设置并备份。检查两个插件设置文件夹的读写权限和剩余磁盘空间，再重新加载 Clear Chat 重试。搬迁失败时，daemon 日志里会有一条恢复提示；已有的设置不会被覆盖。 |
+
+如果 Paseo 运行不了构建命令，或加载不了插件包，Clear Chat 就没办法自己显示提示。请检查 daemon 主机上的 Node.js、npm 和 Paseo 版本，再用 CLI 重试。问题还在的话，请点插件设置里的 **Report a problem**，附上恢复提示和你的 Paseo 版本。分享日志前，请删掉私人路径和对话内容。
 
 ## 反馈问题
 

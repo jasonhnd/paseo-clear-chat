@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=semver"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <a href="https://paseo.sh"><img alt="Paseo 0.8.0+" src="https://img.shields.io/badge/Paseo-%3E%3D0.8.0-5b5bd6"></a>
+  <a href="https://paseo.sh"><img alt="Paseo 0.12.0+" src="https://img.shields.io/badge/Paseo-%3E%3D0.12.0-5b5bd6"></a>
 </p>
 
 <p align="center">
@@ -137,11 +137,12 @@ Search, fetch and web search, plans and checklists, plain text, skills and any o
 
 ### Also included
 
-- **Step details.** Press a folded tool row to inspect it in a phone bottom sheet, tablet popover or desktop side panel. Drag the phone handle between half and full screen, or down to dismiss. Choose **Expand inline** in settings to restore the original folding behavior and saved choices. Running, failed and waiting calls open by default. Long output shows the first 15 lines, with **Show all N lines**.
+- **Folding you control.** Click any row to open or close it. Your choice is remembered after reloads. Running, failed and waiting calls open by default. Long output shows the first 15 lines, with **Show all N lines**.
 - **Wrap-up replies.** Replies sent through a `wrap_up` tool show as a full reply card, with recap, question, lettered options and a **Blocked** alert.
 - **Clickable links.** Links in replies open on desktop, web and iOS, and `mailto:` links open your mail app.
 - **Find in chat.** Ctrl/Cmd+F opens a find bar that also searches tool cards. It searches the messages that are loaded, so scroll up to include older ones.
-- **Open files.** A file name in a card shows that file in Finder, Explorer, or your file manager.
+- **Open files.** File names in cards and paths in replies show the file in Finder, Explorer or your file manager on the host computer. On phones, tablets and narrow web windows, paths in replies are copied to the clipboard instead, with a hint to open them on the host. Put a file name or path that contains spaces in inline code, or use a Markdown link.
+- **Highlight text.** `==marked text==` highlights text in replies. Inside code, the equals signs stay as they are.
 
 ## Settings
 
@@ -149,21 +150,40 @@ Search, fetch and web search, plans and checklists, plain text, skills and any o
 
 | Setting | Effect |
 |---|---|
-| Accent colour | Follow the Paseo theme, or pick Jade, Violet, Amber or Rose. |
+| Accent colour | Follow the Paseo theme, pick Jade, Violet, Amber or Rose, or choose **Custom** for colour swatches and a HEX field. Custom colours are adjusted to keep text contrast at 4.5:1 or higher. |
 | Interface font | Embedded Inter, or your system font. |
 | Text size | Small (90%), Default (100%), Large (115%) or XL (130%). Icons keep their size. |
 | Code glyphs | Iosevka with ligatures, or plain glyphs. |
+| Code font | Default (Iosevka) (default), Iosevka, Menlo, Consolas, Fira Code or Cascadia Code. Applies to code blocks, inline code, terminal output and diffs. |
 | Fold finished steps | On by default. Off opens every step unless you chose otherwise for that call. |
-| When a collapsed step is pressed | Open details (default), or expand the card inline with the original folding behavior. |
 | Fold long output after | 10, 15 (default) or 30 lines, or Never. Applies to code and tool output. |
 | Frosted glass | Blur card backgrounds, or paint them solid. |
 | Enhanced prompt bubble | Styles your prompts. Off uses Paseo's own bubble. |
 | Assistant markdown | Off hands replies back to Paseo's own renderer. |
 
-Settings are saved on the host, so every device connected to that host shares them. Folding and step-detail settings apply at once. Other changes apply to new messages; reload the chat to update older ones.
+**Custom accent colour.** Tap a swatch, or enter `#RGB` or `#RRGGBB` and press **Apply**. An invalid HEX value stays in the field with an error, and the saved colour does not change. Switching to a preset remembers your custom colour. The saved HEX value never changes; only the colour you see is darkened on light themes or lightened on dark themes when text would otherwise be hard to read. Filled buttons use black or white text, whichever has more contrast.
+
+**Code font.** The plugin SDK does not give plugins Paseo's own code font setting. **Default (Iosevka)** uses Iosevka with your **Code glyphs** choice. On web and desktop, the other fonts must be installed on your computer; if one is missing, the embedded Iosevka is used. On iOS and iPadOS, code always uses Menlo, and on Android it uses the system monospace font, because plugins from the directory cannot load the embedded web fonts on these platforms.
+
+Settings are saved on the host, so every device connected to that host shares them. Accent colours and folding settings apply at once. Other changes apply to new messages; reload the chat to update older ones.
 
 > [!NOTE]
 > **On iOS and iPadOS** you cannot select text by dragging while **Assistant markdown** or **Enhanced prompt bubble** is on. Use the **Copy** button on the reply, prompt or code block instead. If copying fails, a dialog shows the full text for you to select by hand.
+
+## Troubleshooting
+
+| Problem | What to do |
+|---|---|
+| Installing through the Cafe plugin fails, or Paseo reports a missing Shiki dependency such as `@shikijs/core`. | Retry with the Paseo CLI command in [Install](#install), using the same repository and release ref. Clear Chat installs its dependencies with `npm ci --include=dev`, so Node.js and npm must be available on the daemon host, and its network must reach the npm registry. If you manage the checkout yourself, run `npm ci --include=dev` there before retrying. |
+| Paseo rejects the plugin version, or Clear Chat says plugin settings or timeline support is missing. | Update Paseo on the daemon host and in every connected app, then reload Clear Chat. The Paseo version Clear Chat needs is declared in `paseo-plugin.json`. |
+| Clear Chat cannot start because plugin registration failed. | Update Paseo and reload Clear Chat. If it still fails, back up the plugin settings before you reinstall from the CLI. |
+| Clear Chat cannot read its settings from the host. | Reconnect to the host and choose **Retry** in **Settings → Plugins → Clear Chat**. If it still fails, check that the daemon can access the plugin settings folder. |
+| Clear Chat says its settings are invalid or in an unsupported format. | Back up the settings first. Restore a valid backup, or repair the settings file on the daemon host, then choose **Retry**. Clear Chat never erases the file by itself. |
+| Clear Chat cannot save settings. | Check write permission and free disk space on the daemon host, reconnect, then make the change again. **Retry** reloads the settings; it does not resend a change that failed. |
+| Settings keep changing because of another client. | Wait until the other edits finish, then make the change again. |
+| Beautiful Chat settings were not migrated. | Keep Beautiful Chat's original settings and back them up. Check read and write access to both plugin settings folders and free disk space, then reload Clear Chat to try again. A failed migration leaves a recovery message in the daemon log; existing settings are never overwritten. |
+
+If Paseo cannot run the build command or load the plugin bundle, Clear Chat cannot show a message of its own. Check Node.js, npm and the Paseo version on the daemon host, then retry from the CLI. If the problem stays, use **Report a problem** in the plugin settings and include the recovery message and your Paseo version. Remove private paths and conversation content before you share any logs.
 
 ## Reporting problems
 
