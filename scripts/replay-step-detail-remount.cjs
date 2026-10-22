@@ -92,7 +92,8 @@ async function replay() {
       try {
         await page.waitForFunction(() => {
           const panel = document.querySelector('[data-testid="step-detail-panel"]');
-          return panel?.dataset.presentation === "sheet" && panel.querySelector('[data-testid="step-detail-scroll"]')?.scrollTop === 400;
+          const bounds = panel?.getBoundingClientRect();
+          return bounds && bounds.top >= 0 && bounds.bottom <= innerHeight + 1 && panel.dataset.presentation === "sheet" && panel.querySelector('[data-testid="step-detail-scroll"]')?.scrollTop === 400;
         }, undefined, { timeout: 2000 });
       } catch { passed = false; }
       assert.equal(await originalRow.evaluate(node => node.isConnected), false, "The host must recreate its timeline at the compact boundary");
@@ -105,7 +106,8 @@ async function replay() {
       if (passed) {
         await page.waitForFunction(() => {
           const panel = document.querySelector('[data-testid="step-detail-panel"]');
-          return panel?.dataset.presentation === "popover" && panel.querySelector('[data-testid="step-detail-scroll"]')?.scrollTop === 400;
+          const bounds = panel?.getBoundingClientRect();
+          return bounds && bounds.top >= 0 && bounds.bottom <= innerHeight + 1 && panel.dataset.presentation === "popover" && panel.querySelector('[data-testid="step-detail-scroll"]')?.scrollTop === 400;
         });
         measurement.returnScrollTop = await page.getByTestId("step-detail-scroll").evaluate(node => node.scrollTop);
       }
