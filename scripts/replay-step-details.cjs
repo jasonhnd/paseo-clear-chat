@@ -64,6 +64,8 @@ async function replay() {
       channel: "chrome", headless: true, viewport: { width: 1440, height: 844 }, hasTouch: true,
       reducedMotion: "reduce", args: [`--remote-debugging-port=${port}`, "--disable-background-networking", "--no-first-run"],
     });
+    browser.setDefaultTimeout(15000);
+    browser.setDefaultNavigationTimeout(15000);
     const page = await browser.newPage();
     const errors = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -74,7 +76,11 @@ async function replay() {
     const waitOpen = async () => {
       await panel.waitFor();
       await page.waitForFunction(() => {
-        const rect = document.querySelector('[data-testid="step-detail-panel"]')?.getBoundingClientRect();
+        const element = document.querySelector('[data-testid="step-detail-panel"]');
+        for (let ancestor = element; ancestor; ancestor = ancestor.parentElement) {
+          if (getComputedStyle(ancestor).opacity === "0" || ancestor.getAnimations().some(animation => animation.playState === "running" || animation.pending)) return false;
+        }
+        const rect = element?.getBoundingClientRect();
         return rect && rect.top >= 0 && rect.bottom <= innerHeight + 1;
       });
     };
@@ -162,10 +168,12 @@ async function replay() {
     await row.click();
     await waitOpen();
     await drag(page.getByTestId("step-detail-drag-handle"), -350);
+    await page.waitForFunction(() => document.querySelector('[data-testid="step-detail-panel"]')?.getAttribute("data-snap") === "full");
     assert.equal(await panel.getAttribute("data-snap"), "full");
     const full = await panel.boundingBox();
     assert.ok(full.height >= 840);
     await drag(page.getByTestId("step-detail-drag-handle"), 350);
+    await page.waitForFunction(() => document.querySelector('[data-testid="step-detail-panel"]')?.getAttribute("data-snap") === "half");
     assert.equal(await panel.getAttribute("data-snap"), "half");
     const half = await panel.boundingBox();
     assert.ok(half.height >= 420 && half.height <= 424);

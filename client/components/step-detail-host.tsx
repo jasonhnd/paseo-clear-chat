@@ -67,6 +67,7 @@ export function StepDetailHostPanel({ host, agentId, theme }: PluginAgentPanelPr
   }
   return (
     <StepDetailPanel
+      key={selection.key}
       step={selection.step}
       open
       presentation={stepDetailPresentation(width)}

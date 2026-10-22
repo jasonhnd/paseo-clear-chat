@@ -134,6 +134,10 @@ registers that panel and keeps the selection scoped to host and agent; opening i
 reserves host-managed space beside chat instead of positioning a layer over chat.
 The selection keeps updating while its timeline row is mounted and remains an
 in-memory snapshot if that row is virtualized away.
+The host keys `StepDetailPanel` by the selected step's stable identity. Switching
+steps remounts its body and starts at the top; new output for the same step keeps
+the reader's scroll position. Other hosts that change the selection should use
+the same key pattern.
 
 The SDK's Modal does not expose presentation breakpoints or snap points. Its
 [host implementation](https://github.com/getpaseo/paseo/blob/v0.8.0/packages/app/src/components/adaptive-modal-sheet.tsx)
@@ -175,7 +179,9 @@ Set `KANBAN_TMP` to the current task's authorized temporary directory. The runne
 builds the preview in memory and uses the installed headless Google Chrome with
 a free debugging port from 9444–9499. It blocks external requests, measures all
 four widths, verifies that the desktop pane does not overlap chat in the host
-layout shim, checks touch drag, dismissal, browser Back and inline mode, and
+layout shim, checks A-to-B-to-A switching between long steps at both desktop
+widths, preserves scroll during same-step output updates, checks touch drag,
+dismissal, browser Back and inline mode, and
 writes screenshots and `step-detail-report.json` under that temporary directory.
 It never contacts a running Paseo host. Actual Explorer placement and OS gesture
 delivery still need host and device verification.
