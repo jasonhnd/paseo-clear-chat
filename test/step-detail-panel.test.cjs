@@ -1,7 +1,9 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { createToolHarness } = require("./helpers/tool-harness.cjs");
+const { createToolHarness: createHarness } = require("./helpers/tool-harness.cjs");
 const fixture = require("./fixtures/real-claude-session.json");
+
+const createToolHarness = (platform, options = {}) => createHarness(platform, { ...options, dimensions: { width: 390, height: 844, ...options.dimensions } });
 
 const call = fixture.items.find(item => item.type === "tool_call" && item.detail.type === "shell" && item.status === "completed");
 const find = (h, tree, id) => h.nodes(tree, node => node.props.testID === id)[0];
@@ -69,7 +71,7 @@ for (const platform of ["web", "ios", "android"]) {
       const mounted = h.mount(call);
       let tree = mounted.render();
       if (dismiss === "backdrop") find(h, tree, "step-detail-backdrop").props.onPress();
-      if (dismiss === "back") h.nodes(tree, node => node.type === "NativeModal")[0].props.onRequestClose();
+      if (dismiss === "back") h.nodes(tree, node => node.type === "Native.Modal")[0].props.onRequestClose();
       if (dismiss === "edge") {
         const edge = find(h, tree, "step-detail-back-edge");
         const gesture = { dx: 110, dy: 4, vx: 0.5, vy: 0 };

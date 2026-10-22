@@ -11,7 +11,7 @@ function createToolHarness(platform = "ios", options = {}) {
   const root = resolve(__dirname, "../..");
   const cache = new Map(), frames = new Map(), transformers = new Map(), renderers = new Map(), panels = new Map();
   const panelOpens = [];
-  const dimensions = { width: options.width ?? 390, height: options.height ?? 844, scale: 1, fontScale: 1, ...options.dimensions };
+  const dimensions = { width: options.width ?? 1440, height: options.height ?? 900, scale: 1, fontScale: 1, ...options.dimensions };
   let activePanel;
   const reveals = [], links = [], copies = [], toasts = [], imageReads = [];
   let frame;
@@ -67,8 +67,12 @@ function createToolHarness(platform = "ios", options = {}) {
   const native = {
     View: "View", Text: "Text", Pressable: "Pressable", Image: "Image", ScrollView: "ScrollView",
     SafeAreaView: "SafeAreaView",
-    Modal: props => props.visible ? jsx("NativeModal", props) : null,
-    useWindowDimensions: () => dimensions,
+    Modal: props => props.visible ? jsx("Native.Modal", props) : null,
+    useWindowDimensions: () => {
+      if (options.width !== undefined) dimensions.width = options.width;
+      if (options.height !== undefined) dimensions.height = options.height;
+      return dimensions;
+    },
     PanResponder: { create: handlers => ({ panHandlers: {
       onMoveShouldSetResponder: handlers.onMoveShouldSetPanResponder,
       onResponderGrant: handlers.onPanResponderGrant,

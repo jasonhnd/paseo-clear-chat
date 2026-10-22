@@ -9,7 +9,7 @@ const node = (h, tree, id) => h.nodes(tree, item => item.props.testID === id)[0]
 
 for (const platform of ["web", "ios", "android"]) {
   test(`${platform}: phone rows fit more real steps with 28px buttons and readable text`, () => {
-    const h = createToolHarness(platform, { width: 390 });
+    const h = createToolHarness(platform, { width: 390, preferences: { collapsedStepAction: "inline" } });
     for (const call of calls) {
       const { tree, render } = h.mount(call, false);
       const row = node(h, tree, "tool-summary-row");
@@ -70,7 +70,7 @@ test("tablet and desktop row geometry stays unchanged at and above 744px", () =>
 });
 
 test("iPadOS replays the same real steps with the existing tablet layout", () => {
-  const h = createToolHarness("ios", { width: 820 });
+  const h = createToolHarness("ios", { width: 820, preferences: { collapsedStepAction: "inline" } });
   for (const call of calls) {
     const { tree, render } = h.mount(call, false);
     const row = node(h, tree, "tool-summary-row");
@@ -85,7 +85,7 @@ test("iPadOS replays the same real steps with the existing tablet layout", () =>
 });
 
 test("resizing the mounted component switches layout without losing expansion", () => {
-  const options = { width: 390 };
+  const options = { width: 390, preferences: { collapsedStepAction: "inline" } };
   const h = createToolHarness("ios", options);
   const { render } = h.mount(calls[1], false);
   options.width = 820;

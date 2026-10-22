@@ -59,11 +59,13 @@ for (const platform of ["web", "ios", "android"]) {
     const row = byId(h, mounted.render(), "tool-summary-row");
     row.props.onPress();
     assert.equal(byId(h, mounted.render(), "tool-summary-row").props.accessibilityState.expanded, false);
+    assert.equal(byId(h, mounted.render(), "step-detail-panel"), undefined);
     byId(h, mounted.render(), "step-menu-dismiss").props.onPress();
     const nextRow = byId(h, mounted.render(), "tool-summary-row");
     nextRow.props.onPressIn?.();
     nextRow.props.onPress();
-    assert.equal(byId(h, mounted.render(), "tool-summary-row").props.accessibilityState.expanded, true);
+    assert.equal(byId(h, mounted.render(), "tool-summary-row").props.accessibilityState.expanded, false);
+    assert.ok(byId(h, mounted.render(), "step-detail-panel"));
     h.unmount();
   });
 }
