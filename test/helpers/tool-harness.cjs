@@ -187,6 +187,8 @@ function createToolHarness(platform = "ios", options = {}) {
           return async value => { reveals.push(value); return options.revealRpc ? options.revealRpc(value) : { revealed: value.path, error: null }; };
         },
         useAgent: (_, selector) => selector(options.agent ?? { cwd: "/workspace/demo", workspaceId: "demo-workspace" }),
+        useWorkspace: (id, selector) => id && options.workspace !== null
+          ? selector(options.workspace ?? { id }) : null,
         usePaseo: () => paseo,
       };
       if (id === "@getpaseo/plugin/client/react-native") return {

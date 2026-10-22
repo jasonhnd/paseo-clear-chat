@@ -9,8 +9,13 @@ import { embedFonts } from "../client/components/embed-fonts";
 import { initializeEnhancerPreferences, updateEnhancerPreferences, useEnhancerPreferences } from "../client/preferences";
 import { DESKTOP_MIN, TABLET_MIN } from "../client/breakpoints";
 import { installCompactToolSpacing } from "../client/tool-row-spacing";
+import { hydratePreviewWorkspace, previewWorkspaceReady } from "./shims/step-detail-client";
 
-declare global { interface Window { __stepDetailSamples: LiveToolCallPayload[] } }
+declare global { interface Window {
+  __stepDetailSamples: LiveToolCallPayload[];
+  __stepDetailPanelAttempts: Array<{ width: number; workspaceReady: boolean }>;
+} }
+window.__stepDetailPanelAttempts = [];
 
 embedFonts();
 installCompactToolSpacing();
@@ -27,7 +32,11 @@ let visible = false;
 let contribution: PluginWorkspacePanelContribution;
 installStepDetailPanel({
   addWorkspacePanel(value: PluginWorkspacePanelContribution) { contribution = value; return () => {}; },
-  openPanel() { visible = true; publish(); },
+  openPanel() {
+    window.__stepDetailPanelAttempts.push({ width: innerWidth, workspaceReady: previewWorkspaceReady() });
+    if (!previewWorkspaceReady()) throw new Error("Plugin panel context is unavailable");
+    visible = true; publish();
+  },
 } as unknown as PluginClientContext);
 
 function Preview() {
@@ -44,6 +53,7 @@ function Preview() {
     <div ref={chat} data-testid="preview-chat" style={{ flex: 1, minWidth: 0, padding: 16, overflow: "auto" }}>
       <div style={{ height: 460 }} aria-hidden="true" />
       <p>Offline component replay · sanitized conversation</p>
+      {location.pathname === "/host-context" ? <button data-testid="preview-hydrate-workspace" onClick={hydratePreviewWorkspace}>Hydrate workspace context</button> : null}
       {samples.map((sample, index) => <div key={sample.callId} data-history-row-id={sample.callId} data-index={index}>
         <div style={{ marginBottom: 16 }}><LiveToolCallRenderer
         agentId="demo-agent" host={host} layout={{ compact: width < TABLET_MIN, platform: "web" }} theme={{ colors }}

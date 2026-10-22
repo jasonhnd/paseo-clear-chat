@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, Pressable, useWindowDimensions } from "react-native";
-import { useAgent, usePaseo, useRpc } from "@getpaseo/plugin/client";
+import { useAgent, usePaseo, useRpc, useWorkspace } from "@getpaseo/plugin/client";
 import { useRevealedText } from "@getpaseo/plugin/client/react-native";
 import type { PluginTimelineItemProps } from "@getpaseo/plugin/client";
 import { buildThemeTokens } from "./components/theme-tokens";
@@ -116,6 +116,8 @@ export function LiveToolCallRenderer({
   const revealPath = useRpc(revealPathRpc);
   const cwd = useAgent(agentId, (agent) => agent.cwd);
   const workspaceId = useAgent(agentId, (agent) => agent.workspaceId);
+  // The host can publish the workspace after its agent; pane opening needs both.
+  const panelWorkspaceId = useWorkspace(workspaceId ?? "", (workspace) => workspace.id);
   const { width } = useWindowDimensions();
   const presentation = stepDetailPresentation(width);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -200,7 +202,7 @@ export function LiveToolCallRenderer({
   useEffect(() => {
     if (preferences.collapsedStepAction === "inline") setDetailOpen(false);
     else if (detailOpen && presentation === "side" && openHostStepDetail(host.id, agentId, workspaceId ?? undefined, selectedDetail)) setDetailOpen(false);
-  }, [preferences.collapsedStepAction, detailOpen, presentation, host.id, agentId, workspaceId, selectedDetail]);
+  }, [preferences.collapsedStepAction, detailOpen, presentation, host.id, agentId, workspaceId, panelWorkspaceId, selectedDetail]);
 
   return (
     <View testID="tool-timeline-item" {...surfaceProps(hostFontEscape, toolRowMarker(!calloutData.finalReply && !generatedImages.length && !expansion.expanded && !expansion.error))}>
