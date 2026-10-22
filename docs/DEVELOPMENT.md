@@ -502,6 +502,10 @@ timestamp, item}`. Client navigation offers `openSettings`, `openSurface` and `o
    `undefined` is the only opt-out.
 4. **Transform results are cached per item.** Changing a preference does not re-run transformers for
    items already on screen. New items follow the change; existing ones need a reload.
+   Startup is different: text transformers register only after the first successful preference
+   load, including Retry after an error. Before that, prompts and replies use the host renderer.
+   The SDK registration notification updates the host's transform callback and reprojects the
+   existing sources using their saved preferences. Tool transformers remain available immediately.
 5. **Renderers get no workspace.** Props carry `agentId` only, so `cwd` and `workspaceId` need a
    second lookup through `useAgent`.
 6. **Token usage is live-only.** Usage is not persisted on timeline items, so a turn this client did
@@ -633,6 +637,31 @@ npm test
 npm run typecheck
 paseo plugin reload clear-chat
 ```
+
+### Cold-load reply regression
+
+`node --test test/reply-cold-load.test.cjs` replays the unchanged sanitized Claude and
+Hermes sessions on web, iOS and Android at 1440, 820 and 390px. It holds the initial
+preference read, caches the first projection, then resolves it without replacing source
+objects or resizing. It also checks saved opt-outs, failed reads followed by Retry,
+unloading during the read, and stable registrations after later preference edits.
+
+For measured web layout, install `.showcase` dependencies as described above and run
+`node .showcase/reply-cold-load.cjs` with `TMPDIR` and `KANBAN_TMP` set to the task
+temporary directory. The offline Chrome replay bundles the real client contribution,
+transformers, schemas and renderers. It checks seven captured replies at each width
+under a 96px host toolbar with the chat scrolled 600px, preserving that scroll position
+and recording that no resize occurred. The JSON report stays in `KANBAN_TMP`.
+
+The replay host models Paseo 0.12.0's [per-source cache](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/app/src/plugins/timeline/projection.ts)
+and [registration notifications](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/app/src/plugins/evaluate.ts).
+An early `undefined` result caches the host row; preference publication alone cannot
+invalidate it. Registration changes flow through the [registry](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/app/src/plugins/registry.ts)
+to a new [transform callback](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/app/src/plugins/timeline/index.ts).
+Crossing the compact breakpoint changes the [workspace component tree](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/app/src/screens/workspace/workspace-screen.tsx),
+remounting chat with a fresh callback and explaining the previously observed recovery.
+The fix uses the public registration lifecycle without timers or manual refreshes.
+Native primitives are simulated; physical-device verification remains separate.
 
 ### Installation and startup diagnostics
 

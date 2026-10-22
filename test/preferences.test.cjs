@@ -367,9 +367,8 @@ test("text transformers defer to the host while saved preferences are unavailabl
   const h = harness("web");
   const cleanup = h.contribute(server.rpc);
   await new Promise(setImmediate);
-  assert.equal(h.transformers.get("omp-enhanced-assistant").transform({ item: { type: "assistant_message", text: "Hi" } }), undefined);
-  assert.equal(h.transformers.get("omp-enhanced-user-message").transform({ item: { type: "user_message", text: "Hi", images: [] } }), undefined);
-  assert.equal(h.transformers.get("omp-enhanced-user-message").transform({ item: { type: "user_message", text: "Hi" } }), undefined);
+  assert.equal(h.transformers.has("omp-enhanced-assistant"), false);
+  assert.equal(h.transformers.has("omp-enhanced-user-message"), false);
   assert.match(h.preferences.getEnhancerPreferencesError(), /cannot read.*Reconnect.*Retry/);
   cleanup();
 });

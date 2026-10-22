@@ -1,4 +1,4 @@
-import type { PluginClientContext } from "@getpaseo/plugin/client";
+import type { PluginClientContext, PluginTimelineTransformerContribution } from "@getpaseo/plugin/client";
 import { z } from "zod";
 import { requireHostMethods, STARTUP_MESSAGES } from "./shared/startup-diagnostics";
 import { ClearChatSettingsPage } from "./client/settings-page";
@@ -14,9 +14,9 @@ import { extractGeneratedImages } from "./client/generated-images";
 import { projectedApprovalStatus } from "./client/tool-approval";
 import { installStepDetailPanel } from "./client/components/step-detail-host";
 import {
-  areEnhancerPreferencesReady,
   getEnhancerPreferences,
   initializeEnhancerPreferences,
+  onEnhancerPreferencesReady,
 } from "./client/preferences";
 import {
   LiveToolCallRenderer,
@@ -32,6 +32,20 @@ type JsonValue = boolean | null | number | string | JsonValue[] | { [key: string
 
 function toJsonValue(value: unknown): JsonValue {
   return value as JsonValue;
+}
+
+function addTextTransformer<ItemType extends "user_message" | "assistant_message">(
+  client: PluginClientContext,
+  contribution: PluginTimelineTransformerContribution<ItemType>,
+) {
+  let remove: ReturnType<PluginClientContext["addTimelineTransformer"]> | undefined;
+  // Register only after the authoritative preferences arrive. The public SDK
+  // registration notifies the host and gives its projection cache a new transform
+  // callback, so replies first shown by the host are reconsidered without resizing.
+  const stopWaiting = onEnhancerPreferencesReady(() => {
+    remove = client.addTimelineTransformer(contribution);
+  });
+  return () => { stopWaiting(); return remove?.(); };
 }
 
 export default function contribute(client: PluginClientContext) {
@@ -188,12 +202,12 @@ function registerClient(client: PluginClientContext) {
     Component: LiveTodoRenderer,
   });
 
-  const removeUserTransformer = client.addTimelineTransformer({
+  const removeUserTransformer = addTextTransformer<"user_message">(client, {
     id: "omp-enhanced-user-message",
     query: { itemType: "user_message" },
     transform({ item }) {
       if (item.type !== "user_message") return undefined;
-      if (!areEnhancerPreferencesReady() || !getEnhancerPreferences().enhancedUserBubble) return undefined;
+      if (!getEnhancerPreferences().enhancedUserBubble) return undefined;
       const images = extractPromptImages(item);
       // Text-only timeline items commonly omit attachment metadata. Keep them
       // eligible for folding; unsupported attachments still need the host UI.
@@ -234,12 +248,12 @@ function registerClient(client: PluginClientContext) {
   // The assistant's reply. The preference is read inside `transform` so a
   // change takes effect on the next message without a plugin reload, and a
   // reply the plugin should not own is left to the host.
-  const removeAssistantTransformer = client.addTimelineTransformer({
+  const removeAssistantTransformer = addTextTransformer<"assistant_message">(client, {
     id: "omp-enhanced-assistant",
     query: { itemType: "assistant_message" },
     transform({ item }) {
       if (item.type !== "assistant_message") return undefined;
-      if (!areEnhancerPreferencesReady() || !getEnhancerPreferences().assistantMarkdown) return undefined;
+      if (!getEnhancerPreferences().assistantMarkdown) return undefined;
       const images = extractGeneratedImages({ ...item, text: undefined });
       if (!item.text.trim() && !images.length) return undefined;
       return {

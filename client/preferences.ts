@@ -176,6 +176,18 @@ export function areEnhancerPreferencesReady(): boolean {
   return ready;
 }
 
+/** Subscribe once, including a successful Retry after a failed initial read. */
+export function onEnhancerPreferencesReady(callback: () => void): () => void {
+  const notify = () => {
+    if (!ready) return;
+    listeners.delete(notify);
+    callback();
+  };
+  listeners.add(notify);
+  notify();
+  return () => { listeners.delete(notify); };
+}
+
 export function getEnhancerPreferencesError(): string | null {
   return storageError;
 }

@@ -89,7 +89,7 @@ function createToolHarness(platform = "ios", options = {}) {
     Linking: { openURL: (...args) => { links.push(args[0]); return options.openURL?.(...args) ?? Promise.resolve(); } },
   };
   const stubs = {
-    "client/preferences": { initializeEnhancerPreferences: async () => {}, areEnhancerPreferencesReady: () => true, getEnhancerPreferences: () => preferences, useEnhancerPreferences: () => preferences, useEnhancerPreferencesError: () => null, updateEnhancerPreferences: async patch => Object.assign(preferences, patch), resetEnhancerPreferences: async () => {}, OUTPUT_LINE_OPTIONS: [10, 15, 30, "never"].map(value => ({ value: String(value), label: value === "never" ? "Never" : `${value} lines` })), TEXT_SIZE_OPTIONS: [], ACCENT_PRESETS: {} },
+    "client/preferences": { initializeEnhancerPreferences: async () => {}, areEnhancerPreferencesReady: () => true, onEnhancerPreferencesReady: callback => { callback(); return noop; }, getEnhancerPreferences: () => preferences, useEnhancerPreferences: () => preferences, useEnhancerPreferencesError: () => null, updateEnhancerPreferences: async patch => Object.assign(preferences, patch), resetEnhancerPreferences: async () => {}, OUTPUT_LINE_OPTIONS: [10, 15, 30, "never"].map(value => ({ value: String(value), label: value === "never" ? "Never" : `${value} lines` })), TEXT_SIZE_OPTIONS: [], ACCENT_PRESETS: {} },
     "client/settings-page": { ClearChatSettingsPage: noop },
     "server/settings-migration": { migrateHostSettings: noop },
     "client/image-file": { useImageFile: noop, isImagePath: path => /\.(png|jpe?g|gif|webp)$/i.test(path ?? "") },

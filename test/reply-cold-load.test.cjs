@@ -54,8 +54,58 @@ for (const platform of ["web", "ios", "android"]) {
           assert.equal(h.nodes(tree, node => node.props.accessibilityLabel === "Copy reply").length, 1);
           assert.ok(h.text(tree).includes(reply.text));
         }
+        for (const prompt of items.filter(item => item.type === "user_message")) {
+          assert.equal(host.project(prompt)[0].kind, "omp-user-message", "prompts share the readiness registration path");
+        }
       }
       assert.equal(h.dimensions.width, width);
     });
   }
+
+  test(`${platform}: saved text opt-outs survive the cold-load cache`, async t => {
+    const { h, host, preferences, draw } = client(platform, 820);
+    t.after(() => { h.unmount(); h.dispose(); });
+    const texts = coldLoadSessions.flatMap(session => session.items)
+      .filter(item => ["assistant_message", "user_message"].includes(item.type));
+    texts.forEach(item => host.project(item));
+    host.resolvePreferences({ assistantMarkdown: false, enhancedUserBubble: false });
+    await settle();
+    assert.equal(preferences.areEnhancerPreferencesReady(), true);
+    for (const item of texts) assert.strictEqual(host.project(item)[0], item);
+    assert.equal(h.nodes(draw(texts.find(item => item.type === "assistant_message")), node => node.props.accessibilityLabel === "Copy reply").length, 0);
+  });
+
+  test(`${platform}: Retry reprojects cached replies once and later edits keep the registry stable`, async t => {
+    const { h, host, preferences } = client(platform, 390);
+    t.after(() => { h.unmount(); h.dispose(); });
+    const reply = coldLoadSessions[1].items.find(item => item.type === "assistant_message");
+    assert.strictEqual(host.project(reply)[0], reply);
+    host.rejectPreferences();
+    await settle();
+    assert.equal(preferences.areEnhancerPreferencesReady(), false);
+    assert.ok(preferences.getEnhancerPreferencesError());
+    assert.strictEqual(host.project(reply)[0], reply);
+    host.resolvePreferences();
+    await preferences.retryEnhancerPreferences();
+    assert.equal(preferences.getEnhancerPreferencesError(), null);
+    assert.equal(host.project(reply)[0].kind, "omp-assistant");
+    const revision = host.getRevision(), projected = host.project(reply);
+    await preferences.updateEnhancerPreferences({ assistantMarkdown: false });
+    assert.equal(host.getRevision(), revision, "normal edits do not re-register or flush every row");
+    assert.strictEqual(host.project(reply), projected);
+    const next = { ...reply, messageId: "sample-next-reply" };
+    assert.strictEqual(host.project(next)[0], next, "new replies honor the updated opt-out");
+  });
+
+  test(`${platform}: unloading before the preference read completes cancels text registration`, async t => {
+    const { h, host } = client(platform, 1440);
+    t.after(() => h.unmount());
+    h.dispose();
+    const revision = host.getRevision();
+    host.resolvePreferences();
+    await settle();
+    assert.equal(host.getRevision(), revision);
+    assert.equal(host.transformers.size, 0);
+    assert.equal(host.renderers.size, 0);
+  });
 }
