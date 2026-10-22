@@ -41,4 +41,6 @@ export const ScrollView = RnScrollView;
 export const FlatList = RnFlatList;
 export const TextInput = RnTextInput;
 
-export async function copyText(): Promise<void> {}
+export async function copyText(text: string): Promise<void> {
+  await navigator.clipboard.writeText(text);
+}

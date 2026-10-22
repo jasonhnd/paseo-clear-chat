@@ -33,6 +33,9 @@ const layoutSamples = [longSamples[0],
     content: Array.from({ length: 48 }, (_, index) => `export const sample${index} = "${"sample".repeat(40)}";`).join("\n") } },
   { ...readSample, callId: "sample-image", detail: { ...readSample.detail, filePath: `${longPath}.png`, content: "Image file" } },
 ];
+const largeOutput = Array.from({ length: 10000 }, (_, index) => `Output line ${index + 1}: sample text${index === 4999 ? ` ${"unbroken".repeat(512)}\u{1f680}` : ""}`).join("\n") + "\n";
+const largeInput = { command: "printf 'sample output'", cwd: "/workspace/demo", options: { mode: "complete" } };
+const largeSample = { ...sample, callId: "sample-large-output", detail: { type: "shell", input: largeInput, output: largeOutput, durationMs: 1250, exitCode: 0 } };
 
 async function debugPort() {
   for (let port = 9444; port <= 9499; port++) {
@@ -61,13 +64,15 @@ async function replay() {
   });
   const html = samples => `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body,#root{margin:0;width:100%;height:100%}*{box-sizing:border-box}</style></head><body><div id="root"></div><script>window.__stepDetailSamples=${JSON.stringify(samples).replace(/</g, "\\u003c")}</script><script src="/preview.js"></script></body></html>`;
   const server = createServer((request, response) => {
-    response.setHeader("Content-Type", request.url === "/preview.js" ? "text/javascript" : "text/html");
-    response.end(request.url === "/preview.js" ? bundle.outputFiles[0].contents : html(request.url === "/layout" ? layoutSamples : ["/switching", "/keyboard", "/rotation"].includes(request.url) ? longSamples : [sample]));
+    response.setHeader("Content-Type", request.url === "/preview.js" ? "text/javascript; charset=utf-8" : "text/html; charset=utf-8");
+    response.end(request.url === "/preview.js" ? bundle.outputFiles[0].contents : html(request.url === "/layout" ? layoutSamples : ["/switching", "/keyboard", "/rotation"].includes(request.url) ? longSamples : request.url === "/large-output" ? [largeSample] : [sample]));
   });
   let browser;
   const report = [];
+  const performanceFailures = [];
   try {
     await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+    const origin = `http://127.0.0.1:${server.address().port}`;
     const port = await debugPort();
     browser = await chromium.launchPersistentContext(join(work, "profile"), {
       channel: "chrome", headless: true, viewport: { width: 1440, height: 844 }, hasTouch: true,
@@ -75,6 +80,7 @@ async function replay() {
     });
     browser.setDefaultTimeout(15000);
     browser.setDefaultNavigationTimeout(15000);
+    await browser.grantPermissions(["clipboard-read", "clipboard-write"], { origin });
     const page = await browser.newPage();
     const errors = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -242,6 +248,9 @@ async function replay() {
       assert.ok(box.x >= 0 && box.x + box.width <= width + 1);
       assert.ok(box.y >= 0 && box.y + box.height <= 845);
       let chat = await page.getByTestId("preview-chat").boundingBox();
+      assert.equal(await page.getByTestId("preview-host-header").evaluate(element => element.getBoundingClientRect().height), 64);
+      assert.equal(await page.getByTestId("preview-chat").evaluate(element => element.scrollTop), 360);
+      assert.ok(chat.y >= 64, "Replay chat is a scrolled container below the host toolbar");
       if (presentation === "side") assert.ok(chat.x + chat.width <= box.x + 1, "Side details must reserve space beside chat");
       await page.screenshot({ path: join(work, `${width}.png`) });
       await page.getByTestId("step-detail-close").click();
@@ -397,8 +406,117 @@ async function replay() {
     assert.equal(await row.getAttribute("aria-expanded"), "true");
     assert.equal(await panel.count(), 0);
     report.push({ width: 390, fullHeight: full.height, halfHeight: half.height, touchDragAndDismiss: "passed", leftEdgeBack: "passed", inlineSetting: "passed" });
+
+    for (const width of [1440, 1024, 820, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto(`${origin}/large-output`, { waitUntil: "networkidle" });
+      await row.waitFor();
+      await page.evaluate(() => {
+        const frames = [], tasks = [], animations = [], longFrameDetails = [];
+        let phaseStarted = performance.now(), previous = phaseStarted, raf;
+        const tick = now => {
+          if (previous !== undefined) {
+            const duration = now - previous;
+            frames.push(duration);
+            if (duration > 50) longFrameDetails.push({ duration, scrollTop: document.querySelector('[data-testid="step-detail-scroll"]')?.scrollTop });
+          }
+          previous = now;
+          raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+        const observe = (type, target) => {
+          if (!PerformanceObserver.supportedEntryTypes.includes(type)) return null;
+          const record = entry => ({ start: entry.startTime, duration: entry.duration, blockingDuration: entry.blockingDuration,
+            renderStart: entry.renderStart, styleAndLayoutStart: entry.styleAndLayoutStart,
+            scripts: entry.scripts?.map(script => ({ duration: script.duration, sourceFunctionName: script.sourceFunctionName,
+              invoker: script.invoker, forcedStyleAndLayoutDuration: script.forcedStyleAndLayoutDuration })) });
+          const observer = new PerformanceObserver(list => target.push(...list.getEntries().map(record)));
+          observer.observe({ type });
+          return observer;
+        };
+        const taskObserver = observe("longtask", tasks), animationObserver = observe("long-animation-frame", animations);
+        window.__detailPerformance = {
+          snapshot() {
+            taskObserver?.takeRecords().forEach(entry => tasks.push({ start: entry.startTime, duration: entry.duration }));
+            animationObserver?.takeRecords().forEach(entry => animations.push({ start: entry.startTime, duration: entry.duration }));
+            const result = { frames: frames.length, maxFrameMs: Math.max(0, ...frames), longFrames: frames.filter(value => value > 50).length,
+              longTasks: tasks.filter(entry => entry.start + entry.duration > phaseStarted && entry.duration > 50).length,
+              longAnimationFrames: animations.filter(entry => entry.start + entry.duration > phaseStarted && entry.duration > 50).length,
+              supportsLongAnimationFrames: Boolean(animationObserver), longFrameDetails: [...longFrameDetails], animationDetails: [...animations] };
+            frames.length = tasks.length = animations.length = longFrameDetails.length = 0;
+            phaseStarted = previous = performance.now();
+            return result;
+          },
+          stop() { cancelAnimationFrame(raf); taskObserver?.disconnect(); animationObserver?.disconnect(); },
+        };
+      });
+      const openMs = await page.evaluate(async () => {
+        const start = performance.now();
+        document.querySelector('[data-testid="tool-summary-row"]').click();
+        for (let frame = 0; frame < 120; frame++) {
+          await new Promise(requestAnimationFrame);
+          const element = document.querySelector('[data-testid="step-detail-panel"]');
+          const rect = element?.getBoundingClientRect();
+          let visible = rect?.height > 100 && rect.top >= 0 && rect.bottom <= innerHeight + 1;
+          for (let ancestor = element; visible && ancestor; ancestor = ancestor.parentElement) {
+            if (getComputedStyle(ancestor).opacity === "0" || ancestor.getAnimations().some(animation => animation.playState === "running" || animation.pending)) visible = false;
+          }
+          if (visible && element.querySelector('[data-testid="step-detail-output"]')) {
+            await new Promise(requestAnimationFrame);
+            return performance.now() - start;
+          }
+        }
+        throw new Error("Large output did not open within 120 frames");
+      });
+      const opening = await page.evaluate(() => window.__detailPerformance.snapshot());
+      await page.getByTestId("step-detail-copy-input").click();
+      assert.equal(await page.evaluate(() => navigator.clipboard.readText()), JSON.stringify(largeInput, null, 2));
+      await page.getByTestId("step-detail-copy-output").click();
+      assert.equal(await page.evaluate(() => navigator.clipboard.readText()), largeOutput);
+      assert.equal(await page.getByTestId("step-detail-duration").textContent(), "Duration: 1.25s");
+      assert.equal(await page.getByTestId("step-detail-exit-code").textContent(), "Exit code: 0");
+      await page.evaluate(() => window.__detailPerformance.snapshot());
+      const scroll = await page.evaluate(async () => {
+        const panel = document.querySelector('[data-testid="step-detail-panel"]');
+        const viewport = panel.querySelector('[data-testid="step-detail-scroll"]');
+        let peakTextCharacters = 0, peakTextChunks = 0, settled = 0, lastHeight = 0, steps = 0;
+        let overflow = false, sawMiddle = false, reachedEnd = false;
+        const start = performance.now();
+        for (; steps < 1800; steps++) {
+          await new Promise(requestAnimationFrame);
+          const chunks = Array.from(panel.querySelectorAll('[data-testid="step-detail-output"], [data-testid="step-detail-input"]'));
+          peakTextCharacters = Math.max(peakTextCharacters, chunks.reduce((count, chunk) => count + chunk.textContent.length, 0));
+          peakTextChunks = Math.max(peakTextChunks, chunks.length);
+          overflow ||= chunks.some(chunk => chunk.scrollWidth > chunk.clientWidth + 1) || document.documentElement.scrollWidth > innerWidth;
+          sawMiddle ||= chunks.some(chunk => chunk.textContent.includes("Output line 5000:"));
+          reachedEnd = chunks.some(chunk => chunk.textContent.includes("Output line 10000:"));
+          const atEnd = viewport.scrollTop + viewport.clientHeight >= viewport.scrollHeight - 2;
+          settled = atEnd && reachedEnd && lastHeight === viewport.scrollHeight ? settled + 1 : 0;
+          if (settled >= 8) break;
+          lastHeight = viewport.scrollHeight;
+          // Scroll at a readable rate, allowing each asynchronous render batch to paint.
+          viewport.scrollTop += Math.max(80, viewport.clientHeight * 0.7);
+        }
+        return { durationMs: performance.now() - start, steps, peakTextCharacters, peakTextChunks, overflow, sawMiddle, reachedEnd,
+          scrollTop: viewport.scrollTop, scrollHeight: viewport.scrollHeight, height: viewport.clientHeight };
+      });
+      const scrolling = await page.evaluate(() => { const result = window.__detailPerformance.snapshot(); window.__detailPerformance.stop(); return result; });
+      const measurement = { width, lines: 10000, outputCharacters: largeOutput.length, openMs, opening, scrolling, ...scroll };
+      report.push(measurement);
+      console.log(JSON.stringify(measurement));
+      writeFileSync(join(temp, "step-detail-report.json"), JSON.stringify({ debugPort: port, measurements: report }, null, 2) + "\n");
+      assert.equal(scroll.reachedEnd, true, "The final output line is reachable");
+      assert.equal(scroll.sawMiddle, true, "The middle of the output is rendered while scrolling");
+      assert.equal(scroll.overflow, false, "Long unbroken output stays inside the panel");
+      assert.ok(scroll.peakTextCharacters < largeOutput.length / 4, "Only a bounded window of the output is mounted");
+      for (const [phase, metrics] of [["opening", opening], ["scrolling", scrolling]]) {
+        if (metrics.longFrames || metrics.longAnimationFrames || metrics.longTasks) performanceFailures.push({ width, phase, metrics });
+      }
+    }
+    assert.deepEqual(performanceFailures, [], "Opening and scrolling must have no frame, animation frame or task over 50ms");
     assert.deepEqual(errors, []);
-    writeFileSync(join(temp, "step-detail-report.json"), JSON.stringify({ debugPort: port, bundleBytes: bundle.outputFiles[0].contents.length, measurements: report }, null, 2) + "\n");
+    writeFileSync(join(temp, "step-detail-report.json"), JSON.stringify({ debugPort: port, browserVersion: (await session.send("Browser.getVersion")).product,
+      bundleBytes: bundle.outputFiles[0].contents.length, measurements: report }, null, 2) + "\n");
     console.log(JSON.stringify(report, null, 2));
   } finally {
     await browser?.close();

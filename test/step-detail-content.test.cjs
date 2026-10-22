@@ -5,7 +5,7 @@ const fixture = require("./fixtures/real-claude-session.json");
 const shell = fixture.items.find(item => item.detail?.type === "shell" && item.status === "completed");
 const byId = (h, tree, id) => h.nodes(tree, node => node.props.testID === id)[0];
 const harness = (platform, width = 390, options = {}) => createToolHarness(platform, {
-  ...options, dimensions: { width, height: 844 },
+  ...options, isPad: platform === "ios" && width >= 744, dimensions: { width, height: 844 },
   preferences: { collapsedStepAction: "details", foldLongOutputAfter: 15 },
 });
 

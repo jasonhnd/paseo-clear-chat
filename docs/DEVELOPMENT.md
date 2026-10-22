@@ -307,6 +307,15 @@ long-path reads, wide images and long code lines check row bounds, control
 hit targets and horizontal containment. File-reveal controls are measured
 without invoking the host file manager. This simulated Explorer layout does
 not replace checks of the actual host's tab layout or native devices.
+The same run measures a 10,000-line result containing a long unbroken line and
+supplementary Unicode at every width. It checks the real browser clipboard
+against the entire input and output, reaches the middle and final output lines,
+checks wrapped-text bounds and records peak mounted text. Open time runs from
+click through the first painted, settled panel, including its Modal animation.
+Scrolling advances through the full document on animation frames. The report
+records animation-frame intervals, Long Animation Frame entries and main-thread
+long tasks; any interval or entry over 50ms fails the replay. These measurements
+use an unthrottled local Chrome with a fresh browser profile.
 It never contacts a running Paseo host. Actual Explorer placement and OS gesture
 delivery still need host and device verification.
 
