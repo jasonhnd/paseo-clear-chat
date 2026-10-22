@@ -105,8 +105,8 @@ export function extractPromptImages(item: unknown): PromptImages {
     hasUnrenderable = true;
   }
 
-  // A stripped text-only item is indistinguishable from one whose images were
-  // removed by the host. Only explicit attachment metadata establishes zero.
+  // Missing metadata does not establish a zero attachment count. Text-only
+  // prompts can render without inventing a count or discarding known sources.
   const hasMetadata = hasReportedCount || ["images", "attachments", "content", "blocks", "parts"]
     .some((key) => Array.isArray(record?.[key]));
   const unique = [...new Set(uris)];

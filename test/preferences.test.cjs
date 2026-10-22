@@ -321,7 +321,7 @@ test("edits made before initial storage load are saved", async () => {
   assert.equal(p.getEnhancerPreferences().accent, "amber");
 });
 
-test("upstream #17: iOS preferences honor explicit opt-out and preserve stripped prompts", async () => {
+test("iOS preferences enhance text-only prompts and honor explicit opt-out", async () => {
   const server = host();
   const h = harness();
   const cleanup = h.contribute(server.rpc);
@@ -331,12 +331,14 @@ test("upstream #17: iOS preferences honor explicit opt-out and preserve stripped
   const user = h.transformers.get("omp-enhanced-user-message");
   const reply = { item: { type: "assistant_message", text: "Hello" } };
   const prompt = { item: { type: "user_message", text: "Hi", images: [] } };
+  const textOnly = { item: require("./fixtures/real-hermes-reply-footer.json")[0].item };
   assert.equal(assistant.transform(reply).items[0].kind, "omp-assistant");
   assert.equal(user.transform(prompt).items[0].kind, "omp-user-message");
-  assert.equal(user.transform({ item: { type: "user_message", text: "Hi" } }), undefined);
+  assert.deepEqual(user.transform(textOnly).items[0].data, { text: textOnly.item.text, messageId: textOnly.item.messageId });
   await h.preferences.updateEnhancerPreferences({ assistantMarkdown: false, enhancedUserBubble: false });
   assert.equal(assistant.transform(reply), undefined);
   assert.equal(user.transform(prompt), undefined);
+  assert.equal(user.transform(textOnly), undefined);
   cleanup();
 });
 
@@ -348,12 +350,13 @@ test("text transformers defer to the host while saved preferences are unavailabl
   await new Promise(setImmediate);
   assert.equal(h.transformers.get("omp-enhanced-assistant").transform({ item: { type: "assistant_message", text: "Hi" } }), undefined);
   assert.equal(h.transformers.get("omp-enhanced-user-message").transform({ item: { type: "user_message", text: "Hi", images: [] } }), undefined);
+  assert.equal(h.transformers.get("omp-enhanced-user-message").transform({ item: { type: "user_message", text: "Hi" } }), undefined);
   assert.match(h.preferences.getEnhancerPreferencesError(), /cannot read.*Reconnect.*Retry/);
   cleanup();
 });
 
 for (const platform of ["android", "web"]) {
-  test(`upstream #17: ${platform} preferences honor explicit opt-out and preserve stripped prompts`, async () => {
+  test(`${platform} preferences enhance text-only prompts and honor explicit opt-out`, async () => {
     const server = host();
     const h = harness(platform);
     const cleanup = h.contribute(server.rpc);
@@ -362,12 +365,14 @@ for (const platform of ["android", "web"]) {
     const user = h.transformers.get("omp-enhanced-user-message");
     const reply = { item: { type: "assistant_message", text: "Hello" } };
     const prompt = { item: { type: "user_message", text: "Hi", images: [] } };
+    const textOnly = { item: require("./fixtures/real-hermes-reply-footer.json")[0].item };
     assert.equal(assistant.transform(reply).items[0].kind, "omp-assistant");
     assert.equal(user.transform(prompt).items[0].kind, "omp-user-message");
-    assert.equal(user.transform({ item: { type: "user_message", text: "Hi" } }), undefined);
+    assert.deepEqual(user.transform(textOnly).items[0].data, { text: textOnly.item.text, messageId: textOnly.item.messageId });
     await h.preferences.updateEnhancerPreferences({ assistantMarkdown: false, enhancedUserBubble: false });
     assert.equal(assistant.transform(reply), undefined);
     assert.equal(user.transform(prompt), undefined);
+    assert.equal(user.transform(textOnly), undefined);
     cleanup();
   });
 }

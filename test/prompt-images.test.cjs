@@ -154,4 +154,5 @@ test("upstream #17: non-image attachments and disabled enhanced prompts remain w
   }
   h.preferences.enhancedUserBubble = false;
   assert.equal(transform(prompt({ images: [png] })), undefined);
+  assert.equal(transform(prompt()), undefined);
 });

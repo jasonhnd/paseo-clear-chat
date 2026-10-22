@@ -194,9 +194,9 @@ function registerClient(client: PluginClientContext) {
       if (item.type !== "user_message") return undefined;
       if (!areEnhancerPreferencesReady() || !getEnhancerPreferences().enhancedUserBubble) return undefined;
       const images = extractPromptImages(item);
-      // Older hosts strip all attachment metadata. Returning the original item
-      // preserves their previews when this plugin cannot even know the count.
-      if (images.count === null || images.hasOtherAttachments) return undefined;
+      // Text-only timeline items commonly omit attachment metadata. Keep them
+      // eligible for folding; unsupported attachments still need the host UI.
+      if (images.hasOtherAttachments) return undefined;
       // `messageId` rides along so the renderer can carry the host's own
       // `data-history-row-id`, which is the id the chat outline scrolls to.
       // Replacing the item leaves the outline nothing to find otherwise.
@@ -209,7 +209,7 @@ function registerClient(client: PluginClientContext) {
             data: toJsonValue({
               text: item.text,
               ...(images.uris.length > 0 ? { images: images.uris } : {}),
-              ...(images.count > 0 ? { imageCount: images.count } : {}),
+              ...(images.count !== null && images.count > 0 ? { imageCount: images.count } : {}),
               ...(item.messageId ? { messageId: item.messageId } : {}),
             }),
           },

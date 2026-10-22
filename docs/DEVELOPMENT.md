@@ -267,10 +267,11 @@ timestamp, item}`, and plugin navigation offers only `openSettings`, `openSurfac
    the path in the operating system's file manager.
 2. **Some hosts strip prompt attachments.** A host can map a user message to only `text`,
    `messageId`, and `clientMessageId` before transformers run. The plugin cannot recover or count
-   attachments removed this way, so it automatically leaves these prompts to the host. When image
-   metadata is available, the enhanced bubble keeps available thumbnails and the complete image
-   count, including attachments with missing data or failed previews. Other attachment kinds also
-   remain with the host.
+   attachments removed this way. Text-only items still use the enhanced bubble and its folding
+   controls, without inventing an attachment count. When image metadata is available, the bubble
+   keeps available thumbnails and the complete reported count, including missing or failed previews.
+   Announced non-image or unsupported attachments remain with the host. Disable **Enhanced prompt
+   bubble** to use Paseo's own UI when its timeline omits attachment information.
 3. **Interception is all or nothing.** A transformer replaces the host item completely. There is no
    way to decorate an item or keep host affordances that the plugin does not reimplement. Returning
    `undefined` is the only opt-out.

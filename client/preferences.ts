@@ -55,9 +55,8 @@ export interface EnhancerPreferences {
    */
   pointerGlow: boolean;
   /**
-   * Style prompts when the host supplies attachment metadata. Older hosts strip
-   * it entirely, so those prompts automatically stay native to preserve images.
-   * Turning this off always hands prompts back to the host.
+   * Style text-only prompts and preserve supplied image metadata. Unsupported
+   * attachment kinds remain native. Off hands every prompt back to the host.
    */
   enhancedUserBubble: boolean;
   /**

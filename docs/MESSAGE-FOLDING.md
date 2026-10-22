@@ -21,8 +21,11 @@ message. Toggling again retries the save.
 
 The same components render at all viewport widths and on web, iOS/iPadOS and Android. Turning
 off **Assistant markdown** or **Enhanced prompt bubble** returns the corresponding item to Paseo.
-Prompts without attachment metadata also remain with Paseo so hidden attachments are preserved.
-These host-rendered prompts are outside the plugin's folding controls.
+Text-only prompts enter the enhanced renderer even when attachment metadata is absent. No image
+count is invented. Supplied image sources and reported totals remain visible outside the folded
+text, including counts for missing or failed previews. Prompts with non-image or unsupported
+attachments stay with Paseo to preserve their affordances. The plugin cannot reconstruct images
+removed from the timeline by the host; turn off **Enhanced prompt bubble** to use the host UI.
 
 ## Verification
 
@@ -33,7 +36,9 @@ node --test test/message-folding.test.cjs
 ```
 
 The tests derive long content from the existing sanitized reply-footer and wrap-up fixture shapes;
-all added text is synthetic. They cover web, iOS and Android, every limit, threshold equality,
+all added text is synthetic. The captured text-only prompt keeps exactly `type`, `text` and
+`messageId`; its long variant changes only `text`, without adding `imageCount` or `images`.
+They cover web, iOS and Android, every limit, threshold equality,
 CRLF, full-source copying, expansion/collapse after a fresh module read, independent identities,
 wrap-up sections, prompt attachments and storage failure recovery. Existing reply-prose and tool
 folding regressions remain in the full suite.
@@ -46,13 +51,15 @@ KANBAN_TMP="$TMPDIR" node .showcase/replay-message-folding.cjs
 ```
 
 `TMPDIR` must already point to the task's authorized temporary directory. The runner bundles real
-components, uses a synthetic revision-checked storage service and captures copies through the SDK
-shim. It launches only installed Google Chrome in headless mode, chooses an available debugging
+registered transformers, schemas and live renderers, uses a synthetic revision-checked storage
+service and captures copies through the SDK shim. The prompt retains the captured text-only
+structure and the runner asserts that neither input nor transformed payload gains image metadata.
+It launches only installed Google Chrome in headless mode, chooses an available debugging
 port from 9444 through 9499, serves on an ephemeral loopback port and blocks external requests.
 It never connects to a live Paseo instance.
 
 At widths 1440, 1024, 820 and 390, it measures both collapsed and expanded heights, checks the
-44-pixel controls, full-source copying, hard-reload restoration, all limit choices and absence of
+44-pixel controls, full-source copying, both choices after hard reloads, all limit choices and absence of
 horizontal page overflow. A JSON report and screenshots stay in the task's temporary directory;
 the Chrome profile is removed after the run. This is component verification. Final review and
 iPhone, iPad and Android device checks remain with the reviewer and user.
