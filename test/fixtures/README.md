@@ -174,3 +174,20 @@ are neutral replacements. A recursive comparison of entry keys, nesting,
 array lengths and value types reported zero differences before commit.
 `test/image-output.test.cjs` checks that the listing produces no preview or
 file read while the reply retains all three complete image sources.
+
+`real-hermes-readme-images.json` isolates a projected `read` of a text README.
+Its `detail.content` retains the read header, fenced block and 30 numbered lines,
+including a Markdown image and an image path in prose. All content, paths,
+identifiers and dates are fictional. Entry and item keys, nesting, array lengths
+and value types match the read-only capture with zero structural differences.
+`test/tool-image-policy.test.cjs` requires no previews or image RPCs for image
+paths mentioned inside that text, in expanded and collapsed states on all three
+platforms.
+
+`real-hermes-image-path-reply.json` preserves a separate captured assistant
+item with exactly `type`, `text` and `messageId`. Its two prose lines give an
+absolute and a relative image address. All prose, paths and the identifier are
+fictional; a recursive comparison confirmed zero key or value-type differences.
+`test/image-output.test.cjs` replays both images on web, iOS and Android, alongside
+the listing reply above and the captured Markdown images in
+`real-assistant-links.json`.

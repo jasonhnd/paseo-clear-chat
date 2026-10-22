@@ -1,0 +1,5 @@
+{
+  "type": "assistant_message",
+  "text": "Absolute image: /workspace/sample/image.png\nRelative image: image.png",
+  "messageId": "sample-path-reply"
+}

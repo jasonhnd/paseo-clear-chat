@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const fixture = require("./fixtures/real-hermes-image-listing.json");
+const pathReply = require("./fixtures/real-hermes-image-path-reply.json");
 const { createToolHarness } = require("./helpers/tool-harness.cjs");
 
 const settle = () => new Promise(resolve => setImmediate(resolve));
@@ -117,6 +118,19 @@ test("captured assistant reply preserves complete spaced paths and the remote UR
   assert.equal(pictures(h, tree).length, 3);
   assert.ok(pictures(h, tree).some(image => image.props.source.uri === "https://example.org/avatar.png?size=80"));
 });
+
+for (const platform of ["web", "ios", "android"]) {
+  test(`captured plain-path reply still shows both images on ${platform}`, async () => {
+    const h = createToolHarness(platform, { markdown: true, images: true });
+    const mounted = h.mount(pathReply);
+    await settle();
+    assert.deepEqual(h.imageReads, [
+      { cwd: "/workspace/demo", path: "/workspace/sample/image.png" },
+      { cwd: "/workspace/demo", path: "image.png" },
+    ]);
+    assert.equal(pictures(h, mounted.render()).length, 2);
+  });
+}
 
 for (const output of [
   "sample image.png",

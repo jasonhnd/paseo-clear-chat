@@ -4,6 +4,12 @@ All notable changes to Clear Chat are listed here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-10-22
+
+### Fixed
+
+- Tool rows no longer show image previews for image paths that only appear inside text a tool read, such as a README. Tool output now shows an image only when the tool read or wrote that image file itself, or reported that it generated one. Images written in replies work as before.
+
 ## [1.0.0] - 2026-10-22
 
 First release under the name Clear Chat.
@@ -38,4 +44,5 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[1.0.1]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v1.0.1
 [1.0.0]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v1.0.0
