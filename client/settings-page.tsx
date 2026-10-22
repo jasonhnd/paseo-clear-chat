@@ -439,6 +439,18 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
         />
 
         <ChoiceRow
+          title="When a collapsed step is pressed"
+          description="Open a detail sheet, popover or side panel, or expand the card in the conversation."
+          value={preferences.collapsedStepAction}
+          options={[
+            { value: "details", label: "Open details" },
+            { value: "inline", label: "Expand inline" },
+          ]}
+          onChange={(collapsedStepAction) => updateEnhancerPreferences({ collapsedStepAction })}
+          tokens={tokens}
+        />
+
+        <ChoiceRow
           title="Fold long output after"
           description="Preview long tool output, reply code and prompts with a button to reveal every line."
           value={String(preferences.foldLongOutputAfter)}

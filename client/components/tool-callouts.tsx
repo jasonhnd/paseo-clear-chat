@@ -52,6 +52,8 @@ export interface ToolCalloutProps {
   tokens: ExtendedThemeTokens;
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
+  /** Overrides a collapsed row press without changing its saved folding choice. */
+  onOpenDetail?: () => void;
   /** Shows a path in the machine's own file manager. */
   onRevealPath?: (path: string) => void;
   /**
@@ -62,34 +64,8 @@ export interface ToolCalloutProps {
   imageFile?: ImageFile | null;
 }
 
-export function ToolCallout({
-  data,
-  tokens,
-  expanded,
-  onExpandedChange,
-  onRevealPath,
-  imageFile,
-}: ToolCalloutProps) {
-  const stepMenu = useToolStepMenu(data, tokens, onRevealPath);
-  const hoverPreview = useToolHoverPreview(data, expanded, tokens);
-  const { foldLongOutputAfter } = useEnhancerPreferences();
-  const [visibleOutputs, setVisibleOutputs] = useState<{ limit: OutputLineLimit; texts: ReadonlySet<string> }>();
-  const reportVisibility = useCallback((text: string, visible: boolean) => {
-    setVisibleOutputs(previous => {
-      const texts = new Set(previous?.limit === foldLongOutputAfter ? previous.texts : []);
-      if (texts.has(text) === visible) return previous;
-      if (visible) texts.add(text); else texts.delete(text);
-      return { limit: foldLongOutputAfter, texts };
-    });
-  }, [foldLongOutputAfter]);
-  const errorLine = toolErrorLine(data, foldLongOutputAfter,
-    visibleOutputs?.limit === foldLongOutputAfter ? visibleOutputs.texts : undefined,
-    imageFile !== undefined && isImagePath(data.filePath));
-  // Every branch below needs a payload. A tool that carries none — a hub op
-  // with no parsed record, an unmapped kind — would otherwise draw an empty
-  // panel, so the raw output takes over.
-  const hasTypedBody =
-    hasToolDetailBody(data) ||
+function hasTypedToolBody(data: ToolCalloutData): boolean {
+  return hasToolDetailBody(data) ||
     data.tool === "bash" ||
     data.tool === "shell" ||
     data.tool === "git" ||
@@ -104,57 +80,39 @@ export function ToolCallout({
     ((data.tool === "task" || data.tool === "sub_agent") && Boolean(data.subagent)) ||
     (data.tool === "hub" && Boolean(data.hub)) ||
     (data.tool === "paseo" && Boolean(data.paseo));
+}
 
-  const filePath = data.filePath;
-  // A tool without a path, or a host that cannot reveal one, leaves the file
-  // name as a plain label rather than a link that does nothing.
-  const revealFile = useMemo(
-    () => (onRevealPath && filePath ? () => onRevealPath(filePath) : undefined),
-    [onRevealPath, filePath],
-  );
-
+export function ToolCallout({
+  data, tokens, expanded, onExpandedChange, onOpenDetail, onRevealPath, imageFile,
+}: ToolCalloutProps) {
+  const stepMenu = useToolStepMenu(data, tokens, onRevealPath);
+  const hoverPreview = useToolHoverPreview(data, expanded, tokens);
   const isSuccess = data.status === "completed";
   const isRunning = data.status === "running";
   const isFailed = data.status === "failed";
   const isWaiting = data.status === "waiting";
   const duration = toolDuration(data.durationMs);
-
-  // Only a real shell call can "complete without output". A git op or an
-  // unmapped tool that prints nothing is not a silent command, so neither
-  // inherits the shell sentence.
-  const isShellCall = data.tool === "bash" || data.tool === "shell";
-
   const statusColor = isSuccess ? tokens.success : isRunning || isWaiting ? tokens.accent : isFailed ? tokens.danger : tokens.foregroundMuted;
-
   const statusBg = isSuccess ? tokens.successBg : isRunning || isWaiting ? tokens.accentBg : isFailed ? tokens.dangerBg : tokens.surface2;
-
-  const iconColor =
-    data.tool === "git" ? "#F05032" : data.tool === "github" ? tokens.foreground : tokens.accent;
-
-  // A reply that matches no offered label is free text the user typed, so it
-  // is labelled as such rather than pretending an option was picked.
-  const answered = data.askAnswer ?? [];
-  const typedReply =
-    answered.length > 0 &&
-    !answered.some((answer) =>
-      (data.askOptions ?? []).some(
-        (option) => option.label.trim().toLowerCase() === answer.trim().toLowerCase(),
-      ),
-    );
-
+  const iconColor = data.tool === "git" ? "#F05032" : data.tool === "github" ? tokens.foreground : tokens.accent;
   const phone = useWindowDimensions().width <= PHONE_MAX;
-  const compact = phone && !expanded;
   const styles = useToolCalloutStyles(tokens, statusBg, statusColor, phone);
+
+  const compact = phone && !expanded;
 
   const header = (
     <Pressable
       {...hoverPreview}
       testID="tool-summary-row"
       accessibilityRole="button"
-      accessibilityLabel={`${expanded ? "Collapse" : "Expand"} ${toolSummary(data)}`}
+      accessibilityLabel={`${expanded ? "Collapse" : onOpenDetail ? "View details:" : "Expand"} ${toolSummary(data)}`}
+      accessibilityHint={!expanded && onOpenDetail ? "Opens step details" : undefined}
       accessibilityState={{ expanded }}
       {...stepMenu.rowProps}
-      onPress={() => { if (!stepMenu.consumePress()) onExpandedChange(!expanded); }}
+      onPress={() => {
+        if (stepMenu.consumePress()) return;
+        if (!expanded && onOpenDetail) onOpenDetail(); else onExpandedChange(!expanded);
+      }}
       style={compact ? [styles.header, styles.compactHeaderTarget] : styles.header}
     >
       <View style={styles.headerLeft}>
@@ -176,7 +134,7 @@ export function ToolCallout({
           )}
         </View>
         <Rotate active={expanded}>
-          <Glyph name="ChevronDown" size={phone ? 12 : 14} color={tokens.foregroundMuted} />
+          <Glyph name={!expanded && onOpenDetail ? "PanelRightOpen" : "ChevronDown"} size={phone ? 12 : 14} color={tokens.foregroundMuted} />
         </Rotate>
       </View>
     </Pressable>
@@ -184,15 +142,74 @@ export function ToolCallout({
 
   return (
     <View
-      testID={`tool-card-${hasTypedBody ? data.tool : "unknown"}`}
+      testID={`tool-card-${hasTypedToolBody(data) ? data.tool : "unknown"}`}
       {...surfaceProps(frosted, glowing(tokens.isDark), selectionSurface)}
       style={compact ? [styles.container, styles.compactContainer] : styles.container}
     >
       {compact ? <View testID="tool-summary-slot" style={styles.compactHeaderSlot}>{header}</View> : header}
-
       {stepMenu.menu}
 
-      {expanded && (
+      {expanded ? <ToolCalloutBody data={data} tokens={tokens} onRevealPath={onRevealPath} imageFile={imageFile} /> : null}
+    </View>
+  );
+}
+
+export type ToolCalloutBodyProps = Pick<ToolCalloutProps, "data" | "tokens" | "onRevealPath" | "imageFile">;
+
+/** Shared by expanded timeline cards and every step-detail presentation. */
+export function ToolCalloutBody({ data, tokens, onRevealPath, imageFile }: ToolCalloutBodyProps) {
+  const { foldLongOutputAfter } = useEnhancerPreferences();
+  const [visibleOutputs, setVisibleOutputs] = useState<{ limit: OutputLineLimit; texts: ReadonlySet<string> }>();
+  const reportVisibility = useCallback((text: string, visible: boolean) => {
+    setVisibleOutputs(previous => {
+      const texts = new Set(previous?.limit === foldLongOutputAfter ? previous.texts : []);
+      if (texts.has(text) === visible) return previous;
+      if (visible) texts.add(text); else texts.delete(text);
+      return { limit: foldLongOutputAfter, texts };
+    });
+  }, [foldLongOutputAfter]);
+  const errorLine = toolErrorLine(data, foldLongOutputAfter,
+    visibleOutputs?.limit === foldLongOutputAfter ? visibleOutputs.texts : undefined,
+    imageFile !== undefined && isImagePath(data.filePath));
+  const hasTypedBody = hasTypedToolBody(data);
+
+  const filePath = data.filePath;
+  // A tool without a path, or a host that cannot reveal one, leaves the file
+  // name as a plain label rather than a link that does nothing.
+  const revealFile = useMemo(
+    () => (onRevealPath && filePath ? () => onRevealPath(filePath) : undefined),
+    [onRevealPath, filePath],
+  );
+
+  const isSuccess = data.status === "completed";
+  const isRunning = data.status === "running";
+  const isFailed = data.status === "failed";
+  const isWaiting = data.status === "waiting";
+
+  // Only a real shell call can "complete without output". A git op or an
+  // unmapped tool that prints nothing is not a silent command, so neither
+  // inherits the shell sentence.
+  const isShellCall = data.tool === "bash" || data.tool === "shell";
+
+  const statusColor = isSuccess ? tokens.success : isRunning || isWaiting ? tokens.accent : isFailed ? tokens.danger : tokens.foregroundMuted;
+
+  const statusBg = isSuccess ? tokens.successBg : isRunning || isWaiting ? tokens.accentBg : isFailed ? tokens.dangerBg : tokens.surface2;
+
+  // A reply that matches no offered label is free text the user typed, so it
+  // is labelled as such rather than pretending an option was picked.
+  const answered = data.askAnswer ?? [];
+  const typedReply =
+    answered.length > 0 &&
+    !answered.some((answer) =>
+      (data.askOptions ?? []).some(
+        (option) => option.label.trim().toLowerCase() === answer.trim().toLowerCase(),
+      ),
+    );
+
+  const phone = useWindowDimensions().width <= PHONE_MAX;
+  const styles = useToolCalloutStyles(tokens, statusBg, statusColor, phone);
+
+  return (
         <ToolOutputVisibility.Provider value={reportVisibility}>
         <View testID="tool-card-body" style={styles.body}>
           {errorLine ? <Text testID="tool-error-line" selectable style={styles.mcpErrorText}>{errorLine}</Text> : null}
@@ -513,7 +530,5 @@ export function ToolCallout({
           {!hasTypedBody ? <ToolDetailBody data={data} tokens={tokens} /> : null}
         </View>
         </ToolOutputVisibility.Provider>
-      )}
-    </View>
   );
 }

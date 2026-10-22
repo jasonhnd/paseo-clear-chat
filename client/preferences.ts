@@ -23,6 +23,7 @@ export type CodeFontPreference = "code" | "plain";
 export type CodeFontFamilyPreference = NonNullable<PreferenceOverrides["codeFontFamily"]>;
 export type MarkdownVariantPreference = "document" | "compact" | "terminal";
 export type OutputLineLimit = 10 | 15 | 30 | "never";
+export type CollapsedStepAction = "details" | "inline";
 
 export const OUTPUT_LINE_OPTIONS = [
   { value: "10", label: "10 lines" },
@@ -75,6 +76,7 @@ export interface EnhancerPreferences {
   /** Which look the markdown renderer uses. */
   markdownVariant: MarkdownVariantPreference;
   foldFinishedSteps: boolean;
+  collapsedStepAction: CollapsedStepAction;
   foldLongOutputAfter: OutputLineLimit;
 }
 
@@ -96,6 +98,7 @@ export const DEFAULT_PREFERENCES: Readonly<EnhancerPreferences> = {
   assistantMarkdown: true,
   markdownVariant: "document",
   foldFinishedSteps: true,
+  collapsedStepAction: "details",
   foldLongOutputAfter: 15,
 };
 
@@ -136,8 +139,7 @@ function loadLegacyPreferences(): PreferenceOverrides | undefined {
     const valid: Record<string, unknown> = {};
     for (const [key, schema] of Object.entries(preferenceOverridesSchema.shape)) {
       // New host-only preferences must never come from a browser import snapshot.
-      if (key === "textScale" || key === "foldFinishedSteps" || key === "foldLongOutputAfter" ||
-          key === "codeFontFamily" || key === "customAccent" || key === "customAccentEnabled") continue;
+      if (["textScale", "foldFinishedSteps", "foldLongOutputAfter", "codeFontFamily", "customAccent", "customAccentEnabled", "collapsedStepAction"].includes(key)) continue;
       const parsed = schema.safeParse((candidate as Record<string, unknown>)[key]);
       if (parsed.success && parsed.data !== undefined) valid[key] = parsed.data;
     }

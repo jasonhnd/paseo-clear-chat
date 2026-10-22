@@ -12,6 +12,7 @@ import { extractPromptImages } from "./client/prompt-images";
 import { installCompactToolSpacing } from "./client/tool-row-spacing";
 import { extractGeneratedImages } from "./client/generated-images";
 import { projectedApprovalStatus } from "./client/tool-approval";
+import { installStepDetailPanel } from "./client/components/step-detail-host";
 import {
   areEnhancerPreferencesReady,
   getEnhancerPreferences,
@@ -54,9 +55,9 @@ function registerClient(client: PluginClientContext) {
   // Paseo's Ctrl+F cannot reveal rows this plugin draws; this bar can.
   const removeChatFind = installChatFind();
   const removeToolSpacing = installCompactToolSpacing();
+  const removeStepDetails = installStepDetailPanel(client);
 
-  // Configuration lives in the host Settings area. The plugin has no showcase
-  // surface, panels, or Command Center item.
+  // Configuration lives in the host Settings area.
   client.addSettingsScreen({
     id: "chat-presentation",
     title: "Chat presentation",
@@ -306,6 +307,7 @@ function registerClient(client: PluginClientContext) {
     removeNoticeStyle();
     removeChatFind();
     removeToolSpacing();
+    removeStepDetails();
     removeToolTransformer();
     removeToolRenderer();
     removeApprovalRenderer();

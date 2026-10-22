@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View, Text, Pressable } from "react-native";
+import { View, Text, Pressable, useWindowDimensions } from "react-native";
 import { useAgent, usePaseo, useRpc } from "@getpaseo/plugin/client";
 import { useRevealedText } from "@getpaseo/plugin/client/react-native";
 import type { PluginTimelineItemProps } from "@getpaseo/plugin/client";
@@ -43,6 +43,9 @@ import { extractGeneratedImages, type GeneratedImage } from "./generated-images"
 import type { ApprovalStatus } from "./tool-approval";
 import { Glyph } from "./components/glyph";
 import { useReplyDuration } from "./reply-duration";
+import { stepDetailPresentation } from "./breakpoints";
+import { StepDetailPanel } from "./components/step-detail-panel";
+import { openHostStepDetail, updateHostStepDetail } from "./components/step-detail-host";
 
 export function LiveApprovalRenderer({
   item,
@@ -110,6 +113,10 @@ export function LiveToolCallRenderer({
 }: PluginTimelineItemProps<LiveToolCallPayload>) {
   const revealPath = useRpc(revealPathRpc);
   const cwd = useAgent(agentId, (agent) => agent.cwd);
+  const workspaceId = useAgent(agentId, (agent) => agent.workspaceId);
+  const { width } = useWindowDimensions();
+  const presentation = stepDetailPresentation(width);
+  const [detailOpen, setDetailOpen] = useState(false);
   const preferences = useEnhancerPreferences();
   const tokens = useMemo(
     () => buildThemeTokens(theme.colors, preferences),
@@ -167,6 +174,24 @@ export function LiveToolCallRenderer({
     cwd,
   );
 
+  const selectedDetail = useMemo(() => ({
+    key: JSON.stringify([data.callId, data.name, timestamp.getTime()]),
+    step: calloutData,
+    onRevealPath: handleRevealPath,
+    imageFile,
+  }), [data.callId, data.name, timestamp.getTime(), calloutData, handleRevealPath, imageFile]);
+  const openDetail = useCallback(() => {
+    if (presentation === "side" && openHostStepDetail(host.id, agentId, workspaceId ?? undefined, selectedDetail)) return;
+    setDetailOpen(true);
+  }, [presentation, host.id, agentId, workspaceId, selectedDetail]);
+  useEffect(() => {
+    updateHostStepDetail(host.id, agentId, selectedDetail);
+  }, [host.id, agentId, selectedDetail]);
+  useEffect(() => {
+    if (preferences.collapsedStepAction === "inline") setDetailOpen(false);
+    else if (detailOpen && presentation === "side" && openHostStepDetail(host.id, agentId, workspaceId ?? undefined, selectedDetail)) setDetailOpen(false);
+  }, [preferences.collapsedStepAction, detailOpen, presentation, host.id, agentId, workspaceId, selectedDetail]);
+
   return (
     <View testID="tool-timeline-item" {...surfaceProps(hostFontEscape, toolRowMarker(!calloutData.finalReply && !generatedImages.length && !expansion.expanded && !expansion.error))}>
       {calloutData.finalReply ? (
@@ -182,10 +207,20 @@ export function LiveToolCallRenderer({
           tokens={tokens}
           expanded={expansion.expanded}
           onExpandedChange={expansion.onExpandedChange}
+          onOpenDetail={preferences.collapsedStepAction === "details" ? openDetail : undefined}
           onRevealPath={handleRevealPath}
           imageFile={imageFile}
         />
       )}
+      <StepDetailPanel
+        step={calloutData}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        presentation={presentation === "side" ? "popover" : presentation}
+        tokens={tokens}
+        onRevealPath={handleRevealPath}
+        imageFile={imageFile}
+      />
       <GeneratedImages
         images={generatedImages}
         cwd={cwd}
