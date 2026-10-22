@@ -21,10 +21,10 @@ interface DetailSession {
 const openSessions = new Map<string, DetailSession>();
 
 /** The host recreates timeline rows when entering or leaving its compact layout. */
-export function useStepDetailSession(key: string, hostedState?: StepDetailState) {
+export function useStepDetailSession(key: string, hostedState?: StepDetailState, reclaimHosted = false) {
   const local = useRef<DetailSession | null>(null);
   if (local.current?.key !== key) local.current = openSessions.get(key) ?? {
-    key, open: false, state: hostedState ?? createStepDetailState(), listeners: new Set(),
+    key, open: Boolean(hostedState && reclaimHosted), state: hostedState ?? createStepDetailState(), listeners: new Set(),
   };
   const session = local.current;
   const subscribe = useCallback((listener: () => void) => {

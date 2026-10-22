@@ -13,6 +13,7 @@ function createToolHarness(platform = "ios", options = {}) {
   const panelOpens = [];
   const dimensions = { width: options.width ?? 1440, height: options.height ?? 900, scale: 1, fontScale: 1, ...options.dimensions };
   let activePanel;
+  let panelMounted = true;
   const reveals = [], links = [], copies = [], toasts = [], imageReads = [];
   let frame;
   const jsx = (type, props) => ({ type, props: props ?? {} });
@@ -267,6 +268,7 @@ function createToolHarness(platform = "ios", options = {}) {
   }
   return {
     load, nodes, text, reveals, links, copies, toasts, imageReads, transformers, renderers, panels, panelOpens, dimensions, get preferences() { return getPreferences(); }, tokens, draw, expansionHost, unmount, dispose,
+    setPanelMounted(value) { panelMounted = value; },
     mount(item, expand = true, identity = {}) {
       unmount(); reveals.length = links.length = copies.length = imageReads.length = 0;
       if (!timestamps.has(item)) timestamps.set(item, new Date(nextTimestamp++));
@@ -278,7 +280,7 @@ function createToolHarness(platform = "ios", options = {}) {
         const props = { agentId: "demo-agent", host: { id: "demo-host" }, item: { ...pluginItem, data: nextData }, theme: { colors: options.themeColors ?? {} }, timestamp: timestamps.get(item), ...identity };
         const row = draw(jsx(renderer.Component, props));
         const panel = panels.get(activePanel?.id);
-        return panel ? [row, draw(jsx(panel.Component, { ...props, ...activePanel, context: "agent" }), "panel")] : row;
+        return panel && panelMounted ? [row, draw(jsx(panel.Component, { ...props, ...activePanel, context: "agent" }), "panel")] : row;
       };
       let tree = render();
       if (expand) {

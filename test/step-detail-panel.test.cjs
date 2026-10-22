@@ -99,6 +99,28 @@ test("the same open detail changes presentation when the viewport crosses breakp
 });
 
 for (const platform of ["web", "ios", "android"]) {
+  test(`${platform}: a compact timeline reclaims its hosted detail when Explorer unmounts`, async () => {
+    const h = createToolHarness(platform, { dimensions: { width: 820 } });
+    let mounted = h.mount(call);
+    find(h, mounted.tree, "step-detail-scroll").props.onScroll?.({ nativeEvent: { contentOffset: { y: 400 } } });
+    h.dimensions.width = 1180;
+    mounted.render();
+    h.dimensions.width = 600;
+    h.setPanelMounted(false);
+    mounted = h.mount(call, false, { layout: { compact: true, platform } });
+    await tick();
+    assert.equal(find(h, mounted.render(), "step-detail-panel").props.dataSet.presentation, "sheet");
+    assert.equal(find(h, mounted.render(), "step-detail-scroll").props.contentOffset.y, 400);
+    h.dimensions.width = 820;
+    h.setPanelMounted(true);
+    mounted = h.mount(call, false, { layout: { compact: false, platform } });
+    assert.equal(h.nodes(mounted.render(), node => node.props.testID === "step-detail-panel").length, 1);
+    assert.equal(find(h, mounted.render(), "step-detail-scroll").props.contentOffset.y, 400);
+    find(h, mounted.render(), "step-detail-close").props.onPress();
+    h.unmount();
+    await tick();
+  });
+
   test(`${platform}: a replacement timeline row retains its open detail and reading state`, async () => {
     const h = createToolHarness(platform, { dimensions: { width: 820 } });
     let mounted = h.mount(call);

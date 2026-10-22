@@ -112,6 +112,7 @@ export function LiveToolCallRenderer({
   item,
   theme,
   timestamp,
+  layout,
 }: PluginTimelineItemProps<LiveToolCallPayload>) {
   const revealPath = useRpc(revealPathRpc);
   const cwd = useAgent(agentId, (agent) => agent.cwd);
@@ -182,6 +183,8 @@ export function LiveToolCallRenderer({
   const detailKey = JSON.stringify([data.callId, data.name, timestamp.getTime()]);
   const { open: detailOpen, setOpen: setDetailOpen, state: detailState } = useStepDetailSession(
     JSON.stringify([host.id, agentId, detailKey]), hostStepDetailState(host.id, agentId, detailKey),
+    // Compact navigation removes Explorer; its replacement row owns the overlay.
+    Boolean(layout?.compact && presentation !== "side"),
   );
   const selectedDetail = useMemo(() => ({
     key: detailKey,
