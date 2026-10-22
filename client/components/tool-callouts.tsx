@@ -26,6 +26,7 @@ import { useEnhancerPreferences, type OutputLineLimit } from "../preferences";
 import { toolErrorLine } from "../tool-error";
 import { stepSummaryTextStyle, useToolStepMenu } from "./tool-step-menu";
 import { useToolHoverPreview } from "./tool-hover-preview";
+import { useToolKeyboard } from "./tool-keyboard";
 
 function getToolIconName(tool: string): string {
   if (tool === "git") return "Git";
@@ -54,6 +55,8 @@ export interface ToolCalloutProps {
   onExpandedChange: (expanded: boolean) => void;
   /** Overrides a collapsed row press without changing its saved folding choice. */
   onOpenDetail?: () => void;
+  /** Keeps keyboard navigation inside this host and conversation. */
+  navigationScope?: string;
   /** Shows a path in the machine's own file manager. */
   onRevealPath?: (path: string) => void;
   /**
@@ -83,10 +86,13 @@ function hasTypedToolBody(data: ToolCalloutData): boolean {
 }
 
 export function ToolCallout({
-  data, tokens, expanded, onExpandedChange, onOpenDetail, onRevealPath, imageFile,
+  data, tokens, expanded, onExpandedChange, onOpenDetail, navigationScope = "", onRevealPath, imageFile,
 }: ToolCalloutProps) {
   const stepMenu = useToolStepMenu(data, tokens, onRevealPath);
   const hoverPreview = useToolHoverPreview(data, expanded, tokens);
+  const keyboard = useToolKeyboard(navigationScope, () => {
+    if (onOpenDetail) onOpenDetail(); else onExpandedChange(!expanded);
+  }, tokens);
   const isSuccess = data.status === "completed";
   const isRunning = data.status === "running";
   const isFailed = data.status === "failed";
@@ -111,11 +117,12 @@ export function ToolCallout({
       aria-expanded={expanded}
       aria-haspopup={!expanded && onOpenDetail ? "dialog" : undefined}
       {...stepMenu.rowProps}
+      {...keyboard.rowProps}
       onPress={() => {
         if (stepMenu.consumePress()) return;
         if (!expanded && onOpenDetail) onOpenDetail(); else onExpandedChange(!expanded);
       }}
-      style={compact ? [styles.header, styles.compactHeaderTarget] : styles.header}
+      style={[styles.header, compact && styles.compactHeaderTarget, keyboard.focusStyle]}
     >
       <View style={styles.headerLeft}>
         <Glyph name={getToolIconName(data.tool)} size={phone ? 11 : 13} color={iconColor} />

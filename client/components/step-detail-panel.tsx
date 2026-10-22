@@ -6,6 +6,7 @@ import {
 import type { ViewProps, ViewStyle } from "react-native";
 import type { StepDetailPresentation } from "../breakpoints";
 import { installStepDetailBack } from "../step-detail-back";
+import { installStepDetailKeyboard } from "../step-detail-keyboard";
 import type { ToolCalloutData } from "../../shared/contracts";
 import type { ImageFile } from "../image-file";
 import type { ExtendedThemeTokens } from "./theme-tokens";
@@ -61,6 +62,10 @@ export function StepDetailPanel({ step, open, onOpenChange, presentation, tokens
     return installStepDetailBack(close);
   }, [open, Boolean(step), presentation === "side", close]);
 
+  useEffect(() => {
+    if (open && step) return installStepDetailKeyboard(close);
+  }, [open, Boolean(step), close]);
+
   const resize = useMemo(() => PanResponder.create({
     onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dy) > 8 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
     onPanResponderGrant: () => { startHeight.current = snapHeight; },
@@ -87,6 +92,7 @@ export function StepDetailPanel({ step, open, onOpenChange, presentation, tokens
     <View
       {...surfaceProps(hostFontEscape, { dataSet: { presentation, ...(presentation === "sheet" ? { snap } : {}) } } as ViewProps)}
       testID="step-detail-panel"
+      accessibilityLabel="Step details"
       accessibilityViewIsModal={presentation !== "side"}
       onAccessibilityEscape={close}
       style={[

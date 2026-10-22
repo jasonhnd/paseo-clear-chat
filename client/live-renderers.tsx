@@ -208,6 +208,7 @@ export function LiveToolCallRenderer({
           expanded={expansion.expanded}
           onExpandedChange={expansion.onExpandedChange}
           onOpenDetail={preferences.collapsedStepAction === "details" ? openDetail : undefined}
+          navigationScope={JSON.stringify([host.id, agentId])}
           onRevealPath={handleRevealPath}
           imageFile={imageFile}
         />
