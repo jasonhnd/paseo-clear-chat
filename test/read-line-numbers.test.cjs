@@ -74,3 +74,53 @@ test("source numbers are retained per line rather than inferred from the first p
   assert.deepEqual(parsed.lines.map(line => line.lineNumber), [50, 72, 80]);
   assert.equal(parsed.text, "first\nmiddle\nlast");
 });
+
+const capturedReads = require("./fixtures/hermes-captured-reads.json").items;
+for (const filePath of ["line-offset-sample.txt", "/workspace/demo/line-offset-sample.txt"]) {
+  test(`offset header accepts a relative display path with ${filePath}`, t => {
+    const h = createToolHarness("web", { preferences: { collapsedStepAction: "details" } });
+    t.after(() => h.unmount());
+    const source = capturedReads.find(item => item.detail.content.includes("from line 150,"));
+    const content = Array.from({ length: 111 }, (_, index) => `${index + 150}|sample ${index + 150}`).join("\n");
+    const item = { ...source, detail: { ...source.detail, filePath,
+      content: `Read line-offset-sample.txt (from line 150, limit 111) \u2014 400 total lines\n\n\x60\x60\x60\n${content}\n\x60\x60\x60` } };
+    const { tree } = h.mount(item);
+    const rows = byId(h, tree, "step-detail-scroll").props.data.filter(row => row.section === "output" && row.kind === "text");
+    assert.equal(rows[0].lineNumber, 150);
+    assert.equal(rows.at(-1).lineNumber, 260);
+    assert.equal(rows.map(row => row.text).join(""), content.replace(/^\d+\|/gm, ""));
+  });
+}
+
+test("absolute offset header and nested literal fences and numeric pipes survive one unwrap", t => {
+  const h = createToolHarness("web");
+  t.after(() => h.unmount());
+  const { readOutputLines } = h.load("client/read-output.ts");
+  const filePath = "/workspace/demo/sample.md";
+  const parsed = readOutputLines({ tool: "read", filePath },
+    `Read ${filePath} (from line 150, limit 3) \u2014 400 total lines\n\n\x60\x60\x60markdown\n150|\x60\x60\x60\n151|72|literal\n152|\x60\x60\x60\n\x60\x60\x60`);
+  assert.equal(parsed.text, "\x60\x60\x60\n72|literal\n\x60\x60\x60");
+  assert.deepEqual(parsed.lines.map(line => line.lineNumber), [150, 151, 152]);
+});
+
+test("unrecognized paths, malformed wrappers and unnumbered file prose stay literal", t => {
+  const h = createToolHarness("web");
+  t.after(() => h.unmount());
+  const { readOutputText } = h.load("client/read-output.ts");
+  for (const content of ["150|first\nnot numbered", "\x60\x60\x60\n150|literal\n\x60\x60\x60"]) {
+    const text = `Read sample.txt (from line 150, limit 2) \u2014 400 total lines\n\n\x60\x60\x60\n${content}\n\x60\x60\x60`;
+    assert.equal(readOutputText({ tool: "read", filePath: "sample.txt" }, text), text);
+  }
+  const text = "Read other.txt \u2014 1 total line\n\n```\n1|literal\n```";
+  assert.equal(readOutputText({ tool: "read", filePath: "/workspace/sample.txt" }, text), text);
+});
+
+test("captured upstream truncation remains visible and never fabricates missing file lines", t => {
+  const h = createToolHarness("web");
+  t.after(() => h.unmount());
+  const { readOutputText } = h.load("client/read-output.ts");
+  for (const item of capturedReads) {
+    assert.match(item.detail.content, /chars total, truncated\)$/);
+    assert.equal(readOutputText({ tool: "read", filePath: item.detail.filePath }, item.detail.content), item.detail.content);
+  }
+});
