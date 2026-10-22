@@ -108,7 +108,7 @@ export function StepDetailContent({ step, tokens, onRevealPath, imageFile }: {
       data={rows}
       keyExtractor={row => row.key}
       initialNumToRender={8}
-      maxToRenderPerBatch={4}
+      maxToRenderPerBatch={step.tool === "read" ? 32 : 4}
       windowSize={5}
       updateCellsBatchingPeriod={16}
       scrollEventThrottle={16}
