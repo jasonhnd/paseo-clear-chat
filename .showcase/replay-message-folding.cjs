@@ -19,8 +19,13 @@ mkdirSync(work, { recursive: true });
 const source = Array.from({ length: 31 }, (_, i) => `sample_line_${i + 1};`).join("\n");
 const reply = `Before the code.\n\n\`\`\`text\n${source}\n\`\`\`\n\nAfter the code.`;
 const fixture = require("../test/fixtures/real-hermes-reply-footer.json");
+const prompt = { ...fixture[0].item, text: source };
+assert.deepEqual(Object.keys(prompt).sort(), ["messageId", "text", "type"]);
 const hostShim = `
   const callbacks = new Map();
+  const agent = { cwd: "/workspace/demo", status: "idle", updatedAt: "2026-01-01T12:00:10Z" };
+  const handle = { refresh: async () => ({ agent }), timeline: { refetch: async () => ({ entries: [], hasNewer: false }) } };
+  const paseo = { agents: { ref: () => handle } };
   export async function replayRpc(contract, input) {
     const group = contract.name.includes("tool-expansion") ? "expansion" : "presentation";
     if (!contract.name.startsWith("settings.")) throw new Error("No live RPC in offline replay");
@@ -37,8 +42,8 @@ const hostShim = `
     if (!callbacks.has(contract.name)) callbacks.set(contract.name, input => replayRpc(contract, input));
     return callbacks.get(contract.name);
   }
-  export function useAgent() { return null; }
-  export function usePaseo() { return {}; }
+  export function useAgent(_id, selector) { return selector(agent); }
+  export function usePaseo() { return paseo; }
 `;
 
 async function debugPort() {
@@ -60,28 +65,43 @@ async function main() {
     stdin: { resolveDir: root, loader: "tsx", contents: `
       import React from "react";
       import { createRoot } from "react-dom/client";
-      import { MarkdownView } from "./client/components/markdown/markdown-view";
-      import { UserMessage } from "./client/components/user-message";
-      import { buildThemeTokens } from "./client/components/theme-tokens";
-      import { embedFonts } from "./client/components/embed-fonts";
+      import contribute from "./index.client";
+      import { PHONE_MAX } from "./client/breakpoints";
       import { initializeEnhancerPreferences, updateEnhancerPreferences } from "./client/preferences";
       import { replayRpc } from "@getpaseo/plugin/client";
-      const tokens = buildThemeTokens({
+      const colors = {
         surface0: "#f8fafc", surface1: "#ffffff", surface2: "#edf0f5", border: "#d5dbe5",
         foreground: "#18202d", foregroundMuted: "#586579", accent: "#315fba", accentForeground: "#ffffff",
         statusSuccess: "#1f8a5b", statusWarning: "#a36a00", statusDanger: "#cf3340",
+      };
+      const transformers = new Map(), renderers = new Map();
+      contribute({
+        rpc: replayRpc,
+        addSettingsScreen: () => () => {},
+        addTimelineTransformer: value => { transformers.set(value.query.itemType, value); return () => {}; },
+        addTimelineRenderer: value => { renderers.set(value.kind, value); return () => {}; },
       });
-      embedFonts();
-      const base = { hostId: "offline-host", agentId: "offline-agent", timestamp: ${Date.parse(fixture[0].timestamp)} };
+      const input = ${JSON.stringify(prompt)};
+      window.__promptInput = input;
+      function timelineItem(item, timestamp) {
+        const result = transformers.get(item.type).transform({ item, phase: "complete" });
+        if (!result) throw new Error("Captured text-only item was left untransformed");
+        const plugin = result.items[0], renderer = renderers.get(plugin.kind);
+        const data = renderer.schema.parse(plugin.data);
+        if (item.type === "user_message") window.__promptPayload = data;
+        return React.createElement(renderer.Component, {
+          host: { id: "offline-host" }, agentId: "offline-agent", timestamp: new Date(timestamp),
+          theme: { colors }, layout: { platform: "web", compact: window.innerWidth <= PHONE_MAX },
+          item: { ...plugin, data },
+        });
+      }
       window.__copies = [];
       window.__setLimit = limit => updateEnhancerPreferences({ foldLongOutputAfter: limit });
       initializeEnhancerPreferences(replayRpc).then(() => {
         createRoot(document.getElementById("root")).render(
           <main style={{ width: "100%", maxWidth: 1000, margin: "0 auto", padding: 12, boxSizing: "border-box" }}>
-            <section id="prompt"><UserMessage text={${JSON.stringify(source)}} tokens={tokens} imageCount={2}
-              expansionIdentity={{ ...base, name: "user-message", callId: ${JSON.stringify(fixture[0].item.messageId)} }} /></section>
-            <section id="reply"><MarkdownView text={${JSON.stringify(reply)}} tokens={tokens} variant="document"
-              expansionIdentity={{ ...base, name: "assistant-message", callId: ${JSON.stringify(fixture.at(-1).item.messageId)} }} /></section>
+            <section id="prompt">{timelineItem(input, ${JSON.stringify(fixture[0].timestamp)})}</section>
+            <section id="reply">{timelineItem(${JSON.stringify({ ...fixture.at(-1).item, text: reply })}, ${JSON.stringify(fixture.at(-1).timestamp)})}</section>
           </main>
         );
       });
@@ -105,7 +125,7 @@ async function main() {
   const server = createServer((request, response) => {
     response.setHeader("Content-Type", request.url === "/replay.js" ? "text/javascript" : "text/html");
     response.end(request.url === "/replay.js" ? bundle.outputFiles[0].contents :
-      '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:0}section{margin-bottom:16px}</style></head><body><div id="root"></div><script src="/replay.js"></script></body></html>');
+      '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:0}section{display:flex;flex-direction:column;margin-bottom:16px}</style></head><body><div id="root"></div><script src="/replay.js"></script></body></html>');
   });
   let browser;
   const report = [];
@@ -127,6 +147,9 @@ async function main() {
       await page.evaluate(() => localStorage.clear());
       await page.reload();
       const measurements = {};
+      await page.waitForFunction(() => window.__promptPayload);
+      assert.deepEqual(await page.evaluate(() => Object.keys(window.__promptInput).sort()), ["messageId", "text", "type"]);
+      assert.equal(await page.evaluate(() => "imageCount" in window.__promptPayload || "images" in window.__promptPayload), false);
       for (const [section, copyLabel] of [["prompt", "Copy prompt"], ["reply", "Copy code"]]) {
         const content = page.locator(`#${section}`);
         await content.getByRole("button", { name: "Show all 31 lines", exact: true }).waitFor();
@@ -154,6 +177,12 @@ async function main() {
         await content.getByRole("button", { name: "Show fewer lines", exact: true }).click();
         assert.equal((await content.innerText()).includes("sample_line_16;"), false);
       }
+      await page.waitForFunction(() => Object.values(JSON.parse(localStorage.getItem("clear-chat/offline-folding/expansion"))?.values.entries ?? {}).filter(entry => entry.expanded === false).length === 2);
+      await page.reload();
+      for (const section of ["prompt", "reply"]) {
+        await page.locator(`#${section}`).getByRole("button", { name: "Show all 31 lines", exact: true }).waitFor();
+        assert.equal((await page.locator(`#${section}`).innerText()).includes("sample_line_16;"), false);
+      }
       for (const limit of [10, 30, "never", 15]) {
         await page.evaluate(limit => window.__setLimit(limit), limit);
         for (const section of ["prompt", "reply"]) {
@@ -168,7 +197,7 @@ async function main() {
       const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
       assert.ok(scrollWidth <= width, `Overflow at ${width}px: ${scrollWidth}`);
       await page.screenshot({ path: join(work, `${width}.png`), fullPage: true });
-      report.push({ width, scrollWidth, ...measurements, copy: "full source", reload: "restored", limits: [10, 15, 30, "never"], debugPort: port });
+      report.push({ width, scrollWidth, ...measurements, promptKeys: ["messageId", "text", "type"], pipeline: "registered transformer/schema/live renderer", copy: "full source", reload: "expansion and collapse restored", limits: [10, 15, 30, "never"], debugPort: port });
     }
     assert.deepEqual(errors, []);
     writeFileSync(join(temp, "message-folding-report.json"), JSON.stringify(report, null, 2) + "\n");

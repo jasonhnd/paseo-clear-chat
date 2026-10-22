@@ -125,12 +125,17 @@ test("upstream #17: image counts cannot hide available sources or become invalid
   assert.match(visibleText(h, mounted.render({ ...mounted.data, imageCount: 0 })), /2 images attached/);
 });
 
-test("upstream #17: stripped host payloads stay native because their image count is unknown", () => {
+test("text-only host payloads render without inventing attachment metadata", () => {
   const h = createToolHarness("ios", { userMessage: true });
   const item = prompt();
   const before = structuredClone(item);
   assert.equal(h.load("client/prompt-images.ts").extractPromptImages(item).count, null);
-  assert.equal(h.transformers.get("user_message").transform({ item }), undefined);
+  const mounted = h.mount(item);
+  assert.equal(mounted.data.text, item.text);
+  assert.equal("imageCount" in mounted.data, false);
+  assert.equal("images" in mounted.data, false);
+  assert.equal(thumbnails(h, mounted.tree).length, 0);
+  assert.doesNotMatch(visibleText(h, mounted.tree), /images? attached/);
   assert.deepEqual(item, before);
   for (const fields of [{ imageCount: 0 }, { images: [] }]) {
     const { tree, data } = h.mount(prompt(fields));

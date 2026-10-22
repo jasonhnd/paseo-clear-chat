@@ -8,13 +8,60 @@ const identity = { timestamp: new Date(timeline[0].timestamp) };
 const lines = n => Array.from({ length: n }, (_, i) => `sample_line_${i + 1};`).join("\n");
 const source = lines(31);
 const samples = [
-  // Explicit attachment metadata keeps this derived prompt on the enhanced path.
-  ["prompt", { ...timeline[0].item, text: source, imageCount: 0 }, "Copy prompt", source],
+  ["prompt", { ...timeline[0].item, text: source }, "Copy prompt", source],
   ["reply code", { ...timeline.at(-1).item, text: `Before the code.\n\n\`\`\`text\n${source}\n\`\`\`\n\nAfter the code.` }, "Copy code", source],
 ];
 const options = { markdown: true, syntax: true, userMessage: true, copyFeedback: true, replyFooter: true };
 const buttons = (h, tree) => h.nodes(tree, node => node.type === "Pressable" && /^(Show all \d+ lines|Show fewer lines)$/.test(node.props.accessibilityLabel));
 const visible = (h, tree, line) => h.text(tree).includes(`sample_line_${line};`);
+
+for (const [platform, width, isPad] of [
+  ["web", 1440], ["web", 1024], ["web", 820], ["web", 390],
+  ["ios", 390], ["ios", 820, true], ["ios", 1024, true], ["android", 390],
+]) {
+  test(`captured text-only prompt folds and restores both choices on ${platform} at ${width}px`, async () => {
+    const captured = structuredClone(timeline[0].item);
+    const original = structuredClone(captured);
+    assert.deepEqual(Object.keys(captured).sort(), ["messageId", "text", "type"]);
+    const expansionHost = createExpansionHost();
+    const replayOptions = { ...options, expansionHost, width, isPad };
+    let h = createToolHarness(platform, replayOptions);
+    const short = h.mount(captured, false, identity);
+    assert.equal(short.data.text, captured.text);
+    assert.equal(buttons(h, short.tree).length, 0);
+    assert.equal("imageCount" in short.data, false);
+    assert.equal("images" in short.data, false);
+    assert.deepEqual(captured, original);
+    h.unmount();
+
+    // Only lengthen sanitized text; retain exactly the captured item structure.
+    const long = { ...captured, text: source };
+    assert.deepEqual(Object.keys(long), Object.keys(captured));
+    for (const expanded of [true, false]) {
+      const mounted = h.mount(long, false, identity);
+      await tick();
+      let tree = mounted.render();
+      assert.equal(visible(h, tree, 31), !expanded);
+      await h.nodes(tree, node => node.props.accessibilityLabel === "Copy prompt")[0].props.onPress();
+      assert.equal(h.copies.at(-1), source);
+      buttons(h, tree)[0].props.onPress();
+      assert.equal(visible(h, mounted.render(), 31), expanded);
+      h.unmount();
+      await tick();
+      h = createToolHarness(platform, replayOptions);
+      const reloaded = h.mount(structuredClone(long), false, identity);
+      await tick();
+      tree = reloaded.render();
+      assert.equal(visible(h, tree, 31), expanded);
+      assert.equal(buttons(h, tree)[0].props.accessibilityState.expanded, expanded);
+      assert.equal("imageCount" in reloaded.data, false);
+      assert.equal("images" in reloaded.data, false);
+      assert.doesNotMatch(h.text(tree), /images?\s+attached/);
+    }
+    assert.deepEqual(long, { ...original, text: source });
+    h.unmount();
+  });
+}
 
 for (const platform of ["web", "ios", "android"]) {
   for (const [kind, item, copyLabel, copiedText] of samples) {
