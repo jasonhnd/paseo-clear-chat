@@ -128,6 +128,58 @@ test("virtual cell measurements do not restore an obsolete reading position duri
   h.unmount();
 });
 
+test("a presentation handoff keeps the saved offset while its new scroll node is still laying out", () => {
+  const frames = new Map();
+  let serial = 0;
+  const h = harness("web", 820, { globals: {
+    requestAnimationFrame: callback => { frames.set(++serial, callback); return serial; },
+    cancelAnimationFrame: id => frames.delete(id),
+  } });
+  const { StepDetailStateContext, createStepDetailState } = h.load("client/components/step-detail-state.ts");
+  const state = createStepDetailState();
+  state.scrollOffset = 1000;
+  const tree = h.draw({ type: StepDetailStateContext.Provider, props: { value: state, children: {
+    type: h.load("client/components/step-detail-content.tsx").StepDetailContent,
+    props: { tokens: h.tokens, step: h.load("client/tool-call-data.ts").buildLiveToolCallData(shell) },
+  } } });
+  const scroll = byId(h, tree, "step-detail-scroll");
+  const restores = [];
+  scroll.props.ref.current = { scrollToOffset: value => restores.push(value) };
+  scroll.props.onLayout({ nativeEvent: { layout: { width: 680, height: 600 } } });
+  scroll.props.onContentSizeChange(680, 5000);
+  scroll.props.onScroll({ nativeEvent: { contentOffset: { y: 0 } } });
+  assert.equal(state.scrollOffset, 1000, "Early clamping does not replace the saved reading position");
+  for (const [id, callback] of [...frames]) { frames.delete(id); callback(); }
+  assert.deepEqual(restores, [{ offset: 1000, animated: false }]);
+  scroll.props.onScroll({ nativeEvent: { contentOffset: { y: 1250 } } });
+  scroll.props.onContentSizeChange(680, 5100);
+  assert.equal(state.scrollOffset, 1250);
+  assert.equal(frames.size, 0, "Virtual measurement does not schedule another restoration");
+  h.unmount();
+  scroll.props.onScroll({ nativeEvent: { contentOffset: { y: 0 } } });
+  assert.equal(state.scrollOffset, 1250, "A detached scroll node cannot overwrite the new viewport's reading state");
+});
+
+test("fresh details do not queue a zero-offset restoration over a new scroll", () => {
+  const frames = new Map();
+  let serial = 0;
+  const h = harness("web", 820, { globals: {
+    requestAnimationFrame: callback => { frames.set(++serial, callback); return serial; },
+    cancelAnimationFrame: id => frames.delete(id),
+  } });
+  const mounted = h.mount(shell);
+  const scroll = byId(h, mounted.tree, "step-detail-scroll");
+  const restores = [];
+  scroll.props.ref.current = { scrollToOffset: value => restores.push(value) };
+  scroll.props.onLayout({ nativeEvent: { layout: { width: 680, height: 600 } } });
+  scroll.props.onContentSizeChange(680, 5000);
+  scroll.props.onScroll({ nativeEvent: { contentOffset: { y: 1000 } } });
+  for (const [id, callback] of [...frames]) { frames.delete(id); callback(); }
+  assert.deepEqual(restores, [], "A new detail already starts at zero without an imperative restore");
+  assert.equal(byId(h, mounted.render(), "step-detail-scroll").props.contentOffset.y, 1000);
+  h.unmount();
+});
+
 test("bounded chunks preserve all characters, CRLF, tabs, blank lines and supplementary Unicode", () => {
   const h = harness("web");
   const { stepTextChunks } = h.load("client/step-detail-data.ts");
