@@ -23,9 +23,10 @@ function source(timeline = entries) {
 const summary = (h, tree) => h.text(h.nodes(tree, n => n.props.testID === "tool-summary-text"));
 
 for (const platform of ["web", "ios", "android"]) {
-  test(`${platform}: projected delivery recovers the sender through the canonical API`, async t => {
+ for (const width of [1440, 1024, 820, 390]) {
+  test(`${platform} ${width}px: projected delivery recovers the sender through the canonical API`, async t => {
     const host = source();
-    const h = createToolHarness(platform, { ...host, width: 1440 });
+    const h = createToolHarness(platform, { ...host, width });
     t.after(() => h.unmount());
     const item = projected();
     assert.ok(!("agentMessage" in item));
@@ -35,16 +36,17 @@ for (const platform of ["web", "ios", "android"]) {
     assert.ok(!h.text(mounted.tree).includes("sample-delivery"), "a delivery ID is not a sender ID");
     await settle();
     const tree = mounted.render();
-    assert.equal(summary(h, tree), "Message received · sample-coordinator");
+    assert.equal(summary(h, tree), "Message received");
     assert.ok(h.nodes(tree, n => n.type === "Glyph" && n.props.name === "MessageSquare").length);
     assert.ok(!h.text(tree).includes("agent_message"));
     assert.deepEqual(host.requests, [{ direction: "tail", limit: 0, projection: "canonical" }]);
     const open = h.mount(item);
     await settle();
     assert.equal(h.text(open.render()).split(delivery.agentMessage.text).length - 1, 1);
-    assert.ok(h.text(open.render()).includes("From agent: sample-coordinator"));
+    assert.ok(h.text(open.render()).includes("Sender: sample-coordinator"));
     assert.equal(host.requests.length, 1, "rows share the derived message cache");
   });
+ }
 }
 
 test("a missing structured body falls back to the projected plain-text detail", () => {
@@ -52,8 +54,8 @@ test("a missing structured body falls back to the projected plain-text detail", 
   const item = { ...delivery, agentMessage: { event: "message", sender: { id: "sample-coordinator" } } };
   const { data } = h.mount(item, false);
   const built = h.load("client/tool-call-data.ts").buildLiveToolCallData(data);
-  assert.equal(built.title, "Message received · sample-coordinator");
-  assert.equal(built.copyResult, `From agent: sample-coordinator\n\n${delivery.detail.text}`);
+  assert.equal(built.title, "Message received");
+  assert.equal(built.copyResult, `Sender: sample-coordinator\n\n${delivery.detail.text}`);
   h.unmount();
 });
 
@@ -66,7 +68,7 @@ test("an already open detail panel receives recovered provenance and copies the 
   mounted.render();
   const tree = mounted.render();
   const output = h.nodes(tree, n => n.props.testID === "step-detail-output")[0];
-  const expected = `From agent: sample-coordinator\n\n${delivery.detail.text}`;
+  const expected = `Sender: sample-coordinator\n\n${delivery.detail.text}`;
   assert.equal(h.text(output), expected);
   assert.equal(h.text(tree).split(delivery.detail.text).length - 1, 1);
   await h.nodes(tree, n => n.props.testID === "step-detail-copy-output")[0].props.onPress();
@@ -84,7 +86,7 @@ test("failed provenance lookup keeps the projected body without inventing a send
   assert.equal(summary(h, mounted.render()), "Message received");
   assert.equal(text.split(delivery.detail.text).length - 1, 1);
   assert.ok(!text.includes("sample-delivery"));
-  assert.ok(!text.includes("From agent:"));
+  assert.ok(!text.includes("Sender:"));
 });
 
 test("delivery recognition requires both the reserved call ID and exact tool name", async t => {
@@ -107,13 +109,13 @@ test("new deliveries arriving in the same running revision refresh missing prove
   t.after(() => h.unmount());
   const mounted = h.mount(projected(), false);
   await settle();
-  assert.match(summary(h, mounted.render()), /sample-coordinator/);
+  assert.equal(summary(h, mounted.render()), "Message received");
   const next = { ...delivery, callId: "paseo-agent-message:sample-next-delivery",
     agentMessage: { event: "finished", sender: { id: "sample-worker" }, text: "Sample task complete." } };
   first.push({ item: next });
   const second = h.mount(projected(next), false);
   await settle();
-  assert.equal(summary(h, second.render()), "Agent finished · sample-worker");
+  assert.equal(summary(h, second.render()), "Agent finished");
   assert.equal(host.requests.length, 2);
 });
 
@@ -136,4 +138,35 @@ test("late lookup results cannot cross hosts sharing the same delivery ID", asyn
   resolveRead({ entries, agent: host.agent });
   await settle();
   assert.equal(summary(h, h.draw({ type: LiveToolCallRenderer, props })), "Message received");
+});
+
+for (const platform of ["web", "ios", "android"]) {
+  for (const width of [1440, 1024, 820, 390]) {
+    for (const origin of ["canonical", "snapshot"]) {
+      test(`${platform} ${width}px: projected sender name from ${origin}`, async t => {
+        const timeline = structuredClone(entries);
+        if (origin === "canonical") timeline[1].item.agentMessage.sender.title = "Sample coordinator";
+        const host = source(timeline);
+        const h = createToolHarness(platform, { ...host, width,
+          agents: { "sample-coordinator": { title: "Sample coordinator" } } });
+        t.after(() => h.unmount());
+        const mounted = h.mount(projected(), false);
+        await settle();
+        assert.equal(summary(h, mounted.render()), "Message from Sample coordinator");
+        assert.ok(!summary(h, mounted.render()).includes(delivery.agentMessage.sender.id));
+      });
+    }
+  }
+}
+
+test("internal identifiers and blank titles never become a sender name", () => {
+  const h = createToolHarness();
+  const build = h.load("client/tool-call-data.ts").buildLiveToolCallData;
+  for (const title of [" ", "sample-coordinator", delivery.callId,
+    "12345678-1234-1234-1234-123456789abc"]) {
+    const item = { ...delivery, agentMessage: { ...delivery.agentMessage,
+      sender: { ...delivery.agentMessage.sender, title } } };
+    assert.equal(build(item).title, "Message received");
+  }
+  h.unmount();
 });
