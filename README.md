@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=semver"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <a href="https://paseo.sh"><img alt="Paseo 0.12.0+" src="https://img.shields.io/badge/Paseo-%3E%3D0.12.0-5b5bd6"></a>
+  <a href="https://paseo.sh"><img alt="Paseo 0.8.0+" src="https://img.shields.io/badge/Paseo-%3E%3D0.8.0-5b5bd6"></a>
 </p>
 
 <p align="center">
@@ -141,8 +141,7 @@ Search, fetch and web search, plans and checklists, plain text, skills and any o
 - **Wrap-up replies.** Replies sent through a `wrap_up` tool show as a full reply card, with recap, question, lettered options and a **Blocked** alert.
 - **Clickable links.** Links in replies open on desktop, web and iOS, and `mailto:` links open your mail app.
 - **Find in chat.** Ctrl/Cmd+F opens a find bar that also searches tool cards. It searches the messages that are loaded, so scroll up to include older ones.
-- **Open files.** File names in cards and paths in replies show the file in the host computer's file manager. On phones, tablets and narrow web windows, reply paths copy to the clipboard with a hint to open them on the host. Put filenames or paths with spaces in inline code, or use a Markdown link.
-- **Highlight text.** `==marked text==` adds a highlight to replies. Code keeps its literal equals signs.
+- **Open files.** A file name in a card shows that file in Finder, Explorer, or your file manager.
 
 ## Settings
 
@@ -150,10 +149,9 @@ Search, fetch and web search, plans and checklists, plain text, skills and any o
 
 | Setting | Effect |
 |---|---|
-| Accent colour | Follow the Paseo theme, pick a preset, or choose **Custom** for colour swatches and a HEX field. Custom colours adjust to keep text contrast at least 4.5:1. |
+| Accent colour | Follow the Paseo theme, or pick Jade, Violet, Amber or Rose. |
 | Interface font | Embedded Inter, or your system font. |
 | Text size | Small (90%), Default (100%), Large (115%) or XL (130%). Icons keep their size. |
-| Code font | Follow Paseo (default), Iosevka, Menlo, Consolas, Fira Code or Cascadia Code. Applies to code blocks, inline code, terminal output and diffs. |
 | Code glyphs | Iosevka with ligatures, or plain glyphs. |
 | Fold finished steps | On by default. Off opens every step unless you chose otherwise for that call. |
 | Fold long output after | 10, 15 (default) or 30 lines, or Never. Applies to code and tool output. |
@@ -161,15 +159,7 @@ Search, fetch and web search, plans and checklists, plain text, skills and any o
 | Enhanced prompt bubble | Styles your prompts. Off uses Paseo's own bubble. |
 | Assistant markdown | Off hands replies back to Paseo's own renderer. |
 
-Settings are saved on the host, so every device connected to that host shares them. Accent colours and folding settings apply at once. Other changes apply to new messages; reload the chat to update older ones.
-
-For a custom accent, tap a swatch or enter `#RGB` or `#RRGGBB` and press **Apply**. Invalid HEX stays in the field with an error and leaves the saved colour unchanged. Switching to a preset remembers your custom colour. The saved HEX stays exact; its displayed colour darkens on light themes or lightens on dark themes as needed for readable text. Filled buttons use whichever of black or white has higher contrast. [Contrast and compatibility rules](docs/DEVELOPMENT.md#custom-accent-colours).
-
-Paseo's code font preference is not available through plugin SDK 0.8.0. **Follow Paseo**
-therefore falls back to Iosevka with your existing **Code glyphs** choice. On web and desktop,
-other font choices use an installed face, with embedded Iosevka as a fallback when it is missing.
-On iOS and iPadOS, code uses Menlo; on Android, it uses the platform monospace face because
-directory plugins cannot register the embedded web fonts on native platforms.
+Settings are saved on the host, so every device connected to that host shares them. The folding settings apply at once. Other changes apply to new messages; reload the chat to update older ones.
 
 > [!NOTE]
 > **On iOS and iPadOS** you cannot select text by dragging while **Assistant markdown** or **Enhanced prompt bubble** is on. Use the **Copy** button on the reply, prompt or code block instead. If copying fails, a dialog shows the full text for you to select by hand.
