@@ -2,6 +2,7 @@
   "name": "clear-chat-showcase",
   "private": true,
   "scripts": {
+    "replay:accent": "node custom-accent.cjs",
     "capture": "node capture.cjs",
     "test:reply-links": "node reply-links.cjs",
     "typecheck": "tsc --project tsconfig.json"

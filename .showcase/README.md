@@ -108,6 +108,29 @@ Chrome uses the first available debugging port in 9444–9499. Its profile stays
 under `KANBAN_TMP` and is deleted when the replay exits. No live host is read
 or changed, and external network requests are blocked.
 
+## Custom accent interaction replay
+
+After installing the dependencies above, run:
+
+```sh
+TMPDIR="$KANBAN_TMP" npm run replay:accent --prefix .showcase
+node --test test/custom-accent.test.cjs
+```
+
+The browser replay bundles real settings and Markdown components in memory and
+opens installed Google Chrome headlessly on a free debug port in 9444–9499.
+It measures 1440, 1024, 820 and 390px in light and dark themes, checks every
+picker control for overflow and a 44px touch target, and exercises invalid HEX,
+Enter to apply, immediate Markdown recolouring, reload persistence, swatch taps
+and preset round trips. Its fictional settings live only in the isolated
+browser profile. Profiles are removed at exit; the report is written to
+`KANBAN_TMP/accent-replay-report.json`. It never contacts a Paseo host.
+
+Node component replays separately exercise the actual registered tool renderer
+on web, iOS (also used for iPadOS) and Android using a sanitized real tool call,
+plus independent contrast calculations. Native layout, keyboards and screen
+readers still need a final check on physical devices.
+
 ## Fixture map
 
 Each row describes both theme captures. All data names refer to `fixtures.ts`
