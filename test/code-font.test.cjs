@@ -26,7 +26,7 @@ function fontsFor(h, tree, text) {
     .map(node => flatten(node.props.style).fontFamily).filter(Boolean);
 }
 
-test("code font defaults to Follow Paseo without changing the settings version or legacy glyphs", async () => {
+test("code font defaults to Default (Iosevka) without changing the settings version or legacy glyphs", async () => {
   const h = await client("web", host({ codeFont: "plain" }));
   assert.equal(h.preferences.codeFontFamily, "host");
   const theme = h.load("client/components/theme-tokens.ts");
@@ -41,14 +41,15 @@ test("code font defaults to Follow Paseo without changing the settings version o
   assert.deepEqual(presentationSettings.schema.parse({}), { preferences: {}, legacyMigrated: false });
 });
 
-test("font choices persist across clients, reject invalid families and reset to Follow Paseo", async () => {
+test("font choices persist across clients, reject invalid families and reset to Default (Iosevka)", async () => {
   const storage = host({ accent: "jade", codeFont: "plain" });
   const h = await client("web", storage);
   const p = h.load("client/preferences.ts");
   const Page = h.load("client/settings-page.tsx").ClearChatSettingsPage;
   const page = () => h.draw({ type: Page, props: { theme: { colors } } });
   assert.match(h.text(page()), /not exposed.*SDK/i);
-  for (const [value, label] of [["host", "Follow Paseo"], ["iosevka", "Iosevka"], ["menlo", "Menlo"], ["consolas", "Consolas"], ["fira-code", "Fira Code"], ["cascadia-code", "Cascadia Code"]]) {
+  assert.match(h.text(page()), /Default \(Iosevka\) uses Iosevka and your Code glyphs choice/);
+  for (const [value, label] of [["host", "Default (Iosevka)"], ["iosevka", "Iosevka"], ["menlo", "Menlo"], ["consolas", "Consolas"], ["fira-code", "Fira Code"], ["cascadia-code", "Cascadia Code"]]) {
     const button = h.nodes(page(), node => node.type === "Pressable" && h.text(node) === label)[0];
     assert.ok(button, `${label} is selectable`);
     await button.props.onPress();
