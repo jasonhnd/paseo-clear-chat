@@ -171,7 +171,8 @@ export function LiveToolCallRenderer({
     <View testID="tool-timeline-item" {...surfaceProps(hostFontEscape, toolRowMarker(!calloutData.finalReply && !generatedImages.length && !expansion.expanded && !expansion.error))}>
       {calloutData.finalReply ? (
         <View testID="tool-final-reply">
-          <FinalToolReply text={calloutData.finalReply} cwd={cwd} tokens={tokens} variant={preferences.markdownVariant} />
+          <FinalToolReply text={calloutData.finalReply} cwd={cwd} tokens={tokens} variant={preferences.markdownVariant}
+            expansionIdentity={{ hostId: host.id, agentId, callId: data.callId, name: `final-tool:${data.name}`, timestamp: timestamp.getTime() }} />
           {toolErrorLine(calloutData, "never") ? <Text testID="tool-error-line" selectable style={{ color: tokens.danger }}>{calloutData.error}</Text> : null}
           <AssistantFooter text={finalToolReplyMarkdown(calloutData.finalReply)} at={timestamp} tokens={tokens} durationMs={durationMs} />
         </View>
@@ -302,6 +303,7 @@ export function LiveTodoRenderer({ item, theme }: PluginTimelineItemProps<LiveTo
 export interface LiveAssistantPayload {
   text: string;
   images?: GeneratedImage[];
+  messageId?: string;
 }
 
 /**
@@ -343,7 +345,8 @@ export function LiveAssistantRenderer({
       {envelope ? (
         <SystemCard envelope={envelope} tokens={tokens} />
       ) : (
-        <MarkdownView text={item.data.text} images={item.data.images} cwd={cwd} tokens={tokens} variant={preferences.markdownVariant} />
+        <MarkdownView text={item.data.text} images={item.data.images} cwd={cwd} tokens={tokens} variant={preferences.markdownVariant}
+          expansionIdentity={{ hostId: host.id, agentId, callId: item.data.messageId, name: "assistant-message", timestamp: timestamp.getTime() }} />
       )}
       {!envelope ? (
         <AssistantFooter text={item.data.text} at={timestamp} tokens={tokens} durationMs={durationMs} />
@@ -413,6 +416,7 @@ export function LiveUserMessageRenderer({
   theme,
   agentId,
   timestamp,
+  host,
 }: PluginTimelineItemProps<LiveUserMessagePayload>) {
   const preferences = useEnhancerPreferences();
   const tokens = useMemo(
@@ -475,6 +479,7 @@ export function LiveUserMessageRenderer({
           tokens={tokens}
           usage={observedLive ? usage : null}
           pending={running && !frozen}
+          expansionIdentity={{ hostId: host.id, agentId, callId: item.data.messageId, name: "user-message", timestamp: timestamp.getTime() }}
         />
       )}
     </View>

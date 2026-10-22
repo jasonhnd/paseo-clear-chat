@@ -108,7 +108,7 @@ test("threshold equality, CRLF, settings changes and prompt images preserve thei
   let tree = mounted.render();
   assert.equal(visible(h, tree, 15), false);
   assert.equal(buttons(h, tree)[0].props.accessibilityLabel, "Show all 15 lines");
-  assert.match(h.text(tree), /2 images attached/);
+  assert.match(h.text(tree), /2\s+images\s+attached/);
   assert.equal(h.nodes(tree, node => node.type === "Image").length, 1);
   await h.nodes(tree, node => node.props.accessibilityLabel === "Copy prompt")[0].props.onPress();
   assert.equal(h.copies[0], item.text);
@@ -117,4 +117,48 @@ test("threshold equality, CRLF, settings changes and prompt images preserve thei
   assert.equal(visible(h, tree, 15), true);
   assert.equal(buttons(h, tree).length, 0);
   h.unmount();
+});
+
+test("wrap-up code folds independently in each section and restores its saved choice", async () => {
+  const item = structuredClone(require("./fixtures/real-claude-wrapup.json"));
+  const code = `\`\`\`text\n${source}\n\`\`\``;
+  item.detail.input.recap = code;
+  item.detail.input.ask = code;
+  const expansionHost = createExpansionHost();
+  const h = createToolHarness("ios", { ...options, expansionHost });
+  const mounted = h.mount(item, false, identity);
+  assert.equal(buttons(h, mounted.tree).length, 2);
+  buttons(h, mounted.tree)[1].props.onPress();
+  assert.deepEqual(buttons(h, mounted.render()).map(button => button.props.accessibilityState.expanded), [false, true]);
+  h.unmount();
+  await tick();
+  const fresh = createToolHarness("ios", { ...options, expansionHost });
+  const replay = fresh.mount(item, false, identity);
+  await tick();
+  assert.deepEqual(buttons(fresh, replay.render()).map(button => button.props.accessibilityState.expanded), [false, true]);
+  fresh.unmount();
+});
+
+test("storage failures keep content usable, show an error and retry the next toggle", async () => {
+  const expansionHost = createExpansionHost();
+  const h = createToolHarness("ios", { ...options, expansionHost });
+  const mounted = h.mount(samples[0][1], false, identity);
+  await tick();
+  expansionHost.failWrites = true;
+  buttons(h, mounted.render())[0].props.onPress();
+  await new Promise(resolve => setTimeout(resolve, 250));
+  let tree = mounted.render();
+  assert.equal(visible(h, tree, 31), true);
+  assert.match(h.text(h.nodes(tree, node => node.props.accessibilityRole === "alert")), /Toggle again to retry/);
+  expansionHost.failWrites = false;
+  buttons(h, tree)[0].props.onPress();
+  h.unmount();
+  await tick();
+  const fresh = createToolHarness("ios", { ...options, expansionHost });
+  const replay = fresh.mount(samples[0][1], false, identity);
+  await tick();
+  tree = replay.render();
+  assert.equal(visible(fresh, tree, 31), false);
+  assert.equal(fresh.nodes(tree, node => node.props.accessibilityRole === "alert").length, 0);
+  fresh.unmount();
 });

@@ -6,17 +6,24 @@ import type { ExtendedThemeTokens } from "./theme-tokens";
 
 export const ToolOutputVisibility = createContext<((text: string, expanded: boolean) => void) | undefined>(undefined);
 
-export function ToolOutput({ text, tokens, children }: {
+export interface OutputExpansion {
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
+  error: string | null;
+}
+
+export function ToolOutput({ text, tokens, children, expansion }: {
   text: string;
   tokens: ExtendedThemeTokens;
   children: (shown: string) => ReactNode;
+  expansion?: OutputExpansion;
 }) {
   const { foldLongOutputAfter: limit } = useEnhancerPreferences();
   const reportVisibility = useContext(ToolOutputVisibility);
   const [choice, setChoice] = useState<{ limit: typeof limit; expanded: boolean }>();
   const lines = useMemo(() => text.replace(/\r?\n$/, "").split(/\r?\n/), [text]);
   const folded = limit !== "never" && lines.length > limit;
-  const expanded = choice?.limit === limit && choice.expanded;
+  const expanded = expansion?.expanded ?? (choice?.limit === limit && choice.expanded);
   useEffect(() => {
     reportVisibility?.(text, Boolean(expanded));
     return () => reportVisibility?.(text, false);
@@ -30,8 +37,10 @@ export function ToolOutput({ text, tokens, children }: {
           accessibilityRole="button"
           accessibilityLabel={expanded ? "Show fewer lines" : `Show all ${lines.length} lines`}
           accessibilityState={{ expanded: Boolean(expanded) }}
+          style={{ minHeight: 44, justifyContent: "center", alignSelf: "flex-start" }}
           onPress={() => {
-            setChoice({ limit, expanded: !expanded });
+            if (expansion) expansion.onExpandedChange(!expanded);
+            else setChoice({ limit, expanded: !expanded });
             reportVisibility?.(text, !expanded);
           }}
         >
@@ -39,6 +48,11 @@ export function ToolOutput({ text, tokens, children }: {
             {expanded ? "Show fewer lines" : `Show all ${lines.length} lines`}
           </Text>
         </Pressable>
+      ) : null}
+      {expansion?.error ? (
+        <Text accessibilityRole="alert" style={{ color: tokens.danger, fontSize: tokens.fs(11) }}>
+          Expansion choice could not be saved or loaded. Toggle again to retry.
+        </Text>
       ) : null}
     </View>
   );

@@ -7,6 +7,8 @@ import { radius } from "./theme-tokens";
 import type { ExtendedThemeTokens } from "./theme-tokens";
 import { selectableSurface } from "./selection";
 import { selectionSurface } from "./selection-actions";
+import { MessageOutput } from "./message-output";
+import type { ToolExpansionIdentity } from "../tool-expansion-store";
 
 export interface TurnUsage {
   inputTokens?: number;
@@ -29,6 +31,7 @@ interface UserMessageProps {
   usage?: TurnUsage | null;
   /** True while the turn is still running, so the figures are still climbing. */
   pending?: boolean;
+  expansionIdentity?: ToolExpansionIdentity;
 }
 
 /**
@@ -89,6 +92,7 @@ export function UserMessage({
   tokens,
   usage,
   pending = false,
+  expansionIdentity,
 }: UserMessageProps) {
   const { copied, handleCopy, fallbackText, setFallbackText } = useCopyText(text);
   const [failedImages, setFailedImages] = useState<ReadonlySet<string>>(() => new Set());
@@ -216,9 +220,9 @@ export function UserMessage({
             </Pop>
           </Pressable>
         </View>
-        <Text selectable style={styles.text}>
-          {text}
-        </Text>
+        <MessageOutput text={text} tokens={tokens} identity={expansionIdentity} part="prompt">
+          {(shown) => <Text selectable style={styles.text}>{shown}</Text>}
+        </MessageOutput>
         {attachmentCount > 0 ? (
           <View style={styles.imageRow}>
             <Text selectable style={styles.attachmentCount}>

@@ -33,9 +33,12 @@ the timeline timestamp distinguishes reused call IDs. The most recent 1,000 choi
 Writes are merged and debounced, with revision conflicts retried. A storage error appears below
 the affected row; toggling it again retries the save.
 
-Long code and command output preview the first 15 lines by default. **Show all N lines** reveals
-the complete output, and code's Copy control always copies the full source. Ordinary replies
-stay fully expanded. Explicit `wrap_up` calls, including a `ccd_turn` operation marked
+Long tool output, fenced reply code and enhanced prompts preview the first 15 source lines by
+default. **Show all N lines** reveals the complete text. Prompt, code and reply Copy controls
+always copy their full source. Prompt and reply-code choices use the same host expansion store,
+with separate keys for each message, code block and wrap-up section. Ordinary reply prose
+stays fully expanded. See [message folding](MESSAGE-FOLDING.md) for replay commands and limits.
+Explicit `wrap_up` calls, including a `ccd_turn` operation marked
 `wrap_up`, also render their reply text outside tool and output disclosures. A completed
 transform phase alone never identifies a final reply.
 Structured wrap-up replies have a **Wrap up** card header. They render `recap` as Markdown,

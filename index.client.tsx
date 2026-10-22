@@ -247,7 +247,7 @@ function registerClient(client: PluginClientContext) {
             type: "plugin" as const,
             kind: "omp-assistant",
             version: 1,
-            data: { text: item.text, images: toJsonValue(images) },
+            data: { text: item.text, images: toJsonValue(images), ...(item.messageId ? { messageId: item.messageId } : {}) },
           },
         ],
       };
@@ -257,7 +257,7 @@ function registerClient(client: PluginClientContext) {
   const removeAssistantRenderer = client.addTimelineRenderer({
     kind: "omp-assistant",
     version: 1,
-    schema: z.object({ text: z.string(), images: z.array(z.object({ source: z.string(), path: z.string().optional() })).optional() }),
+    schema: z.object({ text: z.string(), images: z.array(z.object({ source: z.string(), path: z.string().optional() })).optional(), messageId: z.string().optional() }),
     Component: LiveAssistantRenderer,
   });
 

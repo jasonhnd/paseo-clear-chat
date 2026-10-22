@@ -354,7 +354,7 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
 
         <ChoiceRow
           title="Fold long output after"
-          description="Show a preview of long tool output with a button to reveal every line."
+          description="Preview long tool output, reply code and prompts with a button to reveal every line."
           value={String(preferences.foldLongOutputAfter)}
           options={OUTPUT_LINE_OPTIONS}
           onChange={(value) => updateEnhancerPreferences({ foldLongOutputAfter: value === "never" ? "never" : Number(value) as OutputLineLimit })}

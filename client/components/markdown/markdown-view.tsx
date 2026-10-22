@@ -13,6 +13,8 @@ import { extractGeneratedImages, imageSource, type GeneratedImage } from "../../
 import { GeneratedImages } from "../generated-images";
 import { parseMarkdown, type MdAlign, type MdBlock, type MdInline, type MdListItem } from "./parse";
 import { ImageFallback, MarkdownImage } from "./markdown-image";
+import { MessageOutput } from "../message-output";
+import type { ToolExpansionIdentity } from "../../tool-expansion-store";
 
 /**
  * The assistant's own prose, drawn by the plugin instead of the host. Three
@@ -29,6 +31,7 @@ export interface MarkdownViewProps {
   variant: MarkdownVariant;
   images?: GeneratedImage[];
   cwd?: string | null;
+  expansionIdentity?: ToolExpansionIdentity;
 }
 
 type MdTableBlock = Extract<MdBlock, { kind: "table" }>;
@@ -198,6 +201,7 @@ interface MarkdownStyles {
 }
 
 interface RenderContext {
+  expansionIdentity?: ToolExpansionIdentity;
   styles: MarkdownStyles;
   tokens: ExtendedThemeTokens;
   metrics: VariantMetrics;
@@ -239,7 +243,7 @@ function scaleMetrics(metrics: VariantMetrics, scale: number): VariantMetrics {
   };
 }
 
-export function MarkdownView({ text, tokens, variant, images = [], cwd }: MarkdownViewProps) {
+export function MarkdownView({ text, tokens, variant, images = [], cwd, expansionIdentity }: MarkdownViewProps) {
   const filePath = useReplyFilePath(cwd);
   const blocks = useMemo(() => parseMarkdown(text), [text]);
   const previews = useMemo(() => {
@@ -254,8 +258,8 @@ export function MarkdownView({ text, tokens, variant, images = [], cwd }: Markdo
   );
   const styles = useMemo(() => buildStyles(tokens, variant, metrics), [tokens, variant, metrics]);
   const context = useMemo<RenderContext>(
-    () => ({ styles, tokens, metrics, cwd, openFilePath: filePath.openFilePath, copyFilePath: filePath.copy }),
-    [styles, tokens, metrics, cwd, filePath.openFilePath, filePath.copy],
+    () => ({ styles, tokens, metrics, cwd, expansionIdentity, openFilePath: filePath.openFilePath, copyFilePath: filePath.copy }),
+    [styles, tokens, metrics, cwd, expansionIdentity, filePath.openFilePath, filePath.copy],
   );
 
   return (
@@ -336,15 +340,17 @@ function renderBlock(
     case "code":
       return (
         <View key={key} style={styles.codeBlock}>
-          <SyntaxHighlightBlock
-            code={block.code}
-            // An empty info string is the author asking for no grammar, which
-            // the daemon answers as plain text instead of guessing a language.
-            language={block.language === "" ? "plaintext" : block.language}
-            tokens={tokens}
-            compact={metrics.codeCompact}
-            showLineNumbers={metrics.codeLineNumbers}
-          />
+          <MessageOutput text={block.code} tokens={tokens} identity={context.expansionIdentity} part={key}>
+            {(code) => <SyntaxHighlightBlock
+              code={code}
+              copyText={block.code}
+              // An empty info string asks for plain text instead of a guessed grammar.
+              language={block.language === "" ? "plaintext" : block.language}
+              tokens={tokens}
+              compact={metrics.codeCompact}
+              showLineNumbers={metrics.codeLineNumbers}
+            />}
+          </MessageOutput>
         </View>
       );
 
