@@ -64,7 +64,7 @@ test("tablet and desktop row geometry stays unchanged at and above 744px", () =>
     assert.equal(row.props.style.height, 22);
     assert.equal(row.props.style.paddingHorizontal, 10);
     assert.equal(node(h, tree, "tool-summary-slot"), undefined);
-    assert.equal(node(h, tree, "tool-summary-text").props.style.fontSize, 12);
+    assert.equal(style(node(h, tree, "tool-summary-text").props.style).fontSize, 12);
     assert.deepEqual(h.nodes(row, item => item.type === "Glyph").map(item => item.props.size), [13, 14]);
   }
 });
