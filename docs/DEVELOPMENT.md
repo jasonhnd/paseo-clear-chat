@@ -9,7 +9,9 @@ Technical notes for contributors. For installing and using Clear Chat, see the [
 Finished calls open as compact, single-line rows: tool icon, command or file/query summary,
 status, and duration when the provider reports one. Running calls spin; failed calls show a
 cross, completed calls a check, and canceled calls a separate label. Running, failed and
-waiting-for-user calls default to expanded. Click a row to expand or collapse it.
+waiting-for-user calls default to expanded. Press a collapsed row to open step details;
+expanded rows still collapse in place. **When a collapsed step is pressed → Expand inline**
+restores the original expand/collapse behavior, including saved per-call choices.
 At widths of 744px and above, collapsed rows occupy 26px including their borders and vertical spacing.
 
 On web at widths of at least 1024px, a mouse hovering over a collapsed row for
@@ -97,6 +99,85 @@ Chrome with a free debugging port in 9444–9499. Its profile and JSON report st
 in the task's temporary directory; the profile is removed on exit. SDK services
 are supplied by the harness. This is a component preview, and iOS, iPadOS and
 Android still need a final device check.
+
+## Step details
+
+The shared breakpoints in `client/breakpoints.ts` select one presentation from the
+window width: below 744px is a bottom sheet, 744–1023px is a centered popover, and
+1024px and above is a side panel. All three render the existing `ToolCalloutBody`
+from `client/components/tool-callouts.tsx`; file links, output disclosures and
+error text use the same implementations as expanded cards.
+
+`client/components/step-detail-panel.tsx` exports the controlled `StepDetailPanel`:
+
+| Prop | Purpose |
+| --- | --- |
+| `step: ToolCalloutData \| null` | Selected step; null renders nothing. |
+| `open: boolean` | Whether its details are visible. |
+| `onOpenChange(open)` | Dismiss callback for buttons, backdrop, Back and gestures. |
+| `presentation: "sheet" \| "popover" \| "side"` | Current window-width presentation. |
+| `tokens`, `onRevealPath?`, `imageFile?` | Existing card theme, file action and image state. |
+
+Opening details does not change or persist the timeline's folding choice.
+The optional `collapsedStepAction` preference accepts `details` (the default) or
+`inline`; presentation settings remain at version 2. Version 1.0.1's non-strict
+Zod object can read the additional preference without an error, but an older
+client saving settings can strip it. It is never imported from browser legacy settings.
+
+### SDK integration and limits
+
+The pinned SDK 0.8.0 exposes `addWorkspacePanel`, `openPanel` and a controlled
+`Modal`. The [SDK contracts](https://github.com/getpaseo/paseo/blob/v0.8.0/packages/plugin/src/client/contracts.ts)
+allow an agent panel in the host's `explorer` location. `step-detail-host.tsx`
+registers that panel and keeps the selection scoped to host and agent; opening it
+reserves host-managed space beside chat instead of positioning a layer over chat.
+The selection keeps updating while its timeline row is mounted and remains an
+in-memory snapshot if that row is virtualized away.
+
+The SDK's Modal does not expose presentation breakpoints or snap points. Its
+[host implementation](https://github.com/getpaseo/paseo/blob/v0.8.0/packages/app/src/components/adaptive-modal-sheet.tsx)
+defaults to 65% and 90%, so the plugin uses **React Native Modal** for its sheet
+and popover. The phone sheet starts at half height; dragging its handle snaps to
+half or full available height, or dismisses below the lower threshold. Its body
+scrolls independently. The handle also supports accessibility adjustments and a
+resize button. Modal `onRequestClose` handles Android Back; a downwards handle
+drag, a rightwards swipe from the left edge, the backdrop and Close dismiss it.
+On web, an extra same-URL history entry makes browser Back dismiss details first.
+Safe-area padding bounds the native sheet, and dedicated gesture regions disable
+browser touch scrolling so it cannot cancel a drag.
+
+SDK 0.8.0 has **no close-panel API**. Close clears the selected step; the empty
+pane explains how to close its host tab to give the space back to chat. Host tab
+close also clears the selection. If the workspace is not cached, panel APIs are
+unavailable, or opening a panel throws, desktop details fall back to a popover:
+that fallback covers part of chat until dismissed. The plugin never edits the
+host layout or DOM to manufacture a side panel.
+
+### Replay checks
+
+`test/step-detail-panel.test.cjs` uses the sanitized real Claude fixture through
+the registered transformer, schema and live renderer on web, iOS and Android at
+1440, 1024, 820 and 390px. It checks opening/closing, half/full/dismiss gestures,
+platform Back, left-edge Back, inline fallback and responsive transitions. Native
+primitives are stubbed; real-device iPhone, iPad and Android checks remain pending.
+
+For layout measurements and actual browser touch gestures, install the isolated
+showcase dependencies and run the offline preview:
+
+```sh
+npm ci --include=dev --prefix .showcase
+npm run typecheck --prefix .showcase
+node scripts/replay-step-details.cjs
+```
+
+Set `KANBAN_TMP` to the current task's authorized temporary directory. The runner
+builds the preview in memory and uses the installed headless Google Chrome with
+a free debugging port from 9444–9499. It blocks external requests, measures all
+four widths, verifies that the desktop pane does not overlap chat in the host
+layout shim, checks touch drag, dismissal, browser Back and inline mode, and
+writes screenshots and `step-detail-report.json` under that temporary directory.
+It never contacts a running Paseo host. Actual Explorer placement and OS gesture
+delivery still need host and device verification.
 
 ## Image previews
 
@@ -260,8 +341,8 @@ the Paseo 0.8.0 desktop build. Each entry names the evidence and the workaround
 this plugin uses; consult the audit before applying these findings to newer hosts.
 
 1. **No file navigation.** Timeline renderer props are exactly `{agentId, theme, host, layout,
-timestamp, item}`, and plugin navigation offers only `openSettings`, `openSurface`,
-   `openWorkspacePanel`, `openAgentPanel`, `openAgent`, and `openWorkspace`. The host's own file tab
+timestamp, item}`. Client navigation offers `openSettings`, `openSurface` and `openPanel`;
+   navigable surfaces additionally receive `openAgent` and `openWorkspace`. The host's own file tab
    target (`{kind:"file", path}`, reachable in-app through `?open=file:<path>`) is not exposed, and
    the `paseo://` scheme only carries agent deep links. Workaround: a daemon-side RPC that reveals
    the path in the operating system's file manager.

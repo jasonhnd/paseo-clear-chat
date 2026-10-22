@@ -137,7 +137,7 @@ Search, fetch and web search, plans and checklists, plain text, skills and any o
 
 ### Also included
 
-- **Folding you control.** Click any row to open or close it. Your choice is remembered after reloads. Running, failed and waiting calls open by default. Long output shows the first 15 lines, with **Show all N lines**.
+- **Step details.** Press a folded tool row to inspect it in a phone bottom sheet, tablet popover or desktop side panel. Drag the phone handle between half and full screen, or down to dismiss. Choose **Expand inline** in settings to restore the original folding behavior and saved choices. Running, failed and waiting calls open by default. Long output shows the first 15 lines, with **Show all N lines**.
 - **Wrap-up replies.** Replies sent through a `wrap_up` tool show as a full reply card, with recap, question, lettered options and a **Blocked** alert.
 - **Clickable links.** Links in replies open on desktop, web and iOS, and `mailto:` links open your mail app.
 - **Find in chat.** Ctrl/Cmd+F opens a find bar that also searches tool cards. It searches the messages that are loaded, so scroll up to include older ones.
@@ -154,12 +154,13 @@ Search, fetch and web search, plans and checklists, plain text, skills and any o
 | Text size | Small (90%), Default (100%), Large (115%) or XL (130%). Icons keep their size. |
 | Code glyphs | Iosevka with ligatures, or plain glyphs. |
 | Fold finished steps | On by default. Off opens every step unless you chose otherwise for that call. |
+| When a collapsed step is pressed | Open details (default), or expand the card inline with the original folding behavior. |
 | Fold long output after | 10, 15 (default) or 30 lines, or Never. Applies to code and tool output. |
 | Frosted glass | Blur card backgrounds, or paint them solid. |
 | Enhanced prompt bubble | Styles your prompts. Off uses Paseo's own bubble. |
 | Assistant markdown | Off hands replies back to Paseo's own renderer. |
 
-Settings are saved on the host, so every device connected to that host shares them. The folding settings apply at once. Other changes apply to new messages; reload the chat to update older ones.
+Settings are saved on the host, so every device connected to that host shares them. Folding and step-detail settings apply at once. Other changes apply to new messages; reload the chat to update older ones.
 
 > [!NOTE]
 > **On iOS and iPadOS** you cannot select text by dragging while **Assistant markdown** or **Enhanced prompt bubble** is on. Use the **Copy** button on the reply, prompt or code block instead. If copying fails, a dialog shows the full text for you to select by hand.
