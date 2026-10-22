@@ -236,6 +236,43 @@ npm run typecheck
 paseo plugin reload clear-chat
 ```
 
+### Installation and startup diagnostics
+
+The manifest runs `node scripts/install.cjs`. It installs with
+`npm ci --include=dev` before checking Shiki, the plugin SDK and schema dependencies.
+Dependency failures report a fixed recovery message instead of forwarding npm output
+or a stack trace. This also covers the missing Shiki dependency reported in
+[Beautiful Chat issue 1](https://github.com/ABorakati/beautiful-chat/issues/1).
+
+The manifest's Paseo requirement is enforced by Paseo before plugin code runs.
+Once loaded, both contributions check the APIs they need and explain how to update
+Paseo if one is absent. Registration failures suggest reloading and backing up settings
+before reinstalling. The SDK exposes no host version to the contribution, so the plugin
+does not guess a version from a connection error. A host that cannot launch Node.js,
+run the build command or load the bundle must report that failure itself.
+
+Settings read, write, format and revision-conflict errors use fixed messages with
+recovery steps. The settings page offers **Retry** for loading preferences again;
+failed edits must be made again after the storage problem is repaired. Healthy startup
+shows no diagnostic. Failed Beautiful Chat settings migration keeps the original data
+and logs a safe recovery message on the daemon, without paths or an exception object.
+
+Run the targeted regressions and optional offline layout replay with:
+
+```sh
+node --test test/install-failures.test.cjs test/preferences.test.cjs test/settings-migration.test.cjs
+npm ci --prefix .showcase --include=dev
+node scripts/replay-install-failures.cjs
+```
+
+Set `KANBAN_TMP` and `TMPDIR` to an authorized task temporary directory first.
+The replay builds the actual client and server bundles in memory, then renders every
+diagnostic using the same React Native component at 1440, 1024, 820 and 390 pixels.
+Google Chrome runs headlessly with an available debugging port in 9444–9499. Web,
+iOS, iPadOS and Android projections check text clipping, horizontal bounds and Retry.
+Mobile projections use React Native Web with emulated touch, viewport and user agent;
+they do not replace native-device checks. The JSON report stays in `KANBAN_TMP`.
+
 For optional Google Chrome measurements of an existing conversation, see the
 [performance script guide](../scripts/perf/README.md). Plugin states are prepared
 manually; reports stay local.
