@@ -9,6 +9,7 @@ const { resolve, join, dirname } = require("node:path");
 const { createRequire } = require("node:module");
 
 const root = resolve(__dirname, "..");
+const viaHost = process.argv.includes("--via-host");
 const preview = join(root, ".showcase");
 const previewRequire = createRequire(join(preview, "package.json"));
 const temp = process.env.KANBAN_TMP;
@@ -86,8 +87,23 @@ async function replay() {
         const scroll = document.querySelector('[data-testid="step-detail-scroll"]');
         return scroll?.scrollTop === 400 && scroll.dataset.replayScrollComplete === "true";
       });
+      if (viaHost) for (const width of [1180, 820]) {
+        await page.setViewportSize({ width, height: 844 });
+        await page.waitForFunction(presentation => {
+          const node = document.querySelector('[data-testid="step-detail-panel"]');
+          return node?.dataset.presentation === presentation && node.querySelector('[data-testid="step-detail-scroll"]')?.scrollTop === 400;
+        }, width === 1180 ? "side" : "popover");
+      }
       const originalRow = await page.getByTestId("tool-summary-row").elementHandle();
       await page.setViewportSize({ width: 600, height: 844 });
+      try {
+        await page.waitForFunction(node => !node.isConnected, originalRow);
+      } catch (error) {
+        console.error(JSON.stringify(await page.evaluate(() => ({ checkpoint: "host timeline replacement",
+          route: location.pathname, width: innerWidth, visualWidth: visualViewport?.width,
+          presentations: [...document.querySelectorAll('[data-testid="step-detail-panel"]')].map(node => node.dataset.presentation) }))));
+        throw error;
+      }
       let passed = true;
       try {
         await page.waitForFunction(() => {
@@ -112,13 +128,13 @@ async function replay() {
         measurement.returnScrollTop = await page.getByTestId("step-detail-scroll").evaluate(node => node.scrollTop);
       }
       const attempts = await page.evaluate(() => window.__stepDetailPanelAttempts);
-      trials.push({ trial, passed, ...measurement, attempts });
+      trials.push({ trial, viaHost, passed, ...measurement, attempts });
       console.log(JSON.stringify(trials.at(-1)));
       if (await page.getByTestId("step-detail-close").count()) await page.getByTestId("step-detail-close").click();
       await panel.waitFor({ state: "detached" });
       await page.waitForFunction(() => !history.state?.clearChatStepDetail);
     }
-    writeFileSync(join(temp, "step-detail-remount-report.json"), JSON.stringify({ debugPort: port, trials, errors }, null, 2) + "\n");
+    writeFileSync(join(temp, viaHost ? "step-detail-remount-hosted-report.json" : "step-detail-remount-report.json"), JSON.stringify({ debugPort: port, trials, errors }, null, 2) + "\n");
     assert.deepEqual(errors, []);
     assert.equal(trials.filter(trial => trial.passed).length, 10, "Every host timeline remount must retain the selected step and its reading position");
   } finally {
