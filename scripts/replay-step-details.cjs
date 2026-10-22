@@ -53,7 +53,7 @@ async function replay() {
   const html = samples => `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body,#root{margin:0;width:100%;height:100%}*{box-sizing:border-box}</style></head><body><div id="root"></div><script>window.__stepDetailSamples=${JSON.stringify(samples).replace(/</g, "\\u003c")}</script><script src="/preview.js"></script></body></html>`;
   const server = createServer((request, response) => {
     response.setHeader("Content-Type", request.url === "/preview.js" ? "text/javascript" : "text/html");
-    response.end(request.url === "/preview.js" ? bundle.outputFiles[0].contents : html(request.url === "/switching" ? longSamples : [sample]));
+    response.end(request.url === "/preview.js" ? bundle.outputFiles[0].contents : html(["/switching", "/keyboard"].includes(request.url) ? longSamples : [sample]));
   });
   let browser;
   const report = [];
@@ -118,6 +118,68 @@ async function replay() {
       assert.equal(await rows.nth(0).getAttribute("aria-expanded"), "false");
       assert.equal(await rows.nth(1).getAttribute("aria-expanded"), "false");
       report.push({ width, stepSwitching: "A -> B -> A starts at top", liveOutputUpdate: "keeps scrollTop 1000" });
+    }
+    for (const width of [1440, 1024, 820, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto(`http://127.0.0.1:${server.address().port}/keyboard`, { waitUntil: "networkidle" });
+      const rows = page.getByTestId("tool-summary-row");
+      await rows.nth(0).waitFor();
+      const scrolled = await page.getByTestId("preview-chat").evaluate(node => node.scrollTop);
+      assert.ok(scrolled >= 350, "Replay must include an already-scrolled chat below a host header");
+      const header = await page.getByTestId("preview-host-header").boundingBox();
+      assert.equal(header.height, 64);
+      const active = async index => assert.equal(await rows.nth(index).evaluate(node => node === document.activeElement), true);
+      // Tab to the first row from a neutral element, giving Chrome keyboard modality.
+      await page.evaluate(() => { document.activeElement?.blur(); });
+      await page.keyboard.press("Tab");
+      await active(0);
+      await page.keyboard.press("ArrowDown"); await active(1);
+      await page.keyboard.press("ArrowDown"); await active(1);
+      await page.keyboard.press("ArrowUp"); await active(0);
+      await page.keyboard.press("ArrowUp"); await active(0);
+      const ring = await rows.nth(0).evaluate(node => {
+        const style = getComputedStyle(node), rect = node.getBoundingClientRect();
+        return { style: style.outlineStyle, width: parseFloat(style.outlineWidth), color: style.outlineColor,
+          x: rect.x, y: rect.y, widthPx: rect.width, height: rect.height };
+      });
+      assert.equal(ring.style, "solid"); assert.ok(ring.width >= 2);
+      assert.ok(ring.y >= header.height && ring.x >= 0 && ring.x + ring.widthPx <= width + 1);
+      for (const inputId of ["preview-input", "preview-textarea", "preview-editable"]) {
+        const input = page.getByTestId(inputId);
+        await input.focus();
+        await input.evaluate(node => {
+          window.__keyboardEvents = [];
+          node.addEventListener("keydown", event => queueMicrotask(() => window.__keyboardEvents.push({ key: event.key, prevented: event.defaultPrevented })));
+        });
+        for (const key of ["ArrowUp", "ArrowDown", "Enter"]) await page.keyboard.press(key);
+        await page.keyboard.type(" typed");
+        assert.equal(await input.evaluate(node => node === document.activeElement), true);
+        const events = await page.evaluate(() => window.__keyboardEvents.filter(event => ["ArrowUp", "ArrowDown", "Enter"].includes(event.key)));
+        assert.deepEqual(events, ["ArrowUp", "ArrowDown", "Enter"].map(key => ({ key, prevented: false })));
+        assert.equal(await panel.count(), 0);
+      }
+      await rows.nth(1).focus();
+      await page.keyboard.press("Enter"); await waitOpen();
+      assert.ok((await panel.textContent()).includes("Step B start"));
+      assert.equal(await rows.nth(1).getAttribute("aria-expanded"), "false");
+      const box = await panel.boundingBox();
+      assert.ok(box.x >= 0 && box.x + box.width <= width + 1 && box.y >= 0 && box.y + box.height <= 845);
+      if (width >= 1024) {
+        const chat = await page.getByTestId("preview-chat").boundingBox();
+        assert.ok(chat.x + chat.width <= box.x + 1);
+      }
+      await page.screenshot({ path: join(work, `keyboard-${width}.png`) });
+      // Escape works from an interactive descendant of the panel as well as a row.
+      await page.getByTestId("step-detail-close").focus();
+      await page.keyboard.press("Escape"); await waitClosed();
+      await active(1);
+      await page.keyboard.press("ArrowUp"); await active(0);
+      if (width === 390) {
+        await rows.nth(0).tap(); await waitOpen();
+        await page.getByTestId("step-detail-close").tap(); await waitClosed();
+        assert.equal(await rows.nth(0).evaluate(node => getComputedStyle(node).outlineStyle), "none", "Touch must not draw a keyboard focus ring");
+      }
+      report.push({ width, keyboard: "arrows scoped to steps; Enter opens; Escape closes and restores focus", inputs: "input, textarea, contenteditable keep arrows and Enter", ring, panel: box, headerHeight: header.height, chatScrollTop: scrolled, touchRing: width === 390 ? "hidden" : "not applicable" });
     }
     for (const [width, presentation] of [[1440, "side"], [1024, "side"], [820, "popover"], [390, "sheet"]]) {
       await page.setViewportSize({ width, height: 844 });
