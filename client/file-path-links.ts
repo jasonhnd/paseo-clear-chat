@@ -26,7 +26,7 @@ export function matchFilePath(source: string, index: number): string | null {
   if (!token) return null;
   // Prefer a complete single token to avoid consuming the following sentence.
   if (FILE_END.test(token)) return localFilePath(token);
-  const spaced = rest.match(/^[^\r\n<>"'`()\[\]{},;!?=]*?\.[a-z0-9][a-z0-9_-]{0,15}(?=$|[\s),;!?]|\.(?:\s|$))/i)?.[0];
+  const spaced = rest.match(/^[^\r\n<>"'`()\[\]{},;!?=\u2018\u2019\u201c\u201d\u3001\u3002\uff01\uff08\uff09\uff0c\uff0e\uff1a\uff1b\uff1f]*?\.[a-z0-9][a-z0-9_-]{0,15}(?=$|[\s),;!?\u2018\u2019\u201c\u201d\u3001\u3002\uff01\uff08\uff09\uff0c\uff0e\uff1a\uff1b\uff1f]|\.(?:\s|$))/i)?.[0];
   if (spaced && ROOTED.test(rest) && !/(?:\s[./~]|:\/\/)/.test(spaced)) return localFilePath(spaced);
   return ROOTED.test(token) ? localFilePath(token) : null;
 }
