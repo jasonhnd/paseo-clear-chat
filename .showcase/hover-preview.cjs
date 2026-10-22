@@ -73,12 +73,14 @@ async function replay() {
       await page.goto(url);
       await row.waitFor();
       await row.hover();
+      let geometry;
       if (width >= 1024) {
         await preview.waitFor({ state: "visible" });
         assert.match(await preview.innerText(), /\$ git log/);
         assert.match(await preview.innerText(), /Sample text line 1\./);
         assert.doesNotMatch(await preview.innerText(), /Sample text line 5\./);
         const box = await preview.boundingBox(), anchor = await row.boundingBox();
+        geometry = { row: anchor, preview: box };
         assert.ok(box.y + box.height < anchor.y);
         assert.equal(await page.locator("#middle [data-step='0']").getByTestId("tool-card-body").count(), 0);
         await page.mouse.move(0, 0);
@@ -87,7 +89,7 @@ async function replay() {
         await page.waitForTimeout(400);
         await absent();
       }
-      report.push({ width, mouse: true, preview: width >= 1024, delay: "300ms (component timer coverage)", leave: "cleared" });
+      report.push({ width, mouse: true, preview: width >= 1024, delay: "300ms (component timer coverage)", leave: "cleared", geometry });
       console.log(`Width ${width}: hover ${width >= 1024 ? "shown and cleared" : "disabled"}.`);
     }
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -106,19 +108,29 @@ async function replay() {
     await page.evaluate(() => scrollTo(0, 0));
     await page.waitForTimeout(100);
     const top = page.locator("#top [data-step='0']").getByTestId("tool-summary-row");
-    for (const x of [24, 720, 1408]) {
-      const anchor = await top.boundingBox();
-      await page.mouse.move(0, 899);
-      await page.mouse.move(x, anchor.y + anchor.height / 2);
-      await preview.waitFor({ state: "visible" });
-      const box = await preview.boundingBox();
-      assert.ok(x < box.x || x > box.x + box.width, "the next row's pointer lane stays clear");
-      assert.ok(box.x >= 8 && box.x + box.width <= 1432);
-      const next = page.locator("#top [data-step='1']").getByTestId("tool-summary-row");
-      const nextBox = await next.boundingBox();
-      const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest("[data-testid='tool-summary-row']")?.getAttribute("data-testid"), { x, y: nextBox.y + nextBox.height / 2 });
-      assert.equal(hit, "tool-summary-row");
+    for (const width of [1440, 1024]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const x of [24, width / 2, width - 32]) {
+        const anchor = await top.boundingBox();
+        await page.mouse.move(0, 899);
+        await page.mouse.move(x, anchor.y + anchor.height / 2);
+        await preview.waitFor({ state: "visible" });
+        const box = await preview.boundingBox();
+        assert.ok(x < box.x || x > box.x + box.width, "the next row's pointer lane stays clear");
+        assert.ok(box.x >= 8 && box.x + box.width <= width - 8);
+        const next = page.locator("#top [data-step='1']").getByTestId("tool-summary-row");
+        const nextBox = await next.boundingBox();
+        const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest("[data-testid='tool-summary-row']")?.getAttribute("data-testid"), { x, y: nextBox.y + nextBox.height / 2 });
+        assert.equal(hit, "tool-summary-row");
+      }
     }
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await show();
+    await row.click({ button: "right" });
+    await absent();
+    await page.getByTestId("tool-step-menu").waitFor({ state: "visible" });
+    assert.equal(await page.locator("#middle [data-step='0']").getByTestId("tool-card-body").count(), 0);
+    await page.getByTestId("step-menu-dismiss").click({ position: { x: 8, y: 8 } });
     await show();
     await row.click();
     await absent();
@@ -133,7 +145,7 @@ async function replay() {
     await page.locator("#unmount").evaluate(button => button.click());
     await absent();
     assert.equal(errors.length, 0, errors.join("\n"));
-    report.push({ desktop: "captured data, top-edge placement, hit testing, scroll, click, expanded rows, replacement and unmount passed" });
+    report.push({ desktop: "captured data, top-edge placement, hit testing, scroll, context menu, click, expanded rows, replacement and unmount passed" });
 
     const browser = context.browser();
     for (const [name, device, width] of [["iOS", "iPhone 13", 390], ["iPadOS", "iPad Pro 11", 1024], ["Android", "Pixel 7", 1440]]) {

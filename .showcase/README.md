@@ -98,7 +98,7 @@ node .showcase/hover-preview.cjs
 This bundles the actual tool components in memory and replays the sanitized
 `real-hermes-session.json` fixture in headless Google Chrome. It checks mouse
 hover at 1440, 1024, 820 and 390px, first-line output, pointer-lane clearance at
-the top edge, scroll cleanup, clicking, data replacement and unmounting. Touch
+the top edge, scroll cleanup, context menus, clicking, data replacement and unmounting. Touch
 replays use iOS, iPadOS and Android device profiles; they require no preview and
 preserve tap behavior. Component tests separately exercise native platforms,
 the exact 300ms delay, pen input and cancellation before the delay elapses.

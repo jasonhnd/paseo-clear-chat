@@ -202,3 +202,21 @@ test("a preview preserves and restores the row's existing accessible description
   assert.equal(m.target.getAttribute("aria-describedby"), "step-status");
   m.h.unmount();
 });
+
+for (const gesture of ["long press", "right click"]) {
+  test(`hover coexists with the existing ${gesture} menu`, () => {
+    const m = mount();
+    m.enter(); m.tick(300);
+    assert.ok(m.preview());
+    m.emit("pointerdown");
+    m.row.props.onPressIn();
+    if (gesture === "long press") m.row.props.onLongPress();
+    else m.row.props.onContextMenu({ preventDefault() {}, stopPropagation() {} });
+    m.row.props.onPress();
+    const tree = m.mounted.render();
+    assert.equal(m.preview(), undefined);
+    assert.ok(m.h.nodes(tree, node => node.props.testID === "tool-step-menu")[0]);
+    assert.equal(find(m.h, tree).props.accessibilityState.expanded, false);
+    m.h.unmount();
+  });
+}
