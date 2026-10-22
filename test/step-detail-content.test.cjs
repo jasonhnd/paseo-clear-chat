@@ -144,7 +144,10 @@ test("a presentation handoff keeps the saved offset while its new scroll node is
   } } });
   const scroll = byId(h, tree, "step-detail-scroll");
   const restores = [];
-  scroll.props.ref.current = { scrollToOffset: value => restores.push(value) };
+  scroll.props.ref.current = { scrollToOffset: value => {
+    restores.push(value);
+    scroll.props.onScroll({ nativeEvent: { contentOffset: { y: value.offset } } });
+  } };
   scroll.props.onLayout({ nativeEvent: { layout: { width: 680, height: 600 } } });
   scroll.props.onContentSizeChange(680, 5000);
   scroll.props.onScroll({ nativeEvent: { contentOffset: { y: 0 } } });
@@ -174,6 +177,7 @@ test("fresh details do not queue a zero-offset restoration over a new scroll", (
   scroll.props.onLayout({ nativeEvent: { layout: { width: 680, height: 600 } } });
   scroll.props.onContentSizeChange(680, 5000);
   scroll.props.onScroll({ nativeEvent: { contentOffset: { y: 1000 } } });
+  scroll.props.onScroll({ nativeEvent: { contentOffset: { y: 0 }, layoutMeasurement: { width: 0, height: 0 } } });
   for (const [id, callback] of [...frames]) { frames.delete(id); callback(); }
   assert.deepEqual(restores, [], "A new detail already starts at zero without an imperative restore");
   assert.equal(byId(h, mounted.render(), "step-detail-scroll").props.contentOffset.y, 1000);
