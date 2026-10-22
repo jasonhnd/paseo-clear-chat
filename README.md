@@ -150,7 +150,7 @@ Search, fetch and web search, plans and checklists, plain text, skills and any o
 
 | Setting | Effect |
 |---|---|
-| Accent colour | Follow the Paseo theme, or pick Jade, Violet, Amber or Rose. |
+| Accent colour | Follow the Paseo theme, pick a preset, or choose **Custom** for colour swatches and a HEX field. Custom colours adjust to keep text contrast at least 4.5:1. |
 | Interface font | Embedded Inter, or your system font. |
 | Text size | Small (90%), Default (100%), Large (115%) or XL (130%). Icons keep their size. |
 | Code font | Follow Paseo (default), Iosevka, Menlo, Consolas, Fira Code or Cascadia Code. Applies to code blocks, inline code, terminal output and diffs. |
@@ -161,7 +161,9 @@ Search, fetch and web search, plans and checklists, plain text, skills and any o
 | Enhanced prompt bubble | Styles your prompts. Off uses Paseo's own bubble. |
 | Assistant markdown | Off hands replies back to Paseo's own renderer. |
 
-Settings are saved on the host, so every device connected to that host shares them. The folding settings apply at once. Other changes apply to new messages; reload the chat to update older ones.
+Settings are saved on the host, so every device connected to that host shares them. Accent colours and folding settings apply at once. Other changes apply to new messages; reload the chat to update older ones.
+
+For a custom accent, tap a swatch or enter `#RGB` or `#RRGGBB` and press **Apply**. Invalid HEX stays in the field with an error and leaves the saved colour unchanged. Switching to a preset remembers your custom colour. The saved HEX stays exact; its displayed colour darkens on light themes or lightens on dark themes as needed for readable text. Filled buttons use whichever of black or white has higher contrast. [Contrast and compatibility rules](docs/DEVELOPMENT.md#custom-accent-colours).
 
 Paseo's code font preference is not available through plugin SDK 0.8.0. **Follow Paseo**
 therefore falls back to Iosevka with your existing **Code glyphs** choice. On web and desktop,

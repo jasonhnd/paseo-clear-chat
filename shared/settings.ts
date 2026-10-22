@@ -1,10 +1,20 @@
 import { defineSettings, settingsRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 
+export const customAccentSchema = z.string().trim()
+  .regex(/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i, "Enter a HEX colour as #RGB or #RRGGBB.")
+  .transform((value) => {
+    const hex = value.slice(1).toLowerCase();
+    return `#${hex.length === 3 ? [...hex].map((channel) => channel + channel).join("") : hex}`;
+  });
+
 // Store explicit choices only so resets can restore defaults without replaying
 // legacy browser settings. Text size is shared by all clients of this host.
 export const preferenceOverridesSchema = z.object({
   accent: z.enum(["host", "jade", "violet", "amber", "rose"]).optional(),
+  // Keep the existing enum readable by older clients; they ignore these fields.
+  customAccent: customAccentSchema.optional(),
+  customAccentEnabled: z.boolean().optional(),
   uiFont: z.enum(["inter", "system"]).optional(),
   codeFont: z.enum(["code", "plain"]).optional(),
   codeFontFamily: z.enum(["host", "iosevka", "menlo", "consolas", "fira-code", "cascadia-code"]).optional(),

@@ -332,6 +332,39 @@ timestamp, item}`, and plugin navigation offers only `openSettings`, `openSurfac
     virtual rows and native apps keep host spacing. Controlling those gaps requires
     a host API that supplies the actual gap and adjacent item types.
 
+## Custom accent colours
+
+The settings page uses the same React Native controls on web, iOS, iPadOS and
+Android. **Custom** offers wrapping, 44px colour targets and a HEX field with an
+explicit **Apply** action (or the keyboard's Done action). A swatch applies at
+once. Invalid or partial HEX displays an inline error on Apply without changing
+the current colour. `#RGB` and `#RRGGBB` are accepted, surrounding whitespace is
+trimmed, and storage normalizes to lowercase `#rrggbb` without alpha.
+
+The optional `customAccent` and `customAccentEnabled` preferences keep settings
+at version 2. Defaults are `#8b5cf6` and `false`. Choosing a preset disables the
+custom override and retains its HEX; reset clears both. The existing `accent`
+enum is unchanged, so version 1.0.1's Zod object ignores the unknown fields and
+reads the last selected preset (or the host default). Saving again in 1.0.1
+discards those unknown fields; upgrading later then uses the defaults. New
+host-only fields are excluded from the legacy browser preference import.
+
+The requested HEX is never rewritten by a theme change. Theme tokens calculate
+WCAG sRGB relative luminance and contrast after alpha compositing the plugin's
+neutral, code and accent-tinted backgrounds over the host surface. If the
+requested colour passes 4.5:1 on those surfaces, it stays exact. Otherwise, the
+display colour moves in 1/255 sRGB blend steps towards black on a light surface
+or white on a dark surface, stopping at the first passing step. If that
+direction has no passing step, the opposite direction is tried. Filled accent
+buttons choose black or white text, whichever has higher contrast. Host and
+preset colours keep their previous behaviour. Existing renderers subscribe to
+preferences, so mounted cards receive the new tokens without retransformation.
+
+Run `node --test test/custom-accent.test.cjs` for native component replays,
+JSON persistence, malformed input and independent 4.5:1 calculations across
+light and dark themes. The browser replay is described in the
+[offline harness guide](../.showcase/README.md).
+
 ## Project structure
 
 ```text

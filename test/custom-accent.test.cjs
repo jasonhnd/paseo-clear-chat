@@ -55,9 +55,9 @@ for (const platform of ["web", "ios", "android"]) {
     assert.equal(h.nodes(page(), node => node.props.accessibilityRole === "alert").length, 0);
     const { buildThemeTokens } = h.load("client/components/theme-tokens.ts");
     const tokens = buildThemeTokens(themes[0], preferences.getEnhancerPreferences());
-    const accentText = tree => h.nodes(tree, node => node.type === "Text" && flatten(node.props.style).color === tokens.accent);
-    assert.equal(accentText(oldTree).length, 0);
-    assert.ok(accentText(mounted.render()).length > 0, "existing calls receive the new theme without rerunning their transformer");
+    const accented = tree => h.nodes(tree, node => node.props.color === tokens.accent || flatten(node.props.style).color === tokens.accent);
+    assert.equal(accented(oldTree).length, 0);
+    assert.ok(accented(mounted.render()).length > 0, "existing calls receive the new theme without rerunning their transformer");
     assert.ok(flatten(find(h, page(), "Custom HEX colour").props.style).minHeight >= 44);
 
     await find(h, page(), "Accent: Jade").props.onPress();

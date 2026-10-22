@@ -1,6 +1,8 @@
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
+import { TextInput } from "@getpaseo/plugin/client/react-native";
+import { customAccentSchema } from "../shared/settings";
 import { hostFontEscape } from "./components/host-font-escape";
 import { SettingsFailureNotice } from "./components/settings-failure-notice";
 import { openLink } from "./components/open-link";
@@ -36,6 +38,73 @@ const ACCENT_OPTIONS: ReadonlyArray<{
 const TRACK_WIDTH = 38;
 const TRACK_HEIGHT = 22;
 const KNOB = 16;
+
+const CUSTOM_SWATCHES = ["#e63946", "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899"];
+
+function CustomAccentPicker({ value, tokens }: { value: string; tokens: ExtendedThemeTokens }) {
+  const [draft, setDraft] = useState(value);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { setDraft(value); setError(null); }, [value]);
+  const choose = (hex: string) => {
+    setDraft(hex);
+    setError(null);
+    return updateEnhancerPreferences({ customAccent: hex, customAccentEnabled: true });
+  };
+  const apply = () => {
+    const result = customAccentSchema.safeParse(draft);
+    if (!result.success) {
+      setError("Enter a HEX colour as #RGB or #RRGGBB.");
+      return;
+    }
+    return choose(result.data);
+  };
+  return (
+    <View testID="custom-accent-picker" style={styles.customPicker}>
+      <View style={styles.accentOptions}>
+        {CUSTOM_SWATCHES.map((hex) => (
+          <Pressable
+            key={hex}
+            accessibilityRole="button"
+            accessibilityLabel={`Use accent ${hex}`}
+            accessibilityState={{ selected: value === hex }}
+            onPress={() => choose(hex)}
+            style={[styles.colourChoice, { borderColor: value === hex ? tokens.accent : tokens.border }]}
+          >
+            <View style={[styles.colourSample, { backgroundColor: hex }]} />
+          </Pressable>
+        ))}
+      </View>
+      <View style={styles.hexControls}>
+        <TextInput
+          accessibilityLabel="Custom HEX colour"
+          accessibilityHint="Enter #RGB or #RRGGBB, then apply the colour."
+          value={draft}
+          onChangeText={(text) => { setDraft(text); setError(null); }}
+          onSubmitEditing={apply}
+          autoCapitalize="none"
+          autoCorrect={false}
+          spellCheck={false}
+          placeholder="#RRGGBB"
+          placeholderTextColor={tokens.foregroundMuted}
+          returnKeyType="done"
+          style={[styles.hexInput, { color: tokens.foreground, borderColor: error ? tokens.danger : tokens.border, fontFamily: tokens.fontMono }]}
+        />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Apply custom accent"
+          onPress={apply}
+          style={[styles.applyColour, { backgroundColor: tokens.accent }]}
+        >
+          <Text style={[styles.accentLabel, { color: tokens.accentForeground, fontFamily: tokens.fontUi }]}>Apply</Text>
+        </Pressable>
+      </View>
+      {error ? <Text accessibilityRole="alert" style={[styles.rowDescription, { color: tokens.foreground, fontFamily: tokens.fontUi }]}>{error}</Text> : null}
+      <Text style={[styles.rowDescription, { color: tokens.foregroundMuted, fontFamily: tokens.fontUi }]}>
+        The saved HEX stays unchanged. For readable text, we darken it on light themes or lighten it on dark themes until contrast is at least 4.5:1 on plugin surfaces. Filled buttons use black or white text, whichever has higher contrast.
+      </Text>
+    </View>
+  );
+}
 
 /**
  * An on/off control that reads as one. A pair of buttons states the value
@@ -239,7 +308,7 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
           style={[styles.description, { color: tokens.foregroundMuted, fontFamily: tokens.fontUi }]}
         >
           Changes are saved on the selected host and shared by its clients. New messages follow
-          rendering changes; reload the chat to update existing messages.
+          rendering changes; reload the chat to update existing messages. Accent colours update immediately.
         </Text>
       </View>
 
@@ -267,7 +336,7 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
           </Text>
           <View style={styles.accentOptions}>
             {ACCENT_OPTIONS.map((option) => {
-              const selected = preferences.accent === option.id;
+              const selected = !preferences.customAccentEnabled && preferences.accent === option.id;
               const swatch = option.color ?? theme.colors.accent;
               return (
                 <Pressable
@@ -275,7 +344,7 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
                   accessibilityRole="button"
                   accessibilityLabel={`Accent: ${option.label}`}
                   accessibilityState={{ selected }}
-                  onPress={() => updateEnhancerPreferences({ accent: option.id })}
+                  onPress={() => updateEnhancerPreferences({ accent: option.id, customAccentEnabled: false })}
                   style={[
                     styles.accentOption,
                     {
@@ -299,7 +368,24 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
                 </Pressable>
               );
             })}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Accent: Custom"
+              accessibilityState={{ selected: !!preferences.customAccentEnabled }}
+              onPress={() => updateEnhancerPreferences({
+                customAccentEnabled: true,
+                customAccent: preferences.customAccent ?? ACCENT_PRESETS.violet,
+              })}
+              style={[styles.accentOption, {
+                borderColor: preferences.customAccentEnabled ? tokens.accent : tokens.borderSubtle,
+                backgroundColor: preferences.customAccentEnabled ? tokens.accentBg : tokens.surface2,
+              }]}
+            >
+              <View style={[styles.swatch, { backgroundColor: preferences.customAccent ?? ACCENT_PRESETS.violet }]} />
+              <Text style={[styles.accentLabel, { color: preferences.customAccentEnabled ? tokens.accent : tokens.foregroundMuted, fontFamily: tokens.fontUi }]}>Custom</Text>
+            </Pressable>
           </View>
+          {preferences.customAccentEnabled ? <CustomAccentPicker value={preferences.customAccent ?? ACCENT_PRESETS.violet} tokens={tokens} /> : null}
         </View>
 
         <ChoiceRow<UiFontPreference>
@@ -482,7 +568,14 @@ const styles = StyleSheet.create({
     borderRadius: radius.block,
     paddingHorizontal: 9,
     paddingVertical: 7,
+    minHeight: 44,
   },
+  customPicker: { minWidth: 0, gap: 8 },
+  colourChoice: { minWidth: 44, minHeight: 44, borderWidth: 2, borderRadius: radius.block, alignItems: "center", justifyContent: "center" },
+  colourSample: { width: 28, height: 28, borderRadius: radius.chip },
+  hexControls: { flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" },
+  hexInput: { flexGrow: 1, flexShrink: 1, flexBasis: 140, minWidth: 0, minHeight: 44, borderWidth: 1, borderRadius: radius.block, paddingHorizontal: 10, paddingVertical: 8, fontSize: 16 },
+  applyColour: { minHeight: 44, paddingHorizontal: 16, justifyContent: "center", borderRadius: radius.block },
   swatch: { width: 12, height: 12, borderRadius: radius.chip },
   accentLabel: { fontSize: 12, fontWeight: "600" },
   reset: {

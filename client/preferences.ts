@@ -41,6 +41,8 @@ export const TEXT_SIZE_OPTIONS = [
 
 export interface EnhancerPreferences {
   accent: AccentPreset;
+  customAccent?: string;
+  customAccentEnabled?: boolean;
   uiFont: UiFontPreference;
   codeFont: CodeFontPreference;
   codeFontFamily: CodeFontFamilyPreference;
@@ -82,6 +84,8 @@ const LEGACY_STORAGE_KEY = "paseo/beautiful-chat/preferences/v1";
 
 export const DEFAULT_PREFERENCES: Readonly<EnhancerPreferences> = {
   accent: "host",
+  customAccent: ACCENT_PRESETS.violet,
+  customAccentEnabled: false,
   uiFont: "inter",
   codeFont: "code",
   codeFontFamily: "host",
@@ -133,7 +137,8 @@ function loadLegacyPreferences(): PreferenceOverrides | undefined {
     const valid: Record<string, unknown> = {};
     for (const [key, schema] of Object.entries(preferenceOverridesSchema.shape)) {
       // New host-only preferences must never come from a browser import snapshot.
-      if (key === "textScale" || key === "foldFinishedSteps" || key === "foldLongOutputAfter" || key === "codeFontFamily") continue;
+      if (key === "textScale" || key === "foldFinishedSteps" || key === "foldLongOutputAfter" ||
+          key === "codeFontFamily" || key === "customAccent" || key === "customAccentEnabled") continue;
       const parsed = schema.safeParse((candidate as Record<string, unknown>)[key]);
       if (parsed.success && parsed.data !== undefined) valid[key] = parsed.data;
     }

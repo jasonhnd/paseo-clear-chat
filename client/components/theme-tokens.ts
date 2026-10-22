@@ -156,6 +156,52 @@ function isDarkSurface(color: string): boolean {
   return (0.299 * rgba.r + 0.587 * rgba.g + 0.114 * rgba.b) / 255 < 0.5;
 }
 
+function composite(foreground: string, background: string): string {
+  const color = parseColor(foreground);
+  const base = parseColor(background);
+  if (!color || !base) return background;
+  const channel = (value: number, under: number) => value * color.a + under * (1 - color.a);
+  return `rgb(${channel(color.r, base.r)}, ${channel(color.g, base.g)}, ${channel(color.b, base.b)})`;
+}
+
+function luminance(color: string): number {
+  const rgba = parseColor(color);
+  if (!rgba) return 0;
+  const linear = (value: number) => {
+    const channel = value / 255;
+    return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * linear(rgba.r) + 0.7152 * linear(rgba.g) + 0.0722 * linear(rgba.b);
+}
+
+function contrast(first: string, second: string): number {
+  const a = luminance(first), b = luminance(second);
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
+/** Preserve the requested colour when readable; otherwise mix towards black or white. */
+function accessibleAccent(requested: string, colors: PluginSurfaceColors, isDark: boolean): string {
+  const base = colors.surface0;
+  // Check text on neutral surfaces and on tinted labels. Include two raised
+  // layers so a label nested inside a card has the same contrast guarantee.
+  const raised = [0, isDark ? 0.03 : 0.025, isDark ? 0.06 : 0.045, 0.1]
+    .map((alpha) => composite(withAlpha(colors.foreground, alpha), base));
+  const surfaces = [...raised, ...raised.map((surface) => composite(withAlpha(colors.foreground, isDark ? 0.06 : 0.045), surface)),
+    composite(isDark ? "rgba(0, 0, 0, 0.34)" : withAlpha(colors.foreground, 0.05), base)];
+  const readable = (color: string) => surfaces.every((surface) =>
+    contrast(color, surface) >= 4.5 &&
+    contrast(color, composite(withAlpha(color, isDark ? 0.14 : 0.1), surface)) >= 4.5);
+  if (readable(requested)) return requested;
+  const targets = isDark ? ["#ffffff", "#000000"] : ["#000000", "#ffffff"];
+  for (const target of targets) {
+    for (let step = 1; step <= 255; step += 1) {
+      const candidate = mix(requested, target, step / 255);
+      if (readable(candidate)) return candidate;
+    }
+  }
+  return targets[0]!;
+}
+
 // PluginTheme only carries six colours, so every other surface is derived from
 // the host foreground/accent with alpha. That keeps the plugin on-theme for any
 // Paseo theme instead of hard-coding a palette that matches only one of them.
@@ -172,7 +218,8 @@ export function buildThemeTokens(
   const key = JSON.stringify([
     colors.surface0, colors.foreground, colors.foregroundMuted,
     colors.accent, colors.accentForeground, colors.statusDanger,
-    preferences.accent, preferences.uiFont, preferences.codeFont,
+    preferences.accent, preferences.customAccent, preferences.customAccentEnabled,
+    preferences.uiFont, preferences.codeFont,
     codeFonts.mono, codeFonts.code,
     preferences.textScale, preferences.frostedGlass,
   ]);
@@ -184,7 +231,12 @@ export function buildThemeTokens(
   }
   const isDark = isDarkSurface(colors.surface0);
   const fg = colors.foreground;
-  const accent = ACCENT_PRESETS[preferences.accent] ?? colors.accent;
+  const customAccent = preferences.customAccentEnabled
+    ? preferences.customAccent ?? DEFAULT_PREFERENCES.customAccent
+    : undefined;
+  const accent = customAccent
+    ? accessibleAccent(customAccent, colors, isDark)
+    : ACCENT_PRESETS[preferences.accent] ?? colors.accent;
   const success = isDark ? "#4cb782" : "#1f8a5b";
   const warning = isDark ? "#d9a53f" : "#a36a00";
   const danger = colors.statusDanger;
@@ -223,7 +275,9 @@ export function buildThemeTokens(
     foregroundSubtle: withAlpha(colors.foregroundMuted, 0.7),
 
     accent,
-    accentForeground: colors.accentForeground,
+    accentForeground: customAccent
+      ? contrast(accent, "#ffffff") >= contrast(accent, "#000000") ? "#ffffff" : "#000000"
+      : colors.accentForeground,
     accentBg: withAlpha(accent, isDark ? 0.14 : 0.1),
     userSurface: withAlpha(fg, isDark ? 0.1 : 0.06),
     userBorder: withAlpha(fg, isDark ? 0.14 : 0.12),
