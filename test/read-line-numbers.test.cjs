@@ -118,9 +118,15 @@ test("unrecognized paths, malformed wrappers and unnumbered file prose stay lite
 test("captured upstream truncation remains visible and never fabricates missing file lines", t => {
   const h = createToolHarness("web");
   t.after(() => h.unmount());
-  const { readOutputText } = h.load("client/read-output.ts");
+  const { readOutputLines } = h.load("client/read-output.ts");
   for (const item of capturedReads) {
     assert.match(item.detail.content, /chars total, truncated\)$/);
-    assert.equal(readOutputText({ tool: "read", filePath: item.detail.filePath }, item.detail.content), item.detail.content);
+    const parsed = readOutputLines({ tool: "read", filePath: item.detail.filePath }, item.detail.content);
+    const first = item.detail.content.includes("from line 150,") ? 150 : 1;
+    assert.equal(parsed.lines[0].lineNumber, first);
+    assert.equal(parsed.lines.at(-2).lineNumber, first === 150 ? 244 : 102);
+    assert.equal(parsed.lines.at(-1).lineNumber, undefined);
+    assert.match(parsed.lines.at(-1).text, /^\.\.\. \(\d+ chars total, truncated\)$/);
+    assert.doesNotMatch(parsed.text, /^Read |^```|^\d+\|/m);
   }
 });
