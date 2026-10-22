@@ -223,8 +223,8 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
 
   return {
     id: `live-${rawName}`,
-    input: stepInputText(detail),
-    copyResult: stepOutputText(detail),
+    input: stepInputText(detail, toolKind),
+    copyResult: stepOutputText(detail, toolKind),
     tool: toolKind,
     title,
     status,

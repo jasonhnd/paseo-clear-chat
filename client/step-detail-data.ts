@@ -1,6 +1,8 @@
+import type { ToolCallKind } from "../shared/contracts";
 import { stepResultText } from "./tool-step-copy";
 
-const searchResults = ["content", "filePaths", "webResults", "annotations", "numFiles", "numMatches", "truncated"];
+const searchResults = ["content", "results", "filePaths", "webResults", "annotations", "numFiles", "numMatches", "truncated"];
+const requestContentTools: ToolCallKind[] = ["write", "edit", "github"];
 
 function resultFields(type: unknown): string[] {
   if (type === "search" || type === "web_search") return searchResults;
@@ -12,7 +14,7 @@ function resultFields(type: unknown): string[] {
 }
 
 /** Typed projections have argument fields beside results instead of an input envelope. */
-export function stepInputText(detail: Record<string, unknown>): string | undefined {
+export function stepInputText(detail: Record<string, unknown>, tool: ToolCallKind): string | undefined {
   const input = detail.input ?? detail.arguments ?? detail.args;
   if (input !== undefined && input !== null) {
     return typeof input === "string" ? input : JSON.stringify(input, null, 2);
@@ -22,22 +24,22 @@ export function stepInputText(detail: Record<string, unknown>): string | undefin
     "durationMs", "durationSeconds", "exitCode", ...resultFields(detail.type),
     ...(typeof detail.code === "number" ? ["code", "codeText", "bytes"] : []),
   ]);
-  if (!["write", "edit"].includes(String(detail.type))) excluded.add("content");
+  if (!requestContentTools.includes(tool)) excluded.add("content");
   const entries = Object.entries(detail).filter(([key, value]) => !excluded.has(key) && value !== undefined);
   if (!entries.length) return undefined;
   if (entries.length === 1 && entries[0]?.[0] === "command" && typeof entries[0][1] === "string") return entries[0][1];
   return JSON.stringify(Object.fromEntries(entries), null, 2);
 }
 
-/** Keep all reported result fields; file contents and patches are write/edit inputs. */
-export function stepOutputText(detail: Record<string, unknown>): string | undefined {
+/** File writes, edits and GitHub device calls carry request data in content. */
+export function stepOutputText(detail: Record<string, unknown>, tool: ToolCallKind): string | undefined {
   const result = detail.output ?? detail.result;
   if (result !== undefined && result !== null) return stepResultText(result);
   const fields = resultFields(detail.type);
   const entries = fields.filter(key => detail[key] !== undefined).map(key => [key, detail[key]] as const);
   if (entries.length === 1 && ["content", "text", "log"].includes(entries[0]![0])) return stepResultText(entries[0]![1]);
   if (entries.length) return stepResultText(Object.fromEntries(entries));
-  if (!["write", "edit"].includes(String(detail.type))) return stepResultText(detail.content);
+  if (!requestContentTools.includes(tool)) return stepResultText(detail.content);
   return undefined;
 }
 
