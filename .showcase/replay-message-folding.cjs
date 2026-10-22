@@ -63,9 +63,15 @@ async function main() {
       import { MarkdownView } from "./client/components/markdown/markdown-view";
       import { UserMessage } from "./client/components/user-message";
       import { buildThemeTokens } from "./client/components/theme-tokens";
+      import { embedFonts } from "./client/components/embed-fonts";
       import { initializeEnhancerPreferences, updateEnhancerPreferences } from "./client/preferences";
       import { replayRpc } from "@getpaseo/plugin/client";
-      const tokens = buildThemeTokens({});
+      const tokens = buildThemeTokens({
+        surface0: "#f8fafc", surface1: "#ffffff", surface2: "#edf0f5", border: "#d5dbe5",
+        foreground: "#18202d", foregroundMuted: "#586579", accent: "#315fba", accentForeground: "#ffffff",
+        statusSuccess: "#1f8a5b", statusWarning: "#a36a00", statusDanger: "#cf3340",
+      });
+      embedFonts();
       const base = { hostId: "offline-host", agentId: "offline-agent", timestamp: ${Date.parse(fixture[0].timestamp)} };
       window.__copies = [];
       window.__setLimit = limit => updateEnhancerPreferences({ foldLongOutputAfter: limit });
@@ -112,7 +118,7 @@ async function main() {
     });
     const page = await browser.newPage();
     const errors = [];
-    page.on("pageerror", error => errors.push(error.message));
+    page.on("pageerror", error => { errors.push(error.message); console.error(error.message); });
     const address = `http://127.0.0.1:${server.address().port}`;
     await page.route("**/*", route => route.request().url().startsWith(address) ? route.continue() : route.abort());
     for (const width of [1440, 1024, 820, 390]) {
