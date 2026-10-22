@@ -4,7 +4,7 @@ All notable changes to Clear Chat are listed here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.1] - Unreleased
+## [1.0.1] - 2026-10-22
 
 ### Fixed
 
@@ -44,5 +44,5 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
-[1.0.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v1.0.0...HEAD
+[1.0.1]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v1.0.1
 [1.0.0]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v1.0.0
