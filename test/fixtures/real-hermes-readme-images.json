@@ -1,0 +1,42 @@
+{
+  "provenance": "Sanitized read-only projected Hermes read. Entry and item keys, nesting, array lengths, value types, numbered text envelope and image references are preserved; all prose, identifiers, paths and dates are fictional.",
+  "projection": "projected",
+  "entries": [
+    {
+      "provider": "hermes-pp",
+      "item": {
+        "type": "tool_call",
+        "callId": "sample-readme-read",
+        "name": "read",
+        "detail": {
+          "type": "read",
+          "filePath": "/workspace/sample/README.md",
+          "content": "Read /workspace/sample/README.md (limit 30) — 90 total lines\n\n```\n1|# Sample application\n2|Sample documentation line 2.\n3|Sample documentation line 3.\n4|Sample documentation line 4.\n5|Sample documentation line 5.\n6|Sample documentation line 6.\n7|Sample documentation line 7.\n8|Sample documentation line 8.\n9|![Overview](images/overview.png)\n10|Sample documentation line 10.\n11|Sample documentation line 11.\n12|Preview address: images/conversation.png\n13|Sample documentation line 13.\n14|Sample documentation line 14.\n15|Sample documentation line 15.\n16|Sample documentation line 16.\n17|Sample documentation line 17.\n18|Sample documentation line 18.\n19|Sample documentation line 19.\n20|Sample documentation line 20.\n21|Sample documentation line 21.\n22|Sample documentation line 22.\n23|Sample documentation line 23.\n24|Sample documentation line 24.\n25|Sample documentation line 25.\n26|Sample documentation line 26.\n27|Sample documentation line 27.\n28|Sample documentation line 28.\n29|Sample documentation line 29.\n30|Sample documentation line 30.\n```"
+        },
+        "metadata": {
+          "kind": "read",
+          "title": "read_file: /workspace/sample/README.md"
+        },
+        "status": "completed",
+        "error": null
+      },
+      "timestamp": "2026-01-01T12:00:01.000Z",
+      "seqStart": 2,
+      "seqEnd": 3,
+      "sourceSeqRanges": [
+        {
+          "startSeq": 2,
+          "endSeq": 3
+        },
+        {
+          "startSeq": 2,
+          "endSeq": 3
+        }
+      ],
+      "turnId": "sample-readme-turn",
+      "collapsed": [
+        "tool_lifecycle"
+      ]
+    }
+  ]
+}

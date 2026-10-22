@@ -54,9 +54,11 @@ working directory and support filenames with spaces.
 
 - **Images written in a reply** (Markdown images and paths given in the reply text): if one cannot
   be shown, the reply shows the reason and the original address instead of an empty frame.
-- **Images found in tool output**: the output must contain a complete image address. Directory
-  listings and ambiguous filename fragments do not create previews. A failed preview is hidden,
-  including its card and source link.
+- **Images in tool output**: a tool row shows an image only when the tool read or wrote that image
+  file itself, or reported that it generated one. Image paths that merely appear inside text a tool
+  read (for example a README that mentions `images/hero.png`) do not create previews, nor do
+  directory listings or ambiguous filename fragments. A failed preview is hidden, including its
+  card and source link.
 
 Filesystem and RPC error details are never displayed by image previews. The host must include the
 image block or address in the timeline payload for the plugin to show it.
