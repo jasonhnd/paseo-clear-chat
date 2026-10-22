@@ -73,6 +73,7 @@ export function ImagePreview({ path, file, tokens, onReveal, revealLabel, unavai
           flexShrink: 1,
           minWidth: 0,
         },
+        source: { flexShrink: 1, minWidth: 0 },
         plainPath: {
           fontFamily: tokens.fontMono,
           fontSize: tokens.fs(11.5),
@@ -150,6 +151,7 @@ export function ImagePreview({ path, file, tokens, onReveal, revealLabel, unavai
         <Glyph name="Image" size={13} color={tokens.foregroundMuted} />
         {onReveal ? (
           <Pressable
+            style={styles.source}
             accessibilityRole="link"
             accessibilityLabel={revealLabel ?? `Show ${path} in the file manager`}
             onPress={(event) => { event?.stopPropagation?.(); onReveal(); }}
