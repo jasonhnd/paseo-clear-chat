@@ -135,18 +135,38 @@ test("keyboard focus has a visible ring; touch focus does not", () => {
 });
 
 for (const [platform, isPad] of [["ios", false], ["ios", true], ["android", false]]) {
-  test(`${platform}${isPad ? " tablet" : ""}: native rows retain accessible focus and escape dismissal`, () => {
-    const h = createToolHarness(platform, { isPad, width: isPad ? 820 : 390 });
-    const mounted = h.mount(call, false);
-    const row = find(h, mounted.tree, "tool-summary-row");
-    assert.equal(row.props.focusable, true);
-    assert.equal(row.props.accessibilityRole, "button");
-    assert.ok(row.props.accessibilityLabel);
-    row.props.onPress();
-    find(h, mounted.render(), "step-detail-panel").props.onAccessibilityEscape();
-    assert.equal(find(h, mounted.render(), "step-detail-panel"), undefined);
-    h.unmount();
-  });
+  for (const width of [1440, 1024, 820, 390]) {
+    test(`${platform}${isPad ? " tablet" : ""} ${width}: touch details work without a keyboard focus ring`, () => {
+      const dom = keyboardDocument();
+      const h = createToolHarness(platform, { isPad, width, globals: { document: dom.doc } });
+      const mounted = h.mount(call, false);
+      const row = () => find(h, mounted.render(), "tool-summary-row");
+      const assertNoRing = () => {
+        const styles = [row().props.style].flat(Infinity).filter(Boolean);
+        assert.equal(styles.some(style => style.outlineStyle === "solid" || style.borderWidth === 2), false);
+      };
+      assert.equal(row().props.focusable, true);
+      assert.equal(row().props.accessibilityRole, "button");
+      assert.ok(row().props.accessibilityLabel);
+      assert.equal(row().props.onKeyDownCapture, undefined);
+      assertNoRing();
+      // A native focus notification is not evidence of a physical keyboard.
+      row().props.onFocus?.({ currentTarget: 1, target: 1 });
+      assertNoRing();
+      row().props.onPressIn({ nativeEvent: { pageX: 24, pageY: 120 } });
+      row().props.onPress();
+      let tree = mounted.render();
+      assert.ok(find(h, tree, "step-detail-panel"));
+      row().props.onFocus?.({ currentTarget: 1, target: 1 });
+      assertNoRing();
+      assert.equal(dom.count(), 0, "Native touch details do not install browser keyboard listeners");
+      find(h, tree, "step-detail-close").props.onPress();
+      tree = mounted.render();
+      assert.equal(find(h, tree, "step-detail-panel"), undefined);
+      assertNoRing();
+      h.unmount();
+    });
+  }
 }
 
 
