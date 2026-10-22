@@ -7,6 +7,7 @@ export const preferenceOverridesSchema = z.object({
   accent: z.enum(["host", "jade", "violet", "amber", "rose"]).optional(),
   uiFont: z.enum(["inter", "system"]).optional(),
   codeFont: z.enum(["code", "plain"]).optional(),
+  codeFontFamily: z.enum(["host", "iosevka", "menlo", "consolas", "fira-code", "cascadia-code"]).optional(),
   textScale: z.number().transform((value) => Math.min(1.35, Math.max(0.85, value))).optional(),
   frostedGlass: z.boolean().optional(),
   pointerGlow: z.boolean().optional(),

@@ -22,7 +22,7 @@ async function client(platform, presentationHost = host()) {
 }
 const flatten = style => Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
 function fontsFor(h, tree, text) {
-  return h.nodes(tree, node => node.type === "Text" && h.text(node).includes(text))
+  return h.nodes(tree, node => node.type === "Text" && h.text(node).replace(/\n/g, "").includes(text.replace(/\n/g, "")))
     .map(node => flatten(node.props.style).fontFamily).filter(Boolean);
 }
 
@@ -62,6 +62,28 @@ test("font choices persist across clients, reject invalid families and reset to 
   await p.resetEnhancerPreferences();
   assert.equal(h.preferences.codeFontFamily, "host");
   assert.deepEqual(storage.values.preferences, {});
+});
+
+test("installed font aliases prefer local faces and retain bundled monospace fallbacks", () => {
+  const h = createToolHarness("web", { fonts: true, themeTokens: true, presentationHost: host() });
+  const previous = global.document;
+  let sheet;
+  try {
+    global.document = {
+      getElementById: () => null,
+      createElement: () => ({ remove() {} }),
+      head: { appendChild(value) { sheet = value.textContent; } },
+    };
+    h.load("client/components/embed-fonts.ts").embedFonts();
+    for (const [id, name] of [["menlo", "Menlo"], ["consolas", "Consolas"], ["fira-code", "Fira Code"], ["cascadia-code", "Cascadia Code"]]) {
+      const rules = [...sheet.matchAll(/@font-face \{([^}]+)\}/g)].map(match => match[1]).filter(rule => rule.includes(`"Clear Chat ${id}"`));
+      assert.equal(rules.length, 2, "regular and semibold aliases are registered");
+      for (const rule of rules) assert.match(rule, new RegExp(`src: local\\("${name}"\\),\\s+url\\(data:font/woff2;base64,`));
+    }
+  } finally {
+    if (previous === undefined) delete global.document;
+    else global.document = previous;
+  }
 });
 
 for (const platform of ["web", "ios", "android"]) {

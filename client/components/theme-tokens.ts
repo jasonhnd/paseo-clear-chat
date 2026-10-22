@@ -1,5 +1,8 @@
 import type { PluginTheme } from "@getpaseo/plugin";
+import { Platform } from "react-native";
 import { DEFAULT_PREFERENCES, type EnhancerPreferences, ACCENT_PRESETS } from "../preferences";
+import { resolveCodeFonts } from "./code-fonts";
+export { fontMono, fontCode } from "./code-fonts";
 
 export type PluginSurfaceColors = PluginTheme["colors"];
 
@@ -11,21 +14,6 @@ export type PluginSurfaceColors = PluginTheme["colors"];
  */
 export const radius = { card: 12, block: 8, chip: 5 } as const;
 
-/**
- * One family name per stack, never a comma-separated CSS list. React Native's
- * `fontFamily` takes a single family; a list is not parsed and the whole
- * declaration is dropped, which silently leaves every surface on the host
- * default. Fallbacks live in the `@font-face` `src` chain instead, so these
- * names always resolve to something.
- */
-export const fontMono = "OMP Iosevka";
-
-/**
- * The ligature cut of Iosevka, used only inside code blocks. Terminal output,
- * diffs and paths stay on `fontMono`: a shaped `->` or `=>` stops matching the
- * bytes it stands for, which is wrong for a log line or a patch.
- */
-export const fontCode = "OMP Iosevka Code";
 export const fontUi = "OMP Inter";
 
 export interface ExtendedThemeTokens {
@@ -178,12 +166,14 @@ export function buildThemeTokens(
   colors: PluginSurfaceColors,
   preferences: EnhancerPreferences = DEFAULT_PREFERENCES,
 ): ExtendedThemeTokens {
+  const codeFonts = resolveCodeFonts(preferences, Platform.OS);
   // History virtualization remounts rows. Share immutable derived tokens across
   // those mounts, even when the host supplies equivalent new input objects.
   const key = JSON.stringify([
     colors.surface0, colors.foreground, colors.foregroundMuted,
     colors.accent, colors.accentForeground, colors.statusDanger,
     preferences.accent, preferences.uiFont, preferences.codeFont,
+    codeFonts.mono, codeFonts.code,
     preferences.textScale, preferences.frostedGlass,
   ]);
   const cached = themeCache.get(key);
@@ -204,8 +194,8 @@ export function buildThemeTokens(
 
   const tokens: ExtendedThemeTokens = {
     isDark,
-    fontMono,
-    fontCode: preferences.codeFont === "plain" ? fontMono : fontCode,
+    fontMono: codeFonts.mono,
+    fontCode: codeFonts.code,
     fontUi: preferences.uiFont === "system" ? "System" : fontUi,
 
     textScale,

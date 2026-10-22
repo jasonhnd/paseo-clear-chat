@@ -24,6 +24,8 @@ function harness() {
   }
   const theme = load("client/components/theme-tokens.ts", {
     "../preferences": { DEFAULT_PREFERENCES: preferences, ACCENT_PRESETS: { host: undefined, jade: "#10b981" } },
+    "react-native": { Platform: { OS: "web" } },
+    "./code-fonts": load("client/components/code-fonts.ts", {}),
   });
   const { useToolCalloutStyles } = load("client/components/tool-callout-styles.ts", {
     // Every call models a fresh row mount, so per-component useMemo cannot hide

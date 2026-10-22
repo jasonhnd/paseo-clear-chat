@@ -20,6 +20,7 @@ export const ACCENT_PRESETS = {
 export type AccentPreset = keyof typeof ACCENT_PRESETS;
 export type UiFontPreference = "inter" | "system";
 export type CodeFontPreference = "code" | "plain";
+export type CodeFontFamilyPreference = NonNullable<PreferenceOverrides["codeFontFamily"]>;
 export type MarkdownVariantPreference = "document" | "compact" | "terminal";
 export type OutputLineLimit = 10 | 15 | 30 | "never";
 
@@ -42,6 +43,7 @@ export interface EnhancerPreferences {
   accent: AccentPreset;
   uiFont: UiFontPreference;
   codeFont: CodeFontPreference;
+  codeFontFamily: CodeFontFamilyPreference;
   /** Scales every text style the plugin renders; 1 is the authored size. */
   textScale: number;
   frostedGlass: boolean;
@@ -82,6 +84,7 @@ export const DEFAULT_PREFERENCES: Readonly<EnhancerPreferences> = {
   accent: "host",
   uiFont: "inter",
   codeFont: "code",
+  codeFontFamily: "host",
   textScale: 1,
   frostedGlass: true,
   pointerGlow: true,
@@ -130,7 +133,7 @@ function loadLegacyPreferences(): PreferenceOverrides | undefined {
     const valid: Record<string, unknown> = {};
     for (const [key, schema] of Object.entries(preferenceOverridesSchema.shape)) {
       // New host-only preferences must never come from a browser import snapshot.
-      if (key === "textScale" || key === "foldFinishedSteps" || key === "foldLongOutputAfter") continue;
+      if (key === "textScale" || key === "foldFinishedSteps" || key === "foldLongOutputAfter" || key === "codeFontFamily") continue;
       const parsed = schema.safeParse((candidate as Record<string, unknown>)[key]);
       if (parsed.success && parsed.data !== undefined) valid[key] = parsed.data;
     }

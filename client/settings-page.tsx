@@ -5,6 +5,7 @@ import { hostFontEscape } from "./components/host-font-escape";
 import { SettingsFailureNotice } from "./components/settings-failure-notice";
 import { openLink } from "./components/open-link";
 import { radius, buildThemeTokens, type ExtendedThemeTokens } from "./components/theme-tokens";
+import { CODE_FONT_OPTIONS } from "./components/code-fonts";
 import {
   ACCENT_PRESETS,
   TEXT_SIZE_OPTIONS,
@@ -315,13 +316,22 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
 
         <ChoiceRow<CodeFontPreference>
           title="Code glyphs"
-          description="Use programming ligatures inside syntax blocks, or keep every code glyph literal."
+          description="For Iosevka, use programming ligatures inside syntax blocks or keep glyphs literal. Other fonts use their own glyphs."
           value={preferences.codeFont}
           options={[
             { value: "code", label: "Ligatures" },
             { value: "plain", label: "Literal" },
           ]}
           onChange={(codeFont) => updateEnhancerPreferences({ codeFont })}
+          tokens={tokens}
+        />
+
+        <ChoiceRow
+          title="Code font"
+          description="Paseo's code font is not exposed by plugin SDK 0.8.0. Follow Paseo uses Iosevka and your Code glyphs choice. Other fonts must be installed on web or desktop; missing fonts use Iosevka. iOS and Android use platform monospace."
+          value={preferences.codeFontFamily}
+          options={CODE_FONT_OPTIONS}
+          onChange={(codeFontFamily) => updateEnhancerPreferences({ codeFontFamily })}
           tokens={tokens}
         />
 

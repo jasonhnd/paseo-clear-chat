@@ -1,6 +1,7 @@
 import { EMBEDDED_FONTS } from "./font-data";
 import { fontMono, fontUi } from "./theme-tokens";
 import { errorText } from "../error-text";
+import { LOCAL_CODE_FONTS, codeFontAlias } from "./code-fonts";
 
 const STYLE_ELEMENT_ID = "clear-chat-fonts";
 
@@ -20,7 +21,7 @@ const LOCAL_FALLBACKS: Record<string, readonly string[]> = {
  * The plugin sandbox exposes no font loader, so on web and Electron the faces
  * are declared with `@font-face` against embedded woff2 data and the browser
  * takes it from there. React Native has no `document`, so on iOS and Android
- * this is a no-op and the font stacks fall through to the platform default —
+ * this is a no-op and code tokens use platform monospace —
  * embedding native assets needs a build step a directory plugin does not have.
  *
  * Injection is idempotent: a second client mounting reuses the existing style
@@ -30,8 +31,17 @@ export function embedFonts(): () => void {
   if (typeof document === "undefined") return () => {};
   if (document.getElementById(STYLE_ELEMENT_ID)) return () => {};
 
-  const rules = EMBEDDED_FONTS.map(({ family, weight, woff2Base64 }) => {
+  const aliases = Object.entries(LOCAL_CODE_FONTS).flatMap(([id, local]) =>
+    EMBEDDED_FONTS.filter(face => face.family === fontMono).map(face => ({
+      ...face, family: codeFontAlias(id as keyof typeof LOCAL_CODE_FONTS), local,
+    })),
+  );
+  const rules = [...EMBEDDED_FONTS, ...aliases].map((face) => {
+    const { family, weight, woff2Base64 } = face;
     const sources = [
+      // Prefer the installed face; the bundled literal Iosevka cut guarantees
+      // monospace if a named font is absent, including on another device.
+      ...("local" in face ? [`local("${face.local}")`] : []),
       `url(data:font/woff2;base64,${woff2Base64}) format("woff2")`,
       ...(LOCAL_FALLBACKS[family] ?? []).map((name) => `local("${name}")`),
     ].join(",\n    ");

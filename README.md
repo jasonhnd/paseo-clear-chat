@@ -152,6 +152,7 @@ Search, fetch and web search, plans and checklists, plain text, skills and any o
 | Accent colour | Follow the Paseo theme, or pick Jade, Violet, Amber or Rose. |
 | Interface font | Embedded Inter, or your system font. |
 | Text size | Small (90%), Default (100%), Large (115%) or XL (130%). Icons keep their size. |
+| Code font | Follow Paseo (default), Iosevka, Menlo, Consolas, Fira Code or Cascadia Code. Applies to code blocks, inline code, terminal output and diffs. |
 | Code glyphs | Iosevka with ligatures, or plain glyphs. |
 | Fold finished steps | On by default. Off opens every step unless you chose otherwise for that call. |
 | Fold long output after | 10, 15 (default) or 30 lines, or Never. Applies to code and tool output. |
@@ -160,6 +161,12 @@ Search, fetch and web search, plans and checklists, plain text, skills and any o
 | Assistant markdown | Off hands replies back to Paseo's own renderer. |
 
 Settings are saved on the host, so every device connected to that host shares them. The folding settings apply at once. Other changes apply to new messages; reload the chat to update older ones.
+
+Paseo's code font preference is not available through plugin SDK 0.8.0. **Follow Paseo**
+therefore falls back to Iosevka with your existing **Code glyphs** choice. On web and desktop,
+other font choices use an installed face, with embedded Iosevka as a fallback when it is missing.
+On iOS and iPadOS, code uses Menlo; on Android, it uses the platform monospace face because
+directory plugins cannot register the embedded web fonts on native platforms.
 
 > [!NOTE]
 > **On iOS and iPadOS** you cannot select text by dragging while **Assistant markdown** or **Enhanced prompt bubble** is on. Use the **Copy** button on the reply, prompt or code block instead. If copying fails, a dialog shows the full text for you to select by hand.
