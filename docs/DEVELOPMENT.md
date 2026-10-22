@@ -151,6 +151,33 @@ The optional `collapsedStepAction` preference accepts `details` (the default) or
 Zod object can read the additional preference without an error, but an older
 client saving settings can strip it. It is never imported from browser legacy settings.
 
+### Step keyboard controls
+
+On web and desktop, Tab to a step. Up and Down focus the previous or next mounted,
+visible step in the same host and conversation, scrolling it into view. Navigation
+stops at the first and last mounted rows; it does not load virtualized history.
+The accent outline appears for keyboard focus and clears for pointer or touch
+activation. Enter opens the shared details, including for an expanded row, without
+changing its saved folding choice. With inline expansion selected, Enter follows
+that preference instead. Holding Enter does not repeatedly activate the row.
+
+These keys are handled on the focused row in capture, before the web Pressable's
+own activation. Events from child editors, an unfocused row, composition, or
+modifier shortcuts are ignored. No document-wide Up, Down or Enter listener is
+installed. Escape dismisses the top open detail and restores the opening control's
+focus; this also covers the desktop host panel. Panels expose a labeled dialog
+or region, and step rows retain their button role and descriptive label.
+
+The browser implementation also applies to an iPad browser with a hardware
+keyboard. Native rows remain focusable buttons with a focus border and the
+existing accessibility Escape action. React Native 0.81 View exposes focus/blur
+but no raw hardware-key event, and the plugin SDK 0.12 has no keyboard-command
+bridge. Consequently, custom Up/Down/Enter/Escape dispatch is **web only**; the
+native iPad app still needs a host keyboard bridge for the same guaranteed
+shortcuts. Native component replay verifies focusability, activation and
+accessibility dismissal, not native hardware-key delivery. Physical iOS,
+iPadOS and Android keyboard checks remain pending.
+
 ### SDK integration and limits
 
 The initial SDK 0.8.0 check found `addWorkspacePanel`, `openPanel` and a controlled
@@ -205,7 +232,9 @@ node scripts/replay-step-details.cjs
 Set `KANBAN_TMP` to the current task's authorized temporary directory. The runner
 builds the preview in memory and uses the installed headless Google Chrome with
 a free debugging port from 9444–9499. It blocks external requests, measures all
-four widths, verifies that the desktop pane does not overlap chat in the host
+four widths with a 64px host header and a chat container already scrolled by
+360px, verifies focused Up/Down/Enter/Escape, input/textarea/contenteditable key
+pass-through and phone touch focus styling, verifies that the desktop pane does not overlap chat in the host
 layout shim, checks A-to-B-to-A switching between long steps at both desktop
 widths, preserves scroll during same-step output updates, checks touch drag,
 dismissal, browser Back and inline mode, and

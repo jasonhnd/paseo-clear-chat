@@ -118,11 +118,15 @@ export function ToolCallout({
       aria-haspopup={!expanded && onOpenDetail ? "dialog" : undefined}
       {...stepMenu.rowProps}
       {...keyboard.rowProps}
+      onPressIn={event => {
+        keyboard.clearFocus();
+        stepMenu.rowProps.onPressIn?.(event);
+      }}
       onPress={() => {
         if (stepMenu.consumePress()) return;
         if (!expanded && onOpenDetail) onOpenDetail(); else onExpandedChange(!expanded);
       }}
-      style={[styles.header, compact && styles.compactHeaderTarget, keyboard.focusStyle]}
+      style={{ ...styles.header, ...(compact ? styles.compactHeaderTarget : {}), ...keyboard.focusStyle }}
     >
       <View style={styles.headerLeft}>
         <Glyph name={getToolIconName(data.tool)} size={phone ? 11 : 13} color={iconColor} />

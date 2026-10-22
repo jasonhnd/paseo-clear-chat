@@ -47,5 +47,5 @@ export function useToolKeyboard(scope: string, activate: () => void, tokens: Ext
   const focusStyle = web ? {
     outlineStyle: focused ? "solid" : "none", outlineColor: tokens.accent, outlineWidth: 2, outlineOffset: -2,
   } as ViewStyle : focused ? { borderWidth: 2, borderColor: tokens.accent } : undefined;
-  return { rowProps, focusStyle };
+  return { rowProps, focusStyle, clearFocus: () => setFocused(false) };
 }

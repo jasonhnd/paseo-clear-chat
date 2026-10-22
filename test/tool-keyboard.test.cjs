@@ -78,6 +78,8 @@ for (const width of [1440, 1024, 820, 390]) {
     assert.equal(event.defaultPrevented, true);
     let tree = mounted.render();
     assert.ok(find(h, tree, "step-detail-panel"));
+    assert.equal(find(h, tree, "step-detail-panel").props.role, width >= 1024 ? "region" : "dialog");
+    assert.equal(find(h, tree, "step-detail-panel").props.accessibilityLabel, "Step details");
     assert.equal(find(h, tree, "tool-summary-row").props.accessibilityState.expanded, false);
     const escape = dom.key("Escape"); dom.emit(escape);
     assert.equal(escape.defaultPrevented, true);
@@ -123,6 +125,10 @@ test("keyboard focus has a visible ring; touch focus does not", () => {
   target.keyboard = false;
   find(h, mounted.render(), "tool-summary-row").props.onFocus({ currentTarget: target, target });
   assert.equal(styles().some(style => style.outlineStyle === "solid"), false);
+  target.keyboard = true;
+  find(h, mounted.render(), "tool-summary-row").props.onFocus({ currentTarget: target, target });
+  find(h, mounted.render(), "tool-summary-row").props.onPressIn({});
+  assert.equal(styles().some(style => style.outlineStyle === "solid"), false, "Pointer activation clears a previous keyboard ring");
   h.unmount();
 });
 
@@ -140,3 +146,45 @@ for (const [platform, isPad] of [["ios", false], ["ios", true], ["android", fals
     h.unmount();
   });
 }
+
+
+test("Enter on an expanded step opens details once without changing saved folding", () => {
+  const dom = keyboardDocument();
+  const h = createToolHarness("web", { globals: { document: dom.doc } });
+  const mounted = h.mount(call, false), target = dom.element(); target.focus();
+  const data = mounted.data;
+  let tree = mounted.render(data);
+  // Expand with the inline action first, then restore the default details action.
+  h.preferences.collapsedStepAction = "inline";
+  find(h, mounted.render(data), "tool-summary-row").props.onPress();
+  h.preferences.collapsedStepAction = "details";
+  tree = mounted.render(data);
+  assert.equal(find(h, tree, "tool-summary-row").props.accessibilityState.expanded, true);
+  find(h, tree, "tool-summary-row").props.onKeyDownCapture(dom.key("Enter"));
+  tree = mounted.render(data);
+  assert.ok(find(h, tree, "step-detail-panel"));
+  assert.equal(find(h, tree, "tool-summary-row").props.accessibilityState.expanded, true);
+  const opens = h.panelOpens.length;
+  const repeat = dom.key("Enter", target, { repeat: true });
+  find(h, tree, "tool-summary-row").props.onKeyDownCapture(repeat);
+  assert.equal(repeat.defaultPrevented, true);
+  assert.equal(h.panelOpens.length, opens);
+  h.unmount();
+});
+
+test("Escape dismisses only the top detail and releases document listeners", () => {
+  const dom = keyboardDocument();
+  const h = createToolHarness("web", { globals: { document: dom.doc } });
+  const { installStepDetailKeyboard } = h.load("client/step-detail-keyboard.ts");
+  const closed = [];
+  const first = installStepDetailKeyboard(() => closed.push("first"));
+  const second = installStepDetailKeyboard(() => closed.push("second"));
+  for (const extra of [{ isComposing: true }, { ctrlKey: true }, { repeat: true }]) dom.emit(dom.key("Escape", undefined, extra));
+  assert.deepEqual(closed, []);
+  dom.emit(dom.key("Escape"));
+  assert.deepEqual(closed, ["second"]);
+  second(); dom.emit(dom.key("Escape"));
+  assert.deepEqual(closed, ["second", "first"]);
+  first(); assert.equal(dom.count(), 0);
+  h.unmount();
+});

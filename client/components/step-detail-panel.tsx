@@ -92,6 +92,8 @@ export function StepDetailPanel({ step, open, onOpenChange, presentation, tokens
     <View
       {...surfaceProps(hostFontEscape, { dataSet: { presentation, ...(presentation === "sheet" ? { snap } : {}) } } as ViewProps)}
       testID="step-detail-panel"
+      role={presentation === "side" ? "region" : "dialog"}
+      aria-modal={presentation !== "side"}
       accessibilityLabel="Step details"
       accessibilityViewIsModal={presentation !== "side"}
       onAccessibilityEscape={close}
