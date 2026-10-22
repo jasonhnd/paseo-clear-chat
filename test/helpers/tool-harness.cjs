@@ -9,7 +9,7 @@ const { createExpansionHost } = require("./expansion-host.cjs");
 // Only the host runtime, animation, syntax painting and unrelated UI are shims.
 function createToolHarness(platform = "ios", options = {}) {
   const root = resolve(__dirname, "../..");
-  const cache = new Map(), frames = new Map(), transformers = new Map(), renderers = new Map(), panels = new Map();
+  const cache = new Map(), frames = new Map(), transformers = options.timelineHost?.transformers ?? new Map(), renderers = options.timelineHost?.renderers ?? new Map(), panels = new Map();
   const panelOpens = [];
   const dimensions = { width: options.width ?? 1440, height: options.height ?? 900, scale: 1, fontScale: 1, ...options.dimensions };
   let activePanel;
@@ -202,7 +202,7 @@ function createToolHarness(platform = "ios", options = {}) {
     runInThisContext(`(function(require,module,exports,globalThis){${source}\n})`, { filename })(localRequire, mod, mod.exports, options.globals ?? globalThis);
     return mod.exports;
   }
-  load("index.client.tsx").default({
+  const dispose = load("index.client.tsx").default({
     rpc: options.presentationHost?.rpc ?? noop,
     addSettingsScreen: cleanup,
     addWorkspacePanel(value) { panels.set(value.id, value); return noop; },
@@ -211,8 +211,14 @@ function createToolHarness(platform = "ios", options = {}) {
       panelOpens.push({ id, ...input });
       activePanel = { id, ...input };
     },
-    addTimelineTransformer(value) { transformers.set(value.query.itemType, value); return noop; },
-    addTimelineRenderer(value) { renderers.set(value.kind, value); return noop; },
+    addTimelineTransformer(value) {
+      if (options.timelineHost) return options.timelineHost.addTimelineTransformer(value);
+      transformers.set(value.query.itemType, value); return noop;
+    },
+    addTimelineRenderer(value) {
+      if (options.timelineHost) return options.timelineHost.addTimelineRenderer(value);
+      renderers.set(value.kind, value); return noop;
+    },
   });
   function draw(element, path = "root") {
     if (Array.isArray(element)) return element.map((child, i) => draw(child, `${path}.${i}`));
@@ -251,7 +257,7 @@ function createToolHarness(platform = "ios", options = {}) {
     frames.clear();
   }
   return {
-    load, nodes, text, reveals, links, copies, toasts, imageReads, transformers, renderers, panels, panelOpens, dimensions, get preferences() { return getPreferences(); }, tokens, draw, expansionHost, unmount,
+    load, nodes, text, reveals, links, copies, toasts, imageReads, transformers, renderers, panels, panelOpens, dimensions, get preferences() { return getPreferences(); }, tokens, draw, expansionHost, unmount, dispose,
     mount(item, expand = true, identity = {}) {
       unmount(); reveals.length = links.length = copies.length = imageReads.length = 0;
       if (!timestamps.has(item)) timestamps.set(item, new Date(nextTimestamp++));
