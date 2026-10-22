@@ -55,7 +55,7 @@ function hoverDocument(width = 1440, mouse = true) {
 
 function mount(width = 1440, platform = "web", mouse = true, item = calls[0]) {
   const dom = hoverDocument(width, mouse);
-  const h = createToolHarness(platform, { globals: { document: dom.doc } });
+  const h = createToolHarness(platform, { width, globals: { document: dom.doc } });
   const mounted = h.mount(item, false);
   const row = find(h, mounted.tree);
   const enter = (pointerType = "mouse") => row.props.onPointerEnter?.({
