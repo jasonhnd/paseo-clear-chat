@@ -1,8 +1,8 @@
 import React, { useContext, useEffect, useMemo, useRef } from "react";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatList, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type { ToolCalloutData } from "../../shared/contracts";
 import type { ImageFile } from "../image-file";
-import { readOutputText } from "../read-output";
+import { readOutputLines } from "../read-output";
 import { stepTextChunks } from "../step-detail-data";
 import { toolDuration } from "../tool-summary";
 import { CopyFallbackDialog, useCopyText } from "./copy-feedback";
@@ -13,7 +13,7 @@ import type { ExtendedThemeTokens } from "./theme-tokens";
 
 type Section = "input" | "output" | "error" | "stdout" | "stderr";
 type DetailRow = { key: string; section: Section } & (
-  { kind: "heading"; text: string | undefined } | { kind: "text"; text: string }
+  { kind: "heading"; text: string | undefined } | { kind: "text"; text: string; lineNumber?: number; gutterWidth?: number }
 );
 const titles = { input: "Input", output: "Output", error: "Error", stdout: "Stdout", stderr: "Stderr" };
 type ScrollNode = { scrollTop?: number; clientHeight?: number; getScrollableNode?: () => ScrollNode };
@@ -85,14 +85,18 @@ export function StepDetailContent({ step, tokens, onRevealPath, imageFile }: {
     const sections: Array<[Section, string | undefined]> = [["input", step.input]];
     if (step.stdout !== undefined) sections.push(["stdout", step.stdout]);
     if (step.stderr !== undefined) sections.push(["stderr", step.stderr]);
-    if (step.copyResult !== undefined || (step.stdout === undefined && step.stderr === undefined)) sections.push(["output", step.copyResult === undefined ? undefined : readOutputText(step, step.copyResult)]);
+    const read = step.tool === "read" && step.copyResult !== undefined ? readOutputLines(step, step.copyResult) : undefined;
+    if (step.copyResult !== undefined || (step.stdout === undefined && step.stderr === undefined)) sections.push(["output", step.copyResult === undefined ? undefined : read?.text ?? step.copyResult]);
     if (step.error) sections.unshift(["error", step.error]);
     for (const [section, text] of sections) {
       result.push({ key: `${section}-heading`, section, kind: "heading", text });
-      if (text) stepTextChunks(text).forEach((chunk, index) => result.push({ key: `${section}-${index}`, section, kind: "text", text: chunk }));
+      if (text && section === "output" && read) {
+        const gutterWidth = tokens.fs(12) * (read.lines.reduce((digits, line) => Math.max(digits, String(line.lineNumber).length), 1) * 0.65 + 1.5);
+        read.lines.forEach((line, index) => result.push({ key: `${section}-${index}`, section, kind: "text", ...line, gutterWidth }));
+      } else if (text) stepTextChunks(text).forEach((chunk, index) => result.push({ key: `${section}-${index}`, section, kind: "text", text: chunk }));
     }
     return result;
-  }, [step.tool, step.filePath, step.input, step.copyResult, step.error, step.stdout, step.stderr]);
+  }, [step.tool, step.filePath, step.input, step.copyResult, step.error, step.stdout, step.stderr, tokens]);
   const duration = toolDuration(step.durationMs);
   const exitCode = typeof step.exitCode === "number" && Number.isInteger(step.exitCode) ? step.exitCode : undefined;
   return <View testID="tool-card-body" style={styles.body}>
@@ -136,7 +140,18 @@ export function StepDetailContent({ step, tokens, onRevealPath, imageFile }: {
       </View>}
       renderItem={({ item }) => item.kind === "heading"
         ? <SectionHeading section={item.section} text={item.text} tokens={tokens} />
-        : <Text
+        : item.kind === "text" && item.lineNumber !== undefined ? <View testID="step-detail-read-line" style={{ flexDirection: "row", alignItems: "flex-start", minWidth: 0 }}>
+            <Text testID="step-detail-line-number" selectable={false} accessible={false} style={{
+              width: item.gutterWidth, flexShrink: 0, paddingRight: tokens.fs(10), textAlign: "right",
+              color: tokens.foregroundMuted, fontFamily: tokens.fontMono, fontSize: tokens.fs(12), lineHeight: tokens.fs(18),
+              ...(Platform.OS === "web" ? { userSelect: "none" as const } : {}),
+            }}>{item.lineNumber}</Text>
+            <Text testID="step-detail-output" selectable style={{
+              flex: 1, minWidth: 0, minHeight: tokens.fs(18), color: tokens.foreground, fontFamily: tokens.fontMono,
+              fontSize: tokens.fs(12), lineHeight: tokens.fs(18),
+              ...(Platform.OS === "web" ? { overflowWrap: "anywhere" as const } : {}),
+            }}>{item.text.replace(/\r?\n$/, "")}</Text>
+          </View> : <Text
             testID={`step-detail-${item.section}`}
             selectable
             style={{ color: item.section === "error" || item.section === "stderr" ? tokens.danger : tokens.foreground, fontFamily: item.section === "input" ? tokens.fontCode : tokens.fontMono, fontSize: tokens.fs(12), lineHeight: tokens.fs(18), flexShrink: 1 }}
