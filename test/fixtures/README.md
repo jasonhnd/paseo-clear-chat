@@ -183,3 +183,11 @@ and value types match the read-only capture with zero structural differences.
 `test/tool-image-policy.test.cjs` requires no previews or image RPCs for image
 paths mentioned inside that text, in expanded and collapsed states on all three
 platforms.
+
+`real-hermes-image-path-reply.json` preserves a separate captured assistant
+item with exactly `type`, `text` and `messageId`. Its two prose lines give an
+absolute and a relative image address. All prose, paths and the identifier are
+fictional; a recursive comparison confirmed zero key or value-type differences.
+`test/image-output.test.cjs` replays both images on web, iOS and Android, alongside
+the listing reply above and the captured Markdown images in
+`real-assistant-links.json`.

@@ -28,13 +28,15 @@ export function imageSource(source: string, explicit = false): GeneratedImage | 
 }
 
 /**
- * Collect only output values; callers deliberately leave tool inputs out.
+ * Collect only output values; callers deliberately leave tool inputs out and
+ * exclude file contents. Tool text needs an image-generation tool or an explicit
+ * generation report; an image address alone does not establish a generated image.
  * toolOutput candidates are guesses, so unreadable images must disappear without
  * disturbing the user. Reply Markdown and written paths express the agent's intent:
  * those renderers must retain a generic failure reason and the image address.
  * The explicit flag below only controls parsing; it does not change that policy.
  */
-export function extractGeneratedImages(value: unknown, options: { toolOutput?: boolean } = {}): GeneratedImage[] {
+export function extractGeneratedImages(value: unknown, options: { toolOutput?: boolean; generated?: boolean } = {}): GeneratedImage[] {
   const images = new Map<string, GeneratedImage>();
   const seen = new Set<object>();
   const add = (source: string, explicit = false) => {
@@ -91,9 +93,11 @@ export function extractGeneratedImages(value: unknown, options: { toolOutput?: b
       add(match[0].replace(/[),.;!]+$/, ""));
     }
   };
-  const visit = (entry: unknown, depth: number, explicit = false): void => {
+  const visit = (entry: unknown, depth: number, explicit = false, generated = options.generated === true): void => {
     if (depth > 12 || entry === null || entry === undefined) return;
     if (typeof entry === "string") {
+      if (options.toolOutput && !explicit && !generated &&
+        !/^\s*(?:[-*]\s+)?(?:(?:generated|created|saved)\s+(?:an?\s+)?images?\b|images?\s+(?:was\s+|were\s+)?generated\b)/im.test(entry)) return;
       if (explicit && imageSource(entry, true)) add(entry, true);
       else text(entry);
       return;
@@ -101,7 +105,7 @@ export function extractGeneratedImages(value: unknown, options: { toolOutput?: b
     if (typeof entry !== "object" || seen.has(entry)) return;
     seen.add(entry);
     if (Array.isArray(entry)) {
-      for (const child of entry) visit(child, depth + 1, explicit);
+      for (const child of entry) visit(child, depth + 1, explicit, generated);
       return;
     }
     const obj = entry as Record<string, unknown>;
@@ -110,10 +114,14 @@ export function extractGeneratedImages(value: unknown, options: { toolOutput?: b
     if (typeof mime === "string" && mime.startsWith("image/") && typeof data === "string") {
       add(data.startsWith("data:") ? data : `data:${mime};base64,${data}`);
     }
-    const image = explicit || obj.type === "image" || obj.type === "image_url" || obj.type === "output_image" || (typeof mime === "string" && mime.startsWith("image/"));
+    const image = explicit || obj.type === "image" || obj.type === "image_url" || obj.type === "output_image" || obj.type === "generated_image" || (typeof mime === "string" && mime.startsWith("image/"));
     for (const [key, child] of Object.entries(obj)) {
       if (key === "data" || key === "base64" || key === "mimeType" || key === "mediaType" || key === "media_type") continue;
-      visit(child, depth + 1, ["images", "image", "image_url"].includes(key) || (image && ["source", "url", "uri", "path", "file_path", "image_path"].includes(key)));
+      const generatedField = key === "generated_image" || key === "generated_images";
+      visit(child, depth + 1,
+        generatedField || ((!options.toolOutput || generated) && ["images", "image", "image_url"].includes(key)) ||
+          (image && ["source", "url", "uri", "path", "file_path", "image_path", "image_url"].includes(key)),
+        generated || generatedField);
     }
   };
   visit(value, 0);

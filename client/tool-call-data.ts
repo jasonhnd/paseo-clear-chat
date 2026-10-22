@@ -212,6 +212,12 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
         ? detail.code
         : undefined;
   const status = toolStatus(data.status);
+  const finalReply = finalToolReply(rawName, rawInput, output);
+  // Reading or writing an image file is previewed from filePath by the renderer.
+  // File contents are text, even when they quote image paths or generation reports.
+  const fileOperation = ["read", "write", "edit"].includes(toolKind) ||
+    /(?:^|[._/])(?:read_file|write_file|edit_file)$/.test(rawName);
+  const generatesImages = /(?:^|[._/])(?:imagegen|image_generation|generate_images?|generate_art|text_to_image)$/.test(rawName);
 
   return {
     id: `live-${rawName}`,
@@ -219,8 +225,8 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
     title,
     status,
     error: status === "failed" ? toolFailureMessage(data.error, detail, toolKind) : errorText(data.error),
-    finalReply: finalToolReply(rawName, rawInput, output),
-    images: extractGeneratedImages([output, detail.text], { toolOutput: true }),
+    finalReply,
+    images: fileOperation ? [] : extractGeneratedImages([output, detail.text], { toolOutput: !finalReply, generated: generatesImages }),
     filePath: skill ? undefined : filePath,
     lineRange: toolKind === "read" && !skill ? readLineRange(detail, input, code) : undefined,
     changes: edit?.changes,
