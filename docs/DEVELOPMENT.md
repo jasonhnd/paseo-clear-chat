@@ -64,9 +64,16 @@ replies remain fully visible as plain text inside the same expanded card.
 ## Step actions
 
 Touch and hold a tool summary for 500 ms, or right-click it on web, to open
-**Step actions**. The same centered, scrollable menu fits desktop, tablet and
-phone viewports; Escape, Android Back or the backdrop closes it. Releasing a
-long press does not activate the row's ordinary click action.
+**Step actions**. The scrollable menu opens 4px from the gesture, flipping left
+or up when it would reach a viewport edge and keeping an 8px screen margin.
+Its Modal escapes the timeline's clipping and transformed ancestors. Web mouse
+coordinates use the viewport directly; web touch page coordinates subtract only
+document scroll, while native gestures use root coordinates. Toolbar and chat
+scroll offsets are not added. Menu bounds are measured after layout so wrapped
+actions and font scaling remain inside the screen. Events without coordinates
+retain a centered fallback. Escape, Android Back or the backdrop closes it.
+Releasing a long press does not activate the row or dismiss the new menu through
+a synthetic browser click.
 
 **Copy command**, **Copy path** and **Copy result** use the SDK clipboard on the
 current client. Commands and paths retain their original whitespace. Results
@@ -86,13 +93,21 @@ does not compete with the long press; expanded detail text keeps its selection.
 
 Run `node --test test/tool-step-menu.test.cjs` for web, iOS, iPadOS-width and
 Android component replays using the sanitized real tool fixtures. For measured
-DOM bounds, clipboard arguments, actual long-press timing and ordinary clicks
+DOM bounds, clipboard arguments, actual touch long-press timing and ordinary clicks
 at 1440, 1024, 820 and 390px, install the offline harness dependencies with
 `npm ci --prefix .showcase --include=dev`, then run:
 
 ```sh
 TMPDIR="$KANBAN_TMP" node .showcase/verify-step-menu.cjs
 ```
+
+The verifier includes a 96px host toolbar, a transformed host ancestor, a chat
+container scrolled by 600px and a document scrolled by 37px. It measures both
+right-click and touch positions within 8px, then moves the row near the bottom
+right corner to check flipping and screen bounds at every width. The sanitized
+`test/fixtures/real-hermes-step-menu.json` contains the shell and read item
+structures from a read-only projected capture; keys, nesting and value types
+match the source, while content, paths and identifiers are fictional.
 
 The verifier bundles the real components in memory and uses headless Google
 Chrome with a free debugging port in 9444–9499. Its profile and JSON report stay
