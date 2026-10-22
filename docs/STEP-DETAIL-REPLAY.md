@@ -244,3 +244,78 @@ over 50ms. Chrome/156.0.8078.48 used debugging ports within 9444–9499.
 
 No npm build script or CI workflow is present; both production bundles were
 built locally with esbuild. Physical native devices were not exercised.
+
+## Hosted browser environment comparison
+
+The hosted acceptance browser must keep its viewport override alive. Use one
+CDP session for setting device metrics, opening the conversation, mouse and key
+input, every resize, and every layout measurement. Set the initial viewport
+**before** opening the conversation. Disconnecting the session that owns
+`Emulation.setDeviceMetricsOverride` removes that override; a later session's
+measurements do not establish which width the plugin rendered between sessions.
+Record `innerWidth`, `innerHeight`, `data-presentation`, panel bounds and
+`step-detail-scroll.scrollTop` together in the same evaluation. Do not infer
+side presentation from the browser's requested width alone.
+
+### Connection and entry procedure
+
+1. Start an empty temporary Chrome profile with a free debugging port in
+   9444–9499, `--host-resolver-rules="MAP localhost ~NOTFOUND"` and
+   `--disable-features=LocalNetworkAccessChecks`. Do not reuse a registered
+   browser profile. Enable CDP Network monitoring before application navigation.
+2. Block both localhost and the loopback IP on port 6767 with
+   `Network.setBlockedURLs`. The welcome page can automatically attempt its
+   default host. Enable Page before installing a pre-document WebSocket guard
+   that rejects port 6767; retain DNS blocking as well. Log attempted URLs,
+   handshake responses and errors separately. An attempted WebSocket event is
+   not evidence of a successful connection and must not be reported as zero
+   attempts.
+3. Open the application home page. Use **Direct connection**, enter the loopback
+   IP and test port explicitly, and wait for **History**. Keep this connection
+   alive. Use SPA navigation: **History**, then the conversation title. Verify
+   that the resulting route is a workspace route and the conversation has a
+   matching workspace. Expand Explorer when checking the workspace manually;
+   never click file paths or file-manager actions during this replay.
+4. Avoid address-bar navigation or full reload of an agent deep link. In this
+   investigation, the saved registry retained the explicit IP endpoint, but a
+   hard navigation attempted a localhost WebSocket at the test port and left
+   the agent loading under DNS blocking. This is a hosted application connection
+   limitation, outside the plugin. For cache-cold checks, clear browser caches
+   while retaining the active SPA connection, then enter through History.
+5. At 820px, click the collapsed long-output shell step using actual CDP mouse
+   input. Wait for the popover and set its detail scroller to 400. At 1180px,
+   wait for side presentation, nonempty content and restored scroll position;
+   measure panel geometry. Close details, return to 820px and repeat ten times.
+6. Reset Clear Chat settings with **Reset defaults** after the checks. Close the
+   task browser and remove its temporary profile and captured conversation data.
+
+A side panel requires desktop width (at least 1024px), a matching host workspace
+snapshot, and a working Explorer panel API. Without a workspace or available
+host panel, the plugin deliberately retains a popover; width alone cannot
+create a workspace. At 744–1023px a popover is expected, and below 744px a sheet
+is expected. Profile-local workspace layout can change Explorer visibility;
+it is not a substitute for checking the actual selected workspace.
+
+### Earlier-version control
+
+On `c6946e5`, the procedure above passed ten of ten 820→1180 trials. Every
+trial measured popover x=70, width=680 at 820px, then side x=860, width=320 at
+1180px. All twenty reading offsets were exactly 400. The viewport height was
+900px throughout; navigation was through History into the same workspace.
+
+The same single-session desktop control at 1440×900 also produced:
+
+- A shell-row context click at (746,214), menu origin (750,218): (+4,+4).
+- A click near the right edge at (1261,244), menu origin (977,248): the menu
+  intentionally flips left to keep its 280px width inside the viewport. A large
+  negative horizontal delta at an edge is not itself a positioning failure.
+- An opaque read preview after hovering the read row: tooltip x=479, y=113,
+  width=420, height=112, background `rgb(255, 255, 255)`.
+- ArrowDown moved focus from the shell row to the following read row; Enter
+  opened its details and Escape closed them. Test navigation from a row with a
+  following sibling; the last row does not wrap to the first.
+
+The transparent host **Drop files here** layer is not the plugin preview.
+Locate the visible tooltip associated with the hovered row and check its
+nonzero bounds, opacity and background instead of selecting an arbitrary host
+overlay. None of these earlier-version controls requires a plugin code change.
