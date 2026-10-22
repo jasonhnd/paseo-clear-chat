@@ -103,8 +103,12 @@ async function replay() {
           await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         }
         const body = element.querySelector('[data-testid="tool-card-body"]');
+        const viewportTop = scroll.getBoundingClientRect().top;
+        const visibleCodeLine = Array.from(body.querySelectorAll("div")).find(node =>
+          /^\d+\s*export const sample\d+\s*=/.test(node.textContent) && node.getBoundingClientRect().top >= viewportTop);
         return { top: scroll.scrollTop, height: scroll.clientHeight, contentHeight: scroll.scrollHeight,
-          bodyTop: body.getBoundingClientRect().top, viewportTop: scroll.getBoundingClientRect().top };
+          bodyTop: body.getBoundingClientRect().top, viewportTop,
+          visibleCodeLine: visibleCodeLine?.textContent.match(/export const sample\d+/)?.[0] };
       }, top);
     }
     for (const width of [1440, 1024]) {
@@ -263,13 +267,17 @@ async function replay() {
       await page.setViewportSize({ width, height: 844 });
       await page.goto(`http://127.0.0.1:${server.address().port}/layout`, { waitUntil: "networkidle" });
       const rows = page.getByTestId("tool-summary-row");
-      const chat = await page.getByTestId("preview-chat").boundingBox();
-      let previousBottom = 0;
       for (let index = 0; index < layoutSamples.length; index++) {
-        const box = await rows.nth(index).boundingBox();
-        assert.ok(box.x >= chat.x && box.x + box.width <= chat.x + chat.width + 1, "Step rows must stay inside chat");
-        assert.ok(box.y >= previousBottom, "Step rows must not overlap");
-        previousBottom = box.y + box.height;
+        const chat = await page.getByTestId("preview-chat").boundingBox();
+        const bounds = await rows.evaluateAll(elements => elements.map(element => {
+          const rect = element.getBoundingClientRect();
+          return { x: rect.x, right: rect.right, y: rect.y, bottom: rect.bottom };
+        }));
+        for (let current = 0; current < bounds.length; current++) {
+          const box = bounds[current];
+          assert.ok(box.x >= chat.x && box.right <= chat.x + chat.width + 1, `${width}px step rows must stay inside chat`);
+          assert.ok(!current || box.y >= bounds[current - 1].bottom, `${width}px step rows must not overlap`);
+        }
         await rows.nth(index).click();
         await waitOpen();
         if (index < 2) {
@@ -277,7 +285,7 @@ async function replay() {
           await panel.getByRole("button", { name: "Show fewer lines" }).first().waitFor();
         } else {
           await panel.getByRole("button", { name: "Hide the image" }).waitFor();
-          await panel.getByRole("img").first().waitFor();
+          await panel.locator("img").waitFor({ state: "attached" });
         }
         await detailScroll(0);
         const layout = await panel.evaluate(element => {
@@ -308,6 +316,45 @@ async function replay() {
           assert.ok(control.reachable, `${width}px ${control.label} must remain reachable without overlap: ${JSON.stringify(control)}`);
         }
         report.push({ width, content: ["shell", "code", "image"][index], layout });
+        if (width === 820) {
+          let expandedSheet = false;
+          let codeAnchor;
+          if (index === 2) await panel.getByRole("button", { name: "Hide the image" }).click();
+          else codeAnchor = (await detailScroll(1000)).visibleCodeLine;
+          if (index === 1) assert.ok(codeAnchor, "The expanded code must expose a visible source line");
+          for (const resized of [600, 1180, 820, 600, 820]) {
+            await page.setViewportSize({ width: resized, height: 844 });
+            await page.waitForFunction(expected => {
+              const panels = document.querySelectorAll('[data-testid="step-detail-panel"]');
+              return panels.length === 1 && panels[0].getAttribute("data-presentation") === expected;
+            }, resized < 744 ? "sheet" : resized < 1024 ? "popover" : "side");
+            await waitOpen();
+            assert.equal(await panel.count(), 1);
+            assert.equal(await panel.getAttribute("data-presentation"), resized < 744 ? "sheet" : resized < 1024 ? "popover" : "side");
+            if (index === 2) {
+              await panel.getByRole("button", { name: "Show the image" }).waitFor();
+              assert.equal(await panel.locator("img").count(), 0, "Hidden images must stay hidden through resize");
+            } else {
+              await panel.getByRole("button", { name: "Show fewer lines" }).first().waitFor();
+              const position = await detailScroll();
+              // Reflow of this long file header can shift the first visible code line by up to three lines.
+              if (index === 1) {
+                assert.ok(position.top > 0 && position.visibleCodeLine, "Expanded code must retain a scrolled reading region");
+                assert.ok(Math.abs(Number(position.visibleCodeLine.match(/\d+$/)[0]) - Number(codeAnchor.match(/\d+$/)[0])) <= 3,
+                  "Resize must keep the same code reading region after header wrapping");
+              }
+              else assert.equal(position.top, 1000, "Expanded output must keep its reading position");
+            }
+            if (resized === 600 && index === 0) {
+              if (!expandedSheet) {
+                await panel.getByRole("button", { name: "Expand step details" }).click();
+                expandedSheet = true;
+              } else assert.equal(await panel.getAttribute("data-snap"), "full", "Returning to split view must retain full-screen sheet size");
+              await page.waitForFunction(() => document.querySelector('[data-testid="step-detail-panel"]')?.getAttribute("data-snap") === "full");
+            }
+          }
+          report.push({ width, content: ["shell", "code", "image"][index], stateAcrossResize: "passed" });
+        }
         await page.getByTestId("step-detail-close").click();
         await waitClosed();
       }

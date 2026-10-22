@@ -8,10 +8,12 @@ import { installStepDetailPanel } from "../client/components/step-detail-host";
 import { embedFonts } from "../client/components/embed-fonts";
 import { initializeEnhancerPreferences, updateEnhancerPreferences, useEnhancerPreferences } from "../client/preferences";
 import { DESKTOP_MIN, TABLET_MIN } from "../client/breakpoints";
+import { installCompactToolSpacing } from "../client/tool-row-spacing";
 
 declare global { interface Window { __stepDetailSamples: LiveToolCallPayload[] } }
 
 embedFonts();
+installCompactToolSpacing();
 
 const colors = {
   surface0: "#0f0f11", surface1: "#17171a", surface2: "#1f1f23", border: "#2a2a30",
@@ -42,12 +44,12 @@ function Preview() {
     <div ref={chat} data-testid="preview-chat" style={{ flex: 1, minWidth: 0, padding: 16, overflow: "auto" }}>
       <div style={{ height: 460 }} aria-hidden="true" />
       <p>Offline component replay · sanitized conversation</p>
-      {samples.map((sample, index) => <LiveToolCallRenderer
-        key={sample.callId}
+      {samples.map((sample, index) => <div key={sample.callId} data-history-row-id={sample.callId} data-index={index}>
+        <div style={{ marginBottom: 16 }}><LiveToolCallRenderer
         agentId="demo-agent" host={host} layout={{ compact: width < TABLET_MIN, platform: "web" }} theme={{ colors }}
         timestamp={new Date(Date.parse("2026-01-01T12:00:00Z") + index)}
         item={{ type: "plugin", kind: "omp-tool-call", version: 1, data: sample }}
-      />)}
+      /></div></div>)}
       {location.pathname === "/keyboard" ? <>
         <div data-testid="preview-other-agent"><LiveToolCallRenderer
           agentId="other-agent" host={host} layout={{ compact: innerWidth < 744, platform: "web" }} theme={{ colors }}

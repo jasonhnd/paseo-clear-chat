@@ -144,6 +144,7 @@ error text use the same implementations as expanded cards.
 | `onOpenChange(open)` | Dismiss callback for buttons, backdrop, Back and gestures. |
 | `presentation: "sheet" \| "popover" \| "side"` | Current window-width presentation. |
 | `tokens`, `onRevealPath?`, `imageFile?` | Existing card theme, file action and image state. |
+| `viewState?: StepDetailState` | Transient reading state shared when moving the selected step between the row and host pane. |
 
 Opening details does not change or persist the timeline's folding choice.
 The optional `collapsedStepAction` preference accepts `details` (the default) or
@@ -192,6 +193,15 @@ The host keys `StepDetailPanel` by the selected step's stable identity. Switchin
 steps remounts its body and starts at the top; new output for the same step keeps
 the reader's scroll position. Other hosts that change the selection should use
 the same key pattern.
+The selected row also supplies a stable `StepDetailState` from
+`step-detail-state.ts`. It carries vertical scroll, the sheet's half/full size,
+output disclosures and image visibility across presentation-root changes.
+Scroll offsets restore after the new scroll viewport and content are laid out;
+incoming output for the current step keeps the current offset. Explicitly
+selecting another step resets its reading state. These values stay in memory
+and never change persisted timeline folding choices. Safe-area measurements
+are associated with their window dimensions so rotation cannot reuse a stale
+height cap, and a resize cancels any unfinished sheet drag.
 
 The SDK's Modal does not expose presentation breakpoints or snap points. Its
 [host implementation](https://github.com/getpaseo/paseo/blob/v0.8.0/packages/app/src/components/adaptive-modal-sheet.tsx)
@@ -232,13 +242,27 @@ node scripts/replay-step-details.cjs
 Set `KANBAN_TMP` to the current task's authorized temporary directory. The runner
 builds the preview in memory and uses the installed headless Google Chrome with
 a free debugging port from 9444–9499. It blocks external requests, measures all
-four widths with a 64px host header and a chat container already scrolled by
+four required widths plus 1180px with a 64px host header and a chat container already scrolled by
 360px, verifies focused Up/Down/Enter/Escape, input/textarea/contenteditable key
 pass-through and phone touch focus styling, verifies that the desktop pane does not overlap chat in the host
 layout shim, checks A-to-B-to-A switching between long steps at both desktop
 widths, preserves scroll during same-step output updates, checks touch drag,
 dismissal, browser Back and inline mode, and
 writes screenshots and `step-detail-report.json` under that temporary directory.
+The host shim includes a fixed 64px header, a separately scrolled chat
+container and 16px history-frame gaps with the real compact-spacing installer.
+Its Explorer slot follows the desktop breakpoint while its panel
+component stays mounted, as a host would keep a selected tab. Continuous
+1180 → 820 → 1180 and 820 → 600 → 820 sequences, plus exact 743/744 and
+1023/1024 boundary crossings, require exactly one selected detail, retained
+scroll position, the correct presentation and no obsolete backdrop. Expanded
+output, hidden images and the full-height sheet also survive continuous resizing.
+Long code-header wrapping may shift the first visible source line slightly;
+the replay requires the same reading region within three lines. Separate
+long-path reads, wide images and long code lines check row bounds, control
+hit targets and horizontal containment. File-reveal controls are measured
+without invoking the host file manager. This simulated Explorer layout does
+not replace checks of the actual host's tab layout or native devices.
 It never contacts a running Paseo host. Actual Explorer placement and OS gesture
 delivery still need host and device verification.
 
