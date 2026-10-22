@@ -9,14 +9,17 @@ const { createExpansionHost } = require("./expansion-host.cjs");
 // Only the host runtime, animation, syntax painting and unrelated UI are shims.
 function createToolHarness(platform = "ios", options = {}) {
   const root = resolve(__dirname, "../..");
-  const cache = new Map(), frames = new Map(), transformers = new Map(), renderers = new Map();
+  const cache = new Map(), frames = new Map(), transformers = new Map(), renderers = new Map(), panels = new Map();
+  const panelOpens = [];
+  const dimensions = { width: options.width ?? 390, height: options.height ?? 844, scale: 1, fontScale: 1, ...options.dimensions };
+  let activePanel;
   const reveals = [], links = [], copies = [], toasts = [], imageReads = [];
   let frame;
   const jsx = (type, props) => ({ type, props: props ?? {} });
   const passthrough = props => props.children ?? null;
   const noop = () => {};
   const cleanup = () => noop;
-  const preferences = { enhancedUserBubble: true, assistantMarkdown: true, markdownVariant: "document", textScale: 1, foldFinishedSteps: true, foldLongOutputAfter: 15, ...options.preferences };
+  const preferences = { enhancedUserBubble: true, assistantMarkdown: true, markdownVariant: "document", textScale: 1, foldFinishedSteps: true, foldLongOutputAfter: 15, collapsedStepAction: "details", ...options.preferences };
   const getPreferences = () => options.presentationHost ? load("client/preferences.ts").getEnhancerPreferences() : preferences;
   const expansionHost = options.expansionHost ?? createExpansionHost();
   const rpcFunctions = new Map();
@@ -62,8 +65,17 @@ function createToolHarness(platform = "ios", options = {}) {
     interpolate() { return this.value; }
   }
   const native = {
-    Modal: "Native.Modal", useWindowDimensions: () => ({ width: options.width ?? 1440, height: options.height ?? 900 }),
     View: "View", Text: "Text", Pressable: "Pressable", Image: "Image", ScrollView: "ScrollView",
+    SafeAreaView: "SafeAreaView",
+    Modal: props => props.visible ? jsx("NativeModal", props) : null,
+    useWindowDimensions: () => dimensions,
+    PanResponder: { create: handlers => ({ panHandlers: {
+      onMoveShouldSetResponder: handlers.onMoveShouldSetPanResponder,
+      onResponderGrant: handlers.onPanResponderGrant,
+      onResponderMove: handlers.onPanResponderMove,
+      onResponderRelease: handlers.onPanResponderRelease,
+      onResponderTerminate: handlers.onPanResponderTerminate,
+    } }) },
     Platform: { OS: platform, isPad: options.isPad ?? false }, StyleSheet: { create: value => value },
     Animated: { Value, View: "Animated.View", timing: () => ({ start: noop, stop: noop }) },
     Linking: { openURL: (...args) => { links.push(args[0]); return options.openURL?.(...args) ?? Promise.resolve(); } },
@@ -166,7 +178,7 @@ function createToolHarness(platform = "ios", options = {}) {
           }
           return async value => { reveals.push(value); return options.revealRpc ? options.revealRpc(value) : { revealed: value.path, error: null }; };
         },
-        useAgent: (_, selector) => selector(options.agent ?? { cwd: "/workspace/demo" }),
+        useAgent: (_, selector) => selector(options.agent ?? { cwd: "/workspace/demo", workspaceId: "demo-workspace" }),
         usePaseo: () => paseo,
       };
       if (id === "@getpaseo/plugin/client/react-native") return {
@@ -185,6 +197,12 @@ function createToolHarness(platform = "ios", options = {}) {
   load("index.client.tsx").default({
     rpc: options.presentationHost?.rpc ?? noop,
     addSettingsScreen: cleanup,
+    addWorkspacePanel(value) { panels.set(value.id, value); return noop; },
+    openPanel(id, input) {
+      if (options.panelError) throw new Error("Panel unavailable");
+      panelOpens.push({ id, ...input });
+      activePanel = { id, ...input };
+    },
     addTimelineTransformer(value) { transformers.set(value.query.itemType, value); return noop; },
     addTimelineRenderer(value) { renderers.set(value.kind, value); return noop; },
   });
@@ -225,7 +243,7 @@ function createToolHarness(platform = "ios", options = {}) {
     frames.clear();
   }
   return {
-    load, nodes, text, reveals, links, copies, toasts, imageReads, transformers, renderers, get preferences() { return getPreferences(); }, tokens, draw, expansionHost, unmount,
+    load, nodes, text, reveals, links, copies, toasts, imageReads, transformers, renderers, panels, panelOpens, dimensions, get preferences() { return getPreferences(); }, tokens, draw, expansionHost, unmount,
     mount(item, expand = true, identity = {}) {
       unmount(); reveals.length = links.length = copies.length = imageReads.length = 0;
       if (!timestamps.has(item)) timestamps.set(item, new Date(nextTimestamp++));
@@ -233,7 +251,12 @@ function createToolHarness(platform = "ios", options = {}) {
       const pluginItem = transformed.items[0];
       const renderer = renderers.get(pluginItem.kind);
       const data = renderer.schema.parse(pluginItem.data);
-      const render = (nextData = data) => draw(jsx(renderer.Component, { agentId: "demo-agent", host: { id: "demo-host" }, item: { ...pluginItem, data: nextData }, theme: { colors: options.themeColors ?? {} }, timestamp: timestamps.get(item), ...identity }));
+      const render = (nextData = data) => {
+        const props = { agentId: "demo-agent", host: { id: "demo-host" }, item: { ...pluginItem, data: nextData }, theme: { colors: options.themeColors ?? {} }, timestamp: timestamps.get(item), ...identity };
+        const row = draw(jsx(renderer.Component, props));
+        const panel = panels.get(activePanel?.id);
+        return panel ? [row, draw(jsx(panel.Component, { ...props, ...activePanel, context: "agent" }), "panel")] : row;
+      };
       let tree = render();
       if (expand) {
         const button = nodes(tree, node => node.props.testID === "tool-summary-row" && node.props.accessibilityState?.expanded === false)[0];

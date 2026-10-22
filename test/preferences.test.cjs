@@ -113,6 +113,25 @@ function host(initial = {}) {
   return state;
 }
 
+test("collapsed-step action defaults to details and persists as an optional version 2 preference", async () => {
+  const { preferences: p, load } = harness();
+  assert.equal(p.DEFAULT_PREFERENCES.collapsedStepAction, "details");
+  const settings = load("shared/settings.ts");
+  assert.equal(settings.presentationSettings.version, 2);
+  assert.deepEqual(settings.preferenceOverridesSchema.parse({}), {});
+  assert.equal(settings.preferenceOverridesSchema.safeParse({ collapsedStepAction: "other" }).success, false);
+  const server = host({ legacyMigrated: true });
+  await p.initializeEnhancerPreferences(server.rpc);
+  for (const collapsedStepAction of ["inline", "details"]) {
+    await p.updateEnhancerPreferences({ collapsedStepAction });
+    const fresh = harness().preferences;
+    await fresh.initializeEnhancerPreferences(server.rpc);
+    assert.equal(fresh.getEnhancerPreferences().collapsedStepAction, collapsedStepAction);
+  }
+  await p.resetEnhancerPreferences();
+  assert.equal(p.getEnhancerPreferences().collapsedStepAction, "details");
+});
+
 test("browser migration copies old preferences into the new key and keeps the old key", async () => {
   const legacy = JSON.stringify({ accent: "jade", enhancedUserBubble: false, unknown: "preserved" });
   const h = harness("web", legacy);
