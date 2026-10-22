@@ -76,7 +76,7 @@ function Preview() {
   </div>;
 }
 
-let values = { preferences: { foldLongOutputAfter: "never" }, legacyMigrated: true };
+let values = { preferences: { foldLongOutputAfter: location.pathname === "/layout" ? 15 : "never" }, legacyMigrated: true };
 void initializeEnhancerPreferences((async (contract: { name: string }, input: { values: typeof values }) => {
   if (contract.name.endsWith(".read")) return { status: "ready", revision: "0", values };
   values = input.values;

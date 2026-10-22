@@ -11,6 +11,10 @@ export function usePaseo() { return paseo as never; }
 export function useWorkspace() { return null; }
 export function useRpc(contract: { name: string }) {
   return useMemo(() => async (input: { values?: typeof expansion }) => {
+    if (contract.name === "file.image") return {
+      dataUri: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAABCAIAAABYG7kIAAAADElEQVR4nGO4QyIAAPL+KUFbAyzAAAAAAElFTkSuQmCC",
+      width: 4096, height: 256, bytes: 68, error: null,
+    };
     if (contract.name.endsWith(".read")) return { status: "ready", revision: "0", values: expansion };
     if (input.values) expansion = input.values;
     return { status: "saved", revision: "0", values: expansion };

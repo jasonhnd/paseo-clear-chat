@@ -24,6 +24,15 @@ const longSamples = ["A", "B"].map(label => ({
   detail: { ...sample.detail, command: `printf 'Step ${label} start'`,
     output: [`Step ${label} start`, ...Array.from({ length: 160 }, (_, index) => `Step ${label} output line ${index + 1}`)].join("\n") },
 }));
+const readSample = JSON.parse(readFileSync(join(root, "test/fixtures/real-hermes-session.json"), "utf8"))
+  .items.find(item => item.type === "tool_call" && item.detail.type === "read");
+// Stress the captured read shape without including any additional conversation text.
+const longPath = `/workspace/sample/${"nested-directory/".repeat(12)}configuration`;
+const layoutSamples = [longSamples[0],
+  { ...readSample, callId: "sample-code", detail: { ...readSample.detail, filePath: `${longPath}.ts`,
+    content: Array.from({ length: 48 }, (_, index) => `export const sample${index} = "${"sample".repeat(40)}";`).join("\n") } },
+  { ...readSample, callId: "sample-image", detail: { ...readSample.detail, filePath: `${longPath}.png`, content: "Image file" } },
+];
 
 async function debugPort() {
   for (let port = 9444; port <= 9499; port++) {
@@ -53,7 +62,7 @@ async function replay() {
   const html = samples => `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body,#root{margin:0;width:100%;height:100%}*{box-sizing:border-box}</style></head><body><div id="root"></div><script>window.__stepDetailSamples=${JSON.stringify(samples).replace(/</g, "\\u003c")}</script><script src="/preview.js"></script></body></html>`;
   const server = createServer((request, response) => {
     response.setHeader("Content-Type", request.url === "/preview.js" ? "text/javascript" : "text/html");
-    response.end(request.url === "/preview.js" ? bundle.outputFiles[0].contents : html(["/switching", "/keyboard", "/rotation"].includes(request.url) ? longSamples : [sample]));
+    response.end(request.url === "/preview.js" ? bundle.outputFiles[0].contents : html(request.url === "/layout" ? layoutSamples : ["/switching", "/keyboard", "/rotation"].includes(request.url) ? longSamples : [sample]));
   });
   let browser;
   const report = [];
@@ -85,11 +94,14 @@ async function replay() {
       });
     };
     async function detailScroll(top) {
-      return panel.evaluate((element, top) => {
+      return panel.evaluate(async (element, top) => {
         const scroll = Array.from(element.querySelectorAll("div")).find(node =>
           ["auto", "scroll"].includes(getComputedStyle(node).overflowY) && node.clientHeight > 0);
         if (!scroll) throw new Error("Step details must have a scrollable body");
-        if (top !== undefined) scroll.scrollTop = top;
+        if (top !== undefined) {
+          scroll.scrollTop = top;
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        }
         const body = element.querySelector('[data-testid="tool-card-body"]');
         return { top: scroll.scrollTop, height: scroll.clientHeight, contentHeight: scroll.scrollHeight,
           bodyTop: body.getBoundingClientRect().top, viewportTop: scroll.getBoundingClientRect().top };
@@ -197,7 +209,8 @@ async function replay() {
         }, presentation);
         await waitOpen();
         assert.ok((await panel.textContent()).includes("Step A start"), "Rotation must keep the selected step");
-        assert.equal((await detailScroll()).top, 1000, "Rotation must preserve the reader's detail scroll position");
+        const position = await detailScroll();
+        assert.equal(position.top, 1000, `Rotation to ${width}px must preserve the reader's detail scroll position`);
         assert.equal(await page.getByTestId("step-detail-backdrop").count(), presentation === "side" ? 0 : 1, "Only modal presentations have a backdrop");
         const box = await panel.boundingBox();
         assert.ok(box.x >= 0 && box.x + box.width <= width + 1);
@@ -246,6 +259,62 @@ async function replay() {
       report.push({ width, presentation, panel: box, chat, openClose: "passed", backdropAndBack: presentation === "side" ? "host tab close" : "passed" });
     }
 
+    for (const width of [1440, 1180, 1024, 820, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto(`http://127.0.0.1:${server.address().port}/layout`, { waitUntil: "networkidle" });
+      const rows = page.getByTestId("tool-summary-row");
+      const chat = await page.getByTestId("preview-chat").boundingBox();
+      let previousBottom = 0;
+      for (let index = 0; index < layoutSamples.length; index++) {
+        const box = await rows.nth(index).boundingBox();
+        assert.ok(box.x >= chat.x && box.x + box.width <= chat.x + chat.width + 1, "Step rows must stay inside chat");
+        assert.ok(box.y >= previousBottom, "Step rows must not overlap");
+        previousBottom = box.y + box.height;
+        await rows.nth(index).click();
+        await waitOpen();
+        if (index < 2) {
+          await panel.getByRole("button", { name: /^Show all / }).first().click();
+          await panel.getByRole("button", { name: "Show fewer lines" }).first().waitFor();
+        } else {
+          await panel.getByRole("button", { name: "Hide the image" }).waitFor();
+          await panel.getByRole("img").first().waitFor();
+        }
+        await detailScroll(0);
+        const layout = await panel.evaluate(element => {
+          const panel = element.getBoundingClientRect();
+          const controls = Array.from(element.querySelectorAll('[role="button"],[role="link"],[role="img"]'));
+          return { viewport: document.documentElement.scrollWidth <= innerWidth,
+            controls: controls.map(control => {
+              const rect = control.getBoundingClientRect();
+              let left = Math.max(0, rect.left), right = Math.min(innerWidth, rect.right);
+              let top = Math.max(0, rect.top), bottom = Math.min(innerHeight, rect.bottom);
+              for (let ancestor = control.parentElement; ancestor; ancestor = ancestor.parentElement) {
+                const style = getComputedStyle(ancestor), bounds = ancestor.getBoundingClientRect();
+                if (style.overflowX !== "visible") { left = Math.max(left, bounds.left); right = Math.min(right, bounds.right); }
+                if (style.overflowY !== "visible") { top = Math.max(top, bounds.top); bottom = Math.min(bottom, bounds.bottom); }
+              }
+              const hit = document.elementFromPoint((left + right) / 2, (top + bottom) / 2);
+              return { label: control.getAttribute("aria-label") ?? control.getAttribute("role"),
+                rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, hit: hit?.getAttribute("aria-label") ?? hit?.tagName,
+                inside: rect.left >= panel.left - 1 && rect.right <= panel.right + 1,
+                reachable: right <= left || bottom <= top || control.contains(hit),
+              };
+            }) };
+        });
+        await page.screenshot({ path: join(work, `content-${width}-${index}.png`) });
+        assert.ok(layout.viewport, "The document must not overflow horizontally");
+        for (const control of layout.controls) {
+          assert.ok(control.inside, `${width}px ${control.label} must fit inside details`);
+          assert.ok(control.reachable, `${width}px ${control.label} must remain reachable without overlap: ${JSON.stringify(control)}`);
+        }
+        report.push({ width, content: ["shell", "code", "image"][index], layout });
+        await page.getByTestId("step-detail-close").click();
+        await waitClosed();
+      }
+    }
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`http://127.0.0.1:${server.address().port}/`, { waitUntil: "networkidle" });
     const session = await browser.newCDPSession(page);
     async function drag(locator, dy, dx = 0) {
       const box = await locator.boundingBox();
