@@ -1,4 +1,4 @@
-import React, { useContext, useMemo, useRef } from "react";
+import React, { useContext, useEffect, useMemo, useRef } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import type { ToolCalloutData } from "../../shared/contracts";
 import type { ImageFile } from "../image-file";
@@ -15,6 +15,7 @@ type DetailRow = { key: string; section: Section } & (
   { kind: "heading"; text: string | undefined } | { kind: "text"; text: string }
 );
 const titles = { input: "Input", output: "Output", error: "Error" };
+type ScrollNode = { scrollTop?: number; clientHeight?: number; getScrollableNode?: () => ScrollNode };
 
 function SectionHeading({ section, text, tokens }: { section: Section; text: string | undefined; tokens: ExtendedThemeTokens }) {
   const { copied, handleCopy, fallbackText, setFallbackText } = useCopyText(text ?? "");
@@ -47,12 +48,36 @@ export function StepDetailContent({ step, tokens, onRevealPath, imageFile }: {
   const readingState = useContext(StepDetailStateContext);
   const list = useRef<FlatList<DetailRow>>(null);
   // Restore after mounting or resizing; virtual cell measurements keep the current position.
-  const restoreTarget = useRef(readingState?.scrollOffset);
+  const restoreTarget = useRef(readingState?.scrollOffset || undefined);
+  const restoreFrame = useRef<number | undefined>(undefined);
+  const active = useRef(true);
   const layout = useRef({ width: 0, height: 0, contentHeight: 0 });
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+      if (restoreFrame.current !== undefined) globalThis.cancelAnimationFrame(restoreFrame.current);
+    };
+  }, []);
   const restoreScroll = () => {
-    if (restoreTarget.current === undefined || !list.current || !layout.current.height || !layout.current.contentHeight) return;
-    list.current.scrollToOffset({ offset: restoreTarget.current, animated: false });
-    restoreTarget.current = undefined;
+    if (!active.current || restoreTarget.current === undefined || !list.current || !layout.current.height || !layout.current.contentHeight) return;
+    if (restoreFrame.current !== undefined) return;
+    let remainingFrames = 60;
+    const apply = () => {
+      restoreFrame.current = undefined;
+      if (!active.current || restoreTarget.current === undefined || !list.current) return;
+      const target = restoreTarget.current;
+      const native = list.current.getNativeScrollRef?.() as unknown as ScrollNode | null;
+      const node = native?.getScrollableNode?.() ?? native;
+      if (node?.clientHeight !== 0) list.current.scrollToOffset({ offset: target, animated: false });
+      if (typeof node?.scrollTop === "number" && Math.abs(node.scrollTop - target) < 1) restoreTarget.current = undefined;
+      if (restoreTarget.current !== undefined && --remainingFrames > 0 && typeof globalThis.requestAnimationFrame === "function") {
+        restoreFrame.current = globalThis.requestAnimationFrame(apply);
+      } else restoreTarget.current = undefined;
+    };
+    // Modal handoffs finish laying out their new scroll node on the next frame.
+    if (typeof globalThis.requestAnimationFrame === "function") restoreFrame.current = globalThis.requestAnimationFrame(apply);
+    else apply();
   };
   const rows = useMemo(() => {
     const result: DetailRow[] = [];
@@ -82,12 +107,20 @@ export function StepDetailContent({ step, tokens, onRevealPath, imageFile }: {
       contentOffset={{ x: 0, y: readingState?.scrollOffset ?? 0 }}
       onLayout={event => {
         const { width, height } = event.nativeEvent.layout;
-        if (layout.current.width && (width !== layout.current.width || height !== layout.current.height)) restoreTarget.current = readingState?.scrollOffset;
+        if (restoreTarget.current === undefined && layout.current.width && (width !== layout.current.width || height !== layout.current.height)) restoreTarget.current = readingState?.scrollOffset || undefined;
         Object.assign(layout.current, { width, height });
         restoreScroll();
       }}
       onContentSizeChange={(_, contentHeight) => { layout.current.contentHeight = contentHeight; restoreScroll(); }}
-      onScroll={event => { if (readingState) readingState.scrollOffset = event.nativeEvent.contentOffset.y; }}
+      onScroll={event => {
+        if (event.nativeEvent.layoutMeasurement?.height === 0 || event.nativeEvent.layoutMeasurement?.width === 0) return;
+        const offset = event.nativeEvent.contentOffset.y;
+        const target = restoreTarget.current;
+        if (active.current && readingState && (target === undefined || Math.abs(offset - target) < 1)) {
+          readingState.scrollOffset = offset;
+          restoreTarget.current = undefined;
+        }
+      }}
       keyboardShouldPersistTaps="handled"
       contentInsetAdjustmentBehavior="automatic"
       ListHeaderComponent={<View style={styles.metadata}>

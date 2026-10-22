@@ -238,7 +238,10 @@ unfolded in details; the virtual list shares the same saved scroll offset.
 Scroll offsets restore after the new scroll viewport and content are laid out;
 incoming output for the current step keeps the current offset. Explicitly
 selecting another step resets its reading state. These values stay in memory
-and never change persisted timeline folding choices. Safe-area measurements
+and never change persisted timeline folding choices.
+Restoration ignores hidden or detached viewport events and stops once the new
+scroll node accepts the saved offset. Virtual cell measurements do not restore
+old offsets during active scrolling. Safe-area measurements
 are associated with their window dimensions so rotation cannot reuse a stale
 height cap, and a resize cancels any unfinished sheet drag.
 

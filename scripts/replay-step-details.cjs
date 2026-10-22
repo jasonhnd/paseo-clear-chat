@@ -228,6 +228,7 @@ async function replay() {
         }, presentation);
         await waitOpen();
         assert.ok((await panel.textContent()).includes("Step A start"), "Rotation must keep the selected step");
+        await page.waitForFunction(() => document.querySelector('[data-testid="step-detail-scroll"]')?.scrollTop === 1000);
         const position = await detailScroll();
         assert.equal(position.top, 1000, `Rotation to ${width}px must preserve the reader's detail scroll position`);
         assert.equal(await page.getByTestId("step-detail-backdrop").count(), presentation === "side" ? 0 : 1, "Only modal presentations have a backdrop");
@@ -354,6 +355,7 @@ async function replay() {
               assert.equal(await panel.locator("img").count(), 0, "Hidden images must stay hidden through resize");
             } else {
               await panel.getByTestId("step-detail-output").first().waitFor();
+              await page.waitForFunction(() => document.querySelector('[data-testid="step-detail-scroll"]')?.scrollTop === 1000);
               const position = await detailScroll();
               // Reflow of this long file header can shift the first visible code line by up to three lines.
               if (index === 1) {

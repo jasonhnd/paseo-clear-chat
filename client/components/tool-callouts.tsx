@@ -169,7 +169,7 @@ export function ToolCallout({
 
 export type ToolCalloutBodyProps = Pick<ToolCalloutProps, "data" | "tokens" | "onRevealPath" | "imageFile">;
 
-/** Shared by expanded timeline cards and every step-detail presentation. */
+/** Expanded timeline card body; full step details use their virtual document. */
 export function ToolCalloutBody({ data, tokens, onRevealPath, imageFile }: ToolCalloutBodyProps) {
   const { foldLongOutputAfter } = useEnhancerPreferences();
   const [visibleOutputs, setVisibleOutputs] = useState<{ limit: OutputLineLimit; texts: ReadonlySet<string> }>();
