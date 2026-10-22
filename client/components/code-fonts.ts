@@ -28,7 +28,8 @@ export function resolveCodeFonts(
   preferences: { codeFont: CodeFontPreference; codeFontFamily?: CodeFontFamilyPreference },
   platform: string,
 ): { mono: string; code: string } {
-  // Directory plugins cannot register native font assets through SDK 0.8.0.
+  // Directory plugins cannot register native font assets through the plugin SDK
+  // (checked through 0.12.0).
   if (platform !== "web") {
     const family = platform === "ios" ? "Menlo" : "monospace";
     return { mono: family, code: family };

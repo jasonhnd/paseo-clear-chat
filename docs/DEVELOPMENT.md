@@ -378,7 +378,9 @@ timestamp, item}`. Client navigation offers `openSettings`, `openSurface` and `o
     data attribute.
 11. **No font registration or host code-font API.** In SDK 0.8.0, `PluginTheme` in
     `dist/contracts.d.ts` exposes only `colors`; `PluginHostProps` and `PluginClientContext`
-    in `dist/client/contracts.d.ts` provide no appearance font getter. **Default (Iosevka)** is the
+    in `dist/client/contracts.d.ts` provide no appearance font getter. SDK 0.12.0 still provides
+    neither font registration nor a host code-font API; see the
+    [API audit](SDK-0.12.md#spacing-grouping-and-fonts). **Default (Iosevka)** is the
     default choice and uses Iosevka with the existing `codeFont` glyph preference
     (ligatures or literal glyphs). The persisted value remains `host` for compatibility;
     it does not synchronize with Paseo appearance or read undocumented host CSS or browser storage.
