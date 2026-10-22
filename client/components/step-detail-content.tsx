@@ -2,6 +2,7 @@ import React, { useContext, useEffect, useMemo, useRef } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import type { ToolCalloutData } from "../../shared/contracts";
 import type { ImageFile } from "../image-file";
+import { readOutputText } from "../read-output";
 import { stepTextChunks } from "../step-detail-data";
 import { toolDuration } from "../tool-summary";
 import { CopyFallbackDialog, useCopyText } from "./copy-feedback";
@@ -84,14 +85,14 @@ export function StepDetailContent({ step, tokens, onRevealPath, imageFile }: {
     const sections: Array<[Section, string | undefined]> = [["input", step.input]];
     if (step.stdout !== undefined) sections.push(["stdout", step.stdout]);
     if (step.stderr !== undefined) sections.push(["stderr", step.stderr]);
-    if (step.copyResult !== undefined || (step.stdout === undefined && step.stderr === undefined)) sections.push(["output", step.copyResult]);
+    if (step.copyResult !== undefined || (step.stdout === undefined && step.stderr === undefined)) sections.push(["output", step.copyResult === undefined ? undefined : readOutputText(step, step.copyResult)]);
     if (step.error) sections.unshift(["error", step.error]);
     for (const [section, text] of sections) {
       result.push({ key: `${section}-heading`, section, kind: "heading", text });
       if (text) stepTextChunks(text).forEach((chunk, index) => result.push({ key: `${section}-${index}`, section, kind: "text", text: chunk }));
     }
     return result;
-  }, [step.input, step.copyResult, step.error, step.stdout, step.stderr]);
+  }, [step.tool, step.filePath, step.input, step.copyResult, step.error, step.stdout, step.stderr]);
   const duration = toolDuration(step.durationMs);
   const exitCode = typeof step.exitCode === "number" && Number.isInteger(step.exitCode) ? step.exitCode : undefined;
   return <View testID="tool-card-body" style={styles.body}>

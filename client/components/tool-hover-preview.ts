@@ -2,6 +2,7 @@ import { useEffect, useMemo } from "react";
 import { Platform, type ViewProps } from "react-native";
 import type { ToolCalloutData } from "../../shared/contracts";
 import { DESKTOP_MIN } from "../breakpoints";
+import { readOutputText } from "../read-output";
 import { toolSummary } from "../tool-summary";
 import type { ExtendedThemeTokens } from "./theme-tokens";
 
@@ -23,12 +24,7 @@ function outputPreview(data: ToolCalloutData): string {
     || data.thinking?.text || data.cells?.[0]?.output || data.code || data.fallback?.output
     || data.checklist?.tasks.slice(0, 4).map(task => task.title).join("\n")
     || data.subagent?.agents[0]?.task || "No output reported.";
-  // Projected reads wrap file lines in a repeated path header and a fence.
-  // Keep those wrappers from consuming the result's preview budget.
-  const readBody = data.tool === "read" && data.filePath && text.startsWith(`Read ${data.filePath} `)
-    ? /^Read [^\r\n]+ — \d+ total lines?\r?\n\r?\n```[^\r\n]*\r?\n([\s\S]*?)\r?\n```\s*$/.exec(text)?.[1]
-    : undefined;
-  return snippet(readBody ?? text, 6, 800);
+  return snippet(readOutputText(data, text), 6, 800);
 }
 
 function previewController(doc: Document, data: ToolCalloutData, tokens: ExtendedThemeTokens) {

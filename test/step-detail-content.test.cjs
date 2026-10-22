@@ -282,3 +282,17 @@ for (const platform of ["web", "ios", "android"]) {
     h.unmount();
   });
 }
+
+test("captured Hermes reads display and copy file content without the read envelope", async () => {
+  const item = require("./fixtures/real-hermes-hover.json").items.find(item => item.detail?.type === "read");
+  const expected = "export function sampleTotal(items) {\n  return items.reduce((sum, item) => sum + item.cost, 0);\n}";
+  for (const platform of ["web", "ios", "android"]) {
+    const h = harness(platform, 820);
+    const { tree } = h.mount(item);
+    const rows = byId(h, tree, "step-detail-scroll").props.data;
+    assert.equal(rows.filter(row => row.section === "output" && row.kind === "text").map(row => row.text).join(""), expected);
+    await byId(h, tree, "step-detail-copy-output").props.onPress();
+    assert.equal(h.copies.at(-1), expected);
+    h.unmount();
+  }
+});

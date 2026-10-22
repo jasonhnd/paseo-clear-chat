@@ -105,7 +105,7 @@ export function StepDetailPanel({ step, open, onOpenChange, presentation, tokens
         styles.panel,
         { backgroundColor: tokens.surface0, borderColor: tokens.border },
         presentation === "sheet" ? [styles.sheet, { height: Math.max(0, Math.min(height, snapHeight - drag)) }] :
-          presentation === "popover" ? styles.popover : styles.side,
+          presentation === "popover" ? [styles.popover, { maxHeight: Math.max(0, height - 48), flexShrink: 1 }] : styles.side,
       ]}
     >
       {presentation === "sheet" ? (
@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
   sheet: { width: "100%", borderTopLeftRadius: 16, borderTopRightRadius: 16, borderWidth: 1 },
   popover: { width: "100%", maxWidth: 680, height: "80%", borderWidth: 1, borderRadius: 16 },
   side: { flex: 1, alignSelf: "stretch" },
-  header: { flexDirection: "row", alignItems: "center", paddingLeft: 16, paddingRight: 8, paddingVertical: 4, borderBottomWidth: 1, gap: 4 },
+  header: { flexDirection: "row", alignItems: "center", paddingLeft: 16, paddingRight: 8, paddingVertical: 4, flexShrink: 0, borderBottomWidth: 1, gap: 4 },
   title: { flex: 1, minWidth: 0, fontWeight: "600" },
   button: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   handle: { height: 28, alignItems: "center", justifyContent: "center" },
