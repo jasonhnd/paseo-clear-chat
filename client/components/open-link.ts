@@ -1,7 +1,7 @@
 import { Linking, Platform } from "react-native";
 
 /**
- * Opens an http(s) link the way the host does.
+ * Opens an HTTP(S) or mailto link on the client where it was pressed.
  *
  * Three sinks, in the host's own order of preference
  * (`app/src/utils/open-external-url.ts`):
@@ -11,7 +11,10 @@ import { Linking, Platform } from "react-native";
  *    Without it a link opens inside the app window, which has no chrome to
  *    navigate back from.
  * 2. On plain web, `window.open` with `noopener,noreferrer`.
- * 3. On native, `Linking.openURL`.
+ * 3. On iOS (including iPadOS) and Android, the host-injected
+ *    `react-native` module supplies `Linking.openURL(url)`. The plugin SDK
+ *    needs no separate Android opener. Call it directly: a `canOpenURL`
+ *    preflight can reject on Android 11+ without manifest intent queries.
  *
  * The scheme allowlist mirrors the host's: a link in a model's reply is
  * untrusted input, and `javascript:` or `file:` must never reach a sink.

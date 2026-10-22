@@ -64,9 +64,9 @@ function createToolHarness(platform = "ios", options = {}) {
   const native = {
     Modal: "Native.Modal", useWindowDimensions: () => ({ width: options.width ?? 1440, height: options.height ?? 900 }),
     View: "View", Text: "Text", Pressable: "Pressable", Image: "Image", ScrollView: "ScrollView",
-    Platform: { OS: platform }, StyleSheet: { create: value => value },
+    Platform: { OS: platform, isPad: options.isPad ?? false }, StyleSheet: { create: value => value },
     Animated: { Value, View: "Animated.View", timing: () => ({ start: noop, stop: noop }) },
-    Linking: { openURL: url => { links.push(url); return options.openURL?.(url) ?? Promise.resolve(); } },
+    Linking: { openURL: (...args) => { links.push(args[0]); return options.openURL?.(...args) ?? Promise.resolve(); } },
   };
   const stubs = {
     "client/preferences": { initializeEnhancerPreferences: async () => {}, areEnhancerPreferencesReady: () => true, getEnhancerPreferences: () => preferences, useEnhancerPreferences: () => preferences, useEnhancerPreferencesError: () => null, updateEnhancerPreferences: async patch => Object.assign(preferences, patch), resetEnhancerPreferences: async () => {}, OUTPUT_LINE_OPTIONS: [10, 15, 30, "never"].map(value => ({ value: String(value), label: value === "never" ? "Never" : `${value} lines` })), TEXT_SIZE_OPTIONS: [], ACCENT_PRESETS: {} },

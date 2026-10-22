@@ -68,7 +68,7 @@ const TRAILING_SPACE_RE = /[ \t]+$/;
 // ASCII punctuation is exactly what a backslash may escape in markdown.
 const ESCAPABLE_RE = /[!-\/:-@\[-`{-~]/;
 // Sticky, so a candidate is tested in place instead of slicing the line.
-const URL_RE = /(?:https?:\/\/|www\.)[^\s<>()[\]`"\u2018\u2019\u201c\u201d\u3001\u3002\uff01\uff08\uff09\uff0c\uff0e\uff1a\uff1b\uff1f]+/y;
+const URL_RE = /(?:https?:\/\/|www\.|mailto:)[^\s<>()[\]`"\u2018\u2019\u201c\u201d\u3001\u3002\uff01\uff08\uff09\uff0c\uff0e\uff1a\uff1b\uff1f]+/y;
 // Unicode letters are words; fullwidth punctuation is a valid URL boundary.
 const URL_WORD_RE = /[\p{L}\p{M}\p{N}_]/u;
 
@@ -602,7 +602,7 @@ function parseInline(src: string, depth = 0): MdInline[] {
       }
     }
 
-    if ((ch === "h" || ch === "w") && !URL_WORD_RE.test(src[index - 1] ?? "")) {
+    if ((ch === "h" || ch === "w" || ch === "m") && !URL_WORD_RE.test(src[index - 1] ?? "")) {
       URL_RE.lastIndex = index;
       const match = URL_RE.exec(src);
       if (match !== null) {

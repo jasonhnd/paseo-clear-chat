@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const { createToolHarness } = require("./helpers/tool-harness.cjs");
 const capturedReplies = require("./fixtures/real-assistant-links.json");
+const { replyLinkCases } = require("./helpers/reply-link-cases.cjs");
 
 const markdownTarget = "https://example.org/guide?from=reply&mode=full#links";
 const bareTarget = "https://example.org/reference";
@@ -20,6 +21,51 @@ function press(link) {
   link.props.onPress({ stopPropagation() { stopped = true; } });
   assert.equal(stopped, true, "link presses do not bubble into surrounding controls");
 }
+
+for (const [platform, device, isPad] of [["web", "web", false], ["ios", "iOS", false], ["ios", "iPadOS", true], ["android", "Android", false]]) {
+  test(`every captured and synthetic reply link uses the exact ${device} opener arguments`, () => {
+    const browser = [], native = [];
+    const h = createToolHarness(platform, {
+      markdown: true,
+      replyFooter: true,
+      isPad,
+      openURL: (...args) => native.push(args),
+      globals: {
+        ...(platform === "web" ? {} : { paseoDesktop: { opener: { openUrl() { assert.fail("desktop bridge used outside desktop"); } } } }),
+        open: (...args) => browser.push(args),
+      },
+    });
+    const expected = [];
+    for (const { item, targets } of replyLinkCases) {
+      const source = structuredClone(item);
+      const { tree } = h.mount(source);
+      const links = linksIn(h, tree);
+      assert.equal(links.length, targets.length);
+      const copy = h.nodes(tree, node => node.props.accessibilityLabel === "Copy reply")[0];
+      assert.ok(copy);
+      assert.equal(linksIn(h, copy).length, 0, "copy never wraps reply links");
+      links.forEach(press);
+      assert.deepEqual(h.links, platform === "web" ? [] : targets);
+      assert.deepEqual(h.copies, [], "link taps never trigger copy");
+      assert.deepEqual(source, item, "replays do not mutate captured items");
+      expected.push(...targets);
+      assert.deepEqual(browser, platform === "web" ? expected.map(url => [url, "_blank", "noopener,noreferrer"]) : []);
+      assert.deepEqual(native, platform === "web" ? [] : expected.map(url => [url]));
+    }
+  });
+}
+
+test("bare mailto links preserve encoded parameters, punctuation and code boundaries", () => {
+  const h = createToolHarness("android", { markdown: true });
+  const target = "mailto:first_last+tag@example.org?subject=Hello%20world&cc=other@example.org";
+  const tree = renderReply(h, `Email\uff1a${target}\u3002 Plain hello@example.org and xmailto:hello@example.org.\n\n\`${target}\`\n\n\`\`\`text\n${target}\n\`\`\``);
+  const links = linksIn(h, tree);
+  assert.equal(links.length, 1);
+  assert.equal(h.text(links[0]), target);
+  press(links[0]);
+  assert.deepEqual(h.links, [target]);
+  assert.ok(h.text(tree).includes("\u3002"));
+});
 
 for (const [index, source] of capturedReplies.entries()) {
   for (const platform of ["web", "ios", "android"]) {
@@ -64,11 +110,11 @@ test("bare URLs respect Unicode punctuation, adjacent code and word boundaries",
   }
 });
 
-for (const client of ["desktop", "web", "ios"]) {
+for (const client of ["desktop", "web", "ios", "android"]) {
   test(`upstream #4: Markdown links and bare URLs open through the ${client} client`, async () => {
     const opened = [], browser = [];
     const opener = { openUrl(url) { assert.equal(this, opener); opened.push(url); return Promise.resolve(); } };
-    const h = createToolHarness(client === "ios" ? "ios" : "web", {
+    const h = createToolHarness(client === "desktop" ? "web" : client, {
       markdown: true,
       globals: {
         ...(client === "desktop" ? { paseoDesktop: { opener } } : {}),
@@ -89,7 +135,7 @@ for (const client of ["desktop", "web", "ios"]) {
     const targets = [markdownTarget, bareTarget];
     assert.deepEqual(opened, client === "desktop" ? targets : []);
     assert.deepEqual(browser, client === "web" ? targets.map(url => [url, "_blank", "noopener,noreferrer"]) : []);
-    assert.deepEqual(h.links, client === "ios" ? targets : []);
+    assert.deepEqual(h.links, client === "ios" || client === "android" ? targets : []);
   });
 }
 
@@ -190,14 +236,16 @@ test("upstream #4: an incomplete desktop bridge uses the browser during the pres
   assert.deepEqual(browser, [[markdownTarget, "_blank", "noopener,noreferrer"]], "web opening retains synchronous user activation");
 });
 
-test("upstream #4: iOS uses Linking even if browser globals are present", async () => {
-  const h = createToolHarness("ios", { globals: {
-    paseoDesktop: { opener: { openUrl() { assert.fail("desktop bridge used on iOS"); } } },
-    open() { assert.fail("browser used on iOS"); },
-  } });
-  await h.load("client/components/open-link").openLink(markdownTarget);
-  assert.deepEqual(h.links, [markdownTarget]);
-});
+for (const platform of ["ios", "android"]) {
+  test(`${platform} uses Linking even if browser globals are present`, async () => {
+    const h = createToolHarness(platform, { globals: {
+      paseoDesktop: { opener: { openUrl() { assert.fail("desktop bridge used on native"); } } },
+      open() { assert.fail("browser used on native"); },
+    } });
+    await h.load("client/components/open-link").openLink(markdownTarget);
+    assert.deepEqual(h.links, [markdownTarget]);
+  });
+}
 
 test("upstream #4: unavailable URL handlers do not reject the press", async () => {
   const hosts = [
@@ -205,12 +253,14 @@ test("upstream #4: unavailable URL handlers do not reject the press", async () =
     createToolHarness("web", { globals: { open() { throw new Error("Opening denied"); } } }),
     createToolHarness("ios", { openURL: () => Promise.reject(new Error("No handler")) }),
     createToolHarness("ios", { openURL() { throw new Error("Opening denied"); } }),
+    createToolHarness("android", { openURL: () => Promise.reject(new Error("No handler")) }),
+    createToolHarness("android", { openURL() { throw new Error("Opening denied"); } }),
   ];
   for (const h of hosts) await assert.doesNotReject(h.load("client/components/open-link").openLink(markdownTarget));
 });
 
 test("upstream #4: unsafe and malformed Markdown destinations never reach any opener", async () => {
-  for (const platform of ["web", "ios"]) {
+  for (const platform of ["web", "ios", "android"]) {
     const opened = [];
     const h = createToolHarness(platform, { markdown: true, globals: {
       paseoDesktop: { opener: { openUrl: url => opened.push(url) } },
