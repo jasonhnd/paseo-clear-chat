@@ -102,7 +102,11 @@ test("custom accent text, tinted labels and filled buttons meet 4.5:1 on light a
   for (let r = 0; r <= 255; r += 51) for (let g = 0; g <= 255; g += 51) for (let b = 0; b <= 255; b += 51) {
     samples.push(`#${[r, g, b].map(x => x.toString(16).padStart(2, "0")).join("")}`);
   }
-  for (const colors of themes) for (const customAccent of samples) {
+  const contrastThemes = [...themes,
+    { ...themes[0], surface0: "#888888" },
+    { ...themes[1], surface0: "#777777" },
+  ];
+  for (const colors of contrastThemes) for (const customAccent of samples) {
     const tokens = buildThemeTokens(colors, { ...defaults, customAccent, customAccentEnabled: true });
     const base = rgb(colors.surface0);
     const surfaces = [base, ...[tokens.surface1, tokens.surface2, tokens.surfaceCode, tokens.surfaceGlass, tokens.surfaceCodeGlass].map(value => over(value, base))];
