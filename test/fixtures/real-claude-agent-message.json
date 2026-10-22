@@ -1,0 +1,160 @@
+[
+  {
+    "provider": "claude",
+    "item": {
+      "type": "user_message",
+      "text": "Review the sample checkout calculation.",
+      "messageId": "sample-message-0"
+    },
+    "timestamp": "2026-01-01T12:00:00.000Z",
+    "seqStart": 1,
+    "seqEnd": 1,
+    "sourceSeqRanges": [
+      {
+        "startSeq": 1,
+        "endSeq": 1
+      }
+    ],
+    "collapsed": []
+  },
+  {
+    "provider": "claude",
+    "item": {
+      "type": "tool_call",
+      "callId": "paseo-agent-message:sample-delivery",
+      "agentMessage": {
+        "event": "message",
+        "sender": {
+          "id": "sample-coordinator"
+        },
+        "text": "Check the sample subtotal and run the verification commands."
+      },
+      "name": "agent_message",
+      "status": "completed",
+      "error": null,
+      "detail": {
+        "type": "plain_text",
+        "text": "Check the sample subtotal and run the verification commands.",
+        "icon": "bot"
+      }
+    },
+    "timestamp": "2026-01-01T12:00:01.000Z",
+    "seqStart": 22,
+    "seqEnd": 22,
+    "sourceSeqRanges": [
+      {
+        "startSeq": 22,
+        "endSeq": 22
+      }
+    ],
+    "collapsed": []
+  },
+  {
+    "provider": "claude",
+    "item": {
+      "type": "tool_call",
+      "callId": "sample-call-2",
+      "name": "ToolSearch",
+      "detail": {
+        "type": "unknown",
+        "input": {
+          "query": "select:search",
+          "max_results": 1
+        },
+        "output": {
+          "output": "Search tool available."
+        }
+      },
+      "status": "completed",
+      "error": null
+    },
+    "timestamp": "2026-01-01T12:00:02.000Z",
+    "seqStart": 23,
+    "seqEnd": 24,
+    "sourceSeqRanges": [
+      {
+        "startSeq": 23,
+        "endSeq": 24
+      }
+    ],
+    "collapsed": [
+      "tool_lifecycle"
+    ]
+  },
+  {
+    "provider": "claude",
+    "item": {
+      "type": "tool_call",
+      "callId": "sample-call-3",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "node failing-check.cjs"
+      },
+      "status": "failed",
+      "error": {
+        "type": "tool_result",
+        "content": "Expected sample failure. Exit code 1.",
+        "is_error": true,
+        "tool_use_id": "sample-call-3"
+      }
+    },
+    "timestamp": "2026-01-01T12:00:03.000Z",
+    "seqStart": 25,
+    "seqEnd": 26,
+    "sourceSeqRanges": [
+      {
+        "startSeq": 25,
+        "endSeq": 26
+      }
+    ],
+    "collapsed": [
+      "tool_lifecycle"
+    ]
+  },
+  {
+    "provider": "claude",
+    "item": {
+      "type": "tool_call",
+      "callId": "sample-call-4",
+      "name": "Bash",
+      "detail": {
+        "type": "shell",
+        "command": "node passing-check.cjs",
+        "output": "All sample checks passed."
+      },
+      "status": "completed",
+      "error": null
+    },
+    "timestamp": "2026-01-01T12:00:04.000Z",
+    "seqStart": 27,
+    "seqEnd": 28,
+    "sourceSeqRanges": [
+      {
+        "startSeq": 27,
+        "endSeq": 28
+      }
+    ],
+    "collapsed": [
+      "tool_lifecycle"
+    ]
+  },
+  {
+    "provider": "claude",
+    "item": {
+      "type": "assistant_message",
+      "text": "The sample checks are complete.",
+      "messageId": "sample-message-5"
+    },
+    "timestamp": "2026-01-01T12:00:05.000Z",
+    "seqStart": 29,
+    "seqEnd": 29,
+    "sourceSeqRanges": [
+      {
+        "startSeq": 29,
+        "endSeq": 29
+      }
+    ],
+    "collapsed": []
+  }
+]
