@@ -426,6 +426,9 @@ export interface ToolCalloutData {
   input?: string;
   /** Complete result for copying, independent of typed previews and folding. */
   copyResult?: string;
+  /** Streams are separate only when the source explicitly reports them. */
+  stdout?: string;
+  stderr?: string;
   images?: GeneratedImage[];
   search?: {
     query: string;

@@ -18,6 +18,11 @@ const work = join(temp, "step-detail-browser");
 mkdirSync(work, { recursive: true });
 const fixture = JSON.parse(readFileSync(join(root, "test/fixtures/real-claude-session.json"), "utf8"));
 const sample = fixture.items.find(item => item.type === "tool_call" && item.detail.type === "shell" && item.status === "completed");
+const fieldSamples = JSON.parse(readFileSync(join(root, "test/fixtures/real-shell-details.json"), "utf8")).entries.map(entry => entry.item);
+fieldSamples.push(JSON.parse(readFileSync(join(root, "test/fixtures/codex-session.json"), "utf8")).items.find(item => item.detail?.type === "shell"));
+fieldSamples.push({ ...sample, callId: "sample-explicit-streams", detail: { type: "shell", command: "sample", durationMs: 1250,
+  output: { stdout: " sample stdout\n  ", stderr: " sample stderr\n  ", exitCode: 0 } } });
+const fieldsOnly = process.argv.includes("--fields-only");
 // Preserve the sanitized real shell shape, with deterministic long output for scrolling.
 const longSamples = ["A", "B"].map(label => ({
   ...sample, callId: `sample-step-${label}`,
@@ -65,7 +70,8 @@ async function replay() {
   const html = samples => `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body,#root{margin:0;width:100%;height:100%}*{box-sizing:border-box}</style></head><body><div id="root"></div><script>window.__stepDetailSamples=${JSON.stringify(samples).replace(/</g, "\\u003c")}</script><script src="/preview.js"></script></body></html>`;
   const server = createServer((request, response) => {
     response.setHeader("Content-Type", request.url === "/preview.js" ? "text/javascript; charset=utf-8" : "text/html; charset=utf-8");
-    response.end(request.url === "/preview.js" ? bundle.outputFiles[0].contents : html(request.url === "/layout" ? layoutSamples : ["/switching", "/keyboard", "/rotation"].includes(request.url) ? longSamples : request.url === "/large-output" ? [largeSample] : [sample]));
+    const fieldIndex = /^\/fields\/(\d+)$/.exec(request.url)?.[1];
+    response.end(request.url === "/preview.js" ? bundle.outputFiles[0].contents : html(fieldIndex !== undefined ? [fieldSamples[Number(fieldIndex)]] : request.url === "/layout" ? layoutSamples : ["/switching", "/keyboard", "/rotation"].includes(request.url) ? longSamples : request.url === "/large-output" ? [largeSample] : [sample]));
   });
   let browser;
   const report = [];
@@ -126,6 +132,39 @@ async function replay() {
           visibleCodeLine };
       }, top);
     }
+    for (const width of [1440, 1024, 820, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      for (const [index, item] of fieldSamples.entries()) {
+        await page.goto(`${origin}/fields/${index}`, { waitUntil: "networkidle" });
+        await row.first().focus();
+        await page.keyboard.press("Enter");
+        await waitOpen();
+        assert.equal(await page.getByTestId("step-detail-exit-code").textContent(), `Exit code: ${index === 0 ? 1 : 0}`);
+        assert.equal(await page.getByTestId("step-detail-duration").count(), index === 3 ? 1 : 0);
+        assert.equal(await page.getByTestId("step-detail-stderr").count(), index === 3 ? 1 : 0);
+        if (index === 0) {
+          assert.equal(await page.getByTestId("step-detail-error").textContent(), item.error.content);
+          await page.getByTestId("step-detail-copy-error").click();
+          assert.equal(await page.evaluate(() => navigator.clipboard.readText()), item.error.content);
+        }
+        if (index === 3) {
+          assert.equal(await page.getByTestId("step-detail-duration").textContent(), "Duration: 1.25s");
+          for (const stream of ["stdout", "stderr"]) {
+            await page.getByTestId(`step-detail-copy-${stream}`).click();
+            assert.equal(await page.evaluate(() => navigator.clipboard.readText()), item.detail.output[stream]);
+          }
+        }
+        const bounds = await panel.boundingBox();
+        assert.ok(bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= width + 1 && bounds.y + bounds.height <= 845);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+        await page.screenshot({ path: join(work, `fields-${index}-${width}.png`) });
+        report.push({ width, source: ["claude", "hermes", "codex", "explicit-streams"][index], exitCode: index === 0 ? 1 : 0,
+          duration: index === 3 ? "1.25s" : "omitted", stderr: index === 3 ? "separate, copy verified" : "omitted", bounds });
+      }
+    }
+    assert.deepEqual(errors, []);
+    writeFileSync(join(temp, "step-detail-fields-report.json"), JSON.stringify({ debugPort: port, bundleBytes: bundle.outputFiles[0].contents.length, measurements: report }, null, 2) + "\n");
+    if (fieldsOnly) { console.log(JSON.stringify(report, null, 2)); return; }
     for (const width of [1440, 1024]) {
       await page.setViewportSize({ width, height: 844 });
       await page.goto(`http://127.0.0.1:${server.address().port}/switching`, { waitUntil: "networkidle" });

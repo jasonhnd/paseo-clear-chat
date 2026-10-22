@@ -2,6 +2,7 @@ import type { ToolCallKind, ToolCalloutData } from "../shared/contracts";
 import { record, stringValue } from "./tool-detail";
 import { errorText } from "./error-text";
 import type { OutputLineLimit } from "./preferences";
+import { claudeResultError } from "./step-detail-data";
 
 function reportedText(value: unknown): string | undefined {
   if (typeof value === "string") return stringValue(value);
@@ -29,7 +30,7 @@ export function toolFailureMessage(error: unknown, detail: Record<string, unknow
   // input field; content blocks inside output/result still report failures.
   const report = tool === "write" || tool === "edit" || tool === "github"
     ? { ...detail, content: undefined } : detail;
-  return errorText(error) ?? reportedText(report)
+  return claudeResultError(error) ?? errorText(error) ?? reportedText(report)
     ?? (error && typeof error === "object" ? undefined : "Failed (no error message reported)");
 }
 

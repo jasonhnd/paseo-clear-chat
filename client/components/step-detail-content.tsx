@@ -10,11 +10,11 @@ import { ImagePreview } from "./image-preview";
 import { StepDetailStateContext } from "./step-detail-state";
 import type { ExtendedThemeTokens } from "./theme-tokens";
 
-type Section = "input" | "output" | "error";
+type Section = "input" | "output" | "error" | "stdout" | "stderr";
 type DetailRow = { key: string; section: Section } & (
   { kind: "heading"; text: string | undefined } | { kind: "text"; text: string }
 );
-const titles = { input: "Input", output: "Output", error: "Error" };
+const titles = { input: "Input", output: "Output", error: "Error", stdout: "Stdout", stderr: "Stderr" };
 type ScrollNode = { scrollTop?: number; clientHeight?: number; getScrollableNode?: () => ScrollNode };
 
 function SectionHeading({ section, text, tokens }: { section: Section; text: string | undefined; tokens: ExtendedThemeTokens }) {
@@ -81,14 +81,17 @@ export function StepDetailContent({ step, tokens, onRevealPath, imageFile }: {
   };
   const rows = useMemo(() => {
     const result: DetailRow[] = [];
-    const sections: Array<[Section, string | undefined]> = [["input", step.input], ["output", step.copyResult]];
+    const sections: Array<[Section, string | undefined]> = [["input", step.input]];
+    if (step.stdout !== undefined) sections.push(["stdout", step.stdout]);
+    if (step.stderr !== undefined) sections.push(["stderr", step.stderr]);
+    if (step.copyResult !== undefined || (step.stdout === undefined && step.stderr === undefined)) sections.push(["output", step.copyResult]);
     if (step.error) sections.unshift(["error", step.error]);
     for (const [section, text] of sections) {
       result.push({ key: `${section}-heading`, section, kind: "heading", text });
       if (text) stepTextChunks(text).forEach((chunk, index) => result.push({ key: `${section}-${index}`, section, kind: "text", text: chunk }));
     }
     return result;
-  }, [step.input, step.copyResult, step.error]);
+  }, [step.input, step.copyResult, step.error, step.stdout, step.stderr]);
   const duration = toolDuration(step.durationMs);
   const exitCode = typeof step.exitCode === "number" && Number.isInteger(step.exitCode) ? step.exitCode : undefined;
   return <View testID="tool-card-body" style={styles.body}>
@@ -135,7 +138,7 @@ export function StepDetailContent({ step, tokens, onRevealPath, imageFile }: {
         : <Text
             testID={`step-detail-${item.section}`}
             selectable
-            style={{ color: item.section === "error" ? tokens.danger : tokens.foreground, fontFamily: item.section === "input" ? tokens.fontCode : tokens.fontMono, fontSize: tokens.fs(12), lineHeight: tokens.fs(18), flexShrink: 1 }}
+            style={{ color: item.section === "error" || item.section === "stderr" ? tokens.danger : tokens.foreground, fontFamily: item.section === "input" ? tokens.fontCode : tokens.fontMono, fontSize: tokens.fs(12), lineHeight: tokens.fs(18), flexShrink: 1 }}
           >{item.text.replace(/\r?\n$/, "")}</Text>}
     />
   </View>;

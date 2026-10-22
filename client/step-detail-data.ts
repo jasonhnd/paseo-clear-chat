@@ -1,5 +1,6 @@
 import type { ToolCallKind } from "../shared/contracts";
 import { stepResultText } from "./tool-step-copy";
+import { record } from "./tool-detail";
 
 const searchResults = ["content", "results", "filePaths", "webResults", "annotations", "numFiles", "numMatches", "truncated"];
 const requestContentTools: ToolCallKind[] = ["write", "edit", "github"];
@@ -21,7 +22,7 @@ export function stepInputText(detail: Record<string, unknown>, tool: ToolCallKin
   }
   const excluded = new Set([
     "type", "toolName", "input", "arguments", "args", "output", "result", "error",
-    "durationMs", "durationSeconds", "exitCode", ...resultFields(detail.type),
+    "durationMs", "durationSeconds", "exitCode", "exit_code", "stdout", "stderr", ...resultFields(detail.type),
     ...(typeof detail.code === "number" ? ["code", "codeText", "bytes"] : []),
   ]);
   if (!requestContentTools.includes(tool)) excluded.add("content");
@@ -29,6 +30,33 @@ export function stepInputText(detail: Record<string, unknown>, tool: ToolCallKin
   if (!entries.length) return undefined;
   if (entries.length === 1 && entries[0]?.[0] === "command" && typeof entries[0][1] === "string") return entries[0][1];
   return JSON.stringify(Object.fromEntries(entries), null, 2);
+}
+
+/** Claude keeps failed tool results in error.content instead of detail.output. */
+export function claudeResultError(error: unknown): string | undefined {
+  const result = record(error);
+  return result.type === "tool_result" && result.is_error === true
+    ? stepResultText(result.content) : undefined;
+}
+
+/** Parse only complete provider envelopes, never arbitrary command output. */
+export function shellResultExitCode(output: unknown, error: unknown): number | undefined {
+  const terminal = typeof output === "string" ? output.match(
+    /^terminal result\r?\n- (?:output:|\*\*output:\*\*)[\s\S]*\r?\n- (?:exit_code:|\*\*exit_code:\*\*) (-?\d+)(?:\r?\n)?$/,
+  ) : undefined;
+  const claude = claudeResultError(error)?.match(/^Exit code (-?\d+)(?:\r?\n|$)/);
+  const value = terminal?.[1] ?? claude?.[1];
+  if (value === undefined) return undefined;
+  const code = Number(value);
+  return Number.isSafeInteger(code) ? code : undefined;
+}
+
+/** Preserve explicitly separated streams without guessing which stream a line used. */
+export function stepResultStreams(detail: Record<string, unknown>): { stdout?: string; stderr?: string } {
+  const result = record(detail.output ?? detail.result);
+  const stream = (key: "stdout" | "stderr") => typeof detail[key] === "string" ? detail[key] as string
+    : typeof result[key] === "string" ? result[key] as string : undefined;
+  return { stdout: stream("stdout"), stderr: stream("stderr") };
 }
 
 /** File writes, edits and GitHub device calls carry request data in content. */

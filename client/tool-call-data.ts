@@ -10,7 +10,7 @@ import { recoverProjectedTool } from "./tool-projection";
 import { toolFailureMessage } from "./tool-error";
 import { extractGeneratedImages } from "./generated-images";
 import { errorText } from "./error-text";
-import { stepInputText, stepOutputText } from "./step-detail-data";
+import { shellResultExitCode, stepInputText, stepOutputText, stepResultStreams } from "./step-detail-data";
 import { agentMessageCallout } from "./agent-message";
 
 export interface LiveToolCallPayload {
@@ -213,10 +213,12 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
   const edit = toolKind === "edit" ? buildEditDiff(detail, input, diff) : undefined;
 
   // A fetch's numeric `code` is an HTTP status, not a process exit code.
-  const exitCodeCandidate = [detail.exitCode,
-    ["shell", "bash", "git"].includes(toolKind) ? detail.code : undefined,
+  const shellTool = ["shell", "bash", "git"].includes(toolKind);
+  const exitCodeCandidate = [detail.exitCode, shellTool ? detail.exit_code : undefined,
+    shellTool ? detail.code : undefined,
     resultRecord.exitCode, resultRecord.exit_code, record(resultRecord.details).exitCode,
-  ].find((value): value is number => typeof value === "number" && Number.isInteger(value));
+  ].find((value): value is number => typeof value === "number" && Number.isInteger(value))
+    ?? (shellTool ? shellResultExitCode(output, data.error) : undefined);
   const status = toolStatus(data.status);
   const finalReply = finalToolReply(rawName, rawInput, output);
   // Reading or writing an image file is previewed from filePath by the renderer.
@@ -229,6 +231,7 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
     id: `live-${rawName}`,
     input: stepInputText(detail, toolKind),
     copyResult: stepOutputText(detail, toolKind),
+    ...(shellTool ? stepResultStreams(detail) : {}),
     tool: toolKind,
     title,
     status,
