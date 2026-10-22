@@ -187,8 +187,8 @@ function createToolHarness(platform = "ios", options = {}) {
           return async value => { reveals.push(value); return options.revealRpc ? options.revealRpc(value) : { revealed: value.path, error: null }; };
         },
         useAgent: (id, selector) => {
-          const agent = options.agents?.[id] ?? (id === "sample-coordinator" ? null
-            : options.agent ?? { cwd: "/workspace/demo", workspaceId: "demo-workspace" });
+          const agent = options.agents?.[id] ?? (["demo-agent", "sample-agent"].includes(id)
+            ? options.agent ?? { cwd: "/workspace/demo", workspaceId: "demo-workspace" } : null);
           return agent ? selector(agent) : null;
         },
         useWorkspace: (id, selector) => id && options.workspace !== null

@@ -52,7 +52,9 @@ async function bundle(revision) {
       initializeEnhancerPreferences(rpc).then(() => {
         createRoot(document.getElementById("root")).render(<main style={{ padding: 12 }}>
           {${JSON.stringify(entries)}.map(({ item, timestamp }, index) => {
-            const transformed = transformers.get(item.type).transform({ item, phase: "complete" });
+            const source = item.type === "tool_call" ? Object.freeze({ type: item.type,
+              callId: item.callId, name: item.name, detail: item.detail, status: item.status, error: item.error }) : item;
+            const transformed = transformers.get(item.type).transform({ item: source, phase: "complete" });
             return transformed.items.map((part, subindex) => {
               const renderer = renderers.get(part.kind), Component = renderer.Component;
               return <section key={index + ":" + subindex} data-index={index} style={{ marginBottom: 16 }}>
@@ -70,7 +72,7 @@ async function bundle(revision) {
       "react-dom/client": require.resolve("react-dom/client"),
       "react-native": require.resolve("react-native-web"),
       "@getpaseo/plugin/client/react-native": join(__dirname, "shims/plugin-react-native.tsx"),
-      "@getpaseo/plugin/client": join(__dirname, "shims/step-detail-client.ts"),
+      "@getpaseo/plugin/client": join(__dirname, "shims/agent-message-client.ts"),
     },
     plugins: revision ? [{ name: "baseline", setup(builder) {
       builder.onLoad({ filter: /\.[cm]?tsx?$/ }, args => {
@@ -115,15 +117,16 @@ async function replay() {
         await page.route("**/*", route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
         await page.goto(`${origin}/${mode}`);
         await page.locator("section").last().waitFor();
+        await page.waitForFunction(() => document.querySelector('[data-index="1"]').textContent.includes("sample-coordinator"));
         const title = await page.locator('[data-index="1"] [data-testid="tool-summary-text"]').innerText();
         const text = await page.locator("main").innerText();
         assert.equal(text.split(entries[1].item.agentMessage.text).length - 1, 1);
         assert.equal(text.split(entries[0].item.text).length - 1, 1);
-        if (mode === "before") assert.equal(title, "agent_message");
+        if (mode === "before") assert.equal(title, "Message received · sample-coordinator");
         else {
-          assert.equal(title, "Message received · sample-coordinator");
+          assert.equal(title, "Message received");
           assert.ok(!text.includes("agent_message"));
-          assert.ok(text.includes("From agent: sample-coordinator"));
+          assert.ok(text.includes("Sender: sample-coordinator"));
         }
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
         assert.deepEqual(errors, []);

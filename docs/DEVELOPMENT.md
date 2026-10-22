@@ -608,8 +608,34 @@ light and dark themes. The browser replay is described in the
     the ID suffix identifies the message, never its sender. The renderer recovers provenance
     through the read-only canonical timeline API, sharing a bounded cache per host and agent
     revision. Until that read succeeds, the row says **Message received** and preserves the
-    projected plain-text body. A missing sender title falls back to the sender ID, and a
-    missing structured body falls back to `detail.text`.
+    projected plain-text body. The row uses **Message from <name>** when an explicit sender title is available,
+    otherwise **Message received**. Sender IDs appear only as `Sender: <id>` in details;
+    a missing structured body falls back to `detail.text`.
+
+    The canonical `agentMessage.sender.title` takes priority. When absent, the renderer
+    reads `useAgent(sender.id, agent => agent.title)` from the public host snapshot.
+    This observes later title updates without fetching or mutating another agent.
+    An unloaded, deleted or untitled sender yields no name; the recipient title and
+    delivery call ID are never substitutes. Blank titles, titles containing a known
+    identifier, and UUID-shaped titles are rejected.
+
+    Paseo v0.12.0 sources: [delivery schema](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/protocol/src/agent-message.ts),
+    [server delivery projection](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/agent-messages/index.ts),
+    [public state hook](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/plugin/src/client/client-state.tsx),
+    [host sender lookup](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/app/src/plugins/client-state/source.ts),
+    and [snapshot title](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/app/src/plugins/client-state/snapshots.ts).
+    The delivery schema defines `sender.id` and optional `sender.title`, with no `name`
+    field. The host lookup searches both loaded agents and agent details on the same host,
+    returning null when no snapshot with a workspace is available.
+
+    `node --test test/agent-message.test.cjs test/projected-agent-message.test.cjs`
+    replays the actual projected item shape on web, iOS and Android at 1440, 1024,
+    820 and 390px. After installing the offline harness dependencies, run
+    `node .showcase/agent-message.cjs <pre-fix-revision>` for the browser comparison.
+    It bundles the actual registered transformer and renderer, supplies canonical data
+    separately through the API shim, and checks the generic title, sender details,
+    single body occurrence and unchanged neighboring rows. Reports and screenshots
+    stay in `KANBAN_TMP`; Chrome uses a free debug port in 9444–9499.
 
 Regression tests must include the item shape passed by the host to the registered transformer
 and renderer. Feeding a complete wire fixture directly to a transformer does not exercise SDK

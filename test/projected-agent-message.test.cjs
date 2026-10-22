@@ -23,30 +23,30 @@ function source(timeline = entries) {
 const summary = (h, tree) => h.text(h.nodes(tree, n => n.props.testID === "tool-summary-text"));
 
 for (const platform of ["web", "ios", "android"]) {
- for (const width of [1440, 1024, 820, 390]) {
-  test(`${platform} ${width}px: projected delivery recovers the sender through the canonical API`, async t => {
-    const host = source();
-    const h = createToolHarness(platform, { ...host, width });
-    t.after(() => h.unmount());
-    const item = projected();
-    assert.ok(!("agentMessage" in item));
-    const mounted = h.mount(item, false);
-    assert.equal(mounted.data.agentMessage, undefined);
-    assert.equal(summary(h, mounted.tree), "Message received");
-    assert.ok(!h.text(mounted.tree).includes("sample-delivery"), "a delivery ID is not a sender ID");
-    await settle();
-    const tree = mounted.render();
-    assert.equal(summary(h, tree), "Message received");
-    assert.ok(h.nodes(tree, n => n.type === "Glyph" && n.props.name === "MessageSquare").length);
-    assert.ok(!h.text(tree).includes("agent_message"));
-    assert.deepEqual(host.requests, [{ direction: "tail", limit: 0, projection: "canonical" }]);
-    const open = h.mount(item);
-    await settle();
-    assert.equal(h.text(open.render()).split(delivery.agentMessage.text).length - 1, 1);
-    assert.ok(h.text(open.render()).includes("Sender: sample-coordinator"));
-    assert.equal(host.requests.length, 1, "rows share the derived message cache");
-  });
- }
+  for (const width of [1440, 1024, 820, 390]) {
+    test(`${platform} ${width}px: projected delivery recovers the sender through the canonical API`, async t => {
+      const host = source();
+      const h = createToolHarness(platform, { ...host, width });
+      t.after(() => h.unmount());
+      const item = projected();
+      assert.ok(!("agentMessage" in item));
+      const mounted = h.mount(item, false);
+      assert.equal(mounted.data.agentMessage, undefined);
+      assert.equal(summary(h, mounted.tree), "Message received");
+      assert.ok(!h.text(mounted.tree).includes("sample-delivery"), "a delivery ID is not a sender ID");
+      await settle();
+      const tree = mounted.render();
+      assert.equal(summary(h, tree), "Message received");
+      assert.ok(h.nodes(tree, n => n.type === "Glyph" && n.props.name === "MessageSquare").length);
+      assert.ok(!h.text(tree).includes("agent_message"));
+      assert.deepEqual(host.requests, [{ direction: "tail", limit: 0, projection: "canonical" }]);
+      const open = h.mount(item);
+      await settle();
+      assert.equal(h.text(open.render()).split(delivery.agentMessage.text).length - 1, 1);
+      assert.ok(h.text(open.render()).includes("Sender: sample-coordinator"));
+      assert.equal(host.requests.length, 1, "rows share the derived message cache");
+    });
+  }
 }
 
 test("a missing structured body falls back to the projected plain-text detail", () => {
@@ -148,7 +148,7 @@ for (const platform of ["web", "ios", "android"]) {
         if (origin === "canonical") timeline[1].item.agentMessage.sender.title = "Sample coordinator";
         const host = source(timeline);
         const h = createToolHarness(platform, { ...host, width,
-          agents: { "sample-coordinator": { title: "Sample coordinator" } } });
+          agents: { "sample-coordinator": { title: origin === "canonical" ? "Different current title" : "Sample coordinator" } } });
         t.after(() => h.unmount());
         const mounted = h.mount(projected(), false);
         await settle();
@@ -169,4 +169,19 @@ test("internal identifiers and blank titles never become a sender name", () => {
     assert.equal(build(item).title, "Message received");
   }
   h.unmount();
+});
+
+test("sender snapshot updates supply names and never reuse the recipient title", async t => {
+  const host = source();
+  const agents = { "sample-coordinator": { title: null } };
+  const h = createToolHarness("web", { ...host, agents,
+    agent: { ...host.agent, title: "Recipient title" } });
+  t.after(() => h.unmount());
+  const mounted = h.mount(projected(), false);
+  await settle();
+  assert.equal(summary(h, mounted.render()), "Message received");
+  agents["sample-coordinator"].title = "Sample coordinator";
+  assert.equal(summary(h, mounted.render()), "Message from Sample coordinator");
+  agents["sample-coordinator"].title = "sample-coordinator";
+  assert.equal(summary(h, mounted.render()), "Message received");
 });
