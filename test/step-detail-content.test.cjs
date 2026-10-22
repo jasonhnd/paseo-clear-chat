@@ -78,6 +78,15 @@ test("typed read results stay separate from write and edit inputs", () => {
   h.unmount();
 });
 
+test("text result blocks with extra fields retain their complete structure", () => {
+  const h = harness("web");
+  const build = h.load("client/tool-call-data.ts").buildLiveToolCallData;
+  const output = { content: [{ type: "text", text: "Full result text", annotations: { source: "sample", count: 0 } }] };
+  const data = build({ ...shell, detail: { type: "shell", command: "sample", output } });
+  assert.equal(data.copyResult, JSON.stringify(output, null, 2));
+  h.unmount();
+});
+
 test("only explicit reported result metrics are extracted, with no status inference", () => {
   const h = harness("android");
   const build = h.load("client/tool-call-data.ts").buildLiveToolCallData;
