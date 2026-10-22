@@ -132,7 +132,7 @@ test("captured upstream truncation remains visible and never fabricates missing 
 });
 
 for (const platform of ["web", "ios", "android"]) {
-  test(`${platform}: captured truncation notice has no file gutter and Copy output retains the notice`, async t => {
+  test(`${platform}: captured truncation notice has no file gutter and stays out of Copy output`, async t => {
     const h = createToolHarness(platform, { preferences: { collapsedStepAction: "details" } });
     t.after(() => h.unmount());
     const source = capturedReads.find(item => item.detail.content.includes("from line 150,"));
@@ -145,7 +145,8 @@ for (const platform of ["web", "ios", "android"]) {
     assert.equal(byId(h, h.draw(list.props.renderItem({ item: notice })), "step-detail-line-number"), undefined);
     await byId(h, tree, "step-detail-copy-output").props.onPress();
     assert.match(h.copies.at(-1), /^line 0150 fictional offset sample payload 0150\n/);
-    assert.match(h.copies.at(-1), /chars total, truncated\)$/);
+    assert.equal(h.copies.at(-1), rows.filter(row => row.lineNumber !== undefined).map(row => row.text).join(""));
+    assert.doesNotMatch(h.copies.at(-1), /chars total, truncated\)$/);
     assert.doesNotMatch(h.copies.at(-1), /^Read |^```|^\d+\|/m);
   });
 }
@@ -165,3 +166,35 @@ test("complete 1200-line result preserves every row through the virtual list dat
   await byId(h, tree, "step-detail-copy-output").props.onPress();
   assert.equal(h.copies.at(-1), plain);
 });
+
+
+const readme = require("./fixtures/real-hermes-readme-images.json").entries[0].item;
+for (const platform of ["web", "ios", "android"]) {
+  for (const relative of [false, true]) {
+    for (const truncated of [false, true]) {
+      test(`${platform}: limit-only ${relative ? "relative" : "absolute"} read header unwraps ${truncated ? "truncated" : "complete"} content and Copy output`, async t => {
+        const h = createToolHarness(platform, { preferences: { collapsedStepAction: "details" } });
+        t.after(() => h.unmount());
+        let content = relative ? readme.detail.content.replace(`Read ${readme.detail.filePath} `, "Read README.md ") : readme.detail.content;
+        if (truncated) content = content.replace(/\n```$/, "\n... (2000 chars total, truncated)");
+        const { tree } = h.mount({ ...readme, detail: { ...readme.detail, content } });
+        const list = byId(h, tree, "step-detail-scroll");
+        const rows = list.props.data.filter(row => row.section === "output" && row.kind === "text");
+        assert.equal(rows[0].lineNumber, 1);
+        assert.equal(rows[0].text, "# Sample application\n");
+        assert.equal(h.text(byId(h, h.draw(list.props.renderItem({ item: rows[0] })), "step-detail-output")), "# Sample application");
+        const fileLines = rows.filter(row => row.lineNumber !== undefined);
+        assert.equal(fileLines.length, 30);
+        assert.equal(fileLines.at(-1).lineNumber, 30);
+        if (truncated) {
+          assert.equal(rows.at(-1).lineNumber, undefined);
+          assert.equal(rows.at(-1).text, "... (2000 chars total, truncated)");
+        }
+        await byId(h, tree, "step-detail-copy-output").props.onPress();
+        const plain = readme.detail.content.split("\n").slice(3, -1).map(line => line.replace(/^\d+\|/, "")).join("\n");
+        assert.equal(h.copies.at(-1), plain + (truncated ? "\n" : ""));
+        assert.doesNotMatch(h.copies.at(-1), /^Read |^```|^\d+\||chars total, truncated/m);
+      });
+    }
+  }
+}
