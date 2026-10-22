@@ -170,7 +170,7 @@ function createToolHarness(platform = "ios", options = {}) {
       };
       if (id === "@getpaseo/plugin/client/react-native") return {
         useRevealedText: text => text,
-        copyText: async text => { copies.push(text); },
+        copyText: async text => { copies.push(text); await options.copyText?.(text); },
         useToast: () => ({ show: message => toasts.push(message), error: message => toasts.push(message) }),
         Modal: Object.assign(passthrough, { Content: "Modal.Content" }),
         TextInput: "SDK.TextInput",

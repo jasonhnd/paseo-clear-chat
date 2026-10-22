@@ -36,6 +36,43 @@ Legacy string options, option descriptions, blocked reasons and JSON string enve
 remain supported. A recap can stand on its own. Unrecognized or invalid structured
 replies remain fully visible as plain text inside the same expanded card.
 
+## Step actions
+
+Touch and hold a tool summary for 500 ms, or right-click it on web, to open
+**Step actions**. The same centered, scrollable menu fits desktop, tablet and
+phone viewports; Escape, Android Back or the backdrop closes it. Releasing a
+long press does not activate the row's ordinary click action.
+
+**Copy command**, **Copy path** and **Copy result** use the SDK clipboard on the
+current client. Commands and paths retain their original whitespace. Results
+come from the complete step payload, independently of output folding or typed
+previews: strings stay verbatim, pure text-block results include every block,
+and other structured results use full formatted JSON. Empty string results can
+also be copied. Clipboard failure opens the existing read-only text fallback.
+Steps without a file path have neither path action.
+
+**Open in file manager** uses the existing daemon-side file reveal action. It is
+available only to web/desktop clients at least 1024px wide with a reveal callback.
+Phone and tablet-width web clients, iOS, iPadOS and Android omit it and retain
+**Copy path**. Summary text is a nonselectable control so native text selection
+does not compete with the long press; expanded detail text keeps its selection.
+
+Run `node --test test/tool-step-menu.test.cjs` for web, iOS, iPadOS-width and
+Android component replays using the sanitized real tool fixtures. For measured
+DOM bounds, clipboard arguments, actual long-press timing and ordinary clicks
+at 1440, 1024, 820 and 390px, install the offline harness dependencies with
+`npm ci --prefix .showcase --include=dev`, then run:
+
+```sh
+TMPDIR="$KANBAN_TMP" node .showcase/verify-step-menu.cjs
+```
+
+The verifier bundles the real components in memory and uses headless Google
+Chrome with a free debugging port in 9444–9499. Its profile and JSON report stay
+in the task's temporary directory; the profile is removed on exit. SDK services
+are supplied by the harness. This is a component preview, and iOS, iPadOS and
+Android still need a final device check.
+
 ## Image previews
 
 A read of a `.png` carries no bytes through the timeline, so the host draws it as an empty code

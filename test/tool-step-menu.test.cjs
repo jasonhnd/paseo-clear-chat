@@ -36,6 +36,7 @@ for (const platform of ["web", "ios", "android"]) {
     await copy(h, mounted, "step-copy-command", shell.detail.command);
     open(h, mounted);
     await copy(h, mounted, "step-copy-result", shell.detail.output);
+    open(h, mounted);
     assert.equal(byId(h, mounted.render(), "step-copy-path"), undefined);
     assert.equal(byId(h, mounted.render(), "step-open-path"), undefined);
     const file = h.mount(read, false);
@@ -109,4 +110,40 @@ test("four viewport widths constrain the shared menu and hide mobile file openin
     assert.equal(Boolean(byId(h, mounted.render(), "step-open-path")), width >= 1024);
     h.unmount();
   }
+});
+
+
+test("copy rejection keeps the full text in the existing selectable fallback", async () => {
+  const h = createToolHarness("ios", { copyText: async () => { throw new Error("Denied"); } });
+  const mounted = h.mount(shell, false);
+  open(h, mounted);
+  await copy(h, mounted, "step-copy-result", shell.detail.output);
+  const fallback = h.nodes(mounted.render(), node => node.props.accessibilityLabel === "Text to copy")[0];
+  assert.equal(fallback.props.value, shell.detail.output);
+  assert.equal(fallback.props.readOnly, true);
+  assert.match(h.toasts.at(-1), /Could not copy/);
+  assert.equal(byId(h, mounted.render(), "tool-step-menu"), undefined);
+  h.unmount();
+});
+
+test("streaming menu actions use the current step data, including an empty result", async () => {
+  const h = createToolHarness("android");
+  const mounted = h.mount(shell, false);
+  open(h, mounted);
+  const detail = { ...shell.detail, command: "printf 'updated'", output: "" };
+  const render = () => mounted.render({ ...mounted.data, detail });
+  await copy(h, { render }, "step-copy-result", "");
+  open(h, { render });
+  await copy(h, { render }, "step-copy-command", detail.command);
+  h.unmount();
+});
+
+test("platform Back closes the menu without changing the disclosure", () => {
+  const h = createToolHarness("android");
+  const mounted = h.mount(shell, false);
+  open(h, mounted);
+  h.nodes(mounted.render(), node => node.type === "Native.Modal")[0].props.onRequestClose();
+  assert.equal(byId(h, mounted.render(), "tool-step-menu"), undefined);
+  assert.equal(byId(h, mounted.render(), "tool-summary-row").props.accessibilityState.expanded, false);
+  h.unmount();
 });
