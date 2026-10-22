@@ -68,6 +68,24 @@ The JSON report is saved under `KANBAN_TMP`; the Chrome profile is removed.
 See [Opening reply links](../docs/DEVELOPMENT.md#opening-reply-links) for platform
 dispatch details and the pending physical-device steps.
 
+## Code font replay
+
+After installing the main and showcase dependencies, run from the repository root:
+
+```sh
+TMPDIR="$KANBAN_TMP" node .showcase/verify-code-font.cjs
+```
+
+This builds the actual settings, Markdown, terminal and diff components, then uses
+headless Google Chrome on a free debugging port between 9444 and 9499. It checks
+all six font choices at 1440, 1024, 820 and 390 pixels in both themes: computed
+font families, equal character advances, option visibility and page overflow.
+The terminal uses an existing sanitized fixture; reply and diff text are synthetic.
+Reports, screenshots, the bundle and the temporary Chrome profile stay under
+`KANBAN_TMP/code-font-browser`. The profile is removed on exit; remove the other
+outputs after reading the report. Native fallback coverage runs in
+`node --test test/code-font.test.cjs`; physical iOS/iPadOS/Android checks remain manual.
+
 ## Fixture map
 
 Each row describes both theme captures. All data names refer to `fixtures.ts`
