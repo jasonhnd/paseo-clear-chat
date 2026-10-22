@@ -23,7 +23,12 @@ function outputPreview(data: ToolCalloutData): string {
     || data.thinking?.text || data.cells?.[0]?.output || data.code || data.fallback?.output
     || data.checklist?.tasks.slice(0, 4).map(task => task.title).join("\n")
     || data.subagent?.agents[0]?.task || "No output reported.";
-  return snippet(text, 4, 800);
+  // Projected reads wrap file lines in a repeated path header and a fence.
+  // Keep those wrappers from consuming the result's preview budget.
+  const readBody = data.tool === "read" && data.filePath && text.startsWith(`Read ${data.filePath} `)
+    ? /^Read [^\r\n]+ — \d+ total lines?\r?\n\r?\n```[^\r\n]*\r?\n([\s\S]*?)\r?\n```\s*$/.exec(text)?.[1]
+    : undefined;
+  return snippet(readBody ?? text, 6, 800);
 }
 
 function previewController(doc: Document, data: ToolCalloutData, tokens: ExtendedThemeTokens) {
@@ -87,7 +92,7 @@ function previewController(doc: Document, data: ToolCalloutData, tokens: Extende
         position: "fixed", pointerEvents: "none", zIndex: "10000", boxSizing: "border-box",
         width: "420px", maxWidth: `${view.innerWidth - 16}px`, maxHeight: `${Math.min(200, view.innerHeight - 16)}px`,
         overflow: "hidden", padding: "10px 12px", borderRadius: "8px",
-        border: `1px solid ${tokens.borderSubtle}`, background: tokens.surface1,
+        border: `1px solid ${tokens.border}`, backgroundColor: tokens.surface0,
         color: tokens.foreground, boxShadow: "0 6px 24px rgba(0, 0, 0, 0.2)",
         fontFamily: tokens.fontUi, fontSize: `${tokens.fs(12)}px`, lineHeight: "1.4",
         whiteSpace: "pre-wrap", overflowWrap: "anywhere",
@@ -99,7 +104,6 @@ function previewController(doc: Document, data: ToolCalloutData, tokens: Extende
       if (data.filePath) {
         const path = doc.createElement("div");
         path.textContent = snippet(data.filePath, 1, 200);
-        path.style.color = tokens.foregroundMuted;
         node.appendChild(path);
       }
       const output = doc.createElement("div");

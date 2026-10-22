@@ -1,0 +1,48 @@
+{
+  "style": "hermes",
+  "provenance": "Sanitized read-only projected timeline. Item keys, types, nesting, metadata and read envelope line count match the capture. All prose, paths and identifiers are fictional.",
+  "items": [
+    {
+      "type": "user_message",
+      "text": "Inspect the sample project and summarize the result.",
+      "messageId": "sample-hover-prompt"
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-hover-shell",
+      "name": "execute",
+      "detail": {
+        "type": "shell",
+        "command": "terminal: git status --short",
+        "output": "Sample directory listing\nsample.js\nsample.test.js\npackage.json\nsrc\ntest"
+      },
+      "metadata": {
+        "kind": "execute",
+        "title": "terminal: git status --short"
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-hover-read",
+      "name": "read",
+      "detail": {
+        "type": "read",
+        "filePath": "/workspace/sample/src/sample.js",
+        "content": "Read /workspace/sample/src/sample.js \u2014 3 total lines\n\n```\n1|export function sampleTotal(items) {\n2|  return items.reduce((sum, item) => sum + item.cost, 0);\n3|}\n```"
+      },
+      "metadata": {
+        "kind": "read",
+        "title": "read_file: /workspace/sample/src/sample.js"
+      },
+      "status": "completed",
+      "error": null
+    },
+    {
+      "type": "assistant_message",
+      "text": "The sample result is ready.",
+      "messageId": "sample-hover-reply"
+    }
+  ]
+}

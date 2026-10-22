@@ -15,7 +15,11 @@ restores the original expand/collapse behavior, including saved per-call choices
 At widths of 744px and above, collapsed rows occupy 26px including their borders and vertical spacing.
 
 On web at widths of at least 1024px, a mouse hovering over a collapsed row for
-300ms shows its summary and the first four output lines. Touch and pen input
+300ms shows its summary, file path when present and the first six output lines.
+Projected read results omit their repeated path header and code fences so file
+lines receive the same preview budget. Longer results end with an ellipsis.
+The preview uses the opaque host surface with a border and shadow in both themes,
+including when frosted glass is enabled. Touch and pen input
 never trigger this preview, even on a device with an attached mouse. The
 preview sits above the row when possible; near the top edge it moves to the
 side of the pointer so the next row remains visible beneath it. It accepts no

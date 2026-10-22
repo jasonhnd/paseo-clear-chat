@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const { createToolHarness } = require("./helpers/tool-harness.cjs");
 const fixture = require("./fixtures/real-hermes-session.json");
+const capturedHover = require("./fixtures/real-hermes-hover.json");
 
 const calls = fixture.items.filter(item => item.type === "tool_call");
 const find = (h, tree) => h.nodes(tree, node => node.props.testID === "tool-summary-row")[0];
@@ -53,15 +54,64 @@ function hoverDocument(width = 1440, mouse = true) {
   };
 }
 
-function mount(width = 1440, platform = "web", mouse = true, item = calls[0]) {
+function mount(width = 1440, platform = "web", mouse = true, item = calls[0], options = {}) {
   const dom = hoverDocument(width, mouse);
-  const h = createToolHarness(platform, { width, globals: { document: dom.doc } });
+  const h = createToolHarness(platform, { ...options, width, globals: { document: dom.doc } });
   const mounted = h.mount(item, false);
   const row = find(h, mounted.tree);
   const enter = (pointerType = "mouse") => row.props.onPointerEnter?.({
     currentTarget: dom.target, nativeEvent: { pointerType, clientX: 200, clientY: 370 },
   });
   return { ...dom, h, mounted, row, enter };
+}
+
+const themes = {
+  light: { surface0: "#ffffff", foreground: "#17171a", foregroundMuted: "#62656c", accent: "#365fbd", accentForeground: "#ffffff", statusDanger: "#bb2233" },
+  dark: { surface0: "#0f0f11", foreground: "#f2f3f5", foregroundMuted: "#a3a6ad", accent: "#7aa2f7", accentForeground: "#0f0f11", statusDanger: "#f2555a" },
+};
+
+for (const [theme, colors] of Object.entries(themes)) {
+  for (const frostedGlass of [false, true]) {
+    test(`${theme} hover uses an opaque theme surface with glass ${frostedGlass}`, () => {
+      const m = mount(1440, "web", true, capturedHover.items[2], {
+        themeTokens: true, themeColors: colors, preferences: { frostedGlass },
+      });
+      m.enter(); m.tick(300);
+      const preview = m.preview();
+      assert.ok(preview);
+      const background = preview.style.backgroundColor ?? preview.style.background;
+      const alpha = background.startsWith("rgba(") ? Number(background.slice(5, -1).split(",")[3]) : 1;
+      assert.equal(alpha, 1);
+      assert.equal(background, colors.surface0);
+      assert.ok(preview.style.border);
+      assert.ok(preview.style.boxShadow);
+      m.h.unmount();
+    });
+  }
+}
+
+test("the captured read envelope shows the path and every short result line", () => {
+  const m = mount(1440, "web", true, capturedHover.items[2]);
+  m.enter(); m.tick(300);
+  const preview = m.preview();
+  assert.match(preview.textContent, /\/workspace\/sample\/src\/sample\.js/);
+  assert.equal(preview.children.at(-1).textContent,
+    "1|export function sampleTotal(items) {\n2|  return items.reduce((sum, item) => sum + item.cost, 0);\n3|}");
+  m.h.unmount();
+});
+
+for (const name of ["read", "read_file"]) {
+  test(`${name} keeps six result lines and marks omitted lines`, () => {
+    const item = { ...capturedHover.items[2], name, detail: {
+      type: "read", filePath: "/workspace/sample/src/sample.js",
+      content: Array.from({ length: 8 }, (_, i) => `Result line ${i + 1}`).join("\n"),
+    } };
+    const m = mount(1440, "web", true, item);
+    m.enter(); m.tick(300);
+    assert.equal(m.preview().children.at(-1).textContent,
+      "Result line 1\nResult line 2\nResult line 3\nResult line 4\nResult line 5\nResult line 6\n…");
+    m.h.unmount();
+  });
 }
 
 for (const width of [1440, 1024]) {
@@ -76,7 +126,8 @@ for (const width of [1440, 1024]) {
     assert.ok(preview);
     assert.match(preview.textContent, /\$ git log/);
     assert.match(preview.textContent, /Sample text line 1\./);
-    assert.doesNotMatch(preview.textContent, /Sample text line 5\./);
+    assert.match(preview.textContent, /Sample text line 6\./);
+    assert.doesNotMatch(preview.textContent, /Sample text line 7\./);
     assert.equal(preview.style.pointerEvents, "none");
     assert.equal(m.row.props.accessibilityState.expanded, false);
     assert.equal(m.h.expansionHost.calls.filter(call => call.name === "write").length, 0);
@@ -195,7 +246,7 @@ test("detached or recycled rows cannot leave stale previews", () => {
   m.h.unmount();
 });
 
-for (const [label, output, truncated] of [["short CRLF", "One\r\nTwo", false], ["four lines", "One\nTwo\nThree\nFour", false], ["large single line", "Sample ".repeat(10000), true]]) {
+for (const [label, output, truncated] of [["short CRLF", "One\r\nTwo", false], ["six lines", "One\nTwo\nThree\nFour\nFive\nSix", false], ["large single line", "Sample ".repeat(10000), true]]) {
   test(`${label} output reports truncation only when content is omitted`, () => {
     const item = { ...calls[0], detail: { ...calls[0].detail, output } };
     const m = mount(1440, "web", true, item);
