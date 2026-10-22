@@ -2,13 +2,14 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const { createToolHarness } = require("./helpers/tool-harness.cjs");
 const hermes = require("./fixtures/real-hermes-hover.json").items.find(item => item.detail?.type === "read");
+const hermesPlain = require("./fixtures/real-hermes-session.json").items.find(item => item.detail?.type === "read");
 const offset = require("./fixtures/hermes-offset-read.json").item;
 const claude = require("./fixtures/real-claude-turn-timing.json").find(entry => entry.item.detail?.type === "read").item;
 const codex = require("./fixtures/codex-session.json").items.find(item => item.detail?.type === "read");
 const byId = (h, tree, id) => h.nodes(tree, node => node.props.testID === id)[0];
 
 for (const platform of ["web", "ios", "android"]) {
-  for (const [source, item, first] of [["Hermes offset", offset, 50], ["Hermes whole", hermes, 1], ["Claude", claude, 1], ["Codex", codex, 1]]) {
+  for (const [source, item, first] of [["Hermes offset", offset, 50], ["Hermes whole", hermes, 1], ["Hermes plain", hermesPlain, 1], ["Claude", claude, 1], ["Codex", codex, 1]]) {
     test(`${platform}: ${source} projected item keeps file numbers outside selectable content and Copy output`, async t => {
       const h = createToolHarness(platform, { preferences: { collapsedStepAction: "details" } });
       t.after(() => h.unmount());
@@ -62,4 +63,14 @@ test("unwrapped file content keeps numeric pipe text and trailing newlines verba
   assert.equal(parsed.text, text);
   assert.deepEqual(parsed.lines.map(line => line.lineNumber), [1, 2, 3]);
   assert.equal(parsed.lines.map(line => line.text).join(""), text);
+});
+
+
+test("source numbers are retained per line rather than inferred from the first prefix", t => {
+  const h = createToolHarness("web");
+  t.after(() => h.unmount());
+  const { readOutputLines } = h.load("client/read-output.ts");
+  const parsed = readOutputLines({ tool: "read", filePath: "sample.txt" }, "Read sample.txt — 80 total lines\n\n```\n50|first\n72|middle\n80|last\n```");
+  assert.deepEqual(parsed.lines.map(line => line.lineNumber), [50, 72, 80]);
+  assert.equal(parsed.text, "first\nmiddle\nlast");
 });
