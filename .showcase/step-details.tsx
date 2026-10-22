@@ -50,7 +50,7 @@ function Preview() {
   return <div style={{ display: "flex", flexDirection: "column", width: "100vw", height: "100vh", background: colors.surface0, color: colors.foreground, font: "14px system-ui" }}>
     <header data-testid="preview-host-header" style={{ height: 64, flexShrink: 0, padding: 20, borderBottom: `1px solid ${colors.border}` }}>Conversation</header>
     <main style={{ display: "flex", flex: 1, minHeight: 0 }}>
-    <div ref={chat} data-testid="preview-chat" style={{ flex: 1, minWidth: 0, padding: 16, overflow: "auto" }}>
+    <div key={location.pathname === "/host-remount" ? (width < TABLET_MIN ? "compact" : "wide") : "chat"} ref={chat} data-testid="preview-chat" style={{ flex: 1, minWidth: 0, padding: 16, overflow: "auto" }}>
       <div style={{ height: 460 }} aria-hidden="true" />
       <p>Offline component replay · sanitized conversation</p>
       {location.pathname === "/host-context" ? <button data-testid="preview-hydrate-workspace" onClick={hydratePreviewWorkspace}>Hydrate workspace context</button> : null}
@@ -80,7 +80,7 @@ function Preview() {
       </button>
       <div style={{ height: 700 }}>Later conversation</div>
     </div>
-    {showPanel ? <aside data-testid="preview-host-panel" style={{ width: "40vw", maxWidth: 440, flexShrink: 0, display: width >= DESKTOP_MIN ? "flex" : "none", flexDirection: "column", borderLeft: `1px solid ${colors.border}` }}>
+    {showPanel ? <aside key={location.pathname === "/host-remount" ? (width < TABLET_MIN ? "compact" : "wide") : "panel"} data-testid="preview-host-panel" style={{ width: "40vw", maxWidth: 440, flexShrink: 0, display: width >= DESKTOP_MIN ? "flex" : "none", flexDirection: "column", borderLeft: `1px solid ${colors.border}` }}>
       <button data-testid="preview-host-close" onClick={() => { visible = false; publish(); }}>Close host panel</button>
       <Component host={host} agentId="demo-agent" workspaceId="demo-workspace" context="agent" layout={{ compact: false, platform: "web" }} theme={{ colors }} />
     </aside> : null}
