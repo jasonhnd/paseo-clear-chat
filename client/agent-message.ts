@@ -14,20 +14,33 @@ const labels = {
 const deliverySchema = z.object({
   event: z.enum(["message", "finished", "errored", "permission-required", "closed"]),
   sender: z.object({ id: z.string().min(1), title: z.string().min(1).optional() }),
-  text: z.string(),
+  text: z.string().optional(),
 });
+
+export type AgentDelivery = z.infer<typeof deliverySchema>;
+
+export function parseAgentDelivery(value: unknown): AgentDelivery | undefined {
+  const parsed = deliverySchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+/** The reserved ID identifies a delivery, never its sender. */
+export function isAgentMessageCall(data: LiveToolCallPayload): boolean {
+  const prefix = "paseo-agent-message:";
+  return data.name === "agent_message" && Boolean(data.callId?.startsWith(prefix) && data.callId.length > prefix.length);
+}
 
 /** Paseo projects delivered prompts as compatibility tool calls, not provider tools. */
 export function agentMessageCallout(data: LiveToolCallPayload): ToolCalloutData | undefined {
-  const parsed = deliverySchema.safeParse(data.agentMessage);
-  if (!parsed.success) return undefined;
-  const message = parsed.data;
-  const sender = (message.sender.title ?? message.sender.id).replace(/\s+/g, " ").trim();
-  const text = `From agent: ${message.sender.id}\n\n${message.text}`;
+  const message = parseAgentDelivery(data.agentMessage);
+  if (!message && !isAgentMessageCall(data)) return undefined;
+  const sender = message && ((message.sender.title ?? "").replace(/\s+/g, " ").trim() || message.sender.id);
+  const body = message?.text ?? (typeof data.detail?.text === "string" ? data.detail.text : "");
+  const text = message ? `From agent: ${message.sender.id}\n\n${body}` : body;
   return {
     id: data.callId ?? "agent-delivery",
     tool: "plain_text",
-    title: `${labels[message.event]} · ${sender}`,
+    title: message ? `${labels[message.event]} · ${sender}` : labels.message,
     status: toolStatus(data.status),
     agentMessage: true,
     plainText: text,

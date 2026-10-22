@@ -602,6 +602,19 @@ JSON persistence, malformed input and independent 4.5:1 calculations across
 light and dark themes. The browser replay is described in the
 [offline harness guide](../.showcase/README.md).
 
+16. **Some hosts strip delivered-message provenance.** The plugin timeline projection can retain
+    `type`, `callId`, `name`, `detail`, `status`, and `error` while dropping `agentMessage`.
+    The reserved `paseo-agent-message:` call ID and `agent_message` name identify a delivery;
+    the ID suffix identifies the message, never its sender. The renderer recovers provenance
+    through the read-only canonical timeline API, sharing a bounded cache per host and agent
+    revision. Until that read succeeds, the row says **Message received** and preserves the
+    projected plain-text body. A missing sender title falls back to the sender ID, and a
+    missing structured body falls back to `detail.text`.
+
+Regression tests must include the item shape passed by the host to the registered transformer
+and renderer. Feeding a complete wire fixture directly to a transformer does not exercise SDK
+projection; fixtures alone cannot prove that the host preserves a field.
+
 ## Project structure
 
 ```text

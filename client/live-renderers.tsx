@@ -43,6 +43,7 @@ import { extractGeneratedImages, type GeneratedImage } from "./generated-images"
 import type { ApprovalStatus } from "./tool-approval";
 import { Glyph } from "./components/glyph";
 import { useReplyDuration } from "./reply-duration";
+import { useProjectedAgentMessage } from "./projected-agent-message";
 import { stepDetailPresentation } from "./breakpoints";
 import { StepDetailPanel } from "./components/step-detail-panel";
 import { createStepDetailState } from "./components/step-detail-state";
@@ -125,7 +126,9 @@ export function LiveToolCallRenderer({
   );
   useSelectionActions(tokens, preferences.selectionActions);
   usePointerGlow(preferences.pointerGlow);
-  const data = item.data;
+  const recoveredMessage = useProjectedAgentMessage(host.id, agentId, item.data);
+  const data = useMemo(() => recoveredMessage ? { ...item.data, agentMessage: recoveredMessage } : item.data,
+    [item.data, recoveredMessage]);
 
   const calloutData = useMemo(() => buildLiveToolCallData(data), [data]);
   const durationMs = useReplyDuration(host.id, agentId, timestamp,
