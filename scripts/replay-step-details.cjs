@@ -18,6 +18,12 @@ const work = join(temp, "step-detail-browser");
 mkdirSync(work, { recursive: true });
 const fixture = JSON.parse(readFileSync(join(root, "test/fixtures/real-claude-session.json"), "utf8"));
 const sample = fixture.items.find(item => item.type === "tool_call" && item.detail.type === "shell" && item.status === "completed");
+// Preserve the sanitized real shell shape, with deterministic long output for scrolling.
+const longSamples = ["A", "B"].map(label => ({
+  ...sample, callId: `sample-step-${label}`,
+  detail: { ...sample.detail, command: `printf 'Step ${label} start'`,
+    output: [`Step ${label} start`, ...Array.from({ length: 160 }, (_, index) => `Step ${label} output line ${index + 1}`)].join("\n") },
+}));
 
 async function debugPort() {
   for (let port = 9444; port <= 9499; port++) {
@@ -44,10 +50,10 @@ async function replay() {
     },
     nodePaths: [join(preview, "node_modules")],
   });
-  const html = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body,#root{margin:0;width:100%;height:100%}*{box-sizing:border-box}</style></head><body><div id="root"></div><script>window.__stepDetailSample=${JSON.stringify(sample).replace(/</g, "\\u003c")}</script><script src="/preview.js"></script></body></html>`;
+  const html = samples => `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body,#root{margin:0;width:100%;height:100%}*{box-sizing:border-box}</style></head><body><div id="root"></div><script>window.__stepDetailSamples=${JSON.stringify(samples).replace(/</g, "\\u003c")}</script><script src="/preview.js"></script></body></html>`;
   const server = createServer((request, response) => {
     response.setHeader("Content-Type", request.url === "/preview.js" ? "text/javascript" : "text/html");
-    response.end(request.url === "/preview.js" ? bundle.outputFiles[0].contents : html);
+    response.end(request.url === "/preview.js" ? bundle.outputFiles[0].contents : html(request.url === "/switching" ? longSamples : [sample]));
   });
   let browser;
   const report = [];
@@ -72,6 +78,41 @@ async function replay() {
         return rect && rect.top >= 0 && rect.bottom <= innerHeight + 1;
       });
     };
+    async function detailScroll(top) {
+      return panel.evaluate((element, top) => {
+        const scroll = Array.from(element.querySelectorAll("div")).find(node =>
+          ["auto", "scroll"].includes(getComputedStyle(node).overflowY) && node.clientHeight > 0);
+        if (!scroll) throw new Error("Step details must have a scrollable body");
+        if (top !== undefined) scroll.scrollTop = top;
+        const body = element.querySelector('[data-testid="tool-card-body"]');
+        return { top: scroll.scrollTop, height: scroll.clientHeight, contentHeight: scroll.scrollHeight,
+          bodyTop: body.getBoundingClientRect().top, viewportTop: scroll.getBoundingClientRect().top };
+      }, top);
+    }
+    for (const width of [1440, 1024]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.goto(`http://127.0.0.1:${server.address().port}/switching`, { waitUntil: "networkidle" });
+      const rows = page.getByTestId("tool-summary-row");
+      await rows.nth(0).click();
+      await waitOpen();
+      assert.ok((await panel.textContent()).includes("Step A start"));
+      assert.equal((await detailScroll(1000)).top, 1000, "Long step A must scroll before switching");
+      await page.getByTestId("preview-update-step").click();
+      await panel.getByText("Updated sample output", { exact: false }).waitFor();
+      assert.equal((await detailScroll()).top, 1000, "Output updates to the same step must preserve the reader's position");
+      await rows.nth(1).click();
+      assert.ok((await panel.textContent()).includes("Step B start"));
+      const next = await detailScroll();
+      assert.equal(next.top, 0, "Switching from scrolled step A to step B must show B from the top");
+      assert.ok(next.bodyTop >= next.viewportTop && next.bodyTop < next.viewportTop + next.height, "Step B's beginning must be in view");
+      await detailScroll(1000);
+      await rows.nth(0).click();
+      assert.ok((await panel.textContent()).includes("Step A start"));
+      assert.equal((await detailScroll()).top, 0, "Switching back to step A must also start at the top");
+      assert.equal(await rows.nth(0).getAttribute("aria-expanded"), "false");
+      assert.equal(await rows.nth(1).getAttribute("aria-expanded"), "false");
+      report.push({ width, stepSwitching: "A -> B -> A starts at top", liveOutputUpdate: "keeps scrollTop 1000" });
+    }
     for (const [width, presentation] of [[1440, "side"], [1024, "side"], [820, "popover"], [390, "sheet"]]) {
       await page.setViewportSize({ width, height: 844 });
       await page.goto(`http://127.0.0.1:${server.address().port}/`, { waitUntil: "networkidle" });
