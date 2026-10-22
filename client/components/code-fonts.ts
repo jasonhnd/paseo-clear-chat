@@ -4,7 +4,7 @@ export const fontMono = "OMP Iosevka";
 export const fontCode = "OMP Iosevka Code";
 
 export const CODE_FONT_OPTIONS: ReadonlyArray<{ value: CodeFontFamilyPreference; label: string }> = [
-  { value: "host", label: "Follow Paseo" },
+  { value: "host", label: "Default (Iosevka)" },
   { value: "iosevka", label: "Iosevka" },
   { value: "menlo", label: "Menlo" },
   { value: "consolas", label: "Consolas" },
@@ -38,7 +38,7 @@ export function resolveCodeFonts(
     const resolved = codeFontAlias(family);
     return { mono: resolved, code: resolved };
   }
-  // SDK 0.8.0 exposes theme colours only, with no host code-font preference.
-  // Follow Paseo therefore keeps the existing Iosevka glyph choice as fallback.
+  // The plugin SDK exposes no host code-font preference.
+  // Default (Iosevka) keeps the existing Iosevka glyph choice.
   return { mono: fontMono, code: preferences.codeFont === "plain" ? fontMono : fontCode };
 }

@@ -414,7 +414,7 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
 
         <ChoiceRow
           title="Code font"
-          description="Paseo's code font is not exposed by plugin SDK 0.8.0. Follow Paseo uses Iosevka and your Code glyphs choice. Other fonts must be installed on web or desktop; missing fonts use Iosevka. iOS and Android use platform monospace."
+          description="Paseo's code font is not exposed by the plugin SDK. Default (Iosevka) uses Iosevka and your Code glyphs choice. Other fonts must be installed on web or desktop; missing fonts use Iosevka. iOS and Android use platform monospace."
           value={preferences.codeFontFamily}
           options={CODE_FONT_OPTIONS}
           onChange={(codeFontFamily) => updateEnhancerPreferences({ codeFontFamily })}

@@ -295,9 +295,10 @@ timestamp, item}`, and plugin navigation offers only `openSettings`, `openSurfac
     data attribute.
 11. **No font registration or host code-font API.** In SDK 0.8.0, `PluginTheme` in
     `dist/contracts.d.ts` exposes only `colors`; `PluginHostProps` and `PluginClientContext`
-    in `dist/client/contracts.d.ts` provide no appearance font getter. **Follow Paseo** is the
-    default choice and falls back to the existing `codeFont` glyph preference (Iosevka with
-    ligatures or literal glyphs). It does not read undocumented host CSS or browser storage.
+    in `dist/client/contracts.d.ts` provide no appearance font getter. **Default (Iosevka)** is the
+    default choice and uses Iosevka with the existing `codeFont` glyph preference
+    (ligatures or literal glyphs). The persisted value remains `host` for compatibility;
+    it does not synchronize with Paseo appearance or read undocumented host CSS or browser storage.
     `codeFontFamily` is an optional preference in settings version 2. Version 1.0.1 accepts
     extra object keys but strips them when parsing; saving settings from that older client
     can discard the new font-family choice. Existing `codeFont` values remain compatible.

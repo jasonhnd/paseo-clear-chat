@@ -88,11 +88,11 @@ async function portAvailable(port) {
     page.on('pageerror', error => { pageErrors.push(error.message); console.error('PAGE ERROR:', error.stack); });
     await page.route('**/*', route => route.request().url().startsWith(`http://127.0.0.1:${server.address().port}/`) ? route.continue() : route.abort());
     const report = [];
-    const options = [['Follow Paseo', 'host'], ['Iosevka', 'iosevka'], ['Menlo', 'menlo'], ['Consolas', 'consolas'], ['Fira Code', 'fira-code'], ['Cascadia Code', 'cascadia-code']];
+    const options = [['Default (Iosevka)', 'host'], ['Iosevka', 'iosevka'], ['Menlo', 'menlo'], ['Consolas', 'consolas'], ['Fira Code', 'fira-code'], ['Cascadia Code', 'cascadia-code']];
     for (const width of [1440, 1024, 820, 390]) for (const theme of ['dark', 'light']) {
       await page.setViewportSize({ width, height: 1000 });
       await page.goto(`http://127.0.0.1:${server.address().port}/?theme=${theme}`);
-      await page.getByRole('button', { name: 'Follow Paseo', exact: true }).waitFor();
+      await page.getByRole('button', { name: 'Default (Iosevka)', exact: true }).waitFor();
       for (const [label, id] of options) {
         await page.getByRole('button', { name: label, exact: true }).click();
         await page.evaluate(async () => { await document.fonts.ready; await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); });
@@ -108,7 +108,7 @@ async function portAvailable(port) {
           const canvas = document.createElement('canvas').getContext('2d');
           canvas.font = `12px "${codeFont}"`;
           const widths = [...'iWM1l.@#'].map(letter => canvas.measureText(letter).width);
-          const controls = [...document.querySelectorAll('[role="button"]')].filter(node => ['Follow Paseo','Iosevka','Menlo','Consolas','Fira Code','Cascadia Code'].includes(node.textContent));
+          const controls = [...document.querySelectorAll('[role="button"]')].filter(node => ['Default (Iosevka)','Iosevka','Menlo','Consolas','Fira Code','Cascadia Code'].includes(node.textContent));
           return { width, theme, id, faces, uniform: Math.max(...widths) - Math.min(...widths) < 0.01,
             scrollWidth: document.documentElement.scrollWidth,
             controlsFit: controls.length === 6 && controls.every(node => { const r = node.getBoundingClientRect(); return r.left >= 0 && r.right <= width; }) };
