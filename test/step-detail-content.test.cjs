@@ -111,6 +111,23 @@ test("copy rejection retains the complete output in the selectable fallback", as
   h.unmount();
 });
 
+test("virtual cell measurements do not restore an obsolete reading position during scrolling", () => {
+  const h = harness("web");
+  const mounted = h.mount(shell);
+  const scroll = byId(h, mounted.tree, "step-detail-scroll");
+  const restores = [];
+  scroll.props.ref.current = { scrollToOffset: value => restores.push(value) };
+  scroll.props.onLayout({ nativeEvent: { layout: { width: 390, height: 340 } } });
+  scroll.props.onContentSizeChange(390, 20000);
+  restores.length = 0;
+  scroll.props.onScroll({ nativeEvent: { contentOffset: { y: 250 } } });
+  scroll.props.onContentSizeChange(390, 20100);
+  assert.deepEqual(restores, [], "Measuring newly mounted cells must leave the active scroll alone");
+  scroll.props.onLayout({ nativeEvent: { layout: { width: 680, height: 600 } } });
+  assert.deepEqual(restores, [{ offset: 250, animated: false }], "Viewport changes restore the last reading position");
+  h.unmount();
+});
+
 test("bounded chunks preserve all characters, CRLF, tabs, blank lines and supplementary Unicode", () => {
   const h = harness("web");
   const { stepTextChunks } = h.load("client/step-detail-data.ts");
