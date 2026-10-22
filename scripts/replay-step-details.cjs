@@ -24,6 +24,7 @@ fieldSamples.push({ ...sample, callId: "sample-explicit-streams", detail: { type
   output: { stdout: " sample stdout\n  ", stderr: " sample stderr\n  ", exitCode: 0 } } });
 fieldSamples.push(JSON.parse(readFileSync(join(root, "test/fixtures/real-hermes-step-menu.json"), "utf8")).items[0]);
 const fieldsOnly = process.argv.includes("--fields-only");
+const inputsOnly = process.argv.includes("--inputs-only");
 // Preserve the sanitized real shell shape, with deterministic long output for scrolling.
 const longSamples = ["A", "B"].map(label => ({
   ...sample, callId: `sample-step-${label}`,
@@ -82,7 +83,7 @@ async function replay() {
     const origin = `http://127.0.0.1:${server.address().port}`;
     const port = await debugPort();
     browser = await chromium.launchPersistentContext(join(work, "profile"), {
-      channel: "chrome", headless: true, viewport: { width: 1440, height: 844 }, hasTouch: true,
+      channel: "chrome", headless: true, viewport: { width: 1440, height: 844 }, hasTouch: !inputsOnly,
       reducedMotion: "reduce", args: [`--remote-debugging-port=${port}`, "--disable-background-networking", "--no-first-run"],
     });
     browser.setDefaultTimeout(15000);
@@ -162,6 +163,78 @@ async function replay() {
         throw error;
       }
       return detailScroll();
+    }
+    if (inputsOnly) {
+      // Keep metrics, navigation and real inputs on one session. Disconnecting
+      // the metrics owner restores Chrome's original viewport.
+      const input = await browser.newCDPSession(page);
+      await input.send("Page.enable");
+      await input.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await input.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+      await input.send("Page.navigate", { url: `${origin}/keyboard` });
+      await row.first().waitFor();
+      const key = async (key, code) => {
+        for (const type of ["rawKeyDown", "keyUp"]) await input.send("Input.dispatchKeyEvent", {
+          type, key, code: key, windowsVirtualKeyCode: code, nativeVirtualKeyCode: code,
+        });
+      };
+      const mouse = (type, x, y, button = "none") => input.send("Input.dispatchMouseEvent", {
+        type, x, y, button, clickCount: button === "none" ? 0 : 1,
+      });
+      const click = async (x, y, button = "left") => {
+        await mouse("mouseMoved", x, y);
+        await mouse("mousePressed", x, y, button);
+        await mouse("mouseReleased", x, y, button);
+      };
+      for (let trial = 1; trial <= 5; trial++) {
+        await row.first().evaluate(node => {
+          const chat = document.querySelector('[data-testid="preview-chat"]');
+          chat.scrollTop += node.getBoundingClientRect().top + node.getBoundingClientRect().height / 2 - 420;
+        });
+        await page.waitForFunction(() => {
+          const rect = document.querySelector('[data-testid="tool-summary-row"]').getBoundingClientRect();
+          return Math.abs(rect.top + rect.height / 2 - 420) < 1;
+        });
+        assert.equal(await page.evaluate(() => innerWidth), 1440);
+        assert.equal((await page.getByTestId("preview-host-header").boundingBox()).height, 64);
+        assert.ok(await page.getByTestId("preview-chat").evaluate(node => node.scrollTop) > 0);
+        await click(720, 420, "right");
+        const menu = page.getByTestId("tool-step-menu");
+        await menu.waitFor();
+        await page.waitForFunction(() => getComputedStyle(document.querySelector('[data-testid="tool-step-menu"]')).opacity === "1");
+        const box = await menu.boundingBox();
+        assert.ok(Math.abs(box.x - 720) <= 8 && Math.abs(box.y - 420) <= 8, JSON.stringify(box));
+        await key("Escape", 27);
+        await menu.waitFor({ state: "detached" });
+        await mouse("mouseMoved", 5, 5);
+        await mouse("mouseMoved", 720, 420);
+        const preview = page.getByTestId("tool-hover-preview");
+        await preview.waitFor({ timeout: 1500 });
+        const hover = await preview.evaluate(node => ({ opacity: getComputedStyle(node).opacity,
+          background: getComputedStyle(node).backgroundColor, pointerEvents: getComputedStyle(node).pointerEvents }));
+        assert.equal(hover.opacity, "1");
+        assert.ok(!["transparent", "rgba(0, 0, 0, 0)"].includes(hover.background));
+        assert.equal(hover.pointerEvents, "none");
+        await mouse("mouseMoved", 5, 5);
+        await preview.waitFor({ state: "detached" });
+        await click(720, 420);
+        await waitOpen();
+        await key("Escape", 27);
+        await waitClosed();
+        await key("ArrowDown", 40);
+        assert.equal(await row.nth(1).evaluate(node => node === document.activeElement), true);
+        await key("ArrowUp", 38);
+        assert.equal(await row.first().evaluate(node => node === document.activeElement), true);
+        await key("Enter", 13);
+        await waitOpen();
+        await key("Escape", 27);
+        await waitClosed();
+        report.push({ trial, menu: { dx: box.x - 720, dy: box.y - 420 }, hover, keyboard: "pass" });
+      }
+      assert.deepEqual(errors, []);
+      console.log(JSON.stringify(report, null, 2));
+      writeFileSync(join(temp, "step-input-report.json"), JSON.stringify(report, null, 2) + "\n");
+      return;
     }
     for (const width of [1440, 1024, 820, 390]) {
       await page.setViewportSize({ width, height: 844 });
