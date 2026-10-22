@@ -123,7 +123,7 @@ function createToolHarness(platform = "ios", options = {}) {
     stubs["client/highlight"] = { useHighlightedLines: () => null };
   }
   if (options.userMessage) delete stubs["client/components/user-message"];
-  if (options.syntax || options.userMessage) {
+  if ((options.syntax || options.userMessage) && !options.copyFeedback) {
     stubs["client/components/copy-feedback"] = {
       useCopyText: () => ({ copied: false, handleCopy: noop, fallbackText: null, setFallbackText: noop }),
       CopyFallbackDialog: noop, copyTouchTarget: {},
