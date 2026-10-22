@@ -355,7 +355,11 @@ neutral, code and accent-tinted backgrounds over the host surface. If the
 requested colour passes 4.5:1 on those surfaces, it stays exact. Otherwise, the
 display colour moves in 1/255 sRGB blend steps towards black on a light surface
 or white on a dark surface, stopping at the first passing step. If that
-direction has no passing step, the opposite direction is tried. Filled accent
+direction has no passing step, the opposite direction is tried. If neither
+direction passes on a midtone theme, neutral, code and accent-tinted surfaces
+use the solid host background, with whichever of black or white has higher
+contrast as the accent. This avoids incompatible light and dark backdrops for
+one text colour. Filled accent
 buttons choose black or white text, whichever has higher contrast. Host and
 preset colours keep their previous behaviour. Existing renderers subscribe to
 preferences, so mounted cards receive the new tokens without retransformation.

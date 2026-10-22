@@ -100,7 +100,7 @@ function CustomAccentPicker({ value, tokens }: { value: string; tokens: Extended
       </View>
       {error ? <Text accessibilityRole="alert" style={[styles.rowDescription, { color: tokens.foreground, fontFamily: tokens.fontUi }]}>{error}</Text> : null}
       <Text style={[styles.rowDescription, { color: tokens.foregroundMuted, fontFamily: tokens.fontUi }]}>
-        The saved HEX stays unchanged. For readable text, we darken it on light themes or lighten it on dark themes until contrast is at least 4.5:1 on plugin surfaces. Filled buttons use black or white text, whichever has higher contrast.
+        The saved HEX stays unchanged. For readable text, we darken it on light themes or lighten it on dark themes until contrast is at least 4.5:1 on plugin surfaces. Filled buttons use black or white text, whichever has higher contrast. Midtone themes may use solid backgrounds to keep that contrast.
       </Text>
     </View>
   );

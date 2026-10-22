@@ -180,7 +180,7 @@ function contrast(first: string, second: string): number {
 }
 
 /** Preserve the requested colour when readable; otherwise mix towards black or white. */
-function accessibleAccent(requested: string, colors: PluginSurfaceColors, isDark: boolean): string {
+function accessibleAccent(requested: string, colors: PluginSurfaceColors, isDark: boolean): { accent: string; solidSurfaces: boolean } {
   const base = colors.surface0;
   // Check text on neutral surfaces and on tinted labels. Include two raised
   // layers so a label nested inside a card has the same contrast guarantee.
@@ -191,7 +191,7 @@ function accessibleAccent(requested: string, colors: PluginSurfaceColors, isDark
   const readable = (color: string) => surfaces.every((surface) =>
     contrast(color, surface) >= 4.5 &&
     contrast(color, composite(withAlpha(color, isDark ? 0.14 : 0.1), surface)) >= 4.5);
-  if (readable(requested)) return requested;
+  if (readable(requested)) return { accent: requested, solidSurfaces: false };
   const targets = isDark ? ["#ffffff", "#000000"] : ["#000000", "#ffffff"];
   for (const target of targets) {
     if (!readable(target)) continue;
@@ -203,9 +203,14 @@ function accessibleAccent(requested: string, colors: PluginSurfaceColors, isDark
       if (readable(mix(requested, target, step / 255))) high = step;
       else low = step + 1;
     }
-    return mix(requested, target, low / 255);
+    return { accent: mix(requested, target, low / 255), solidSurfaces: false };
   }
-  return targets[0]!;
+  // On midtone themes, dark code surfaces and light raised surfaces can need
+  // opposite text colours. Use one solid host surface instead of returning
+  // a colour that failed the contrast check. Black or white always passes
+  // 4.5:1 against a single opaque sRGB background.
+  const accent = contrast(base, "#ffffff") >= contrast(base, "#000000") ? "#ffffff" : "#000000";
+  return { accent, solidSurfaces: true };
 }
 
 // PluginTheme only carries six colours, so every other surface is derived from
@@ -240,9 +245,11 @@ export function buildThemeTokens(
   const customAccent = preferences.customAccentEnabled
     ? preferences.customAccent ?? DEFAULT_PREFERENCES.customAccent
     : undefined;
-  const accent = customAccent
+  const custom = customAccent
     ? accessibleAccent(customAccent, colors, isDark)
-    : ACCENT_PRESETS[preferences.accent] ?? colors.accent;
+    : undefined;
+  const accent = custom?.accent ?? ACCENT_PRESETS[preferences.accent] ?? colors.accent;
+  const solidSurface = custom?.solidSurfaces ? colors.surface0 : undefined;
   const success = isDark ? "#4cb782" : "#1f8a5b";
   const warning = isDark ? "#d9a53f" : "#a36a00";
   const danger = colors.statusDanger;
@@ -260,21 +267,21 @@ export function buildThemeTokens(
     fs: (base) => Math.round(base * textScale * 2) / 2,
 
     surface0: colors.surface0,
-    surface1: withAlpha(fg, isDark ? 0.03 : 0.025),
-    surface2: withAlpha(fg, isDark ? 0.06 : 0.045),
-    surfaceCode: isDark ? "rgba(0, 0, 0, 0.22)" : withAlpha(fg, 0.03),
+    surface1: solidSurface ?? withAlpha(fg, isDark ? 0.03 : 0.025),
+    surface2: solidSurface ?? withAlpha(fg, isDark ? 0.06 : 0.045),
+    surfaceCode: solidSurface ?? (isDark ? "rgba(0, 0, 0, 0.22)" : withAlpha(fg, 0.03)),
     // Translucent so the blur behind them reads, but still dense enough to
     // keep text legible over whatever scrolls past.
-    surfaceGlass: preferences.frostedGlass
+    surfaceGlass: solidSurface ?? (preferences.frostedGlass
       ? withAlpha(colors.surface0, isDark ? 0.52 : 0.64)
-      : colors.surface0,
-    surfaceCodeGlass: preferences.frostedGlass
+      : colors.surface0),
+    surfaceCodeGlass: solidSurface ?? (preferences.frostedGlass
       ? isDark
         ? "rgba(0, 0, 0, 0.34)"
         : withAlpha(fg, 0.05)
       : isDark
         ? "rgba(0, 0, 0, 0.22)"
-        : withAlpha(fg, 0.03),
+        : withAlpha(fg, 0.03)),
 
     foreground: fg,
     foregroundMuted: colors.foregroundMuted,
@@ -284,7 +291,7 @@ export function buildThemeTokens(
     accentForeground: customAccent
       ? contrast(accent, "#ffffff") >= contrast(accent, "#000000") ? "#ffffff" : "#000000"
       : colors.accentForeground,
-    accentBg: withAlpha(accent, isDark ? 0.14 : 0.1),
+    accentBg: solidSurface ?? withAlpha(accent, isDark ? 0.14 : 0.1),
     userSurface: withAlpha(fg, isDark ? 0.1 : 0.06),
     userBorder: withAlpha(fg, isDark ? 0.14 : 0.12),
     userText: fg,
