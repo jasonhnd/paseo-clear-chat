@@ -20,6 +20,7 @@ export interface SelectedStepDetail {
 const PANEL_ID = "step-details";
 const selections = new Map<string, SelectedStepDetail>();
 const listeners = new Set<() => void>();
+const panelOwners = new Map<string, Set<object>>();
 let panelClient: PluginClientContext | undefined;
 const selectionKey = (hostId: string, agentId: string) => JSON.stringify([hostId, agentId]);
 const publish = () => { for (const listener of listeners) listener(); };
@@ -27,6 +28,12 @@ const subscribe = (listener: () => void) => { listeners.add(listener); return ()
 
 function clear(hostId: string, agentId: string) {
   if (selections.delete(selectionKey(hostId, agentId))) publish();
+}
+
+/** A recreated timeline row shares the reading state of its still-hosted step. */
+export function hostStepDetailState(hostId: string, agentId: string, detailKey: string) {
+  const selected = selections.get(selectionKey(hostId, agentId));
+  return selected?.key === detailKey ? selected.viewState : undefined;
 }
 
 /** Explorer hosting reserves space beside chat; no timeline or host DOM is resized. */
@@ -61,7 +68,24 @@ export function StepDetailHostPanel({ host, agentId, theme }: PluginAgentPanelPr
   const tokens = useMemo(() => buildThemeTokens(theme.colors, preferences), [theme.colors, preferences]);
   const { width } = useWindowDimensions();
   const selection = useSyncExternalStore(subscribe, () => selections.get(selectionKey(host.id, agentId)) ?? null, () => null);
-  useEffect(() => () => clear(host.id, agentId), [host.id, agentId]);
+  useEffect(() => {
+    const key = selectionKey(host.id, agentId);
+    const owners = panelOwners.get(key) ?? new Set<object>();
+    panelOwners.set(key, owners);
+    const token = {};
+    owners.add(token);
+    return () => {
+      owners.delete(token);
+      // The host can replace this panel in the same React commit. Clear an
+      // actual close only after replacement owners have registered.
+      queueMicrotask(() => {
+        if (!owners.size && panelOwners.get(key) === owners) {
+          panelOwners.delete(key);
+          clear(host.id, agentId);
+        }
+      });
+    };
+  }, [host.id, agentId]);
   useEffect(() => {
     if (preferences.collapsedStepAction === "inline") clear(host.id, agentId);
   }, [preferences.collapsedStepAction, host.id, agentId]);
@@ -91,6 +115,7 @@ export function installStepDetailPanel(client: PluginClientContext): () => void 
   panelClient = client;
   return () => {
     if (panelClient === client) panelClient = undefined;
+    panelOwners.clear();
     selections.clear();
     publish();
     remove();

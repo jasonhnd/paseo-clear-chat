@@ -49,7 +49,10 @@ function createToolHarness(platform = "ios", options = {}) {
     useRef: value => frame.values[next(() => ({ current: value }))],
     useMemo: fn => fn(),
     useCallback: fn => fn,
-    useSyncExternalStore: (_, getSnapshot) => getSnapshot(),
+    useSyncExternalStore: (subscribe, getSnapshot) => {
+      if (frame) react.useEffect(() => subscribe(noop), [subscribe]);
+      return getSnapshot();
+    },
     useEffect(fn, deps) {
       const owner = frame;
       const index = frame.cursor++;

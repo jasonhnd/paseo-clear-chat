@@ -99,6 +99,46 @@ test("the same open detail changes presentation when the viewport crosses breakp
 });
 
 for (const platform of ["web", "ios", "android"]) {
+  test(`${platform}: a replacement timeline row retains its open detail and reading state`, async () => {
+    const h = createToolHarness(platform, { dimensions: { width: 820 } });
+    let mounted = h.mount(call);
+    find(h, mounted.tree, "step-detail-scroll").props.onScroll?.({ nativeEvent: { contentOffset: { y: 400 } } });
+    for (const width of [600, 820]) {
+      h.dimensions.width = width;
+      // One host commit removes the old timeline and mounts its replacement.
+      mounted = h.mount(call, false);
+      const panel = find(h, mounted.render(), "step-detail-panel");
+      assert.equal(panel.props.dataSet.presentation, width === 600 ? "sheet" : "popover");
+      assert.equal(find(h, mounted.render(), "step-detail-scroll").props.contentOffset.y, 400);
+    }
+    h.unmount();
+    await tick();
+    // Leaving the timeline, rather than replacing it, releases the open session.
+    assert.equal(find(h, h.mount(call, false).tree, "step-detail-panel"), undefined);
+    h.unmount();
+  });
+
+  test(`${platform}: replacement host panes retain the selected step without reopening a closed one`, async () => {
+    const h = createToolHarness(platform, { dimensions: { width: 820 } });
+    let mounted = h.mount(call);
+    find(h, mounted.tree, "step-detail-scroll").props.onScroll?.({ nativeEvent: { contentOffset: { y: 400 } } });
+    h.dimensions.width = 1180;
+    mounted.render();
+    for (const width of [820, 600, 820]) {
+      h.dimensions.width = width;
+      mounted = h.mount(call, false);
+      assert.ok(find(h, mounted.render(), "step-detail-panel"));
+      assert.equal(find(h, mounted.render(), "step-detail-scroll").props.contentOffset.y, 400);
+    }
+    find(h, mounted.render(), "step-detail-close").props.onPress();
+    h.unmount();
+    await tick();
+    assert.equal(find(h, h.mount(call, false).tree, "step-detail-panel"), undefined);
+    h.unmount();
+  });
+}
+
+for (const platform of ["web", "ios", "android"]) {
   test(`${platform}: a hidden image remains hidden after a tablet overlay becomes a side pane`, async () => {
     const h = createToolHarness(platform, { dimensions: { width: 820 }, images: true, isPad: platform === "ios" });
     const mounted = h.mount({ type: "tool_call", callId: "sample-image", name: "read", status: "completed",

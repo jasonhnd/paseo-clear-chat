@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Text, Pressable, useWindowDimensions } from "react-native";
 import { useAgent, usePaseo, useRpc, useWorkspace } from "@getpaseo/plugin/client";
 import { useRevealedText } from "@getpaseo/plugin/client/react-native";
@@ -46,8 +46,8 @@ import { useReplyDuration } from "./reply-duration";
 import { useProjectedAgentMessage } from "./projected-agent-message";
 import { stepDetailPresentation } from "./breakpoints";
 import { StepDetailPanel } from "./components/step-detail-panel";
-import { createStepDetailState } from "./components/step-detail-state";
-import { openHostStepDetail, updateHostStepDetail } from "./components/step-detail-host";
+import { createStepDetailState, useStepDetailSession } from "./components/step-detail-state";
+import { hostStepDetailState, openHostStepDetail, updateHostStepDetail } from "./components/step-detail-host";
 
 export function LiveApprovalRenderer({
   item,
@@ -120,7 +120,6 @@ export function LiveToolCallRenderer({
   const panelWorkspaceId = useWorkspace(workspaceId ?? "", (workspace) => workspace.id);
   const { width } = useWindowDimensions();
   const presentation = stepDetailPresentation(width);
-  const [detailOpen, setDetailOpen] = useState(false);
   const preferences = useEnhancerPreferences();
   const tokens = useMemo(
     () => buildThemeTokens(theme.colors, preferences),
@@ -181,9 +180,9 @@ export function LiveToolCallRenderer({
   );
 
   const detailKey = JSON.stringify([data.callId, data.name, timestamp.getTime()]);
-  const readingState = useRef<{ key: string; state: ReturnType<typeof createStepDetailState> } | null>(null);
-  if (readingState.current?.key !== detailKey) readingState.current = { key: detailKey, state: createStepDetailState() };
-  const detailState = readingState.current.state;
+  const { open: detailOpen, setOpen: setDetailOpen, state: detailState } = useStepDetailSession(
+    JSON.stringify([host.id, agentId, detailKey]), hostStepDetailState(host.id, agentId, detailKey),
+  );
   const selectedDetail = useMemo(() => ({
     key: detailKey,
     step: calloutData,
@@ -195,14 +194,14 @@ export function LiveToolCallRenderer({
     if (presentation === "side" && openHostStepDetail(host.id, agentId, workspaceId ?? undefined, selectedDetail, true)) return;
     Object.assign(detailState, createStepDetailState());
     setDetailOpen(true);
-  }, [presentation, host.id, agentId, workspaceId, selectedDetail, detailState]);
+  }, [presentation, host.id, agentId, workspaceId, selectedDetail, detailState, setDetailOpen]);
   useEffect(() => {
     updateHostStepDetail(host.id, agentId, selectedDetail);
   }, [host.id, agentId, selectedDetail]);
   useEffect(() => {
     if (preferences.collapsedStepAction === "inline") setDetailOpen(false);
     else if (detailOpen && presentation === "side" && openHostStepDetail(host.id, agentId, workspaceId ?? undefined, selectedDetail)) setDetailOpen(false);
-  }, [preferences.collapsedStepAction, detailOpen, presentation, host.id, agentId, workspaceId, panelWorkspaceId, selectedDetail]);
+  }, [preferences.collapsedStepAction, detailOpen, presentation, host.id, agentId, workspaceId, panelWorkspaceId, selectedDetail, setDetailOpen]);
 
   return (
     <View testID="tool-timeline-item" {...surfaceProps(hostFontEscape, toolRowMarker(!calloutData.finalReply && !generatedImages.length && !expansion.expanded && !expansion.error))}>
