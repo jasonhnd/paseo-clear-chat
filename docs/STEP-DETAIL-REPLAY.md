@@ -1,8 +1,9 @@
 # Step detail replay and responsive host handoff
 
 Investigated on 2026-10-22, starting at `origin/feat/v0` commit `c6946e5`.
-The current failure is in the replay's synchronization and expected values.
-The selected step's reading position is retained by the product.
+The original constant-offset timeout is caused by replay synchronization and
+expected values. The product retained its actual saved offset during that trace.
+A separate compact-layout state lifetime defect was later reproduced and fixed.
 
 ## Three unchanged full runs
 
@@ -87,6 +88,8 @@ npm ci --prefix .showcase --include=dev
 export TMPDIR="$KANBAN_TMP"
 node scripts/replay-step-details.cjs
 node scripts/replay-step-detail-handoff.cjs
+node scripts/replay-step-detail-remount.cjs
+node scripts/replay-step-detail-remount.cjs --via-host
 npm test
 npm run typecheck
 npm run typecheck --prefix .showcase
@@ -99,83 +102,145 @@ module lists in `scripts/replay-install-failures.cjs`. There is no npm build scr
 or CI workflow in this checkout. The offline Chrome harness does not verify
 physical native devices or the actual host's Explorer tab layout.
 
-## Host context hydration regression
+The exact in-memory production build command used for verification is:
 
-A second issue concerns the transition from the centered tablet popover to the
-host's Explorer pane. Width alone does not make the host ready to open that pane.
-The host's [agent action context](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/app/src/plugins/actions.ts)
-requires both an agent snapshot and its matching workspace snapshot. Those
-snapshots are published independently.
+```sh
+node <<'JS'
+const path = require('node:path');
+const { build } = require(path.join(process.cwd(), '.showcase/node_modules/esbuild'));
+(async () => {
+  const results = await Promise.all([
+    build({ entryPoints: ['index.server.ts'], platform: 'node', bundle: true, write: false, external: ['@getpaseo/plugin', '@getpaseo/plugin/*', 'zod'] }),
+    build({ entryPoints: ['index.client.tsx'], platform: 'browser', bundle: true, write: false, jsx: 'automatic', external: ['react', 'react/jsx-runtime', 'react-native', '@tanstack/react-query', 'zod', '@getpaseo/plugin', '@getpaseo/plugin/*'] }),
+  ]);
+  console.log(JSON.stringify(results.map((result, index) => ({ target: ['server', 'client'][index], bytes: result.outputFiles[0].contents.length, errors: result.errors.length }))));
+})().catch(error => { console.error(error); process.exitCode = 1; });
+JS
+```
 
-The handoff effect introduced in `ba27b85` depended on the selected step, viewport
-presentation and agent workspace ID. If the first pane request failed while the
-workspace snapshot was absent, its later publication did not change any of those
-dependencies. The selected agent fields stayed equal, so their subscriptions did
-not trigger another attempt. An unrelated step update could make the handoff
-succeed, which explains why this race can depend on timing.
+## Side pane timing and workspace readiness
 
-The fix subscribes to the public workspace snapshot with `useWorkspace` and adds
-its ID/readiness to the handoff effect's dependencies. A workspace publication
-now retries a still-open selection. It does not poll, schedule a refresh, add a
-resize timer or change scroll restoration.
+On the original designated host at `fc6be4f`, two sets of ten cold-page
+820 / 1180 / 820 trials all reached the right pane and retained 400 / 400 / 400.
+In the second set, immediately sampling after the viewport command found a
+centered 680px popover in 9/10 trials. The renderer still held its previous
+820px width in those samples. One immediate side pane sample still had DOM
+offset 0 while its saved offset was already 400. Waiting for side presentation,
+right-edge placement and the restored offset made all ten pass in
+56.184–82.045ms, without any failed pane request.
+This demonstrates premature sampling in these trials; it does not establish a
+persistent side-pane defect in the originally reported workflow.
 
-The browser component regression uses the actual renderer, React and native-web
-Modal, a 200-line result, and a host-shaped pane that reserves space beside chat.
-It first publishes the agent, opens the popover at 820px, scrolls to 400, resizes
-to 1180px and observes the host's rejected request. It then publishes the workspace
-as an external state event. Before the fix, all ten trials remained centered at
-x=250 with width 680 and offset 400: **0/10 successful handoffs**. After the fix,
-all ten trials transferred to the right pane at x=741 with width 439 and retained
-400 on the return to 820px: **10/10 successful handoffs**.
+| Trial | Immediate presentation | Settled offset | Milliseconds to settled pane |
+| --- | --- | ---: | ---: |
+| 1 | popover | 400 | 76.873 |
+| 2 | popover | 400 | 63.715 |
+| 3 | side | 400 | 61.660 |
+| 4 | popover | 400 | 82.045 |
+| 5 | popover | 400 | 61.152 |
+| 6 | popover | 400 | 74.278 |
+| 7 | popover | 400 | 56.184 |
+| 8 | popover | 400 | 58.716 |
+| 9 | popover | 400 | 60.467 |
+| 10 | popover | 400 | 73.833 |
 
-| Trial | Before fix at 1180px | Fixed presentation | 820 / 1180 / 820 offsets |
+A separate deterministic regression protects a real readiness gap. The host's
+[agent action context](https://github.com/getpaseo/paseo/blob/v0.12.0/packages/app/src/plugins/actions.ts)
+requires both the agent and matching workspace snapshots. The handoff effect
+introduced in `ba27b85` watched the agent workspace ID, but not the independently
+published workspace snapshot. If a first request failed while that snapshot was
+absent, its arrival did not change an effect dependency; unrelated step changes
+could make a later attempt succeed. A public `useWorkspace` subscription now
+retries on that explicit state publication. No timer or timeout increase is used.
+The real-React component regression passed 0/10 before the fix and passed 10/10
+after it, with pane x=741, width=439 and offsets 400 / 400 / 400. No late-workspace
+request rejection was observed in the actual-host baseline.
+
+## Compact layout state ownership
+
+The designated Hermes read step reproduced a product failure on `fc6be4f` in
+all ten 820 / 600 / 820 trials: the popover began at offset 0, disappeared at 600
+(no dialog or body), and stayed absent on return to 820. React fiber identity
+confirmed that the host replaced the timeline row while `layout.compact` changed
+from false to true. The old row's unmount invoked its Back cleanup.
+
+The open flag introduced in `ba27b85` belonged to that row. The reading state
+added in `c93832f` also belonged to the row. Tests ending at `b8e1efa` changed
+width without recreating the host timeline, so they did not cover this lifetime.
+The new host-shaped test recreates timeline rows at 744px and removes Explorer
+when compact. Direct overlay transfer passed 0/10 before repair. The component
+replay of the additional 820 / 1180 / 820 / 600 / 820 hosted path also passed
+0/10 before its repair.
+
+Open sessions now belong to the host/agent/step identity. A replacement row reads
+the same open flag and reading state synchronously. Replacement pane owners
+retain their selected step; a compact row reclaims a hosted selection when
+Explorer unmounts. Closing or actually leaving the timeline still releases the
+session. Microtasks only evict records after React's commit, allowing replacement
+owners to register; they do not refresh UI, poll readiness or delay restoration.
+Nine component cases cover replacement rows, replacement panes, compact
+Explorer removal and cleanup across web, iOS and Android shims. Both browser
+remount modes passed ten consecutive trials with offset 400 throughout.
+
+## Actual host verification
+
+The following self-checks used production code `0a37326` with the
+plugin enabled/running. Each trial started from a cold page and waited for the
+requested presentation, exact scroll offset and viewport-contained bounds.
+The README read is exercised from its initial offset 0; the 200-line output
+additionally exercises a nonzero reading position.
+
+| Trial | Hermes 820 / 600 / 820 | Long output 820 / 600 / 820 | Long output 820 / 1180 / 820 |
 | --- | --- | --- | --- |
-| 1 | Popover, width 680 | Side pane | 400 / 400 / 400 |
-| 2 | Popover, width 680 | Side pane | 400 / 400 / 400 |
-| 3 | Popover, width 680 | Side pane | 400 / 400 / 400 |
-| 4 | Popover, width 680 | Side pane | 400 / 400 / 400 |
-| 5 | Popover, width 680 | Side pane | 400 / 400 / 400 |
-| 6 | Popover, width 680 | Side pane | 400 / 400 / 400 |
-| 7 | Popover, width 680 | Side pane | 400 / 400 / 400 |
-| 8 | Popover, width 680 | Side pane | 400 / 400 / 400 |
-| 9 | Popover, width 680 | Side pane | 400 / 400 / 400 |
-| 10 | Popover, width 680 | Side pane | 400 / 400 / 400 |
+| 1 | Pass: 0 / 0 / 0 | Pass: 400 / 400 / 400 | Pass: 400 / 400 / 400 |
+| 2 | Pass: 0 / 0 / 0 | Pass: 400 / 400 / 400 | Pass: 400 / 400 / 400 |
+| 3 | Pass: 0 / 0 / 0 | Pass: 400 / 400 / 400 | Pass: 400 / 400 / 400 |
+| 4 | Pass: 0 / 0 / 0 | Pass: 400 / 400 / 400 | Pass: 400 / 400 / 400 |
+| 5 | Pass: 0 / 0 / 0 | Pass: 400 / 400 / 400 | Pass: 400 / 400 / 400 |
+| 6 | Pass: 0 / 0 / 0 | Pass: 400 / 400 / 400 | Pass: 400 / 400 / 400 |
+| 7 | Pass: 0 / 0 / 0 | Pass: 400 / 400 / 400 | Pass: 400 / 400 / 400 |
+| 8 | Pass: 0 / 0 / 0 | Pass: 400 / 400 / 400 | Pass: 400 / 400 / 400 |
+| 9 | Pass: 0 / 0 / 0 | Pass: 400 / 400 / 400 | Pass: 400 / 400 / 400 |
+| 10 | Pass: 0 / 0 / 0 | Pass: 400 / 400 / 400 | Pass: 400 / 400 / 400 |
 
-This deterministic component regression establishes the missing subscription.
-Correlation with the reported intermittent behavior still requires observation
-on the designated host; component results alone do not establish that correlation.
+The 600px sheet was fully visible at y=422, height=422, bottom=844. The 1180px
+host pane was at x=860, width=320, right=1180. The connected
+820 / 1180 / 820 / 600 / 820 sequence also passed with offset 400 at every
+checkpoint and nonempty bodies. These are implementation self-checks; the
+board's independent review and acceptance remain separate.
 
 ## Final verification
 
-Five consecutive invocations of the unwrapped command
-`node scripts/replay-step-details.cjs` passed on product commit `6057b96`,
-which includes upstream `fc6be4f` and runner fix `0e51b3c`. Each run used a fresh
-Chrome profile. This repeats the earlier five successful runner-only runs after
-adding the workspace subscription and host-shaped fixture.
+Five consecutive raw invocations of `node scripts/replay-step-details.cjs`
+passed on production code `0a37326`, including the current read-gutter
+and sender-title integrations. Each used a fresh Chrome profile.
 
 | Run | Seconds | 1180 / 820 / 1180 offsets | 820 / 600 / 820 offsets |
 | --- | ---: | --- | --- |
-| 1 | 96.390 | 1000 / 1000 / 1000 | 999 / 999 / 999 |
-| 2 | 100.541 | 1000 / 1000 / 1000 | 999 / 999 / 999 |
-| 3 | 87.999 | 1000 / 1000 / 1000 | 999 / 999 / 999 |
-| 4 | 86.822 | 1000 / 1000 / 1000 | 999 / 999 / 999 |
-| 5 | 86.158 | 1000 / 1000 / 1000 | 999 / 999 / 999 |
+| 1 | 84.831 | 1000 / 1000 / 1000 | 999 / 999 / 999 |
+| 2 | 85.390 | 1000 / 1000 / 1000 | 999 / 999 / 999 |
+| 3 | 84.954 | 1000 / 1000 / 1000 | 999 / 999 / 999 |
+| 4 | 87.799 | 1000 / 1000 / 1000 | 999 / 999 / 999 |
+| 5 | 87.040 | 1000 / 1000 / 1000 | 999 / 999 / 999 |
 
-All six offsets in the 1024 / 1023 / 1024 / 744 / 743 / 744 boundary
-sequence were 1000 in every run. Chrome/156.0.8078.48 used debugging port
-9444. Each run completed 66 measurements, including full clipboard and virtual
-scrolling checks on 10,000-line results at 1440, 1024, 820 and 390px. The largest
-recorded frame interval across all five runs was 33.3ms; there were no frames,
-long tasks or Long Animation Frame entries over 50ms.
+All 330 measurements passed, including bounded virtual rendering and full copy
+of 10,000-line results at 1440, 1024, 820 and 390px. All six additional offsets
+in the 1024 / 1023 / 1024 / 744 / 743 / 744 sequence were 1000. The largest
+frame interval was 33.4ms, with no frame, long task or Long Animation Frame
+over 50ms. Chrome/156.0.8078.48 used debugging ports within 9444–9499.
 
 | Check | Result |
 | --- | --- |
 | `npm ci --include=dev` | Pass |
-| `npm test` | 1031 passed; 0 failed, skipped or todo |
-| `npm run typecheck` | Pass |
-| `npm run typecheck --prefix .showcase` | Pass |
-| Production esbuild bundles, in memory | Client 857375 bytes; server 1553429 bytes; 0 errors |
-| Syntax checks for both detail replay scripts | Pass |
-| `node scripts/replay-step-detail-handoff.cjs` | 10/10 passes; offset 400 throughout every round trip |
+| `npm test` | 1097 passed; 0 failed, skipped or todo |
+| Root and showcase typechecks | Pass |
+| Production builds in memory | Client 863156 bytes; server 1553429 bytes; 0 errors |
+| Workspace hydration browser regression | 10/10; 400 / 400 / 400 |
+| Direct remount browser regression | 10/10; 400 / 400 / 400 |
+| Hosted remount browser regression | 10/10; all offsets 400 |
+| Three detail replay syntax checks | Pass |
 | `git diff --check` | Pass |
-| Added lines and commit messages privacy scan | 0 matches |
+| Added lines and task commit messages privacy scan | 0 matches |
+
+No npm build script or CI workflow is present; both production bundles were
+built locally with esbuild. Physical native devices were not exercised.
