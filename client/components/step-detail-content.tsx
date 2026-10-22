@@ -91,7 +91,7 @@ export function StepDetailContent({ step, tokens, onRevealPath, imageFile }: {
     for (const [section, text] of sections) {
       result.push({ key: `${section}-heading`, section, kind: "heading", text });
       if (text && section === "output" && read) {
-        const gutterWidth = tokens.fs(12) * (read.lines.reduce((digits, line) => Math.max(digits, String(line.lineNumber).length), 1) * 0.65 + 1.5);
+        const gutterWidth = tokens.fs(12) * (read.lines.reduce((digits, line) => Math.max(digits, String(line.lineNumber ?? "").length), 1) * 0.65 + 1.5);
         read.lines.forEach((line, index) => result.push({ key: `${section}-${index}`, section, kind: "text", ...line, gutterWidth }));
       } else if (text) stepTextChunks(text).forEach((chunk, index) => result.push({ key: `${section}-${index}`, section, kind: "text", text: chunk }));
     }

@@ -130,3 +130,38 @@ test("captured upstream truncation remains visible and never fabricates missing 
     assert.doesNotMatch(parsed.text, /^Read |^```|^\d+\|/m);
   }
 });
+
+for (const platform of ["web", "ios", "android"]) {
+  test(`${platform}: captured truncation notice has no file gutter and Copy output retains the notice`, async t => {
+    const h = createToolHarness(platform, { preferences: { collapsedStepAction: "details" } });
+    t.after(() => h.unmount());
+    const source = capturedReads.find(item => item.detail.content.includes("from line 150,"));
+    const { tree } = h.mount(source);
+    const list = byId(h, tree, "step-detail-scroll");
+    const rows = list.props.data.filter(row => row.section === "output" && row.kind === "text");
+    assert.equal(rows[0].lineNumber, 150);
+    const notice = rows.at(-1);
+    assert.equal(notice.lineNumber, undefined);
+    assert.equal(byId(h, h.draw(list.props.renderItem({ item: notice })), "step-detail-line-number"), undefined);
+    await byId(h, tree, "step-detail-copy-output").props.onPress();
+    assert.match(h.copies.at(-1), /^line 0150 fictional offset sample payload 0150\n/);
+    assert.match(h.copies.at(-1), /chars total, truncated\)$/);
+    assert.doesNotMatch(h.copies.at(-1), /^Read |^```|^\d+\|/m);
+  });
+}
+
+test("complete 1200-line result preserves every row through the virtual list data and Copy output", async t => {
+  const h = createToolHarness("web", { preferences: { collapsedStepAction: "details" } });
+  t.after(() => h.unmount());
+  const source = capturedReads.find(item => item.detail.filePath === "line-full-sample.txt");
+  const plain = Array.from({ length: 1200 }, (_, index) => `sample ${index + 1}`).join("\n");
+  const numbered = plain.split("\n").map((line, index) => `${index + 1}|${line}`).join("\n");
+  const { tree } = h.mount({ ...source, detail: { ...source.detail,
+    content: `Read line-full-sample.txt \u2014 1200 total lines\n\n\x60\x60\x60\n${numbered}\n\x60\x60\x60` } });
+  const rows = byId(h, tree, "step-detail-scroll").props.data.filter(row => row.section === "output" && row.kind === "text");
+  assert.equal(rows.length, 1200);
+  assert.equal(rows[0].lineNumber, 1);
+  assert.equal(rows.at(-1).lineNumber, 1200);
+  await byId(h, tree, "step-detail-copy-output").props.onPress();
+  assert.equal(h.copies.at(-1), plain);
+});
