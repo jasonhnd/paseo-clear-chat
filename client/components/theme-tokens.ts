@@ -194,10 +194,16 @@ function accessibleAccent(requested: string, colors: PluginSurfaceColors, isDark
   if (readable(requested)) return requested;
   const targets = isDark ? ["#ffffff", "#000000"] : ["#000000", "#ffffff"];
   for (const target of targets) {
-    for (let step = 1; step <= 255; step += 1) {
-      const candidate = mix(requested, target, step / 255);
-      if (readable(candidate)) return candidate;
+    if (!readable(target)) continue;
+    let low = 1, high = 255;
+    // Contrast grows monotonically towards a passing black/white endpoint.
+    // Find the first discrete passing step without scanning all 255 colours.
+    while (low < high) {
+      const step = Math.floor((low + high) / 2);
+      if (readable(mix(requested, target, step / 255))) high = step;
+      else low = step + 1;
     }
+    return mix(requested, target, low / 255);
   }
   return targets[0]!;
 }
