@@ -2,7 +2,9 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const { createToolHarness } = require("./helpers/tool-harness.cjs");
 const fixture = require("./fixtures/real-claude-session.json");
+const codexFixture = require("./fixtures/codex-session.json");
 const shell = fixture.items.find(item => item.detail?.type === "shell" && item.status === "completed");
+const webSearch = codexFixture.items.find(item => item.callId === "codex-call-7");
 const byId = (h, tree, id) => h.nodes(tree, node => node.props.testID === id)[0];
 const harness = (platform, width = 390, options = {}) => createToolHarness(platform, {
   ...options, isPad: platform === "ios" && width >= 744, dimensions: { width, height: 844 },
@@ -10,6 +12,51 @@ const harness = (platform, width = 390, options = {}) => createToolHarness(platf
 });
 
 for (const platform of ["web", "ios", "android"]) {
+  test(`${platform}: captured web search results display and copy separately from the query`, async t => {
+    const h = harness(platform, platform === "web" ? 1440 : platform === "ios" ? 820 : 390);
+    t.after(() => h.unmount());
+    const expectedInput = JSON.stringify({ query: webSearch.detail.query }, null, 2);
+    const expectedOutput = JSON.stringify({ results: webSearch.detail.results }, null, 2);
+    assert.equal(webSearch.detail.results.length, 1, "Replay the captured search result");
+    const build = h.load("client/tool-call-data.ts").buildLiveToolCallData;
+    const data = build(webSearch);
+    assert.equal(data.input, expectedInput);
+    assert.equal(data.copyResult, expectedOutput);
+    const { tree } = h.mount(webSearch);
+    assert.equal(h.text(byId(h, tree, "step-detail-input")), expectedInput);
+    assert.equal(h.text(byId(h, tree, "step-detail-output")), expectedOutput);
+    await byId(h, tree, "step-detail-copy-input").props.onPress();
+    await byId(h, tree, "step-detail-copy-output").props.onPress();
+    assert.deepEqual(h.copies, [expectedInput, expectedOutput]);
+  });
+
+  test(`${platform}: GitHub device details display and copy the full request and only reported replies`, async t => {
+    const h = harness(platform, platform === "web" ? 1440 : platform === "ios" ? 820 : 390);
+    t.after(() => h.unmount());
+    const content = JSON.stringify({ op: "pr_checks", repo: "example/project", pr: 12 });
+    const filePath = "xd://github";
+    const expectedInput = JSON.stringify({ filePath, content }, null, 2);
+    const build = h.load("client/tool-call-data.ts").buildLiveToolCallData;
+    for (const output of [undefined, "checks\tpass\t1s\n  "]) {
+      const item = { ...shell, name: "github", detail: { type: "unknown", filePath, content, output } };
+      const data = build(item);
+      assert.equal(data.input, expectedInput);
+      assert.equal(data.copyResult, output, "The request is not an invented reply");
+      const { tree } = h.mount(item);
+      assert.equal(h.text(byId(h, tree, "step-detail-input")), expectedInput);
+      await byId(h, tree, "step-detail-copy-input").props.onPress();
+      const copyOutput = byId(h, tree, "step-detail-copy-output");
+      if (output === undefined) {
+        assert.equal(copyOutput, undefined);
+        assert.match(h.text(tree), /No output was reported\./);
+      } else {
+        assert.equal(h.text(byId(h, tree, "step-detail-output")), output);
+        await copyOutput.props.onPress();
+      }
+      assert.deepEqual(h.copies, output === undefined ? [expectedInput] : [expectedInput, output]);
+    }
+  });
+
   for (const width of [1440, 1024, 820, 390]) {
     test(`${platform} ${width}: captured details show and copy full input and output despite timeline folding`, async () => {
       const h = harness(platform, width);
@@ -39,6 +86,23 @@ for (const platform of ["web", "ios", "android"]) {
     h.unmount();
   });
 }
+
+test("GitHub device request content follows tool identity from names, types and device paths", t => {
+  const h = harness("web");
+  t.after(() => h.unmount());
+  const build = h.load("client/tool-call-data.ts").buildLiveToolCallData;
+  const content = JSON.stringify({ op: "pr_checks", repo: "example/project", pr: 12 });
+  const result = { checks: [{ name: "sample", status: "pass" }], count: 1 };
+  for (const [name, type, filePath] of [
+    ["github", "unknown", undefined], ["device", "github", undefined],
+    ["write_file", "unknown", "xd://github"], ["write_file", "unknown", "xd://github/request"],
+  ]) {
+    const data = build({ name, status: "completed", detail: { type, filePath, content, result } });
+    assert.equal(data.tool, "github");
+    assert.deepEqual(JSON.parse(data.input), { ...(filePath ? { filePath } : {}), content });
+    assert.equal(data.copyResult, JSON.stringify(result, null, 2));
+  }
+});
 
 test("detail extraction retains every structured argument, result field, block and whitespace", () => {
   const h = harness("ios");
