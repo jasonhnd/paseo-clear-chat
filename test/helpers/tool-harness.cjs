@@ -73,7 +73,7 @@ function createToolHarness(platform = "ios", options = {}) {
     "client/settings-page": { ClearChatSettingsPage: noop },
     "server/settings-migration": { migrateHostSettings: noop },
     "client/image-file": { useImageFile: noop, isImagePath: path => /\.(png|jpe?g|gif|webp)$/i.test(path ?? "") },
-    "shared/file-rpc": { revealPathRpc: {} },
+    "shared/file-rpc": { revealPathRpc: { name: "file.reveal" } },
     "client/hub-activity": { publishHubSnapshot: noop },
     "client/timeline-tail": { useIsTimelineTail: () => options.timelineTail ?? false },
     "client/system-envelope": { parseSystemEnvelope: () => null },
@@ -164,7 +164,7 @@ function createToolHarness(platform = "ios", options = {}) {
               contract.name.endsWith(".read") ? expansionHost.read : expansionHost.write);
             return rpcFunctions.get(contract.name);
           }
-          return async value => { reveals.push(value); return {}; };
+          return async value => { reveals.push(value); return options.revealRpc ? options.revealRpc(value) : { revealed: value.path, error: null }; };
         },
         useAgent: (_, selector) => selector(options.agent ?? { cwd: "/workspace/demo" }),
         usePaseo: () => paseo,
@@ -177,7 +177,7 @@ function createToolHarness(platform = "ios", options = {}) {
         TextInput: "SDK.TextInput",
       };
       if (id.startsWith(".")) return load(resolve(dirname(filename), id));
-      return createRequire(filename)(id);
+      return options.modules?.[id] ?? createRequire(filename)(id);
     };
     runInThisContext(`(function(require,module,exports,globalThis){${source}\n})`, { filename })(localRequire, mod, mod.exports, options.globals ?? globalThis);
     return mod.exports;
