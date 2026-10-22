@@ -15,6 +15,7 @@ import { toolSummary } from "../tool-summary";
 import { Glyph } from "./glyph";
 import { hostFontEscape } from "./host-font-escape";
 import { surfaceProps } from "./view-props";
+import { createStepDetailState, StepDetailStateContext, type StepDetailState } from "./step-detail-state";
 
 export type { StepDetailPresentation } from "../breakpoints";
 
@@ -28,6 +29,7 @@ export interface StepDetailPanelProps {
   tokens: ExtendedThemeTokens;
   onRevealPath?: (path: string) => void;
   imageFile?: ImageFile | null;
+  viewState?: StepDetailState;
 }
 
 type SheetSnap = "half" | "full";
@@ -39,24 +41,28 @@ export function sheetSnapAfterDrag(height: number, startHeight: number, dy: numb
 }
 
 /** One body for the phone sheet, tablet popover and host-owned desktop pane. */
-export function StepDetailPanel({ step, open, onOpenChange, presentation, tokens, onRevealPath, imageFile }: StepDetailPanelProps) {
+export function StepDetailPanel({ step, open, onOpenChange, presentation, tokens, onRevealPath, imageFile, viewState }: StepDetailPanelProps) {
   const window = useWindowDimensions();
-  const [availableHeight, setAvailableHeight] = useState(window.height);
-  const [snap, setSnap] = useState<SheetSnap>("half");
+  const localState = useRef<StepDetailState | null>(null);
+  if (!localState.current) localState.current = createStepDetailState();
+  const state = viewState ?? localState.current;
+  const [viewport, setViewport] = useState({ width: window.width, height: window.height, available: window.height });
+  const [snap, updateSnap] = useState<SheetSnap>(state.snap);
+  const setSnap = (value: SheetSnap) => { state.snap = value; updateSnap(value); };
   const [drag, setDrag] = useState(0);
+  const scroll = useRef<ScrollView>(null);
+  const restoreScroll = () => scroll.current?.scrollTo({ y: state.scrollOffset, animated: false });
   const onChange = useRef(onOpenChange);
   onChange.current = onOpenChange;
   const close = useCallback(() => onChange.current(false), []);
-  const height = Math.min(window.height, availableHeight);
+  const height = viewport.width === window.width && viewport.height === window.height ? Math.min(window.height, viewport.available) : window.height;
   const snapHeight = snap === "full" ? height : height / 2;
   const startHeight = useRef(snapHeight);
 
   useEffect(() => {
-    if (!open || presentation !== "sheet") {
-      setSnap("half");
-      setDrag(0);
-    }
-  }, [open, presentation]);
+    setDrag(0);
+    updateSnap(state.snap);
+  }, [open, presentation, window.width, window.height, state]);
   useEffect(() => {
     if (!open || !step || presentation === "side") return;
     return installStepDetailBack(close);
@@ -141,8 +147,12 @@ export function StepDetailPanel({ step, open, onOpenChange, presentation, tokens
           <Glyph name="X" size={18} color={tokens.foregroundMuted} />
         </Pressable>
       </View>
-      <ScrollView style={styles.scroll} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <ToolCalloutBody data={step} tokens={tokens} onRevealPath={onRevealPath} imageFile={imageFile} />
+      <ScrollView ref={scroll} style={styles.scroll} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"
+        contentOffset={{ x: 0, y: state.scrollOffset }} onLayout={restoreScroll} onContentSizeChange={restoreScroll}
+        onScroll={event => { state.scrollOffset = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={16}>
+        <StepDetailStateContext.Provider value={state}>
+          <ToolCalloutBody data={step} tokens={tokens} onRevealPath={onRevealPath} imageFile={imageFile} />
+        </StepDetailStateContext.Provider>
       </ScrollView>
     </View>
   );
@@ -155,7 +165,7 @@ export function StepDetailPanel({ step, open, onOpenChange, presentation, tokens
         <SafeAreaView pointerEvents="box-none" style={styles.safeArea}>
           <View
             pointerEvents="box-none"
-            onLayout={event => setAvailableHeight(event.nativeEvent.layout.height)}
+            onLayout={event => setViewport({ width: window.width, height: window.height, available: event.nativeEvent.layout.height })}
             style={[styles.viewport, presentation === "sheet" ? styles.bottom : styles.center]}
           >
             {panel}

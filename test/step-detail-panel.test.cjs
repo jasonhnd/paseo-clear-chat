@@ -99,6 +99,32 @@ test("the same open detail changes presentation when the viewport crosses breakp
 });
 
 for (const platform of ["web", "ios", "android"]) {
+  test(`${platform}: a hidden image remains hidden after a tablet overlay becomes a side pane`, async () => {
+    const h = createToolHarness(platform, { dimensions: { width: 820 }, images: true, isPad: platform === "ios" });
+    const mounted = h.mount({ type: "tool_call", callId: "sample-image", name: "read", status: "completed",
+      detail: { type: "read", filePath: "artifacts/sample.png", content: "Image file" } });
+    await tick();
+    const toggle = (tree, label) => h.nodes(tree, node => node.props.accessibilityLabel === label)[0];
+    toggle(mounted.render(), "Hide the image").props.onPress();
+    assert.ok(toggle(mounted.render(), "Show the image"));
+    h.dimensions.width = 1180;
+    mounted.render();
+    assert.ok(toggle(mounted.render(), "Show the image"));
+    h.unmount();
+  });
+
+  test(`${platform}: expanded output survives transfer from a tablet overlay to the host pane`, () => {
+    const h = createToolHarness(platform, { dimensions: { width: 820 }, isPad: platform === "ios" });
+    const mounted = h.mount(call);
+    const disclosure = tree => h.nodes(tree, node => node.props.accessibilityLabel?.startsWith("Show all ") || node.props.accessibilityLabel === "Show fewer lines")[0];
+    disclosure(mounted.render()).props.onPress();
+    assert.equal(disclosure(mounted.render()).props.accessibilityState.expanded, true);
+    h.dimensions.width = 1180;
+    mounted.render();
+    assert.equal(disclosure(mounted.render()).props.accessibilityState.expanded, true);
+    h.unmount();
+  });
+
   test(`${platform}: split view retains the sheet size and restores its reading position`, () => {
     const h = createToolHarness(platform, { isPad: platform === "ios" });
     const mounted = h.mount(call);

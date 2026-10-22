@@ -7,12 +7,14 @@ import { useEnhancerPreferences } from "../preferences";
 import { stepDetailPresentation } from "../breakpoints";
 import { buildThemeTokens } from "./theme-tokens";
 import { StepDetailPanel } from "./step-detail-panel";
+import { createStepDetailState, type StepDetailState } from "./step-detail-state";
 
 export interface SelectedStepDetail {
   key: string;
   step: ToolCalloutData;
   onRevealPath?: (path: string) => void;
   imageFile?: ImageFile | null;
+  viewState?: StepDetailState;
 }
 
 const PANEL_ID = "step-details";
@@ -28,10 +30,11 @@ function clear(hostId: string, agentId: string) {
 }
 
 /** Explorer hosting reserves space beside chat; no timeline or host DOM is resized. */
-export function openHostStepDetail(hostId: string, agentId: string, workspaceId: string | undefined, selection: SelectedStepDetail): boolean {
+export function openHostStepDetail(hostId: string, agentId: string, workspaceId: string | undefined, selection: SelectedStepDetail, newSelection = false): boolean {
   if (!panelClient || !workspaceId) return false;
   const key = selectionKey(hostId, agentId);
   const previous = selections.get(key);
+  if (newSelection && previous?.key !== selection.key && selection.viewState) Object.assign(selection.viewState, createStepDetailState());
   selections.set(key, selection);
   try {
     panelClient.openPanel(PANEL_ID, { workspaceId, agentId, location: "explorer" });
@@ -48,7 +51,7 @@ export function updateHostStepDetail(hostId: string, agentId: string, selection:
   const key = selectionKey(hostId, agentId);
   const current = selections.get(key);
   if (current?.key !== selection.key ||
-    (current.step === selection.step && current.imageFile === selection.imageFile && current.onRevealPath === selection.onRevealPath)) return;
+    (current.step === selection.step && current.imageFile === selection.imageFile && current.onRevealPath === selection.onRevealPath && current.viewState === selection.viewState)) return;
   selections.set(key, selection);
   publish();
 }
@@ -75,6 +78,7 @@ export function StepDetailHostPanel({ host, agentId, theme }: PluginAgentPanelPr
       tokens={tokens}
       onRevealPath={selection.onRevealPath}
       imageFile={selection.imageFile}
+      viewState={selection.viewState}
     />
   );
 }

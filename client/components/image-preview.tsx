@@ -5,6 +5,7 @@ import { radius } from "./theme-tokens";
 import type { ExtendedThemeTokens } from "./theme-tokens";
 import { unselectable } from "./selection";
 import type { ImageFile } from "../image-file";
+import { useStepDetailState } from "./step-detail-state";
 
 interface ImagePreviewProps {
   /** The path as the tool reported it, selector and all. */
@@ -41,7 +42,7 @@ function formatBytes(bytes: number): string {
  * loads but reports no size still has to occupy an honest amount of room.
  */
 export function ImagePreview({ path, file, tokens, onReveal, revealLabel, unavailable }: ImagePreviewProps) {
-  const [shown, setShown] = useState(true);
+  const [shown, setShown] = useStepDetailState(`image:${path}`, true);
   const [failedUri, setFailedUri] = useState<string | null>(null);
   const failed = Boolean(file?.dataUri && failedUri === file.dataUri);
   const label = path.startsWith("data:") ? `${path.slice(0, path.indexOf(",") + 1)}…` : path;

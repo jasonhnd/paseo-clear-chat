@@ -1,8 +1,9 @@
-import React, { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import React, { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 import { View, Text, Pressable } from "react-native";
 import { useEnhancerPreferences } from "../preferences";
 import { SyntaxHighlightBlock, type SyntaxHighlightProps } from "./syntax-highlight";
 import type { ExtendedThemeTokens } from "./theme-tokens";
+import { useStepDetailState } from "./step-detail-state";
 
 export const ToolOutputVisibility = createContext<((text: string, expanded: boolean) => void) | undefined>(undefined);
 
@@ -20,7 +21,7 @@ export function ToolOutput({ text, tokens, children, expansion }: {
 }) {
   const { foldLongOutputAfter: limit } = useEnhancerPreferences();
   const reportVisibility = useContext(ToolOutputVisibility);
-  const [choice, setChoice] = useState<{ limit: typeof limit; expanded: boolean }>();
+  const [choice, setChoice] = useStepDetailState<{ limit: typeof limit; expanded: boolean } | undefined>(`output:${text}`, undefined);
   const lines = useMemo(() => text.replace(/\r?\n$/, "").split(/\r?\n/), [text]);
   const folded = limit !== "never" && lines.length > limit;
   const expanded = expansion?.expanded ?? (choice?.limit === limit && choice.expanded);

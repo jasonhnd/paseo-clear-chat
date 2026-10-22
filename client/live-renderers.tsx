@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, Pressable, useWindowDimensions } from "react-native";
 import { useAgent, usePaseo, useRpc } from "@getpaseo/plugin/client";
 import { useRevealedText } from "@getpaseo/plugin/client/react-native";
@@ -45,6 +45,7 @@ import { Glyph } from "./components/glyph";
 import { useReplyDuration } from "./reply-duration";
 import { stepDetailPresentation } from "./breakpoints";
 import { StepDetailPanel } from "./components/step-detail-panel";
+import { createStepDetailState } from "./components/step-detail-state";
 import { openHostStepDetail, updateHostStepDetail } from "./components/step-detail-host";
 
 export function LiveApprovalRenderer({
@@ -174,16 +175,22 @@ export function LiveToolCallRenderer({
     cwd,
   );
 
+  const detailKey = JSON.stringify([data.callId, data.name, timestamp.getTime()]);
+  const readingState = useRef<{ key: string; state: ReturnType<typeof createStepDetailState> } | null>(null);
+  if (readingState.current?.key !== detailKey) readingState.current = { key: detailKey, state: createStepDetailState() };
+  const detailState = readingState.current.state;
   const selectedDetail = useMemo(() => ({
-    key: JSON.stringify([data.callId, data.name, timestamp.getTime()]),
+    key: detailKey,
     step: calloutData,
     onRevealPath: handleRevealPath,
     imageFile,
-  }), [data.callId, data.name, timestamp.getTime(), calloutData, handleRevealPath, imageFile]);
+    viewState: detailState,
+  }), [detailKey, calloutData, handleRevealPath, imageFile, detailState]);
   const openDetail = useCallback(() => {
-    if (presentation === "side" && openHostStepDetail(host.id, agentId, workspaceId ?? undefined, selectedDetail)) return;
+    if (presentation === "side" && openHostStepDetail(host.id, agentId, workspaceId ?? undefined, selectedDetail, true)) return;
+    Object.assign(detailState, createStepDetailState());
     setDetailOpen(true);
-  }, [presentation, host.id, agentId, workspaceId, selectedDetail]);
+  }, [presentation, host.id, agentId, workspaceId, selectedDetail, detailState]);
   useEffect(() => {
     updateHostStepDetail(host.id, agentId, selectedDetail);
   }, [host.id, agentId, selectedDetail]);
@@ -214,6 +221,7 @@ export function LiveToolCallRenderer({
         />
       )}
       <StepDetailPanel
+        viewState={detailState}
         step={calloutData}
         open={detailOpen}
         onOpenChange={setDetailOpen}
