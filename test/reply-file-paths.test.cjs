@@ -124,3 +124,36 @@ test("file reveal resolves real absolute, relative and spaced files and reports 
     assert.match(noCwd.error, /working directory/i);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+for (const [platform, width, label] of [["ios", 390, "iOS"], ["ios", 820, "iPadOS"], ["android", 390, "Android"]]) {
+  test(`${label} replay copies a formatted path and preserves highlights at width ${width}`, async () => {
+    const h = createToolHarness(platform, { markdown: true, width });
+    const { tree } = h.mount({ type: "assistant_message", text: "==Ready==: **[Report](./reports/result.txt)**" });
+    assert.equal(h.nodes(tree, node => node.props.testID === "markdown-highlight").length, 1);
+    const links = fileLinks(h, tree);
+    assert.equal(links.length, 1);
+    await press(links[0]);
+    assert.deepEqual(h.copies, ["./reports/result.txt"]);
+    assert.deepEqual(h.reveals, []);
+  });
+}
+
+test("path candidates end at CJK punctuation and line selectors stay attached", () => {
+  const h = createToolHarness("web", { markdown: true });
+  const { tree } = h.mount({ type: "assistant_message", text: "Report\uff1a/workspace/result.txt\u3002 Next\uff1a./src/main.ts:55:3\uff0c **src/config.ts** and `~/notes.md`." });
+  assert.deepEqual(fileLinks(h, tree).map(link => link.props.accessibilityLabel.replace(/^Show file path: /, "")), ["/workspace/result.txt", "./src/main.ts:55:3", "src/config.ts", "~/notes.md"]);
+});
+
+test("file reveal surfaces a missing platform opener without an unhandled process error", async () => {
+  const h = createToolHarness("web", { modules: { "node:child_process": { spawn() {
+    const child = new EventEmitter(); child.unref = () => {};
+    setImmediate(() => child.emit("error", new Error("Private opener error")));
+    return child;
+  } } } });
+  const handlers = new Map();
+  h.load("index.server.ts").default({ registerSettings() {}, handle(contract, handler) { handlers.set(contract.name, handler); } });
+  const result = await handlers.get("file.reveal")({ cwd: process.cwd(), path: "./package.json" });
+  assert.equal(result.revealed, null);
+  assert.match(result.error, /could not be shown on the host/);
+  assert.doesNotMatch(result.error, /Private opener error/);
+});

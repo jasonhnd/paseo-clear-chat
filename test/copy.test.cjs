@@ -5,6 +5,7 @@ const { resolve, dirname } = require("node:path");
 const { runInThisContext } = require("node:vm");
 const test = require("node:test");
 const ts = require("typescript");
+const { createToolHarness } = require("./helpers/tool-harness.cjs");
 
 // Run the actual components/handlers, with native primitives and hooks supplied
 // by a tiny host. No navigator exists: a native copy must go through the SDK.
@@ -152,10 +153,8 @@ for (const [file, name] of components) {
 for (const variant of ["document", "compact", "terminal"]) {
   test(`markdown ${variant}: body, heading and line heights scale, task icon stays the same size`, () => {
     const rendered = scale => {
-      const h = harness("client/components/markdown/markdown-view.tsx", "MarkdownView", async () => {}, "ios", scale);
-      h.props.variant = variant;
-      h.props.text = "# Heading\n\nBody text\n\n- [x] Task text";
-      const tree = h.render();
+      const h = createToolHarness("ios", { markdown: true, preferences: { markdownVariant: variant, textScale: scale } });
+      const { tree } = h.mount({ type: "assistant_message", text: "# Heading\n\nBody text\n\n- [x] Task text" });
       const styles = h.nodes(tree, n => n.type === "Text").map(n => Object.assign({}, ...[n.props.style].flat())).filter(s => s.fontSize);
       return { styles, icons: h.nodes(tree, n => n.type === "Glyph").map(n => n.props.size) };
     };

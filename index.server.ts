@@ -100,7 +100,7 @@ function requestedFile(path: string): string {
  * itself; macOS Finder does the same with `-R`; every other platform opens the
  * containing directory, because `xdg-open` on a file launches its editor.
  */
-function revealWithShell(target: string, isDirectory: boolean): void {
+function revealWithShell(target: string, isDirectory: boolean): Promise<void> {
   const child =
     process.platform === "win32"
       ? spawn("explorer.exe", isDirectory ? [target] : [`/select,${target}`], {
@@ -119,8 +119,10 @@ function revealWithShell(target: string, isDirectory: boolean): void {
           });
   // Explorer reports a non-zero exit even when it opened the window, so the
   // result is never read. Detaching keeps the daemon free of a zombie child.
-  child.on("error", () => {});
-  child.unref();
+  return new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("spawn", () => { child.unref(); resolve(); });
+  });
 }
 
 const DARK_THEME = "github-dark-default";
@@ -465,15 +467,18 @@ function registerServer(server: PluginServerContext) {
     const requested = requestedFile(input.path);
     if (!requested) return { revealed: null, error: "No path" };
 
+    if (!isAbsolute(requested) && !isAbsolute(input.cwd)) {
+      return { revealed: null, error: "The session working directory is unavailable." };
+    }
     const target = isAbsolute(requested) ? requested : resolve(input.cwd, requested);
     try {
       const entry = await stat(target);
-      revealWithShell(target, entry.isDirectory());
+      await revealWithShell(target, entry.isDirectory());
       return { revealed: target, error: null };
     } catch (error) {
       return {
         revealed: null,
-        error: error instanceof Error ? error.message : String(error),
+        error: "The path does not exist, cannot be accessed, or could not be shown on the host.",
       };
     }
   });

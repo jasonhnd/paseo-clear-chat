@@ -1,3 +1,5 @@
+import { localFilePath, matchFilePath } from "../../file-path-links";
+
 /**
  * Markdown, small enough to own. The plugin sandbox admits `react`,
  * `react-native`, `zod` and `@getpaseo/plugin*` only, so a markdown library is
@@ -20,7 +22,8 @@ export type MdInline =
   | { kind: "strong"; spans: MdInline[] }
   | { kind: "emphasis"; spans: MdInline[] }
   | { kind: "strike"; spans: MdInline[] }
-  | { kind: "link"; href: string; spans: MdInline[] };
+  | { kind: "highlight"; spans: MdInline[] }
+  | { kind: "link"; href: string; filePath?: string; spans: MdInline[] };
 
 /** One table cell, already reduced to inline runs. */
 export type MdCell = MdInline[];
@@ -496,7 +499,7 @@ function isWordChar(ch: string): boolean {
  * characters the author typed, so `2 * 3 * 4` and a stray `**` read as prose
  * rather than vanishing into an unfinished span.
  */
-function parseInline(src: string, depth = 0): MdInline[] {
+function parseInline(src: string, depth = 0, links = true): MdInline[] {
   if (src === "") return [];
   if (depth >= MAX_INLINE_DEPTH) return [{ kind: "text", text: src }];
 
@@ -535,8 +538,20 @@ function parseInline(src: string, depth = 0): MdInline[] {
         if (text.length > 2 && text.startsWith(" ") && text.endsWith(" ")) {
           text = text.slice(1, -1);
         }
-        out.push({ kind: "codeSpan", text });
+        const code: MdInline = { kind: "codeSpan", text };
+        const path = links ? localFilePath(text, true) : null;
+        out.push(path ? { kind: "link", href: path, filePath: path, spans: [code] } : code);
         index = close + run;
+        continue;
+      }
+    }
+
+    if (ch === "=" && src[index + 1] === "=" && src[index - 1] !== "=" && src[index + 2] !== "=" && (src[index + 2] ?? " ").trim() !== "") {
+      const close = findHighlightClose(src, index + 2);
+      if (close > index + 2 && src.slice(index + 2, close).trim() !== "") {
+        flush();
+        out.push({ kind: "highlight", spans: parseInline(src.slice(index + 2, close), depth + 1, links) });
+        index = close + 2;
         continue;
       }
     }
@@ -549,7 +564,7 @@ function parseInline(src: string, depth = 0): MdInline[] {
         flush();
         out.push({
           kind: "strong",
-          spans: [{ kind: "emphasis", spans: parseInline(src.slice(index + 3, close), depth + 2) }],
+          spans: [{ kind: "emphasis", spans: parseInline(src.slice(index + 3, close), depth + 2, links) }],
         });
         index = close + 3;
         continue;
@@ -561,7 +576,7 @@ function parseInline(src: string, depth = 0): MdInline[] {
         flush();
         out.push({
           kind: ch === "*" ? "strong" : "strike",
-          spans: parseInline(src.slice(index + 2, close), depth + 1),
+          spans: parseInline(src.slice(index + 2, close), depth + 1, links),
         });
         index = close + 2;
         continue;
@@ -572,13 +587,13 @@ function parseInline(src: string, depth = 0): MdInline[] {
       const close = findEmphasisClose(src, index, ch);
       if (close > index + 1) {
         flush();
-        out.push({ kind: "emphasis", spans: parseInline(src.slice(index + 1, close), depth + 1) });
+        out.push({ kind: "emphasis", spans: parseInline(src.slice(index + 1, close), depth + 1, links) });
         index = close + 1;
         continue;
       }
     }
 
-    if (ch === "[" || (ch === "!" && src[index + 1] === "[")) {
+    if (links && (ch === "[" || (ch === "!" && src[index + 1] === "["))) {
       const open = ch === "!" ? index + 1 : index;
       const labelEnd = matchBracket(src, open, "[", "]");
       if (labelEnd > -1 && src[labelEnd + 1] === "(") {
@@ -594,7 +609,8 @@ function parseInline(src: string, depth = 0): MdInline[] {
           } : {
             kind: "link",
             href,
-            spans: label === "" ? [{ kind: "text", text: href }] : parseInline(label, depth + 1),
+            ...(localFilePath(href, true) ? { filePath: href } : {}),
+            spans: label === "" ? [{ kind: "text", text: href }] : parseInline(label, depth + 1, false),
           });
           index = hrefEnd + 1;
           continue;
@@ -602,7 +618,7 @@ function parseInline(src: string, depth = 0): MdInline[] {
       }
     }
 
-    if ((ch === "h" || ch === "w" || ch === "m") && !URL_WORD_RE.test(src[index - 1] ?? "")) {
+    if (links && (ch === "h" || ch === "w" || ch === "m") && !URL_WORD_RE.test(src[index - 1] ?? "")) {
       URL_RE.lastIndex = index;
       const match = URL_RE.exec(src);
       if (match !== null) {
@@ -621,12 +637,49 @@ function parseInline(src: string, depth = 0): MdInline[] {
       }
     }
 
+    if (links) {
+      if (ch === '"' || ch === "'") {
+        const end = src.indexOf(ch, index + 1);
+        const path = end > index ? localFilePath(src.slice(index + 1, end), true) : null;
+        if (path) {
+          buffer += ch;
+          flush();
+          out.push({ kind: "link", href: path, filePath: path, spans: [{ kind: "text", text: path }] });
+          buffer = ch;
+          index = end + 1;
+          continue;
+        }
+      }
+      const path = matchFilePath(src, index);
+      if (path) {
+        flush();
+        out.push({ kind: "link", href: path, filePath: path, spans: [{ kind: "text", text: path }] });
+        index += path.length;
+        continue;
+      }
+    }
+
     buffer += ch;
     index++;
   }
 
   flush();
   return out;
+}
+
+/** Highlight delimiters inside code spans and escaped punctuation stay literal. */
+function findHighlightClose(source: string, start: number): number {
+  for (let index = start; index < source.length; index++) {
+    if (source[index] === "\\") { index++; continue; }
+    if (source[index] === "`") {
+      let count = 1;
+      while (source[index + count] === "`") count++;
+      const end = source.indexOf("`".repeat(count), index + count);
+      if (end >= 0) { index = end + count - 1; continue; }
+    }
+    if (source[index] === "=" && source[index + 1] === "=" && source[index - 1] !== "=" && source[index + 2] !== "=" && (source[index - 1] ?? " ").trim() !== "") return index;
+  }
+  return -1;
 }
 
 /**

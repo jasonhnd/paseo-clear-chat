@@ -123,7 +123,29 @@ asks the platform shell to show it:
 | macOS    | `open -R <file>` selects the file in Finder.           |
 | Other    | `xdg-open <directory>` opens the containing directory. |
 
-A directory path opens that directory. A path the daemon cannot stat does nothing.
+A directory path opens that directory. Reply links show a clear error if the path is missing,
+inaccessible, or the file manager cannot start; filesystem diagnostics stay private. Relative
+paths require the session's working directory and never fall back to the daemon's directory.
+
+Assistant replies recognize absolute paths, home paths, `./` and `../` paths, and relative paths
+with a directory and file extension. Bare filenames are linked only in inline code or explicit
+Markdown links. Quote paths containing spaces, use inline code, or write
+`[Report](<./reports/monthly report.pdf>)` to make the complete target explicit. Rooted paths
+with spaces ending in an extension are also recognized in prose. Line selectors such as `:55:3`
+are stripped before opening. Ordinary slash phrases such as `and/or` remain text; fenced code
+is never linked.
+
+On desktop web (at least 1024px wide), pressing a reply path reveals it on the **host computer**.
+On iOS, iPadOS, Android, and narrower web windows, it copies the written path instead and shows
+**Path copied. Open it on the host computer.** Native apps cannot open files stored on a remote
+host. If clipboard access fails, the existing manual-copy dialog retains the complete path.
+
+## Reply highlights
+
+`==marked text==` draws a theme-tinted highlight in every Markdown variant, including headings,
+lists, quotes, and table cells. Both delimiters must touch content. Inline code, fenced code,
+escaped equals signs, equality operators, and unfinished marks remain literal. This uses the
+existing Assistant markdown setting; it adds no settings fields or version migration.
 
 ## Unmapped output
 

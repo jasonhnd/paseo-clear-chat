@@ -141,7 +141,8 @@ Search, fetch and web search, plans and checklists, plain text, skills and any o
 - **Wrap-up replies.** Replies sent through a `wrap_up` tool show as a full reply card, with recap, question, lettered options and a **Blocked** alert.
 - **Clickable links.** Links in replies open on desktop, web and iOS, and `mailto:` links open your mail app.
 - **Find in chat.** Ctrl/Cmd+F opens a find bar that also searches tool cards. It searches the messages that are loaded, so scroll up to include older ones.
-- **Open files.** A file name in a card shows that file in Finder, Explorer, or your file manager.
+- **Open files.** File names in cards and paths in replies show the file in the host computer's file manager. On phones, tablets and narrow web windows, reply paths copy to the clipboard with a hint to open them on the host. Put filenames or paths with spaces in inline code, or use a Markdown link.
+- **Highlight text.** `==marked text==` adds a highlight to replies. Code keeps its literal equals signs.
 
 ## Settings
 

@@ -6,6 +6,8 @@ import { radius, withAlpha, type ExtendedThemeTokens } from "../theme-tokens";
 import { selectableSurface, unselectable } from "../selection";
 import { selectionSurface } from "../selection-actions";
 import { SyntaxHighlightBlock } from "../syntax-highlight";
+import { useReplyFilePath } from "../use-reply-file-path";
+import { CopyFallbackDialog } from "../copy-feedback";
 import { openLink } from "../open-link";
 import { extractGeneratedImages, imageSource, type GeneratedImage } from "../../generated-images";
 import { GeneratedImages } from "../generated-images";
@@ -190,6 +192,7 @@ interface MarkdownStyles {
   strong: TextStyle;
   emphasis: TextStyle;
   strike: TextStyle;
+  highlight: TextStyle;
   codeSpan: TextStyle;
   link: TextStyle;
 }
@@ -198,6 +201,8 @@ interface RenderContext {
   styles: MarkdownStyles;
   tokens: ExtendedThemeTokens;
   metrics: VariantMetrics;
+  openFilePath(path: string): Promise<void>;
+  copyFilePath: boolean;
   cwd?: string | null;
 }
 
@@ -235,6 +240,7 @@ function scaleMetrics(metrics: VariantMetrics, scale: number): VariantMetrics {
 }
 
 export function MarkdownView({ text, tokens, variant, images = [], cwd }: MarkdownViewProps) {
+  const filePath = useReplyFilePath(cwd);
   const blocks = useMemo(() => parseMarkdown(text), [text]);
   const previews = useMemo(() => {
     const inline = markdownImageKeys(blocks);
@@ -248,13 +254,14 @@ export function MarkdownView({ text, tokens, variant, images = [], cwd }: Markdo
   );
   const styles = useMemo(() => buildStyles(tokens, variant, metrics), [tokens, variant, metrics]);
   const context = useMemo<RenderContext>(
-    () => ({ styles, tokens, metrics, cwd }),
-    [styles, tokens, metrics, cwd],
+    () => ({ styles, tokens, metrics, cwd, openFilePath: filePath.openFilePath, copyFilePath: filePath.copy }),
+    [styles, tokens, metrics, cwd, filePath.openFilePath, filePath.copy],
   );
 
   return (
     <View {...selectionSurface} style={styles.root}>
       {blocks.map((block, index) => renderBlock(block, `b${index}`, index === 0, context))}
+      <CopyFallbackDialog text={filePath.fallbackText} onClose={() => filePath.setFallbackText(null)} tokens={tokens} />
       {/* Written reply paths are explicit, so unreadable images keep a reason and address. */}
       <GeneratedImages images={previews} cwd={cwd} tokens={tokens}
         renderUnavailable={(image) => <ImageFallback src={image.source} alt="" tokens={tokens} unsupported={false} />} />
@@ -489,14 +496,14 @@ function renderFlow(
 ): React.ReactNode {
   const runs = imageRuns(spans);
   if (!runs.some(run => run.kind === "image")) {
-    return <Text key={key} selectable={canSelectInline(spans)} style={textStyle}>{options.prefix}{renderInline(spans, context.styles, key)}</Text>;
+    return <Text key={key} selectable={canSelectInline(spans)} style={textStyle}>{options.prefix}{renderInline(spans, context, key)}</Text>;
   }
   return (
     <View key={key} style={[{ minWidth: 0, gap: 8 }, options.containerStyle]}>
       {options.prefix}
       {runs.map((run, index) => run.kind === "image"
         ? <MarkdownImage key={`${key}i${index}:${run.src}`} src={run.src} alt={run.alt} cwd={context.cwd} tokens={context.tokens} />
-        : <Text key={`${key}t${index}`} selectable={canSelectInline(run.spans)} style={[textStyle, { flex: 0 }]}>{renderInline(run.spans, context.styles, `${key}t${index}`)}</Text>)}
+        : <Text key={`${key}t${index}`} selectable={canSelectInline(run.spans)} style={[textStyle, { flex: 0 }]}>{renderInline(run.spans, context, `${key}t${index}`)}</Text>)}
     </View>
   );
 }
@@ -513,10 +520,11 @@ function canSelectInline(spans: MdInline[]): boolean {
 
 function renderInline(
   spans: MdInline[],
-  styles: MarkdownStyles,
+  context: RenderContext,
   keyPrefix: string,
   selectable = canSelectInline(spans),
 ): React.ReactNode[] {
+  const { styles } = context;
   return spans.map((span, index) => {
     const key = `${keyPrefix}i${index}`;
     switch (span.kind) {
@@ -533,19 +541,25 @@ function renderInline(
       case "strong":
         return (
           <Text key={key} selectable={selectable} style={styles.strong}>
-            {renderInline(span.spans, styles, key, selectable)}
+            {renderInline(span.spans, context, key, selectable)}
           </Text>
         );
       case "emphasis":
         return (
           <Text key={key} selectable={selectable} style={styles.emphasis}>
-            {renderInline(span.spans, styles, key, selectable)}
+            {renderInline(span.spans, context, key, selectable)}
           </Text>
         );
       case "strike":
         return (
           <Text key={key} selectable={selectable} style={styles.strike}>
-            {renderInline(span.spans, styles, key, selectable)}
+            {renderInline(span.spans, context, key, selectable)}
+          </Text>
+        );
+      case "highlight":
+        return (
+          <Text key={key} testID="markdown-highlight" selectable={selectable} style={styles.highlight}>
+            {renderInline(span.spans, context, key, selectable)}
           </Text>
         );
       case "link":
@@ -557,16 +571,17 @@ function renderInline(
             key={key}
             selectable={selectable}
             accessibilityRole="link"
+            accessibilityLabel={span.filePath ? `${context.copyFilePath ? "Copy" : "Show"} file path: ${span.filePath}` : undefined}
             // No `href`: React Native Web would render a real anchor and the
             // click would navigate the app window itself. The press handler
             // routes through the host's opener instead.
             onPress={(event) => {
               event.stopPropagation();
-              void openLink(span.href);
+              return span.filePath ? context.openFilePath(span.filePath) : openLink(span.href);
             }}
             style={styles.link}
           >
-            {renderInline(span.spans, styles, key, selectable)}
+            {renderInline(span.spans, context, key, selectable)}
           </Text>
         );
     }
@@ -838,6 +853,10 @@ function buildStyles(
     strike: {
       textDecorationLine: "line-through",
       color: tokens.foregroundMuted,
+    },
+    highlight: {
+      backgroundColor: withAlpha(tokens.accent, tokens.isDark ? 0.3 : 0.18),
+      color: tokens.foreground,
     },
     codeSpan: {
       fontFamily: tokens.fontMono,
