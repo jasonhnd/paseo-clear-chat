@@ -144,14 +144,28 @@ for (const event of ["scroll", "resize", "blur", "pointerdown", "keydown", "medi
   }
 }
 
-test("expanded rows never preview and clicking still expands a collapsed row", () => {
+test("expanded rows never preview and inline mode still expands a collapsed row", () => {
   const m = mount();
-  m.row.props.onPress();
+  m.h.preferences.collapsedStepAction = "inline";
+  find(m.h, m.mounted.render()).props.onPress();
   const expanded = find(m.h, m.mounted.render());
   expanded.props.onPointerEnter?.({ currentTarget: m.target, nativeEvent: { pointerType: "mouse" } });
   m.tick(1000);
   assert.equal(m.preview(), undefined);
   assert.equal(expanded.props.accessibilityState.expanded, true);
+  m.h.unmount();
+});
+
+test("a normal click replaces hover with step details without expanding the row", () => {
+  const m = mount();
+  m.enter(); m.tick(300);
+  assert.ok(m.preview());
+  m.emit("pointerdown");
+  m.row.props.onPress();
+  const tree = m.mounted.render();
+  assert.equal(m.preview(), undefined);
+  assert.equal(find(m.h, tree).props.accessibilityState.expanded, false);
+  assert.ok(m.h.nodes(tree, node => node.props.testID === "step-detail-panel")[0]);
   m.h.unmount();
 });
 

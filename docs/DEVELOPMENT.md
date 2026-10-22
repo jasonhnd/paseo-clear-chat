@@ -126,8 +126,9 @@ client saving settings can strip it. It is never imported from browser legacy se
 
 ### SDK integration and limits
 
-The pinned SDK 0.8.0 exposes `addWorkspacePanel`, `openPanel` and a controlled
-`Modal`. The [SDK contracts](https://github.com/getpaseo/paseo/blob/v0.8.0/packages/plugin/src/client/contracts.ts)
+The initial SDK 0.8.0 check found `addWorkspacePanel`, `openPanel` and a controlled
+`Modal`. These contracts remain available after the separate [SDK 0.12.0 upgrade](SDK-0.12.md).
+The [0.8.0 SDK contracts](https://github.com/getpaseo/paseo/blob/v0.8.0/packages/plugin/src/client/contracts.ts)
 allow an agent panel in the host's `explorer` location. `step-detail-host.tsx`
 registers that panel and keeps the selection scoped to host and agent; opening it
 reserves host-managed space beside chat instead of positioning a layer over chat.
@@ -146,7 +147,7 @@ On web, an extra same-URL history entry makes browser Back dismiss details first
 Safe-area padding bounds the native sheet, and dedicated gesture regions disable
 browser touch scrolling so it cannot cancel a drag.
 
-SDK 0.8.0 has **no close-panel API**. Close clears the selected step; the empty
+Neither SDK 0.8.0 nor 0.12.0 has a **close-panel API**. Close clears the selected step; the empty
 pane explains how to close its host tab to give the space back to chat. Host tab
 close also clears the selection. If the workspace is not cached, panel APIs are
 unavailable, or opening a panel throws, desktop details fall back to a popover:
