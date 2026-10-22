@@ -15,28 +15,34 @@ export const TOOL_ROW_LAYOUT = {
 export const COLLAPSED_TOOL_HEIGHT = TOOL_ROW_LAYOUT.contentHeight
   + 2 * (TOOL_ROW_LAYOUT.paddingVertical + TOOL_ROW_LAYOUT.marginVertical + TOOL_ROW_LAYOUT.borderWidth);
 
+// The transparent button spans the compact row and its existing gap. Its
+// measured touch bounds remain 28px even though the visual slot is 20px.
+export const PHONE_TOOL_ROW_LAYOUT = { contentHeight: 20, touchHeight: 28 } as const;
+
 const styleCache = new WeakMap<ExtendedThemeTokens, Map<string, ReturnType<typeof createToolCalloutStyles>>>();
 
-export function useToolCalloutStyles(tokens: ExtendedThemeTokens, statusBg: string, statusColor: string) {
+export function useToolCalloutStyles(tokens: ExtendedThemeTokens, statusBg: string, statusColor: string, phone = false) {
   return useMemo(
     () => {
       let statuses = styleCache.get(tokens);
       if (!statuses) { statuses = new Map(); styleCache.set(tokens, statuses); }
-      const key = JSON.stringify([statusBg, statusColor]);
+      const key = JSON.stringify([statusBg, statusColor, phone]);
       const cached = statuses.get(key);
       if (cached) return cached;
-      const styles = createToolCalloutStyles(tokens, statusBg, statusColor);
+      const styles = createToolCalloutStyles(tokens, statusBg, statusColor, phone);
       // Internal callers use four semantic statuses. Bound unusual custom values
       // too, without retaining tokens after a theme leaves the shared cache.
       if (statuses.size >= 8) statuses.delete(statuses.keys().next().value!);
       statuses.set(key, styles);
       return styles;
     },
-    [tokens, statusBg, statusColor],
+    [tokens, statusBg, statusColor, phone],
   );
 }
 
-function createToolCalloutStyles(tokens: ExtendedThemeTokens, statusBg: string, statusColor: string) {
+function createToolCalloutStyles(tokens: ExtendedThemeTokens, statusBg: string, statusColor: string, phone: boolean) {
+  const rowFont = (base: number) => phone ? Math.max(11, tokens.fs(base)) : tokens.fs(base);
+  const rowLine = phone ? Math.max(14, tokens.fs(14)) : tokens.fs(16);
   return StyleSheet.create({
         container: {
           marginVertical: TOOL_ROW_LAYOUT.marginVertical,
@@ -48,20 +54,35 @@ function createToolCalloutStyles(tokens: ExtendedThemeTokens, statusBg: string, 
           overflow: "hidden",
           ...selectableSurface,
         },
+        compactContainer: {
+          overflow: "visible",
+          backgroundColor: tokens.surface1,
+        },
+        compactHeaderSlot: {
+          height: PHONE_TOOL_ROW_LAYOUT.contentHeight,
+          overflow: "visible",
+        },
+        compactHeaderTarget: {
+          position: "absolute",
+          top: (PHONE_TOOL_ROW_LAYOUT.contentHeight - PHONE_TOOL_ROW_LAYOUT.touchHeight) / 2,
+          left: 0,
+          right: 0,
+          backgroundColor: "transparent",
+        },
         header: {
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
-          paddingHorizontal: 10,
-          height: TOOL_ROW_LAYOUT.contentHeight,
+          paddingHorizontal: phone ? 6 : 10,
+          height: phone ? PHONE_TOOL_ROW_LAYOUT.touchHeight : TOOL_ROW_LAYOUT.contentHeight,
           paddingVertical: TOOL_ROW_LAYOUT.paddingVertical,
-          gap: 8,
+          gap: phone ? 4 : 8,
           backgroundColor: tokens.surface1,
         },
         headerLeft: {
           flexDirection: "row",
           alignItems: "center",
-          gap: 8,
+          gap: phone ? 4 : 8,
           flex: 1,
           minWidth: 0,
         },
@@ -74,8 +95,8 @@ function createToolCalloutStyles(tokens: ExtendedThemeTokens, statusBg: string, 
         },
         titleText: {
           fontFamily: tokens.fontUi,
-          fontSize: tokens.fs(12),
-          lineHeight: tokens.fs(16),
+          fontSize: rowFont(phone ? 11 : 12),
+          lineHeight: rowLine,
           includeFontPadding: false,
           fontWeight: "600",
           color: tokens.foreground,
@@ -86,20 +107,20 @@ function createToolCalloutStyles(tokens: ExtendedThemeTokens, statusBg: string, 
         headerRight: {
           flexDirection: "row",
           alignItems: "center",
-          gap: 6,
+          gap: phone ? 4 : 6,
           flexShrink: 0,
         },
         durationBadge: {
-          fontSize: tokens.fs(11),
-          lineHeight: tokens.fs(16),
+          fontSize: rowFont(11),
+          lineHeight: rowLine,
           includeFontPadding: false,
           fontFamily: tokens.fontUi,
           color: tokens.foregroundSubtle,
         },
         indicatorText: {
           fontFamily: tokens.fontUi,
-          fontSize: tokens.fs(12),
-          lineHeight: tokens.fs(16),
+          fontSize: rowFont(phone ? 11 : 12),
+          lineHeight: rowLine,
           includeFontPadding: false,
           color: statusColor,
         },

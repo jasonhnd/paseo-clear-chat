@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { View, Text, Pressable } from "react-native";
+import { View, Text, Pressable, useWindowDimensions } from "react-native";
+import { PHONE_MAX } from "../breakpoints";
 import { Glyph } from "./glyph";
 import { frosted } from "./frosted";
 import { surfaceProps } from "./view-props";
@@ -139,46 +140,52 @@ export function ToolCallout({
       ),
     );
 
-  const styles = useToolCalloutStyles(tokens, statusBg, statusColor);
+  const phone = useWindowDimensions().width <= PHONE_MAX;
+  const compact = phone && !expanded;
+  const styles = useToolCalloutStyles(tokens, statusBg, statusColor, phone);
+
+  const header = (
+    <Pressable
+      testID="tool-summary-row"
+      accessibilityRole="button"
+      accessibilityLabel={`${expanded ? "Collapse" : "Expand"} ${toolSummary(data)}`}
+      accessibilityState={{ expanded }}
+      {...stepMenu.rowProps}
+      onPress={() => { if (!stepMenu.consumePress()) onExpandedChange(!expanded); }}
+      style={compact ? [styles.header, styles.compactHeaderTarget] : styles.header}
+    >
+      <View style={styles.headerLeft}>
+        <Glyph name={getToolIconName(data.tool)} size={phone ? 11 : 13} color={iconColor} />
+        <Text selectable={false} testID="tool-summary-text" style={[styles.titleText, stepSummaryTextStyle]} numberOfLines={1}>
+          {toolSummary(data)}
+        </Text>
+      </View>
+      <View style={styles.headerRight}>
+        {duration !== undefined ? <Text testID="tool-duration" style={styles.durationBadge} numberOfLines={1}>{duration}</Text> : null}
+        {data.exitCode !== undefined && data.exitCode !== 0 ? (
+          <Text style={[styles.durationBadge, { color: tokens.danger }]} numberOfLines={1}>exit {data.exitCode}</Text>
+        ) : null}
+        <View testID={`tool-status-${data.status}`} accessibilityLabel={data.status}>
+          {isRunning ? <ToolSpinner color={tokens.accent} size={phone ? 11 : 13} /> : (
+            <Text style={styles.indicatorText} numberOfLines={1}>
+              {isSuccess ? "✓" : isFailed ? "✗" : isWaiting ? "Waiting" : "canceled"}
+            </Text>
+          )}
+        </View>
+        <Rotate active={expanded}>
+          <Glyph name="ChevronDown" size={phone ? 12 : 14} color={tokens.foregroundMuted} />
+        </Rotate>
+      </View>
+    </Pressable>
+  );
 
   return (
     <View
       testID={`tool-card-${hasTypedBody ? data.tool : "unknown"}`}
       {...surfaceProps(frosted, glowing(tokens.isDark), selectionSurface)}
-      style={styles.container}
+      style={compact ? [styles.container, styles.compactContainer] : styles.container}
     >
-      <Pressable
-        testID="tool-summary-row"
-        accessibilityRole="button"
-        accessibilityLabel={`${expanded ? "Collapse" : "Expand"} ${toolSummary(data)}`}
-        accessibilityState={{ expanded }}
-        {...stepMenu.rowProps}
-        onPress={() => { if (!stepMenu.consumePress()) onExpandedChange(!expanded); }}
-        style={styles.header}
-      >
-        <View style={styles.headerLeft}>
-          <Glyph name={getToolIconName(data.tool)} size={13} color={iconColor} />
-          <Text selectable={false} testID="tool-summary-text" style={[styles.titleText, stepSummaryTextStyle]} numberOfLines={1}>
-            {toolSummary(data)}
-          </Text>
-        </View>
-        <View style={styles.headerRight}>
-          {duration !== undefined ? <Text testID="tool-duration" style={styles.durationBadge} numberOfLines={1}>{duration}</Text> : null}
-          {data.exitCode !== undefined && data.exitCode !== 0 ? (
-            <Text style={[styles.durationBadge, { color: tokens.danger }]} numberOfLines={1}>exit {data.exitCode}</Text>
-          ) : null}
-          <View testID={`tool-status-${data.status}`} accessibilityLabel={data.status}>
-            {isRunning ? <ToolSpinner color={tokens.accent} /> : (
-              <Text style={styles.indicatorText} numberOfLines={1}>
-                {isSuccess ? "✓" : isFailed ? "✗" : isWaiting ? "Waiting" : "canceled"}
-              </Text>
-            )}
-          </View>
-          <Rotate active={expanded}>
-            <Glyph name="ChevronDown" size={14} color={tokens.foregroundMuted} />
-          </Rotate>
-        </View>
-      </Pressable>
+      {compact ? <View testID="tool-summary-slot" style={styles.compactHeaderSlot}>{header}</View> : header}
 
       {stepMenu.menu}
 
