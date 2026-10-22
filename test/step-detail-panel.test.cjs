@@ -200,3 +200,16 @@ test("the settings control defaults to details, saves inline and reverts to deta
   assert.ok(find(h, mounted.render(), "step-detail-panel"));
   h.unmount();
 });
+
+test("820px popovers cap their height to the safe viewport with room for margins", () => {
+  const h = createToolHarness("web", { dimensions: { width: 820, height: 600 } });
+  const mounted = h.mount(require("./fixtures/real-hermes-hover.json").items.find(item => item.detail?.type === "read"));
+  const viewport = h.nodes(mounted.tree, node => typeof node.props.onLayout === "function" && node.props.pointerEvents === "box-none")[0];
+  viewport.props.onLayout({ nativeEvent: { layout: { width: 820, height: 550 } } });
+  const flatten = style => Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
+  const panel = flatten(find(h, mounted.render(), "step-detail-panel").props.style);
+  assert.equal(panel.maxHeight, 502);
+  assert.equal(panel.flexShrink, 1);
+  assert.ok(find(h, mounted.render(), "step-detail-scroll"));
+  h.unmount();
+});

@@ -96,7 +96,7 @@ test("the captured read envelope shows the path and every short result line", ()
   const preview = m.preview();
   assert.match(preview.textContent, /\/workspace\/sample\/src\/sample\.js/);
   assert.equal(preview.children.at(-1).textContent,
-    "1|export function sampleTotal(items) {\n2|  return items.reduce((sum, item) => sum + item.cost, 0);\n3|}");
+    "export function sampleTotal(items) {\n  return items.reduce((sum, item) => sum + item.cost, 0);\n}");
   m.h.unmount();
 });
 
