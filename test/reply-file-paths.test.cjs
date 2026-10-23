@@ -187,3 +187,29 @@ test("captured reply shape preserves unquoted dotted and spaced project roots", 
   for (const link of links) await press(link);
   assert.deepEqual(h.reveals.map(value => value.path), paths);
 });
+
+for (const platform of ["web", "ios", "android"]) {
+  for (const [text, paths] of [
+    ["See /workspace/sample/report.txt in src/main.ts", ["/workspace/sample/report.txt", "src/main.ts"]],
+    ["Check /tmp/app.v2 then read src/main.ts", ["/tmp/app.v2", "src/main.ts"]],
+    ["src/my.project files/x.ts", ["src/my.project files/x.ts"]],
+  ]) {
+    test(`space directory boundaries on ${platform}: ${text}`, () => {
+      const h = createToolHarness(platform, { markdown: true });
+      const { tree } = h.mount({ type: "assistant_message", text });
+      assert.deepEqual(fileLinks(h, tree).map(link => link.props.accessibilityLabel.replace(/^(Show|Copy) file path: /, "")), paths);
+    });
+  }
+}
+
+for (const platform of ["web", "ios", "android"]) {
+  test(`dotted and spaced path preservation on ${platform}`, () => {
+    const h = createToolHarness(platform, { markdown: true });
+    const paths = ["/home/a/my.project files/report.txt", "~/my.project files/report.txt", "./my.project files/report.txt", "C:\\my.project files\\report.txt"];
+    const fixture = require("./fixtures/derived-root-path-dot-space-reply.json");
+    const fixturePaths = fixture.text.split("\n").map(line => line.slice(6).replace(/[.,。] Next step\.$/, ""));
+    const text = paths.map(path => `${path}. ${path}, (${path}) ${path}。`).join("\n") + "\n" + fixture.text + "\nversion 1.2 is out";
+    const { tree } = h.mount({ type: "assistant_message", text });
+    assert.deepEqual(fileLinks(h, tree).map(link => link.props.accessibilityLabel.replace(/^(Show|Copy) file path: /, "")), [...paths.flatMap(path => [path, path, path, path]), ...fixturePaths]);
+  });
+}
