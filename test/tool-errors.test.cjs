@@ -272,3 +272,36 @@ test("terminal label cleanup leaves ordinary shell output and structured streams
   ]) assert.equal(build(item).output, item.detail.output);
   assert.equal(build({ ...sample, detail: { ...sample.detail, output: { stdout: literal, stderr: "**literal error**" } } }).output, literal);
 });
+
+// No captured failed MCP call exists. Derived from the nested MCP projection in
+// real-claude-session.json and the error/result fields in docs/STEP-DETAIL-FIELDS.md.
+const mcpFailure = require("./fixtures/derived-mcp-failure.json");
+for (const platform of ["web", "ios", "android"]) {
+  test(`${platform}: failed MCP structured response shows the error once and keeps full details and copy`, async () => {
+    const h = createToolHarness(platform, { preferences: { collapsedStepAction: "details" } });
+    const mounted = h.mount(mcpFailure, false);
+    assert.equal(find(h, mounted.tree, "tool-error-line"), undefined);
+    assert.equal(h.text(mounted.tree).split("Service unavailable").length - 1, 1);
+    find(h, mounted.tree, "tool-summary-row").props.onPress();
+    find(h, mounted.render(), "tool-summary-row").props.onPress();
+    const details = mounted.render();
+    assert.equal(h.text(find(h, details, "step-detail-error")), mcpFailure.error);
+    await find(h, details, "step-detail-copy-error").props.onPress();
+    assert.deepEqual(h.copies, [mcpFailure.error]);
+  });
+}
+
+test("failed MCP response deduplication follows JSON output folding", () => {
+  const h = createToolHarness();
+  const item = structuredClone(mcpFailure);
+  item.detail.output = { progress: Array(20).fill("Checking"), ...item.detail.output };
+  const mounted = h.mount(item, false);
+  assert.equal(h.text(find(h, mounted.tree, "tool-error-line")), item.error);
+  const showAll = h.nodes(mounted.tree, node => node.props.accessibilityLabel?.startsWith("Show all "))[0];
+  showAll.props.onPress();
+  const expanded = mounted.render();
+  assert.equal(find(h, expanded, "tool-error-line"), undefined);
+  assert.equal(h.text(expanded).split("Service unavailable").length - 1, 1);
+  h.nodes(expanded, node => node.props.accessibilityLabel === "Show fewer lines")[0].props.onPress();
+  assert.equal(h.text(find(h, mounted.render(), "tool-error-line")), item.error);
+});

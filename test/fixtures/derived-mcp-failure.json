@@ -1,0 +1,12 @@
+{
+  "type": "tool_call",
+  "callId": "sample-mcp-failure",
+  "name": "mcp__sample__lookup",
+  "detail": {
+    "type": "unknown",
+    "input": { "query": "sample" },
+    "output": { "output": "Service unavailable\nTry again later" }
+  },
+  "status": "failed",
+  "error": "Service unavailable\nTry again later"
+}

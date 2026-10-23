@@ -48,7 +48,8 @@ export function toolErrorLine(
   else if (data.tool === "edit") outputs = [data.diff || data.code];
   else if (data.tool === "plain_text") outputs = [data.plainText];
   else if (data.tool === "tool_search") outputs = [data.toolSearch?.text];
-  else if (data.tool === "mcp") outputs = [typeof data.mcp?.result === "string" ? data.mcp.result : undefined];
+  else if (data.tool === "mcp") outputs = [data.mcp?.result === undefined ? undefined
+    : typeof data.mcp.result === "string" ? data.mcp.result : JSON.stringify(data.mcp.result, null, 2)];
   else if (data.tool === "eval") outputs = data.cells?.map(cell => cell.output) ?? [data.output];
   else if (data.tool === "thinking") outputs = [data.thinking?.text || data.code || data.output];
   else if (data.tool === "github") outputs = [data.github?.text, data.github?.file?.code];
@@ -60,6 +61,11 @@ export function toolErrorLine(
   return outputs.some(text => {
     const visible = data.finalReply || data.tool === "thinking" || limit === "never" || (text && expandedOutputs?.has(text))
       ? text : text?.split(/\r?\n/).slice(0, limit).join("\n");
-    return visible?.includes(error);
+    // Structured MCP responses render as JSON, including escaped newlines and
+    // quotes. Match the displayed representation while keeping the raw error
+    // intact for details and Copy error.
+    const displayedError = data.tool === "mcp" && typeof data.mcp?.result !== "string"
+      ? JSON.stringify(error).slice(1, -1) : error;
+    return visible?.includes(displayedError);
   }) ? undefined : error;
 }
