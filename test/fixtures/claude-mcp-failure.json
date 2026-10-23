@@ -1,0 +1,51 @@
+{
+  "provenance": "Derived minimal projected items, not a session capture: no existing sanitized fixture contains a failed Claude MCP call. Projected shape: docs/STEP-DETAIL-FIELDS.md and real-shell-details.json. Paseo v0.12.0 packages/server/src/server/agent/providers/claude/agent.ts:5581-5590 retains the failed block as error; :5638-5671 buildToolOutput returns undefined on is_error, so detail has no output. https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/claude/agent.ts#L5581-L5590 https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/claude/agent.ts#L5638-L5671",
+  "expected": "MCP request failed: service unavailable\nRetry after checking the service.\n  Full diagnostic retained.  \n",
+  "items": [
+    {
+      "type": "tool_call",
+      "callId": "sample-mcp-failure",
+      "name": "mcp__server__tool",
+      "status": "failed",
+      "detail": {
+        "type": "unknown",
+        "toolName": "mcp__server__tool",
+        "input": {
+          "query": "sample"
+        }
+      },
+      "error": {
+        "type": "mcp_tool_result",
+        "is_error": true,
+        "content": "MCP request failed: service unavailable\nRetry after checking the service.\n  Full diagnostic retained.  \n"
+      }
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-mcp-failure",
+      "name": "mcp__server__tool",
+      "status": "failed",
+      "detail": {
+        "type": "unknown",
+        "toolName": "mcp__server__tool",
+        "input": {
+          "query": "sample"
+        }
+      },
+      "error": {
+        "type": "mcp_tool_result",
+        "is_error": true,
+        "content": [
+          {
+            "type": "text",
+            "text": "MCP request failed: service unavailable"
+          },
+          {
+            "type": "text",
+            "text": "Retry after checking the service.\n  Full diagnostic retained.  \n"
+          }
+        ]
+      }
+    }
+  ]
+}
