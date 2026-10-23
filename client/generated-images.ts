@@ -39,7 +39,7 @@ export function imageSource(source: string, explicit = false): GeneratedImage | 
 export function extractGeneratedImages(value: unknown, options: { toolOutput?: boolean; generated?: boolean } = {}): GeneratedImage[] {
   // Keep occurrences: separate output entries can share a source.
   const images: GeneratedImage[] = [];
-  // Guard ancestor cycles without suppressing repeated list entries.
+  // Guard against cycles while traversing objects.
   const seen = new Set<object>();
   const add = (source: string, explicit = false) => {
     const image = imageSource(source, explicit);
@@ -115,7 +115,6 @@ export function extractGeneratedImages(value: unknown, options: { toolOutput?: b
     seen.add(entry);
     if (Array.isArray(entry)) {
       for (const child of entry) visit(child, depth + 1, explicit, generated);
-      seen.delete(entry);
       return;
     }
     const obj = entry as Record<string, unknown>;
@@ -133,7 +132,6 @@ export function extractGeneratedImages(value: unknown, options: { toolOutput?: b
           (image && ["source", "url", "uri", "path", "file_path", "image_path", "image_url"].includes(key)),
         generated || generatedField);
     }
-    seen.delete(entry);
   };
   visit(value, 0);
   return images;

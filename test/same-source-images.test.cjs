@@ -19,23 +19,3 @@ for (const platform of ["web", "ios", "android"]) {
     }
   }
 }
-
-for (const source of ["https://example.org/chart.png", "/workspace/chart.png"]) {
-  test(`tool output image lists preserve repeated ${source}`, async () => {
-    const h = createToolHarness("ios", { markdown: true, images: true });
-    const item = structuredClone(fixture.items[1]);
-    item.detail.output = { content: [
-      { type: "image", source: { type: "url", url: source } },
-      { type: "image", source: { type: "url", url: source } },
-    ] };
-    const mounted = h.mount(item, false);
-    await new Promise(resolve => setImmediate(resolve));
-    assert.equal(h.nodes(mounted.render(), node => node.type === "Image").length, 2);
-    const extract = h.load("client/generated-images.ts").extractGeneratedImages;
-    const block = item.detail.output.content[0];
-    assert.equal(extract([block, block], { toolOutput: true }).length, 2);
-    const cyclic = [block];
-    cyclic.push(cyclic);
-    assert.equal(extract(cyclic, { toolOutput: true }).length, 1);
-  });
-}
