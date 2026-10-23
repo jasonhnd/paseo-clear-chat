@@ -213,3 +213,24 @@ for (const platform of ["web", "ios", "android"]) {
     assert.deepEqual(fileLinks(h, tree).map(link => link.props.accessibilityLabel.replace(/^(Show|Copy) file path: /, "")), [...paths.flatMap(path => [path, path, path, path]), ...fixturePaths]);
   });
 }
+
+for (const platform of ["web", "ios", "android"]) {
+  for (const [text, paths] of [
+    ["See src/main.ts if/when ready", ["src/main.ts"]],
+    ["See src/main.ts release/notes", ["src/main.ts"]],
+    ["Use src/main.ts for/with tests.", ["src/main.ts"]],
+    ["Check src/app.config before/after edit.", ["src/app.config"]],
+    ["docs/v1.2 release/notes", ["docs/v1.2"]],
+    ["src/app.v2 release/notes", ["src/app.v2"]],
+    ["See src/main.ts and/or src/other.ts", ["src/main.ts", "src/other.ts"]],
+  ]) {
+    test(`relative file before slash prose on ${platform}: ${text}`, async () => {
+      const h = createToolHarness(platform, { markdown: true });
+      const { tree } = h.mount({ type: "assistant_message", text });
+      const links = fileLinks(h, tree);
+      assert.deepEqual(links.map(link => link.props.accessibilityLabel.replace(/^(Show|Copy) file path: /, "")), paths);
+      for (const link of links) await press(link);
+      assert.deepEqual(platform === "web" ? h.reveals.map(value => value.path) : h.copies, paths);
+    });
+  }
+}
