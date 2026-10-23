@@ -190,10 +190,10 @@ test("upstream #12: a new source can load after the preceding image failed", () 
   assert.equal(pictures(h, tree)[0].props.source.uri, "https://example.org/next.png");
 });
 
-test("upstream #12: extraction deduplicates sources, ignores unsafe schemes, and leaves inputs alone", () => {
+test("upstream #12: extraction retains source occurrences, ignores unsafe schemes, and leaves inputs alone", () => {
   const h = harness();
   const extract = h.load("client/generated-images.ts").extractGeneratedImages;
-  assert.deepEqual(extract([remote, { type: "image_url", image_url: { url: remote } }, "javascript:alert(1).png", "data:text/html;base64,AAAA"]), [{ source: remote }]);
+  assert.deepEqual(extract([remote, { type: "image_url", image_url: { url: remote } }, "javascript:alert(1).png", "data:text/html;base64,AAAA"]), [{ source: remote }, { source: remote }]);
   assert.deepEqual(extract("Read the documentation at https://example.org/guide"), []);
   const circular = { output: remote }; circular.self = circular;
   assert.deepEqual(extract(circular), [{ source: remote }]);
