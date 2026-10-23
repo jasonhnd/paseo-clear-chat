@@ -640,7 +640,8 @@ function parseInline(src: string, depth = 0, links = true): MdInline[] {
     if (links) {
       if (ch === '"' || ch === "'") {
         const end = src.indexOf(ch, index + 1);
-        const path = end > index ? localFilePath(src.slice(index + 1, end), true) : null;
+        // Quotation marks in prose do not opt bare filenames into linking.
+        const path = end > index ? localFilePath(src.slice(index + 1, end)) : null;
         if (path) {
           buffer += ch;
           flush();
