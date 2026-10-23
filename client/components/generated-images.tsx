@@ -70,6 +70,6 @@ export function GeneratedImages({ images, cwd = null, tokens, renderUnavailable 
 }) {
   if (!images.length) return null;
   return <View testID="generated-images" style={{ gap: 8 }}>
-    {images.map((image) => <GeneratedImagePreview key={image.source} image={image} cwd={cwd} tokens={tokens} renderUnavailable={renderUnavailable} />)}
+    {images.map((image, index) => <GeneratedImagePreview key={`${index}:${image.source}`} image={image} cwd={cwd} tokens={tokens} renderUnavailable={renderUnavailable} />)}
   </View>;
 }
