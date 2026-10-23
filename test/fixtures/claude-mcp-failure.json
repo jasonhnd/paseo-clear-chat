@@ -1,5 +1,5 @@
 {
-  "provenance": "Derived minimal projected items, not a session capture: no existing sanitized fixture contains a failed Claude MCP call. Projected shape: docs/STEP-DETAIL-FIELDS.md and real-shell-details.json. Paseo v0.12.0 packages/server/src/server/agent/providers/claude/agent.ts:5581-5590 retains the failed block as error; :5638-5671 buildToolOutput returns undefined on is_error, so detail has no output. https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/claude/agent.ts#L5581-L5590 https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/claude/agent.ts#L5638-L5671",
+  "provenance": "Minimal projected failures derived from Paseo v0.12.0, not a session capture. Failed MCP blocks retain error content and tool_use_id; buildToolOutput returns undefined, then output ?? null is passed to the unknown detail parser. Sources: https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/claude/agent.ts#L5584-L5590 https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/claude/agent.ts#L5643-L5644 https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/claude/tool-call-detail-parser.ts#L240-L244",
   "expected": "MCP request failed: service unavailable\nRetry after checking the service.\n  Full diagnostic retained.  \n",
   "items": [
     {
@@ -9,15 +9,16 @@
       "status": "failed",
       "detail": {
         "type": "unknown",
-        "toolName": "mcp__server__tool",
         "input": {
           "query": "sample"
-        }
+        },
+        "output": null
       },
       "error": {
         "type": "mcp_tool_result",
         "is_error": true,
-        "content": "MCP request failed: service unavailable\nRetry after checking the service.\n  Full diagnostic retained.  \n"
+        "content": "MCP request failed: service unavailable\nRetry after checking the service.\n  Full diagnostic retained.  \n",
+        "tool_use_id": "sample-mcp-failure"
       }
     },
     {
@@ -27,10 +28,10 @@
       "status": "failed",
       "detail": {
         "type": "unknown",
-        "toolName": "mcp__server__tool",
         "input": {
           "query": "sample"
-        }
+        },
+        "output": null
       },
       "error": {
         "type": "mcp_tool_result",
@@ -44,7 +45,8 @@
             "type": "text",
             "text": "Retry after checking the service.\n  Full diagnostic retained.  \n"
           }
-        ]
+        ],
+        "tool_use_id": "sample-mcp-failure"
       }
     }
   ]
