@@ -16,13 +16,15 @@ function install({ run = spawnSync, resolveDependency = require.resolve, report 
   }
   if (result.error || result.status !== 0) {
     let detail = "";
-    if (result.error) {
+    if (result.error && result.error.code !== "ENOBUFS") {
       const message = stripVTControlCharacters(String(result.error.message || result.error)).split(/\r?\n/)[0];
       detail = `\nnpm could not start: ${message}`;
     } else {
-      const output = stripVTControlCharacters(result.stderr || result.stdout || "").trimEnd();
+      if (result.error) detail = "\nnpm failed: too much output (maxBuffer exceeded).";
+      const stderr = stripVTControlCharacters(result.stderr || "").trimEnd();
+      const output = stderr || stripVTControlCharacters(result.stdout || "").trimEnd();
       const tail = output.split(/\r?\n/).slice(-20).join("\n");
-      if (tail) detail = `\n${tail.length > 4000 ? "(truncated)\n" : ""}${tail.slice(-4000)}`;
+      if (tail) detail += `\n${tail.length > 4000 ? "(truncated)\n" : ""}${tail.slice(-4000)}`;
     }
     report("Clear Chat dependencies could not be installed. Check that Node.js and npm are available on the daemon host and that its network can reach the npm registry, then retry the installation with the Paseo CLI." + detail);
     return 1;

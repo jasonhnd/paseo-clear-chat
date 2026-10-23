@@ -46,6 +46,28 @@ test("npm failure falls back to stdout when stderr is empty", () => {
   assert.ok(message.endsWith("npm stdout diagnostic"));
 });
 
+// Derived compatibility fixture: docs/STEP-DETAIL-FIELDS.md documents explicit
+// streams in a projected shell item's detail.output; no capture has these cases.
+const installOutput = require("./fixtures/install-output.json").detail.output;
+
+test("npm failure falls back to stdout when stderr is whitespace only", () => {
+  const message = installFailure({ status: 1, ...installOutput });
+  assert.ok(message.endsWith(installOutput.stdout));
+});
+
+test("npm maxBuffer failure reports too much output and retains the captured tail", () => {
+  const { spawnSync } = require("node:child_process");
+  const result = spawnSync(process.execPath, ["-e", "process.stdout.write(process.argv[1].repeat(100000))", installOutput.stdout + "\n"], {
+    encoding: "utf8", maxBuffer: 1024,
+  });
+  assert.equal(result.error?.code, "ENOBUFS");
+  assert.ok(result.stdout.length > 1024);
+  const message = installFailure(result);
+  assert.match(message, /npm failed.*too much output/i);
+  assert.doesNotMatch(message, /npm could not start/i);
+  assert.ok(message.endsWith(result.stdout.trimEnd().split(/\r?\n/).slice(-20).join("\n").slice(-4000)));
+});
+
 test("npm failure bounds very long output and marks truncation", () => {
   const message = installFailure({ status: 1, stderr: "discarded prefix" + "x".repeat(10000) + "final diagnostic" });
   assert.match(message, /\(truncated\)/);
