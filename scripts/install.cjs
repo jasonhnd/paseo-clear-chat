@@ -2,16 +2,29 @@
 
 const { spawnSync } = require("node:child_process");
 const { resolve } = require("node:path");
+const { stripVTControlCharacters } = require("node:util");
 
 function install({ run = spawnSync, resolveDependency = require.resolve, report = console.error } = {}) {
   const checkout = resolve(__dirname, "..");
+  let result;
   try {
-    const result = run(process.platform === "win32" ? "npm.cmd" : "npm", ["ci", "--include=dev"], {
+    result = run(process.platform === "win32" ? "npm.cmd" : "npm", ["ci", "--include=dev"], {
       cwd: checkout, encoding: "utf8", maxBuffer: 8 * 1024 * 1024, shell: process.platform === "win32",
     });
-    if (result.error || result.status !== 0) throw new Error("Install failed");
-  } catch {
-    report("Clear Chat dependencies could not be installed. Check that Node.js and npm are available on the daemon host and that its network can reach the npm registry, then retry the installation with the Paseo CLI.");
+  } catch (error) {
+    result = { error };
+  }
+  if (result.error || result.status !== 0) {
+    let detail = "";
+    if (result.error) {
+      const message = stripVTControlCharacters(String(result.error.message || result.error)).split(/\r?\n/)[0];
+      detail = `\nnpm could not start: ${message}`;
+    } else {
+      const output = stripVTControlCharacters(result.stderr || result.stdout || "").trimEnd();
+      const tail = output.split(/\r?\n/).slice(-20).join("\n");
+      if (tail) detail = `\n${tail.length > 4000 ? "(truncated)\n" : ""}${tail.slice(-4000)}`;
+    }
+    report("Clear Chat dependencies could not be installed. Check that Node.js and npm are available on the daemon host and that its network can reach the npm registry, then retry the installation with the Paseo CLI." + detail);
     return 1;
   }
 

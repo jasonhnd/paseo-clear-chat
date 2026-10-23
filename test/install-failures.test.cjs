@@ -13,13 +13,59 @@ test("the install build uses a dependency installer that reports a safe failure"
   const manifest = JSON.parse(readFileSync(resolve(root, "paseo-plugin.json"), "utf8"));
   assert.deepEqual(manifest.build, [["node", "scripts/install.cjs"]]);
   assert.ok(manifest.requirements.paseo);
-  for (const result of [{ status: 1 }, { status: null, error: privateError }, { status: null, signal: "SIGTERM" }]) {
+  for (const result of [{ status: 1 }, { status: null, signal: "SIGTERM" }]) {
     const errors = [];
     const status = install({ run: () => result, report: text => errors.push(text) });
     assert.equal(status, 1);
     assert.match(errors.join(""), /dependencies could not be installed/);
     assert.match(errors.join(""), /Node.js and npm.*network.*retry.*Paseo CLI/i);
     assert.doesNotMatch(errors.join(""), /Sensitive|internal\/file|\n\s+at /);
+  }
+});
+
+function installFailure(result) {
+  const errors = [];
+  const status = require("../scripts/install.cjs").install({
+    run: () => { if (result instanceof Error) throw result; return result; },
+    report: text => errors.push(text),
+  });
+  assert.equal(status, 1);
+  assert.match(errors.join("\n"), /dependencies could not be installed/);
+  return errors.join("\n");
+}
+
+test("npm failure appends the last 20 stderr lines instead of stdout", () => {
+  const lines = Array.from({ length: 30 }, (_, i) => `npm error line ${i}`);
+  const message = installFailure({ status: 1, stderr: lines.join("\n") + "\n", stdout: "ignored stdout" });
+  assert.ok(message.endsWith(lines.slice(-20).join("\n")));
+  assert.doesNotMatch(message, /npm error line 9\b|ignored stdout/);
+});
+
+test("npm failure falls back to stdout when stderr is empty", () => {
+  const message = installFailure({ status: 1, stderr: "", stdout: "npm stdout diagnostic" });
+  assert.ok(message.endsWith("npm stdout diagnostic"));
+});
+
+test("npm failure bounds very long output and marks truncation", () => {
+  const message = installFailure({ status: 1, stderr: "discarded prefix" + "x".repeat(10000) + "final diagnostic" });
+  assert.match(message, /\(truncated\)/);
+  assert.ok(message.endsWith("final diagnostic"));
+  assert.ok(message.length < 4400);
+  assert.doesNotMatch(message, /discarded prefix/);
+});
+
+test("npm failure strips ANSI colours from output", () => {
+  const message = installFailure({ status: 1, stderr: "\x1b[31mnpm error\x1b[0m: broken" });
+  assert.ok(message.endsWith("npm error: broken"));
+  assert.doesNotMatch(message, /\x1b/);
+});
+
+test("npm spawn errors explain that npm could not start without a stack trace", () => {
+  for (const result of [{ status: null, error: new Error("spawn npm ENOENT") }, new Error("spawn npm EACCES")]) {
+    const message = installFailure(result);
+    assert.match(message, /npm could not start/i);
+    assert.match(message, /spawn npm (ENOENT|EACCES)/);
+    assert.doesNotMatch(message, /\n\s+at /);
   }
 });
 
