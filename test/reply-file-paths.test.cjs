@@ -173,3 +173,17 @@ test("spaced paths stop at fullwidth punctuation before the next sentence", () =
   const { tree } = h.mount({ type: "assistant_message", text: "Report: /workspace/sample/monthly report.pdf\u3002 Next: ./notes.txt" });
   assert.deepEqual(fileLinks(h, tree).map(link => link.props.accessibilityLabel.replace(/^Show file path: /, "")), ["/workspace/sample/monthly report.pdf", "./notes.txt"]);
 });
+
+// Derived from real-hermes-image-path-reply.json: same captured projected item
+// shape, with roots absent from the sanitized captures substituted in its prose.
+test("captured reply shape preserves unquoted dotted and spaced project roots", async () => {
+  const item = require("./fixtures/derived-root-path-dot-space-reply.json");
+  const h = createToolHarness("web", { markdown: true });
+  const { tree } = h.mount(item);
+  const links = fileLinks(h, tree);
+  const paths = item.text.split("\n").map(line => line.slice(6).replace(/[.,。] Next step\.$/, ""));
+  assert.deepEqual(links.map(link => link.props.accessibilityLabel.replace(/^Show file path: /, "")), paths);
+  assert.equal(h.text(tree).replace(/\s+/g, ""), item.text.replace(/\s+/g, ""));
+  for (const link of links) await press(link);
+  assert.deepEqual(h.reveals.map(value => value.path), paths);
+});

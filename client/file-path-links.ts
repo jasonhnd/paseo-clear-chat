@@ -24,9 +24,12 @@ export function matchFilePath(source: string, index: number): string | null {
   if (!/^(?:\/(?!\/)|~\/|\.{1,2}[\\/]|[a-z]:[\\/]|[\w.-]+[\\/])/i.test(rest)) return null;
   const token = rest.match(/^[^\s<>"'`()\[\]{},;!?=\u2018\u2019\u201c\u201d\u3001\u3002\uff01\uff08\uff09\uff0c\uff0e\uff1a\uff1b\uff1f]+/)?.[0]?.replace(/[.:]+$/, "");
   if (!token) return null;
+  // A dotted directory can look like a filename before a space. Keep looking
+  // when that space continues the same directory segment up to a separator.
+  const continuesDirectory = (end: number) => /^[ \t]+(?![./~]|(?:and|or)\s)(?:(?!\s(?:[./~]|(?:and|or)\s)|\.\s)[^\r\n<>"'`()\[\]{},;!?=\u2018\u2019\u201c\u201d\u3001\u3002\uff01\uff08\uff09\uff0c\uff0e\uff1a\uff1b\uff1f/\\])*[/\\]/.test(rest.slice(end));
   // Prefer a complete single token to avoid consuming the following sentence.
-  if (FILE_END.test(token)) return localFilePath(token);
-  const spaced = rest.match(/^[^\r\n<>"'`()\[\]{},;!?=\u2018\u2019\u201c\u201d\u3001\u3002\uff01\uff08\uff09\uff0c\uff0e\uff1a\uff1b\uff1f]*?\.[a-z0-9][a-z0-9_-]{0,15}(?=$|[\s),;!?\u2018\u2019\u201c\u201d\u3001\u3002\uff01\uff08\uff09\uff0c\uff0e\uff1a\uff1b\uff1f]|\.(?:\s|$))/i)?.[0];
+  if (FILE_END.test(token) && !continuesDirectory(token.length)) return localFilePath(token);
+  const spaced = rest.match(/^[^\r\n<>"'`()\[\]{},;!?=\u2018\u2019\u201c\u201d\u3001\u3002\uff01\uff08\uff09\uff0c\uff0e\uff1a\uff1b\uff1f]*?\.[a-z0-9][a-z0-9_-]{0,15}(?![ \t]+(?![./~]|(?:and|or)\s)(?:(?!\s(?:[./~]|(?:and|or)\s)|\.\s)[^\r\n<>"'`()\[\]{},;!?=\u2018\u2019\u201c\u201d\u3001\u3002\uff01\uff08\uff09\uff0c\uff0e\uff1a\uff1b\uff1f/\\])*[/\\])(?=$|[\s),;!?\u2018\u2019\u201c\u201d\u3001\u3002\uff01\uff08\uff09\uff0c\uff0e\uff1a\uff1b\uff1f]|\.(?:\s|$))/i)?.[0];
   if (spaced && ROOTED.test(rest) && !/(?:\s[./~]|:\/\/)/.test(spaced)) return localFilePath(spaced);
   return ROOTED.test(token) ? localFilePath(token) : null;
 }

@@ -1,0 +1,5 @@
+{
+  "type": "assistant_message",
+  "text": "File: /home/a/My Project/app.v2/src/x.ts. Next step.\nFile: /home/a/My Project/app.v2/src/x.ts, Next step.\nFile: /home/a/My Project/app.v2/src/x.ts。 Next step.\nFile: /home/a/My.Project Name/src/x.ts. Next step.\nFile: /home/a/My.Project Name/src/x.ts, Next step.\nFile: /home/a/My.Project Name/src/x.ts。 Next step.\nFile: /home/a/app.v2 Project/src/x.ts. Next step.\nFile: /home/a/app.v2 Project/src/x.ts, Next step.\nFile: /home/a/app.v2 Project/src/x.ts。 Next step.\nFile: /home/a/Project Name.v2 Other/src/x.ts. Next step.\nFile: /home/a/Project Name.v2 Other/src/x.ts, Next step.\nFile: /home/a/Project Name.v2 Other/src/x.ts。 Next step.",
+  "messageId": "root-path-dot-space-reply"
+}
