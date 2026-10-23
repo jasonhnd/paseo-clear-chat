@@ -163,7 +163,7 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
   } else if (isType("write")) {
     toolKind = "write";
     title = filePath ? `Write ${filePath.split(/[/\\]/).pop() || filePath}` : "Write file";
-  } else if (isType("edit", ["edit", "multiedit", "multi_edit"])) {
+  } else if (isType("edit", ["edit", "multiedit", "multi_edit"]) || isType("multi_edit")) {
     toolKind = "edit";
     title = filePath ? `Edit ${filePath.split(/[/\\]/).pop() || filePath}` : "Edit file";
   } else if (isType("shell", ["bash", "shell"])) {

@@ -171,3 +171,23 @@ test("upstream #8: adding a final newline is a real change rather than an empty 
   const { data } = check({ oldText: "same", newText: "same\n" }, 1, 1);
   assert.match(data.diff, /-same\n\\ No newline at end of file\n\+same$/);
 });
+
+for (const name of ["MultiEdit", "multi_edit"]) {
+  test(`${name}: projected multi_edit details render each replacement in order like a single edit`, () => {
+    const fixture = require("./fixtures/derived-multi-edit.json");
+    const item = { ...structuredClone(fixture.items[0]), name };
+    const original = structuredClone(item);
+    const data = build(item);
+    assert.equal(data.tool, "edit");
+    assert.deepEqual(data.changes, { added: 3, removed: 2 });
+    const single = build({ ...item, name: "Edit", detail: { ...item.detail, type: "edit" } });
+    assert.equal(data.diff, single.diff);
+    assert.equal((data.diff.match(/^@@ /gm) ?? []).length, 2);
+    assert.match(data.diff, /Replacement 1\n-const sample = false;\n\+const sample = true;\n@@ .*Replacement 2\n-const count = 1;\n\+const count = 2;\n\+const ready = true;/);
+    const { tree } = h.mount(item);
+    assert.equal(summary(tree), "sample.ts · +3 −2");
+    assert.equal(rows(tree, "+").length, 3);
+    assert.equal(rows(tree, "-").length, 2);
+    assert.deepEqual(item, original);
+  });
+}

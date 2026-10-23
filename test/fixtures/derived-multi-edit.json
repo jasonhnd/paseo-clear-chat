@@ -1,0 +1,19 @@
+{
+  "provenance": "Derived minimal fixture, not a new session capture: uses the projected tool_call/detail shape documented in docs/SDK-0.12.md and docs/STEP-DETAIL-FIELDS.md and the sanitized edit replacement fields in real-claude-turn-timing.json. No existing captured fixture contains multi_edit. The detail type and ordered edits model the reported Claude/Hermes projection.",
+  "items": [
+    {
+      "type": "tool_call",
+      "callId": "sample-multi-edit",
+      "name": "MultiEdit",
+      "status": "completed",
+      "detail": {
+        "type": "multi_edit",
+        "filePath": "src/sample.ts",
+        "edits": [
+          { "oldString": "const sample = false;\n", "newString": "const sample = true;\n" },
+          { "oldString": "const count = 1;\n", "newString": "const count = 2;\nconst ready = true;\n" }
+        ]
+      }
+    }
+  ]
+}
