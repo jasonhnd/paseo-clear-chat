@@ -234,3 +234,74 @@ for (const platform of ["web", "ios", "android"]) {
     });
   }
 }
+
+// One assistant message / paragraph: joinSoft runs before inline path detection.
+const softbreakReply = require("./fixtures/softbreak-path-reply.json");
+const softbreakRanges = [
+  { text: "src/main.ts", start: 4, end: 15 },
+  { text: "src/main.ts", start: 34, end: 45 },
+  { text: "src/main.ts", start: 64, end: 75 },
+  { text: "src/app.config", start: 98, end: 112 },
+  { text: "docs/v1.2", start: 132, end: 141 },
+  { text: "src/app.v2", start: 156, end: 166 },
+  { text: "src/main.ts", start: 185, end: 196 },
+  { text: "src/other.ts", start: 204, end: 216 },
+  { text: "/workspace/sample/my.project files/report.txt", start: 217, end: 262 },
+  { text: "/workspace/sample/src/main.ts", start: 268, end: 297 },
+  { text: "src/main.ts", start: 301, end: 312 },
+  { text: "src/my.project files/x.ts", start: 317, end: 342 },
+  { text: "/workspace/sample/my.project files/report.txt", start: 350, end: 395 },
+  { text: "src/main.ts", start: 402, end: 413 },
+];
+const renderedText = tree => Array.isArray(tree) ? tree.map(renderedText).join("")
+  : tree == null || typeof tree === "boolean" ? ""
+  : typeof tree === "object" ? renderedText(tree.props?.children) : String(tree);
+
+for (const platform of ["web", "ios", "android"]) {
+  for (const [lineCount, linkCount] of [[7, 8], [12, 14]]) {
+    test(`one softbreak paragraph preserves ${linkCount} exact path ranges on ${platform}`, async () => {
+      const h = createToolHarness(platform, { markdown: true });
+      const text = softbreakReply.text.split("\n").slice(0, lineCount).join("\n");
+      const visible = text.replaceAll("\n", " ");
+      const expected = softbreakRanges.slice(0, linkCount);
+      const { parseMarkdown, inlineToText } = h.load("client/components/markdown/parse.ts");
+      const blocks = parseMarkdown(text);
+      assert.equal(blocks.length, 1);
+      assert.equal(blocks[0].kind, "paragraph");
+      assert.equal(inlineToText(blocks[0].spans), visible);
+      let offset = 0;
+      const ranges = [];
+      for (const span of blocks[0].spans) {
+        const value = inlineToText([span]);
+        if (span.kind === "link") {
+          assert.equal(span.filePath, value);
+          ranges.push({ text: value, start: offset, end: offset + value.length });
+        } else assert.equal(span.kind, "text", "all remaining prose stays plain text");
+        offset += value.length;
+      }
+      assert.deepEqual(ranges, expected);
+
+      const { tree } = h.mount({ ...softbreakReply, text });
+      const paragraph = h.nodes(tree, node => node.type === "Text" && renderedText(node) === visible)[0];
+      assert.ok(paragraph, "rendered paragraph preserves every prose character and punctuation");
+      const renderedRanges = [];
+      let renderedOffset = 0;
+      function walk(node) {
+        if (Array.isArray(node)) return node.forEach(walk);
+        if (node && typeof node === "object") {
+          const start = renderedOffset;
+          walk(node.props?.children);
+          if (/^(Show|Copy) file path:/.test(node.props?.accessibilityLabel ?? "")) {
+            renderedRanges.push({ text: renderedText(node), start, end: renderedOffset });
+          }
+        } else renderedOffset += renderedText(node).length;
+      }
+      walk(paragraph);
+      assert.deepEqual(renderedRanges, expected);
+      const links = fileLinks(h, tree);
+      assert.equal(links.length, linkCount);
+      for (const link of links) await press(link);
+      assert.deepEqual(platform === "web" ? h.reveals.map(value => value.path) : h.copies, expected.map(value => value.text));
+    });
+  }
+}
