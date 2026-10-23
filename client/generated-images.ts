@@ -37,11 +37,13 @@ export function imageSource(source: string, explicit = false): GeneratedImage | 
  * The explicit flag below only controls parsing; it does not change that policy.
  */
 export function extractGeneratedImages(value: unknown, options: { toolOutput?: boolean; generated?: boolean } = {}): GeneratedImage[] {
-  const images = new Map<string, GeneratedImage>();
+  // Keep occurrences: separate output entries can share a source.
+  const images: GeneratedImage[] = [];
+  // Guard ancestor cycles without suppressing repeated list entries.
   const seen = new Set<object>();
   const add = (source: string, explicit = false) => {
     const image = imageSource(source, explicit);
-    if (image) images.set(image.path ?? image.source, image);
+    if (image) images.push(image);
   };
   const text = (source: string) => {
     if (options.toolOutput) {
@@ -50,13 +52,20 @@ export function extractGeneratedImages(value: unknown, options: { toolOutput?: b
       source = source.split(/\r?\n/).filter((line) =>
         !/^\s*[bcdlps?-][rwxstST-]{9}[@+.]?\s+\d+\s/.test(line)).join("\n");
       // A bare filename is unambiguous only when it fills a complete line.
-      for (const line of source.split(/\r?\n/)) {
-        if (!/\s/.test(line.trim())) add(line);
-      }
+      source = source.split(/\r?\n/).map((line) => {
+        if (!/\s/.test(line.trim()) && imageSource(line)) {
+          add(line);
+          return "";
+        }
+        return line;
+      }).join("\n");
     }
     // Direct image addresses may fill the whole value; local paths are scanned below.
     const whole = imageSource(source);
-    if (whole && !whole.path && !source.includes("\n")) add(source);
+    if (whole && !whole.path && !source.includes("\n")) {
+      add(source);
+      return;
+    }
     let rest = source.replace(/(!?)\[[^\]\n]*\]\((<[^>\n]+>|(?:[^\s()]|\([^()\n]*\))+?)(?:\s+["'][^\n]*?["'])?\)/g,
       (match, image: string, target: string) => {
         add(target.replace(/^<|>$/g, "").replace(/\\([!-\/:-@\[-`{-~])/g, "$1"), image === "!" || target.startsWith("<"));
@@ -106,6 +115,7 @@ export function extractGeneratedImages(value: unknown, options: { toolOutput?: b
     seen.add(entry);
     if (Array.isArray(entry)) {
       for (const child of entry) visit(child, depth + 1, explicit, generated);
+      seen.delete(entry);
       return;
     }
     const obj = entry as Record<string, unknown>;
@@ -123,7 +133,8 @@ export function extractGeneratedImages(value: unknown, options: { toolOutput?: b
           (image && ["source", "url", "uri", "path", "file_path", "image_path", "image_url"].includes(key)),
         generated || generatedField);
     }
+    seen.delete(entry);
   };
   visit(value, 0);
-  return [...images.values()];
+  return images;
 }
