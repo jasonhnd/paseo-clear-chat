@@ -25,8 +25,10 @@ export function matchFilePath(source: string, index: number): string | null {
   const token = rest.match(/^[^\s<>"'`()\[\]{},;!?=\u2018\u2019\u201c\u201d\u3001\u3002\uff01\uff08\uff09\uff0c\uff0e\uff1a\uff1b\uff1f]+/)?.[0]?.replace(/[.:]+$/, "");
   if (!token) return null;
   // A dotted directory can look like a filename before a space. Keep looking
-  // when that space continues the same directory segment up to a separator.
-  const directoryContinuation = /^[ \t]+(?![./~]|(?:and|or)(?:\s|\/))[^\s<>"'`()\[\]{},;!?=\u2018\u2019\u201c\u201d\u3001\u3002\uff01\uff08\uff09\uff0c\uff0e\uff1a\uff1b\uff1f/\\]+[/\\]/;
+  // only when the next whitespace-delimited token reaches a file extension.
+  // A slash alone (e.g. if/when) must not send the spaced search through
+  // later prose after markdown has folded soft breaks into spaces.
+  const directoryContinuation = /^[ \t]+(?![./~]|(?:and|or)(?:\s|\/))[^\s<>"'`()\[\]{},;!?=\u2018\u2019\u201c\u201d\u3001\u3002\uff01\uff08\uff09\uff0c\uff0e\uff1a\uff1b\uff1f/\\]+[/\\][^\s<>"'`()\[\]{},;!?=\u2018\u2019\u201c\u201d\u3001\u3002\uff01\uff08\uff09\uff0c\uff0e\uff1a\uff1b\uff1f]*?\.[a-z0-9][a-z0-9_-]{0,15}(?::\d+(?::\d+)?(?:-\d+(?::\d+)?)?)?(?=$|[\s),;!?\u2018\u2019\u201c\u201d\u3001\u3002\uff01\uff08\uff09\uff0c\uff0e\uff1a\uff1b\uff1f]|\.(?:\s|$))/i;
   const continuesDirectory = (end: number) => directoryContinuation.test(rest.slice(end));
   // Prefer a complete single token to avoid consuming the following sentence.
   if (FILE_END.test(token) && !continuesDirectory(token.length)) return localFilePath(token);
