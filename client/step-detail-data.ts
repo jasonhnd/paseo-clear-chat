@@ -35,7 +35,7 @@ export function stepInputText(detail: Record<string, unknown>, tool: ToolCallKin
 /** Claude keeps failed tool results in error.content instead of detail.output. */
 export function claudeResultError(error: unknown): string | undefined {
   const result = record(error);
-  return result.type === "tool_result" && result.is_error === true
+  return (result.type === "tool_result" || result.type === "mcp_tool_result") && result.is_error === true
     ? stepResultText(result.content) : undefined;
 }
 

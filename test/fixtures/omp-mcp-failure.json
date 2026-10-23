@@ -1,0 +1,29 @@
+{
+  "provenance": "Minimal provider compatibility fixture; separate from the Claude projected failure.",
+  "expected": "MCP request failed: service unavailable\nRetry after checking the service.\n  Full diagnostic retained.",
+  "items": [
+    {
+      "type": "tool_call",
+      "callId": "sample-mcp-failure",
+      "name": "mcp__server__tool",
+      "status": "failed",
+      "detail": {
+        "type": "unknown",
+        "toolName": "mcp__server__tool",
+        "input": {
+          "query": "sample"
+        },
+        "output": {
+          "isError": true,
+          "content": [
+            {
+              "type": "text",
+              "text": "MCP request failed: service unavailable\nRetry after checking the service.\n  Full diagnostic retained."
+            }
+          ]
+        }
+      },
+      "error": null
+    }
+  ]
+}
