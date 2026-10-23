@@ -1,5 +1,5 @@
 {
-  "provenance": "Minimal provider compatibility fixture; separate from the Claude projected failure.",
+  "provenance": "Minimal projected failure derived from Paseo v0.12.0: server.tool name, unknown detail with input and null output, and error.message. Sources: https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/codex/tool-call-mapper.ts#L593-L604 https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/codex/tool-call-mapper.ts#L900-L918 https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/codex/tool-call-mapper.ts#L109-L115 https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/codex/tool-call-mapper.test.ts#L631-L656",
   "expected": "MCP request failed: service unavailable\nRetry after checking the service.\n  Full diagnostic retained.",
   "items": [
     {
@@ -9,7 +9,6 @@
       "status": "failed",
       "detail": {
         "type": "unknown",
-        "toolName": "server.tool",
         "input": {
           "query": "sample"
         },
