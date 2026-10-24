@@ -64,7 +64,7 @@ async function portAvailable(port) {
         react: dirname(req.resolve('react/package.json')),
         'react-dom/client': req.resolve('react-dom/client'),
         'react-native': req.resolve('react-native-web'),
-        '@getpaseo/plugin/client/react-native': join(root, '.showcase/shims/plugin-react-native.tsx'),
+        '@getpaseo/plugin/client/ui': join(root, '.showcase/shims/plugin-react-native.tsx'),
         '@getpaseo/plugin/client': join(root, '.showcase/shims/plugin-client.tsx'),
       },
       nodePaths: [join(root, '.showcase/node_modules')],

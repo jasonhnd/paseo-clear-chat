@@ -153,6 +153,7 @@ function createToolHarness(platform = "ios", options = {}) {
       CopyFallbackDialog: noop, copyTouchTarget: {},
     };
   }
+  if (options.reasoningTrace) delete stubs["client/components/reasoning-trace"];
   if (options.replyFooter) delete stubs["client/components/turn-footer"];
   if (options.images) {
     delete stubs["client/image-file"];
@@ -199,8 +200,11 @@ function createToolHarness(platform = "ios", options = {}) {
           ? selector(options.workspace ?? { id }) : null,
         usePaseo: () => paseo,
       };
-      if (id === "@getpaseo/plugin/client/react-native") return {
-        useRevealedText: text => text,
+      if (id === "@getpaseo/plugin/client/ui") return {
+        StreamedText: ({ text, phase, ...props }) => {
+          options.onStreamedText?.({ text, phase, ...props });
+          return jsx("Text", { ...props, children: text });
+        },
         copyText: async text => { copies.push(text); await options.copyText?.(text); },
         useToast: () => ({ show: message => toasts.push(message), error: message => toasts.push(message) }),
         Modal: Object.assign(passthrough, { Content: "Modal.Content" }),
@@ -215,7 +219,7 @@ function createToolHarness(platform = "ios", options = {}) {
   const dispose = load("index.client.tsx").default({
     rpc: options.presentationHost?.rpc ?? noop,
     addSettingsScreen: cleanup,
-    addWorkspacePanel(value) { panels.set(value.id, value); return noop; },
+    addAgentPanel(value) { panels.set(value.id, value); return noop; },
     openPanel(id, input) {
       if (options.panelError) throw new Error("Panel unavailable");
       panelOpens.push({ id, ...input });
@@ -280,7 +284,7 @@ function createToolHarness(platform = "ios", options = {}) {
         const props = { agentId: "demo-agent", host: { id: "demo-host" }, item: { ...pluginItem, data: nextData }, theme: { colors: options.themeColors ?? {} }, timestamp: timestamps.get(item), ...identity };
         const row = draw(jsx(renderer.Component, props));
         const panel = panels.get(activePanel?.id);
-        return panel && panelMounted ? [row, draw(jsx(panel.Component, { ...props, ...activePanel, context: "agent" }), "panel")] : row;
+        return panel && panelMounted ? [row, draw(jsx(panel.Component, { ...props, ...activePanel, params: { agentId: activePanel.agentId } }), "panel")] : row;
       };
       let tree = render();
       if (expand) {

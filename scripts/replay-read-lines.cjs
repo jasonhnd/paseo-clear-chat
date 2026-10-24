@@ -44,7 +44,7 @@ async function replay() {
     define: { global: "globalThis" }, alias: {
       react: dirname(previewRequire.resolve("react/package.json")), "react-dom/client": previewRequire.resolve("react-dom/client"),
       "react-native": previewRequire.resolve("react-native-web"),
-      "@getpaseo/plugin/client/react-native": join(root, ".showcase/shims/plugin-react-native.tsx"),
+      "@getpaseo/plugin/client/ui": join(root, ".showcase/shims/plugin-react-native.tsx"),
       "@getpaseo/plugin/client": join(root, ".showcase/shims/step-detail-client.ts"),
     }, nodePaths: [join(root, ".showcase/node_modules")],
   });
