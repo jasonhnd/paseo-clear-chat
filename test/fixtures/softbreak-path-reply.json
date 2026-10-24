@@ -1,0 +1,4 @@
+{
+  "type": "assistant_message",
+  "text": "See src/main.ts if/when ready\nSee src/main.ts release/notes\nUse src/main.ts for/with tests.\nCheck src/app.config before/after edit.\ndocs/v1.2 release/notes\nsrc/app.v2 release/notes\nSee src/main.ts and/or src/other.ts\n/workspace/sample/my.project files/report.txt.\nSee /workspace/sample/src/main.ts in src/main.ts\nSee src/my.project files/x.ts.\nCheck /workspace/sample/my.project files/report.txt, then src/main.ts\nversion 1.2 is out"
+}

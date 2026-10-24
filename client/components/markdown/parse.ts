@@ -211,13 +211,13 @@ function readQuote(lines: string[], start: number, out: MdBlock[]): number {
   let run: string[] = [];
   for (const line of collected) {
     if (line.trim() === "") {
-      if (run.length > 0) paragraphs.push(parseInline(joinSoft(run)));
+      if (run.length > 0) paragraphs.push(parseSoftInline(run));
       run = [];
       continue;
     }
     run.push(line);
   }
-  if (run.length > 0) paragraphs.push(parseInline(joinSoft(run)));
+  if (run.length > 0) paragraphs.push(parseSoftInline(run));
 
   out.push({ kind: "quote", paragraphs });
   return index === start ? start + 1 : index;
@@ -470,7 +470,7 @@ function readParagraph(lines: string[], start: number, out: MdBlock[]): number {
   }
 
   if (collected.length === 0) return start + 1;
-  out.push({ kind: "paragraph", spans: parseInline(joinSoft(collected)) });
+  out.push({ kind: "paragraph", spans: parseSoftInline(collected) });
   return index;
 }
 
@@ -479,13 +479,18 @@ function readParagraph(lines: string[], start: number, out: MdBlock[]): number {
  * width instead of keeping the author's column. Only an explicit two-space or
  * backslash ending survives as a real line break.
  */
-function joinSoft(lines: string[]): string {
+function parseSoftInline(lines: string[]): MdInline[] {
+  // Keep display reflow unchanged; only path recognition sees line boundaries.
+  return parseInline(joinSoft(lines), 0, true, joinSoft(lines, true));
+}
+
+function joinSoft(lines: string[], pathBoundaries = false): string {
   let out = "";
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index] ?? "";
     const hard = HARD_BREAK_RE.test(line);
     out += line.replace(TRAILING_SPACE_RE, "").replace(/\\$/, "");
-    if (index < lines.length - 1) out += hard ? "\n" : " ";
+    if (index < lines.length - 1) out += hard || pathBoundaries ? "\n" : " ";
   }
   return out;
 }
@@ -499,7 +504,7 @@ function isWordChar(ch: string): boolean {
  * characters the author typed, so `2 * 3 * 4` and a stray `**` read as prose
  * rather than vanishing into an unfinished span.
  */
-function parseInline(src: string, depth = 0, links = true): MdInline[] {
+function parseInline(src: string, depth = 0, links = true, pathSource = src): MdInline[] {
   if (src === "") return [];
   if (depth >= MAX_INLINE_DEPTH) return [{ kind: "text", text: src }];
 
@@ -539,7 +544,7 @@ function parseInline(src: string, depth = 0, links = true): MdInline[] {
           text = text.slice(1, -1);
         }
         const code: MdInline = { kind: "codeSpan", text };
-        const path = links ? localFilePath(text, true) : null;
+        const path = links && !pathSource.slice(index + run, close).includes("\n") ? localFilePath(text, true) : null;
         out.push(path ? { kind: "link", href: path, filePath: path, spans: [code] } : code);
         index = close + run;
         continue;
@@ -550,7 +555,7 @@ function parseInline(src: string, depth = 0, links = true): MdInline[] {
       const close = findHighlightClose(src, index + 2);
       if (close > index + 2 && src.slice(index + 2, close).trim() !== "") {
         flush();
-        out.push({ kind: "highlight", spans: parseInline(src.slice(index + 2, close), depth + 1, links) });
+        out.push({ kind: "highlight", spans: parseInline(src.slice(index + 2, close), depth + 1, links, pathSource.slice(index + 2, close)) });
         index = close + 2;
         continue;
       }
@@ -564,7 +569,7 @@ function parseInline(src: string, depth = 0, links = true): MdInline[] {
         flush();
         out.push({
           kind: "strong",
-          spans: [{ kind: "emphasis", spans: parseInline(src.slice(index + 3, close), depth + 2, links) }],
+          spans: [{ kind: "emphasis", spans: parseInline(src.slice(index + 3, close), depth + 2, links, pathSource.slice(index + 3, close)) }],
         });
         index = close + 3;
         continue;
@@ -576,7 +581,7 @@ function parseInline(src: string, depth = 0, links = true): MdInline[] {
         flush();
         out.push({
           kind: ch === "*" ? "strong" : "strike",
-          spans: parseInline(src.slice(index + 2, close), depth + 1, links),
+          spans: parseInline(src.slice(index + 2, close), depth + 1, links, pathSource.slice(index + 2, close)),
         });
         index = close + 2;
         continue;
@@ -587,7 +592,7 @@ function parseInline(src: string, depth = 0, links = true): MdInline[] {
       const close = findEmphasisClose(src, index, ch);
       if (close > index + 1) {
         flush();
-        out.push({ kind: "emphasis", spans: parseInline(src.slice(index + 1, close), depth + 1, links) });
+        out.push({ kind: "emphasis", spans: parseInline(src.slice(index + 1, close), depth + 1, links, pathSource.slice(index + 1, close)) });
         index = close + 1;
         continue;
       }
@@ -640,7 +645,7 @@ function parseInline(src: string, depth = 0, links = true): MdInline[] {
     if (links) {
       if (ch === '"' || ch === "'") {
         const end = src.indexOf(ch, index + 1);
-        const path = end > index ? localFilePath(src.slice(index + 1, end), true) : null;
+        const path = end > index ? localFilePath(pathSource.slice(index + 1, end)) : null;
         if (path) {
           buffer += ch;
           flush();
@@ -650,7 +655,7 @@ function parseInline(src: string, depth = 0, links = true): MdInline[] {
           continue;
         }
       }
-      const path = matchFilePath(src, index);
+      const path = matchFilePath(pathSource, index);
       if (path) {
         flush();
         out.push({ kind: "link", href: path, filePath: path, spans: [{ kind: "text", text: path }] });

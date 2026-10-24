@@ -44,7 +44,7 @@ for (const platform of ["web", "ios", "android"]) {
     const links = fileLinks(h, tree);
     assert.equal(links.length, 9);
     for (const link of links) await press(link);
-    const targets = [...paths, "./reports/quarterly report.pdf"];
+    const targets = [...paths.slice(0, 5), "/workspace/sample/annual", ...paths.slice(6), "./reports/quarterly report.pdf"];
     assert.deepEqual(platform === "web" ? h.reveals.map(value => value.path) : h.copies, targets);
     assert.equal(h.links.length, 0, "filesystem paths never reach a URL handler");
     if (platform !== "web") {
@@ -171,5 +171,187 @@ test("inline filenames retain their line selectors as one file action", async ()
 test("spaced paths stop at fullwidth punctuation before the next sentence", () => {
   const h = createToolHarness("web", { markdown: true });
   const { tree } = h.mount({ type: "assistant_message", text: "Report: /workspace/sample/monthly report.pdf\u3002 Next: ./notes.txt" });
-  assert.deepEqual(fileLinks(h, tree).map(link => link.props.accessibilityLabel.replace(/^Show file path: /, "")), ["/workspace/sample/monthly report.pdf", "./notes.txt"]);
+  assert.deepEqual(fileLinks(h, tree).map(link => link.props.accessibilityLabel.replace(/^Show file path: /, "")), ["/workspace/sample/monthly", "./notes.txt"]);
 });
+
+// One space-free name must follow the space and precede a slash.
+// The last three fixture rows have two spaces in one directory: stop early.
+const derivedPaths = [
+  ...["/home/a/My Project/app.v2/src/x.ts", "/home/a/My.Project Name/src/x.ts", "/home/a/app.v2 Project/src/x.ts"].flatMap(path => [path, path, path]),
+  ...Array.from({ length: 3 }, () => ["/home/a/Project", "Other/src/x.ts"]).flat(),
+];
+
+// Derived from real-hermes-image-path-reply.json: same captured projected item
+// shape, with roots absent from the sanitized captures substituted in its prose.
+test("captured reply shape applies scope A to dotted and spaced project roots", async () => {
+  const item = require("./fixtures/derived-root-path-dot-space-reply.json");
+  const h = createToolHarness("web", { markdown: true });
+  const { tree } = h.mount(item);
+  const links = fileLinks(h, tree);
+  const paths = derivedPaths;
+  assert.deepEqual(links.map(link => link.props.accessibilityLabel.replace(/^Show file path: /, "")), paths);
+  assert.deepEqual(links.map(renderedText), paths);
+  assert.equal(h.text(tree).replace(/\s+/g, ""), item.text.replace(/\s+/g, ""));
+  for (const link of links) await press(link);
+  assert.deepEqual(h.reveals.map(value => value.path), paths);
+});
+
+for (const platform of ["web", "ios", "android"]) {
+  for (const [text, paths] of [
+    ["See /workspace/sample/report.txt in src/main.ts", ["/workspace/sample/report.txt", "src/main.ts"]],
+    ["Check /tmp/app.v2 then read src/main.ts", ["/tmp/app.v2", "src/main.ts"]],
+    ["src/my.project files/x.ts", ["src/my.project", "files/x.ts"]],
+  ]) {
+    test(`space directory boundaries on ${platform}: ${text}`, () => {
+      const h = createToolHarness(platform, { markdown: true });
+      const { tree } = h.mount({ type: "assistant_message", text });
+      assert.deepEqual(fileLinks(h, tree).map(link => link.props.accessibilityLabel.replace(/^(Show|Copy) file path: /, "")), paths);
+      assert.deepEqual(fileLinks(h, tree).map(renderedText), paths);
+    });
+  }
+}
+
+for (const platform of ["web", "ios", "android"]) {
+  test(`dotted and spaced path preservation on ${platform}`, () => {
+    const h = createToolHarness(platform, { markdown: true });
+    const paths = ["/home/a/my.project files/report.txt", "~/my.project files/report.txt", "./my.project files/report.txt", "C:\\my.project files\\report.txt"];
+    const fixture = require("./fixtures/derived-root-path-dot-space-reply.json");
+    const fixturePaths = derivedPaths;
+    const text = paths.map(path => `${path}. ${path}, (${path}) ${path}。`).join("\n") + "\n" + fixture.text + "\nversion 1.2 is out";
+    const { tree } = h.mount({ type: "assistant_message", text });
+    const expected = [...paths.flatMap(path => [path, path, path, path]), ...fixturePaths];
+    assert.deepEqual(fileLinks(h, tree).map(link => link.props.accessibilityLabel.replace(/^(Show|Copy) file path: /, "")), expected);
+    assert.deepEqual(fileLinks(h, tree).map(renderedText), expected);
+  });
+}
+
+for (const platform of ["web", "ios", "android"]) {
+  for (const [text, paths] of [
+    ["See src/main.ts if/when ready", ["src/main.ts"]],
+    ["See src/main.ts release/notes", ["src/main.ts"]],
+    ["Use src/main.ts for/with tests.", ["src/main.ts"]],
+    ["Check src/app.config before/after edit.", ["src/app.config"]],
+    ["docs/v1.2 release/notes", ["docs/v1.2"]],
+    ["src/app.v2 release/notes", ["src/app.v2"]],
+    ["See src/main.ts and/or src/other.ts", ["src/main.ts", "src/other.ts"]],
+  ]) {
+    test(`relative file before slash prose on ${platform}: ${text}`, async () => {
+      const h = createToolHarness(platform, { markdown: true });
+      const { tree } = h.mount({ type: "assistant_message", text });
+      const links = fileLinks(h, tree);
+      assert.deepEqual(links.map(link => link.props.accessibilityLabel.replace(/^(Show|Copy) file path: /, "")), paths);
+      assert.deepEqual(links.map(renderedText), paths);
+      for (const link of links) await press(link);
+      assert.deepEqual(platform === "web" ? h.reveals.map(value => value.path) : h.copies, paths);
+    });
+  }
+}
+
+// One assistant message / paragraph: joinSoft runs before inline path detection.
+const softbreakReply = require("./fixtures/softbreak-path-reply.json");
+const softbreakRanges = [
+  { text: "src/main.ts", start: 4, end: 15 },
+  { text: "src/main.ts", start: 34, end: 45 },
+  { text: "src/main.ts", start: 64, end: 75 },
+  { text: "src/app.config", start: 98, end: 112 },
+  { text: "docs/v1.2", start: 132, end: 141 },
+  { text: "src/app.v2", start: 156, end: 166 },
+  { text: "src/main.ts", start: 185, end: 196 },
+  { text: "src/other.ts", start: 204, end: 216 },
+  { text: "/workspace/sample/my.project files/report.txt", start: 217, end: 262 },
+  { text: "/workspace/sample/src/main.ts", start: 268, end: 297 },
+  { text: "src/main.ts", start: 301, end: 312 },
+  { text: "src/my.project", start: 317, end: 331 },
+  { text: "files/x.ts", start: 332, end: 342 },
+  { text: "/workspace/sample/my.project files/report.txt", start: 350, end: 395 },
+  { text: "src/main.ts", start: 402, end: 413 },
+];
+const renderedText = tree => Array.isArray(tree) ? tree.map(renderedText).join("")
+  : tree == null || typeof tree === "boolean" ? ""
+  : typeof tree === "object" ? renderedText(tree.props?.children) : String(tree);
+
+for (const platform of ["web", "ios", "android"]) {
+  for (const [lineCount, linkCount] of [[7, 8], [12, 15]]) {
+    test(`one softbreak paragraph preserves ${linkCount} exact path ranges on ${platform}`, async () => {
+      const h = createToolHarness(platform, { markdown: true });
+      const text = softbreakReply.text.split("\n").slice(0, lineCount).join("\n");
+      const visible = text.replaceAll("\n", " ");
+      const expected = softbreakRanges.slice(0, linkCount);
+      const { parseMarkdown, inlineToText } = h.load("client/components/markdown/parse.ts");
+      const blocks = parseMarkdown(text);
+      assert.equal(blocks.length, 1);
+      assert.equal(blocks[0].kind, "paragraph");
+      assert.equal(inlineToText(blocks[0].spans), visible);
+      let offset = 0;
+      const ranges = [];
+      for (const span of blocks[0].spans) {
+        const value = inlineToText([span]);
+        if (span.kind === "link") {
+          assert.equal(span.filePath, value);
+          ranges.push({ text: value, start: offset, end: offset + value.length });
+        } else assert.equal(span.kind, "text", "all remaining prose stays plain text");
+        offset += value.length;
+      }
+      assert.deepEqual(ranges, expected);
+      for (const range of ranges) assert.ok(!text.slice(range.start, range.end).includes("\n"), "no link crosses a source line boundary");
+
+      const { tree } = h.mount({ ...softbreakReply, text });
+      const paragraph = h.nodes(tree, node => node.type === "Text" && renderedText(node) === visible)[0];
+      assert.ok(paragraph, "rendered paragraph preserves every prose character and punctuation");
+      const renderedRanges = [];
+      let renderedOffset = 0;
+      function walk(node) {
+        if (Array.isArray(node)) return node.forEach(walk);
+        if (node && typeof node === "object") {
+          const start = renderedOffset;
+          walk(node.props?.children);
+          if (/^(Show|Copy) file path:/.test(node.props?.accessibilityLabel ?? "")) {
+            renderedRanges.push({ text: renderedText(node), start, end: renderedOffset });
+          }
+        } else renderedOffset += renderedText(node).length;
+      }
+      walk(paragraph);
+      assert.deepEqual(renderedRanges, expected);
+      const links = fileLinks(h, tree);
+      assert.equal(links.length, linkCount);
+      for (const link of links) await press(link);
+      assert.deepEqual(platform === "web" ? h.reveals.map(value => value.path) : h.copies, expected.map(value => value.text));
+    });
+  }
+}
+
+// Scope A: exact link text as well as action targets on every client.
+for (const platform of ["web", "ios", "android"]) {
+  for (const [text, paths] of [
+    ["See src/main.ts if/when report.pdf is ready", ["src/main.ts"]],
+    ["Use src/main.ts for/with tests.pdf now", ["src/main.ts"]],
+    ["Check src/app.config before/after edit.pdf", ["src/app.config"]],
+    ["src/app.v2 release/notes today.pdf", ["src/app.v2"]],
+    ["See src/main.ts in/the report.pdf today", ["src/main.ts"]],
+    ["See src/main.ts to/the manual.pdf", ["src/main.ts"]],
+    ["Read ./docs.old for/the changelog.md please", ["./docs.old"]],
+    ["See src/main.ts release/notes.txt", ["src/main.ts", "release/notes.txt"]],
+    ["version 1.2 is out", []],
+    ["See ./my.project files/annual report.pdf in/the summary.pdf", ["./my.project"]],
+    ["./my.project files/annual report.pdf", ["./my.project"]],
+    ["/home/a/My.Project Name/annual report.pdf", ["/home/a/My.Project"]],
+    ["/home/a/My.Project\nName/src/x.ts", ["/home/a/My.Project", "Name/src/x.ts"]],
+    ["**/home/a/My.Project\nName/src/x.ts**", ["/home/a/My.Project", "Name/src/x.ts"]],
+    ["../my.project files/report.txt", ["../my.project files/report.txt"]],
+    ["`src/my.project files/x.ts`", ["src/my.project files/x.ts"]],
+    ['"/home/a/My Project/annual report.pdf"', ["/home/a/My Project/annual report.pdf"]],
+    ["'src/my.project files/x.ts'", ["src/my.project files/x.ts"]],
+    ['"report.pdf" and \'notes.md\'', []],
+    ["src/my.project files/annual report.pdf", ["src/my.project"]],
+  ]) {
+    test(`scope A exact links on ${platform}: ${text}`, async () => {
+      const h = createToolHarness(platform, { markdown: true });
+      const { tree } = h.mount({ type: "assistant_message", text });
+      const links = fileLinks(h, tree);
+      assert.deepEqual(links.map(link => link.props.accessibilityLabel.replace(/^(Show|Copy) file path: /, "")), paths);
+      assert.deepEqual(links.map(renderedText), paths);
+      for (const link of links) await press(link);
+      assert.deepEqual(platform === "web" ? h.reveals.map(value => value.path) : h.copies, paths);
+    });
+  }
+}
