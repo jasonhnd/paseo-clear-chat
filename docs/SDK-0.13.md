@@ -1,7 +1,8 @@
 # SDK 0.13 migration evidence
 
 Development uses `@getpaseo/plugin@0.13.0` and its matching client/protocol peers.
-The package version and `paseo-plugin.json` requirement remain unchanged.
+The package version remains unchanged. `paseo-plugin.json` requires Paseo
+`>=0.13.0`, matching the owner-approved minimum for this release.
 
 Sources: the installed npm packages and the upstream
 [0.13.0 release notes](https://github.com/getpaseo/paseo/releases/tag/v0.13.0),
@@ -53,8 +54,8 @@ itself remains valid for workspace panels; its agent-context overload is depreca
 
 ## Paseo 0.12.0 compatibility
 
-**This migrated plugin cannot fully load and work on a 0.12.0 host.** The unchanged
-`>=0.12.0` manifest requirement therefore overstates its runtime compatibility.
+**This migrated plugin cannot fully load and work on a 0.12.0 host.** The manifest
+requires `>=0.13.0`; 0.12 compatibility is outside this release’s supported scope.
 
 A separate `npm install --prefix node_modules/.cc-sdk-compat --ignore-scripts
 @getpaseo/plugin@0.12.0` installed the old SDK inside this worktree. Comparing its
@@ -71,11 +72,6 @@ package exports and declarations with 0.13.0 shows:
   TS2339 for `panel.params`.
 - SDK runtime UI modules are placeholders; Paseo injects their implementations.
   Upgrading the development dependency cannot add these APIs to an older host.
-  The `addAgentPanel` guard only skips registration on such a host; it cannot
-  supply the missing UI exports.
 
-Proposed follow-up: raise `requirements.paseo` to `>=0.13.0` before distribution.
-It is intentionally unchanged in this task. Alternatively, retaining 0.12 support
-would require feature-detecting `addAgentPanel`, adapting legacy top-level panel
-props, and selecting legacy UI implementations (including streaming text) through
-a host-compatible runtime adapter. A panel-only fallback would be insufficient.
+The release requires Paseo `>=0.13.0`. No legacy UI or panel adapter is included,
+and panel registration directly uses the required `addAgentPanel` API.

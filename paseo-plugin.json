@@ -3,7 +3,7 @@
   "name": "Clear Chat",
   "description": "Paseo plugin: clear, syntax-aware chat cards for OMP tools, reasoning, prompts, and tasks",
   "requirements": {
-    "paseo": ">=0.12.0"
+    "paseo": ">=0.13.0"
   },
   "build": [["node", "scripts/install.cjs"]]
 }
