@@ -20,7 +20,7 @@ test("the installed SDK and protocol peers match the development SDK contract", 
   }
 });
 
-test("the existing host requirement is preserved independently of the SDK version", () => {
+test("installation requires a host with the SDK 0.13 APIs", () => {
   const manifest = readJson(join(root, "paseo-plugin.json"));
-  assert.equal(manifest.requirements.paseo, ">=0.12.0");
+  assert.equal(manifest.requirements.paseo, `>=${target}`);
 });

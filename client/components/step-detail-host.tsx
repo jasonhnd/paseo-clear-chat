@@ -108,7 +108,6 @@ export function StepDetailHostPanel({ host, params: { agentId }, theme }: Plugin
 }
 
 export function installStepDetailPanel(client: PluginClientContext): () => void {
-  if (typeof client.addAgentPanel !== "function" || typeof client.openPanel !== "function") return () => {};
   const remove = client.addAgentPanel({
     id: PANEL_ID, title: "Step details", icon: "PanelRight", locations: ["explorer"], Component: StepDetailHostPanel,
   });
