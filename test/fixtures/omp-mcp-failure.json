@@ -1,0 +1,28 @@
+{
+  "provenance": "Minimal projected failure derived from Paseo v0.12.0: bridged server / tool name (otherwise toolName), unknown detail with input and output, and toolFailureMessage(result) as error. For this output the error is the first nonempty trimmed line, limited to 240 characters. Sources: https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/omp/agent.ts#L1910-L1914 https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/omp/agent.ts#L2105-L2115 https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/omp/tool-call-detail.ts#L286-L299 https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/omp/tool-call-detail.ts#L416-L420",
+  "expected": "MCP request failed: service unavailable",
+  "items": [
+    {
+      "type": "tool_call",
+      "callId": "sample-mcp-failure",
+      "name": "server / tool",
+      "status": "failed",
+      "detail": {
+        "type": "unknown",
+        "input": {
+          "query": "sample"
+        },
+        "output": {
+          "isError": true,
+          "content": [
+            {
+              "type": "text",
+              "text": "MCP request failed: service unavailable\nRetry after checking the service.\n  Full diagnostic retained."
+            }
+          ]
+        }
+      },
+      "error": "MCP request failed: service unavailable"
+    }
+  ]
+}
