@@ -112,10 +112,10 @@ async function main() {
       "react-native": require.resolve("react-native-web"),
     },
     plugins: [{ name: "offline-host", setup(builder) {
-      builder.onResolve({ filter: /^@getpaseo\/plugin\/client(?:\/react-native)?$/ }, args => ({ path: args.path, namespace: "offline" }));
+      builder.onResolve({ filter: /^@getpaseo\/plugin\/client(?:\/ui)?$/ }, args => ({ path: args.path, namespace: "offline" }));
       builder.onLoad({ filter: /.*/, namespace: "offline" }, args => ({
         loader: "tsx", resolveDir: __dirname,
-        contents: args.path.endsWith("react-native") ? `
+        contents: args.path.endsWith("/ui") ? `
           export * from "./shims/plugin-react-native";
           export async function copyText(text) { window.__copies.push(text); }
         ` : hostShim,

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Platform, useWindowDimensions } from "react-native";
 import { useRpc } from "@getpaseo/plugin/client";
-import { copyText, useToast } from "@getpaseo/plugin/client/react-native";
+import { copyText, useToast } from "@getpaseo/plugin/client/ui";
 import { revealPathRpc } from "../../shared/file-rpc";
 import { DESKTOP_MIN } from "../breakpoints";
 import { isAbsoluteFilePath } from "../file-path-links";

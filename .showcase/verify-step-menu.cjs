@@ -60,9 +60,9 @@ async function main() {
     },
     nodePaths: [join(__dirname, "node_modules")],
     plugins: [{ name: "host-sdk", setup(builder) {
-      builder.onResolve({ filter: /^@getpaseo\/plugin\/client\/react-native$/ }, () => ({ path: "sdk", namespace: "step-menu" }));
+      builder.onResolve({ filter: /^@getpaseo\/plugin\/client\/ui$/ }, () => ({ path: "sdk", namespace: "step-menu" }));
       builder.onLoad({ filter: /.*/, namespace: "step-menu" }, () => ({ loader: "tsx", resolveDir: root, contents: `
-        export { Icon, Modal, TextInput, ScrollView, useRevealedText } from ${JSON.stringify(join(__dirname, "shims/plugin-react-native.tsx"))};
+        export { Icon, Modal, TextInput, ScrollView, StreamedText } from ${JSON.stringify(join(__dirname, "shims/plugin-react-native.tsx"))};
         export async function copyText(text) { window.__copies.push(text); }
         export function useToast() { return { show() {}, error() {} }; }
       ` }));

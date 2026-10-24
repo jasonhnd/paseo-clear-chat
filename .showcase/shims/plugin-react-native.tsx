@@ -1,5 +1,5 @@
 /**
- * The published SDK ships an empty runtime for `@getpaseo/plugin/client/react-native`
+ * The published SDK ships an empty runtime for `@getpaseo/plugin/client/ui`
  * because the host injects the real implementations. The screenshot harness runs
  * outside the host, so it supplies the small surface the components touch.
  */
@@ -33,8 +33,8 @@ export function useToast() {
   return { show: () => {}, error: () => {} };
 }
 
-export function useRevealedText(text: string): string {
-  return text;
+export function StreamedText({ text, phase, ...props }: import("@getpaseo/plugin/client/ui").StreamedTextProps) {
+  return <Text {...props}>{text}</Text>;
 }
 
 export const ScrollView = RnScrollView;

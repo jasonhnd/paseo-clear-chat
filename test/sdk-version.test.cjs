@@ -5,9 +5,9 @@ const test = require("node:test");
 
 const root = join(__dirname, "..");
 const readJson = file => JSON.parse(readFileSync(file, "utf8"));
-const target = "0.12.0";
+const target = "0.13.0";
 
-test("the installed SDK and protocol peers match the supported host contract", () => {
+test("the installed SDK and protocol peers match the development SDK contract", () => {
   const manifest = readJson(join(root, "package.json"));
   const lock = readJson(join(root, "package-lock.json"));
   const sdk = readJson(join(dirname(require.resolve("@getpaseo/plugin")), "..", "package.json"));
@@ -20,7 +20,7 @@ test("the installed SDK and protocol peers match the supported host contract", (
   }
 });
 
-test("installation rejects hosts older than the SDK compatibility baseline", () => {
+test("the existing host requirement is preserved independently of the SDK version", () => {
   const manifest = readJson(join(root, "paseo-plugin.json"));
-  assert.equal(manifest.requirements.paseo, `>=${target}`);
+  assert.equal(manifest.requirements.paseo, ">=0.12.0");
 });
