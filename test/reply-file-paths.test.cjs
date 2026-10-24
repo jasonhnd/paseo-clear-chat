@@ -305,3 +305,21 @@ for (const platform of ["web", "ios", "android"]) {
     });
   }
 }
+
+for (const platform of ["web", "ios", "android"]) {
+  for (const path of [
+    "./my.project files/annual report.pdf",
+    "src/my.project files/annual report.pdf",
+    "/home/a/My.Project Name/annual report.pdf",
+  ]) {
+    test(`dotted directories preserve spaced filenames on ${platform}: ${path}`, async () => {
+      const h = createToolHarness(platform, { markdown: true });
+      const { tree } = h.mount({ type: "assistant_message", text: `See ${path}.` });
+      const links = fileLinks(h, tree);
+      assert.deepEqual(links.map(link => link.props.accessibilityLabel.replace(/^(Show|Copy) file path: /, "")), [path]);
+      assert.deepEqual(links.map(link => renderedText(link)), [path]);
+      for (const link of links) await press(link);
+      assert.deepEqual(platform === "web" ? h.reveals.map(value => value.path) : h.copies, [path]);
+    });
+  }
+}
