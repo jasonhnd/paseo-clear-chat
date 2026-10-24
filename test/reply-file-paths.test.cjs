@@ -173,3 +173,22 @@ test("spaced paths stop at fullwidth punctuation before the next sentence", () =
   const { tree } = h.mount({ type: "assistant_message", text: "Report: /workspace/sample/monthly report.pdf\u3002 Next: ./notes.txt" });
   assert.deepEqual(fileLinks(h, tree).map(link => link.props.accessibilityLabel.replace(/^Show file path: /, "")), ["/workspace/sample/monthly report.pdf", "./notes.txt"]);
 });
+
+// No captured reply contains quoted filename prose. Derive only text and messageId
+// from real-hermes-image-path-reply.json, retaining its projected item shape
+// (see docs/MESSAGE-FOLDING.md and test/fixtures/README.md).
+for (const platform of ["web", "ios", "android"]) {
+  test(`filename prose stays text while B1 paths retain their actions on ${platform}`, async () => {
+    const fixture = require("./fixtures/derived-assistant-filename-prose.json");
+    const h = createToolHarness(platform, { markdown: true });
+    const { tree } = h.mount(fixture);
+    const links = fileLinks(h, tree);
+    const targets = ["./README.md", "src/index.ts", "./reports/monthly report.pdf", "README.md:55:3"];
+    assert.deepEqual(links.map(link => link.props.accessibilityLabel.replace(/^(Show|Copy) file path: /, "")), targets);
+    assert.match(h.text(tree), /Discuss README\.md, "README\.md", and 'index\.ts' as words/);
+    for (const link of links) await press(link);
+    assert.deepEqual(platform === "web" ? h.reveals : h.copies,
+      platform === "web" ? targets.map(path => ({ cwd: "/workspace/demo", path })) : targets);
+    assert.deepEqual(h.links, []);
+  });
+}

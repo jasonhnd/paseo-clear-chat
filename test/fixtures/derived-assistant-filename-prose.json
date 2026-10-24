@@ -1,0 +1,5 @@
+{
+  "type": "assistant_message",
+  "text": "Discuss README.md, \"README.md\", and 'index.ts' as words. **README.md** is also prose.\n\nOpen ./README.md, src/index.ts, \"./reports/monthly report.pdf\", and `README.md:55:3`.",
+  "messageId": "sample-filename-prose-reply"
+}
