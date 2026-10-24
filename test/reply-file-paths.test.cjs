@@ -183,13 +183,14 @@ const derivedPaths = [
 
 // Derived from real-hermes-image-path-reply.json: same captured projected item
 // shape, with roots absent from the sanitized captures substituted in its prose.
-test("captured reply shape preserves unquoted dotted and spaced project roots", async () => {
+test("captured reply shape applies scope A to dotted and spaced project roots", async () => {
   const item = require("./fixtures/derived-root-path-dot-space-reply.json");
   const h = createToolHarness("web", { markdown: true });
   const { tree } = h.mount(item);
   const links = fileLinks(h, tree);
   const paths = derivedPaths;
   assert.deepEqual(links.map(link => link.props.accessibilityLabel.replace(/^Show file path: /, "")), paths);
+  assert.deepEqual(links.map(renderedText), paths);
   assert.equal(h.text(tree).replace(/\s+/g, ""), item.text.replace(/\s+/g, ""));
   for (const link of links) await press(link);
   assert.deepEqual(h.reveals.map(value => value.path), paths);
@@ -218,7 +219,9 @@ for (const platform of ["web", "ios", "android"]) {
     const fixturePaths = derivedPaths;
     const text = paths.map(path => `${path}. ${path}, (${path}) ${path}。`).join("\n") + "\n" + fixture.text + "\nversion 1.2 is out";
     const { tree } = h.mount({ type: "assistant_message", text });
-    assert.deepEqual(fileLinks(h, tree).map(link => link.props.accessibilityLabel.replace(/^(Show|Copy) file path: /, "")), [...paths.flatMap(path => [path, path, path, path]), ...fixturePaths]);
+    const expected = [...paths.flatMap(path => [path, path, path, path]), ...fixturePaths];
+    assert.deepEqual(fileLinks(h, tree).map(link => link.props.accessibilityLabel.replace(/^(Show|Copy) file path: /, "")), expected);
+    assert.deepEqual(fileLinks(h, tree).map(renderedText), expected);
   });
 }
 
@@ -290,6 +293,7 @@ for (const platform of ["web", "ios", "android"]) {
         offset += value.length;
       }
       assert.deepEqual(ranges, expected);
+      for (const range of ranges) assert.ok(!text.slice(range.start, range.end).includes("\n"), "no link crosses a source line boundary");
 
       const { tree } = h.mount({ ...softbreakReply, text });
       const paragraph = h.nodes(tree, node => node.type === "Text" && renderedText(node) === visible)[0];
