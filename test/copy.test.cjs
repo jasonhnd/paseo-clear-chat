@@ -44,9 +44,9 @@ function harness(file, name, copyText, platform = "ios", scale = 1) {
     const localRequire = id => {
       if (id === "react") return react;
       if (id === "react/jsx-runtime") return { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }), Fragment: "Fragment" };
-      if (id === "react-native") return { View: "View", Text: "Text", ScrollView: "ScrollView", Pressable: "Pressable", Image: "Image", Platform: { OS: platform }, StyleSheet: { create: x => x } };
+      if (id === "react-native") return { View: "View", Text: "Text", ScrollView: "ScrollView", Pressable: "Pressable", Image: "Image", Modal: "Modal", Platform: { OS: platform }, StyleSheet: { create: x => x }, useWindowDimensions: () => ({ width: 1024, height: 768, scale: 1, fontScale: 1 }) };
       if (id === "@getpaseo/plugin/client/ui") return sdk;
-      if (id === "@getpaseo/plugin/client") return translations;
+      if (id === "@getpaseo/plugin/client") return { ...translations, useRpc: () => async () => ({ images: [], total: 0, reason: null }) };
       if (id.endsWith("/messages") || id.endsWith("/translation") || id.endsWith(".json")) return load(resolve(dirname(filename), id));
       if (id === "./copy-feedback") return load(resolve(dirname(filename), id + ".tsx"));
       if (id === "./theme-tokens" || id === "../theme-tokens") return { radius: {}, withAlpha: value => value };

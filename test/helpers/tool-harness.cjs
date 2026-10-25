@@ -201,6 +201,17 @@ function createToolHarness(platform = "ios", options = {}) {
             });
             return rpcFunctions.get(contract.name);
           }
+          if (contract.name === "prompt.images" || contract.name === "prompt.image") {
+            if (!rpcFunctions.has(contract.name)) rpcFunctions.set(contract.name, async value => {
+              if (contract.name === "prompt.images") {
+                return options.promptImagesRpc ? options.promptImagesRpc(value) : { images: [], total: 0, reason: null };
+              }
+              return options.promptImageRpc ? options.promptImageRpc(value) : {
+                dataUri: null, mime: null, width: null, height: null, bytes: null, error: null,
+              };
+            });
+            return rpcFunctions.get(contract.name);
+          }
           if (contract.name?.startsWith("settings.tool-expansion.")) {
             if (!rpcFunctions.has(contract.name)) rpcFunctions.set(contract.name,
               contract.name.endsWith(".read") ? expansionHost.read : expansionHost.write);

@@ -234,9 +234,9 @@ test("numeric interpolation renders the original ungrouped English reasoning foo
 });
 
 const approvedResourceHashes = {
-  "en": "274ebec6bbd83950e090c4d03dc5456857eb6d6d28e6db69aa5bde5adcf3a981",
-  "zh-CN": "7bed82c643ebdad6e8e837c677e6d60016fc7b58ab6b402e137d45c68485c0f6",
-  "ja": "3e220c93b4616f64821bad511687e1fcd1edc96d79f6485aaf6e99cbcb6a1db6"
+  "en": "b3d8b25f7e0bd81f61ad8ddffb7f706e47006d63754d4d650c5e65d18e3bb375",
+  "zh-CN": "0f53fcb97d502045930a378ead9ac9f2a35e7c452f96068bb6cc038541e04776",
+  "ja": "40411dcb1d8a01e5ca1960014f129f4f23313782f54dd0f5edced2060042bfbe",
 };
 
 for (const locale of ["en", "zh-CN", "ja"]) {

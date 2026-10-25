@@ -222,6 +222,8 @@ function registerClient(client: PluginClientContext) {
       // `messageId` rides along so the renderer can carry the host's own
       // `data-history-row-id`, which is the id the chat outline scrolls to.
       // Replacing the item leaves the outline nothing to find otherwise.
+      // SDK 0.13's transform input is `{ item, phase }` only, so `agentId`
+      // is not available here. The timeline renderer receives it as a prop.
       return {
         items: [
           {
@@ -233,6 +235,7 @@ function registerClient(client: PluginClientContext) {
               ...(images.uris.length > 0 ? { images: images.uris } : {}),
               ...(images.count !== null && images.count > 0 ? { imageCount: images.count } : {}),
               ...(item.messageId ? { messageId: item.messageId } : {}),
+              ...(item.clientMessageId ? { clientMessageId: item.clientMessageId } : {}),
             }),
           },
         ],
@@ -248,6 +251,7 @@ function registerClient(client: PluginClientContext) {
       images: z.array(z.string()).optional(),
       imageCount: z.number().int().nonnegative().optional(),
       messageId: z.string().optional(),
+      clientMessageId: z.string().optional(),
     }),
     Component: LiveUserMessageRenderer,
   });
