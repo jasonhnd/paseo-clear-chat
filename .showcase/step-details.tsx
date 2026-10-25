@@ -173,7 +173,7 @@ function Preview() {
     </div>
     {showPanel && !(location.pathname === "/host-remount" && width < TABLET_MIN) ? <aside key={location.pathname === "/host-remount" ? (width < TABLET_MIN ? "pane-compact" : "pane-wide") : "panel"} data-testid="preview-host-panel" style={{ width: "40vw", maxWidth: 440, flexShrink: 0, display: width >= DESKTOP_MIN ? "flex" : "none", flexDirection: "column", borderLeft: `1px solid ${colors.border}` }}>
       <button data-testid="preview-host-close" onClick={() => { visible = false; publish(); }} style={{ padding: 8, color: colors.foreground, background: colors.surface2, border: 0, borderBottom: `1px solid ${colors.border}`, textAlign: "left" }}>Close host panel</button>
-      <Component host={host} params={{ agentId: "demo-agent" }} workspaceId="demo-workspace" revision={0} tab={{ state: undefined, setState() {}, setModified() {} }} layout={{ compact: false, platform: "web" }} theme={{ colors }} />
+      <Component host={host} context="agent" agentId="demo-agent" params={{ agentId: "demo-agent" }} workspaceId="demo-workspace" revision={0} tab={{ state: undefined, setState() {}, setModified() {} }} layout={{ compact: false, platform: "web" }} theme={{ colors }} />
     </aside> : null}
     </main>
   </div>;
