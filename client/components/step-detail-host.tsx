@@ -63,7 +63,7 @@ export function updateHostStepDetail(hostId: string, agentId: string, selection:
   publish();
 }
 
-export function StepDetailHostPanel({ host, agentId, theme }: PluginAgentPanelProps) {
+export function StepDetailHostPanel({ host, params: { agentId }, theme }: PluginAgentPanelProps) {
   const preferences = useEnhancerPreferences();
   const tokens = useMemo(() => buildThemeTokens(theme.colors, preferences), [theme.colors, preferences]);
   const { width } = useWindowDimensions();
@@ -108,9 +108,8 @@ export function StepDetailHostPanel({ host, agentId, theme }: PluginAgentPanelPr
 }
 
 export function installStepDetailPanel(client: PluginClientContext): () => void {
-  if (typeof client.addWorkspacePanel !== "function" || typeof client.openPanel !== "function") return () => {};
-  const remove = client.addWorkspacePanel({
-    id: PANEL_ID, title: "Step details", icon: "PanelRight", context: "agent", locations: ["explorer"], Component: StepDetailHostPanel,
+  const remove = client.addAgentPanel({
+    id: PANEL_ID, title: "Step details", icon: "PanelRight", locations: ["explorer"], Component: StepDetailHostPanel,
   });
   panelClient = client;
   return () => {

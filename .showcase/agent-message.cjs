@@ -42,7 +42,7 @@ async function bundle(revision) {
       const rpc = async () => ({ status: "ready", revision: "0", values: {
         preferences: { foldFinishedSteps: false, collapsedStepAction: "inline" }, legacyMigrated: true,
       } });
-      contribute({ rpc, addSettingsScreen: () => () => {}, addWorkspacePanel: () => () => {},
+      contribute({ rpc, addSettingsScreen: () => () => {}, addAgentPanel: () => () => {},
         addTimelineTransformer: value => { transformers.set(value.query.itemType, value); return () => {}; },
         addTimelineRenderer: value => { renderers.set(value.kind, value); return () => {}; },
       });
@@ -71,7 +71,7 @@ async function bundle(revision) {
       react: dirname(require.resolve("react/package.json")),
       "react-dom/client": require.resolve("react-dom/client"),
       "react-native": require.resolve("react-native-web"),
-      "@getpaseo/plugin/client/react-native": join(__dirname, "shims/plugin-react-native.tsx"),
+      "@getpaseo/plugin/client/ui": join(__dirname, "shims/plugin-react-native.tsx"),
       "@getpaseo/plugin/client": join(__dirname, "shims/agent-message-client.ts"),
     },
     plugins: revision ? [{ name: "baseline", setup(builder) {

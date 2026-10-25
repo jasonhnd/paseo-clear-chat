@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Platform, Text } from "react-native";
-import { copyText, Modal, TextInput, useToast } from "@getpaseo/plugin/client/react-native";
+import { copyText, Modal, TextInput, useToast } from "@getpaseo/plugin/client/ui";
 import type { ExtendedThemeTokens } from "./theme-tokens";
 
 // Use real layout space: hitSlop alone is clipped by the small parent headers.
