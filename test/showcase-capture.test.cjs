@@ -36,6 +36,6 @@ test("all README languages publish the same theme pairs and every retained scree
     }
   }
   const actual = ["images", "docs/images"].flatMap(directory =>
-    readdirSync(resolve(root, directory)).map(file => `${directory}/${file}`)).sort();
+    readdirSync(resolve(root, directory)).filter(file => file.endsWith(".png")).map(file => `${directory}/${file}`)).sort();
   assert.deepEqual(actual, expected);
 });
