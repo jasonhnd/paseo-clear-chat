@@ -9,6 +9,7 @@ const { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, readdirSync 
 const { resolve, join, dirname } = require("node:path");
 const { readmeV2Groups, demoCapture, heroCapture } = require("./capture-plan.cjs");
 const { captureDemo } = require("./capture-demo.cjs");
+const { rowMetrics } = require("./capture-row-metrics.cjs");
 
 const root = resolve(__dirname, "..");
 const work = join(__dirname, ".capture-temp");
@@ -161,7 +162,10 @@ async function verifyHero(page, device) {
     assert.ok(metrics.replyBottom <= spec.height && spec.height - metrics.replyBottom < 16, "Crop the desktop just after the completed turn");
     assert.ok(spec.height - metrics.outputBottom < 128, "Trim empty space below the real success result");
   }
-  return metrics;
+  const rows = await rowMetrics(page);
+  assert.ok(rows.every(row => row.clippedBy.length === 0), "Hero label text must not cross a clipping ancestor");
+  assert.ok(rows.every(row => row.titleToDuration * displayScale >= 4), "Hero titles must have at least 4 px before durations at README width");
+  return { ...metrics, rows };
 }
 
 function heroHtml(dark) {
@@ -171,7 +175,7 @@ function heroHtml(dark) {
   html,body{margin:0}#frame{width:${viewport.width}px;height:${viewport.height}px;position:relative;background:${dark ? "linear-gradient(155deg,#232733,#12141b)" : "linear-gradient(155deg,#f4f7fb,#d5e0ee)"}}
   img{display:block;position:absolute;box-shadow:0 20px 46px ${dark ? "#0009" : "#18202d38"}}
   #desktop{left:${marginX}px;top:${marginY}px;width:${desktop.width}px;height:auto;border-radius:18px}
-  #phone{left:${marginX + desktop.width + gap}px;top:${marginY}px;width:${phone.displayWidth}px;height:auto;border-radius:28px}
+  #phone{left:${marginX + desktop.width + gap}px;top:${marginY}px;width:${phone.displayWidth}px;height:${desktop.height}px;object-fit:contain;object-position:top;background:${dark ? "#0f0f11" : "#f8fafc"};border-radius:28px}
   </style><div id="frame"><img id="desktop" src="/raw/desktop.png" alt=""><img id="phone" src="/raw/phone.png" alt=""></div></html>`;
 }
 
@@ -219,6 +223,12 @@ async function capture() {
       await page.goto(`${origin}/?theme=${theme}&textScale=${textScale}${hero ? `&hero&detailWidth=${heroCapture.desktop.detailWidth}` : ""}`, { waitUntil: "networkidle" });
       await page.getByTestId("demo-step-5").waitFor();
       await page.addStyleTag({ content: freeze });
+      if (hero) {
+        // The hero enlarges text beyond the product's supported text sizes,
+        // while retaining the compact row geometry. Default rows do not clip.
+        // Let that capture-only enlargement paint outside the fixed card.
+        await page.addStyleTag({ content: '[data-testid^="demo-step-"] > [data-testid^="tool-card-"]{overflow:visible!important}[data-testid="tool-summary-row"]{border-radius:inherit!important}' });
+      }
       await settle(page);
       const background = await page.getByTestId("demo").evaluate(node => getComputedStyle(node).backgroundColor);
       assert.equal(background, theme === "dark" ? "rgb(15, 15, 17)" : "rgb(248, 250, 252)");
@@ -228,11 +238,37 @@ async function capture() {
       await page.mouse.move(2, 2);
       await settle(page);
     };
+    if (process.env.SHOWCASE_MEASURE_ROWS) {
+      const measurements = [];
+      for (const [name, viewport, textScale, hero] of [
+        ["desktop-default", heroCapture.desktop, 1, false],
+        ["phone-default", { width: 390, height: 900 }, 1, false],
+        ["desktop-hero", heroCapture.desktop, heroCapture.desktop.textScale, true],
+        ["phone-hero", heroCapture.phone, heroCapture.phone.textScale, true],
+      ]) {
+        for (const scale of [1, 2]) {
+          const { page, errors } = await newPage(`${name}-${scale}`, viewport, scale);
+          await navigate(page, "light", textScale, hero);
+          if (name.startsWith("desktop")) await openEdit(page);
+          measurements.push({ name, deviceScaleFactor: scale, rows: await rowMetrics(page) });
+          await page.screenshot({ path: join(work, `${name}-${scale}.png`) });
+          assert.deepEqual(errors, []);
+          await browser.close(); browser = undefined;
+        }
+      }
+      writeFileSync(join(work, "row-metrics.json"), JSON.stringify(measurements, null, 2) + "\n");
+      console.log(JSON.stringify(measurements, null, 2));
+      return;
+    }
     for (const group of plan) {
       let { page, errors } = await newPage(group.id, group.id === "hero" ? heroCapture.desktop : group.viewport, group.deviceScaleFactor, group.id.startsWith("phone-"));
       for (const theme of ["light", "dark"]) {
         if (group.id === "hero") {
           await page.setViewportSize(heroCapture.desktop);
+          // Never use the hero exception to conceal a default product defect.
+          await navigate(page, theme);
+          const defaultRows = await rowMetrics(page);
+          assert.ok(defaultRows.every(row => row.clippedBy.length === 0), "Default product labels must not clip");
           await navigate(page, theme, heroCapture.desktop.textScale, true); await openEdit(page);
           const desktopFonts = await verifyCapture(page, "side");
           const desktopText = await verifyHero(page, "desktop");
@@ -241,7 +277,7 @@ async function capture() {
           await navigate(page, theme, heroCapture.phone.textScale, true);
           const phoneFonts = await verifyCapture(page);
           const phoneText = await verifyHero(page, "phone");
-          report.push({ file: group[theme], desktop: { fonts: desktopFonts, text: desktopText }, phone: { fonts: phoneFonts, text: phoneText } });
+          report.push({ file: group[theme], defaultRows, desktop: { fonts: desktopFonts, text: desktopText }, phone: { fonts: phoneFonts, text: phoneText } });
           assert.equal(await page.getByTestId("step-detail-panel").count(), 0, "The hero phone must show the compact timeline without a scrim");
           const reply = await page.getByTestId("demo-reply").boundingBox();
           // Frame the compact first turn at a paragraph boundary, before the follow-up.
@@ -260,9 +296,11 @@ async function capture() {
           const bounds = await page.locator("#frame img").evaluateAll(images => images.map(image => {
             const { left, right, top, bottom } = image.getBoundingClientRect(); return { left, right, top, bottom };
           }));
-          assert.ok(bounds[1].left >= bounds[0].right, "Hero devices must sit side by side");
+          assert.equal(bounds[1].left - bounds[0].right, heroCapture.marginX, "Hero gap must match the outer margin");
+          assert.equal(bounds[0].bottom, bounds[1].bottom, "Hero bottoms must align");
           assert.equal(bounds[0].top, bounds[1].top, "Hero tops must align");
-          assert.ok(bounds[0].left >= 40 && group.viewport.width - bounds[1].right >= 40, "Hero outer margins must be at least 40 pixels");
+          assert.equal(bounds[0].left, heroCapture.marginX);
+          assert.equal(group.viewport.width - bounds[1].right, heroCapture.marginX);
           assert.ok(bounds.every(box => box.top >= heroCapture.marginY && box.bottom <= group.viewport.height - heroCapture.marginY), "Hero content must fit the trimmed canvas");
         } else {
           await navigate(page, theme);
