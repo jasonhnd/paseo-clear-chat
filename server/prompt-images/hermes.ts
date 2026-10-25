@@ -19,7 +19,19 @@ const FAILURE_PREFIXES = [
 const MAX_CONFIG_BYTES = 64 * 1024;
 const IMAGE_NOTE = /\[(?:The user sent an image|If you need a closer look|Image attached|screenshot)/;
 const SCREENSHOT_LINE = /^\[screenshot(?: detail=(?:low|high|auto))?\]$/;
-const SCREENSHOT_ROW = /(?:^|\n)\[screenshot(?: detail=(?:low|high|auto))?\](?:\n|$)/;
+const MARKER_LINE = /^\[screenshot(?: detail=(low|high|auto))?\]$/;
+const HINT_LINE = /^\[Image attached at: (\/[^\r\n\x00]+)\]$/;
+// hermes_state_messages._encode_content: list/dict parts are "\0json:" + json.dumps.
+const JSON_PREFIX = `${String.fromCharCode(0)}json:`;
+const PLAIN_BLOCKED = [
+  JSON_PREFIX,
+  "[The user sent an image",
+  "[If you need a closer look",
+  "[Image attached",
+  "[screenshot",
+  "image_url",
+  "vision_analyze",
+];
 // Original basenames are kept (`session_ingress_media.py` capture), including `Holiday [2026].png`.
 // `]` still closes a failure note, so that delimiter cannot admit a bracketed filename.
 const PATH_PATTERN = /^\/[^\r\n\x00]+$/;
@@ -112,37 +124,31 @@ function rowDisplay(raw: unknown): "visible" | "hidden" | "uncertain" {
   return modelOnlyFlag((parsed as Record<string, unknown>).model_only) ? "hidden" : "visible";
 }
 
+function successNote(description: string, path: string): string {
+  return `${BLOCK_START}${description}${PATH_START}${path}${BLOCK_END}`;
+}
+
 /**
- * Durable native rows pair each `[screenshot]` with an `[Image attached …]` hint in order,
- * the same way `agent/image_replay.py::_split_rebuilt_row` does. API callers put the marker
- * before the caption; turn-time hints stay a blank line above the hint list.
+ * One gateway success note (`_enrich_message_with_vision`) and the exact remainder.
+ * The path ends at the first ` ~]`, so a filename containing that closer only
+ * round-trips when the rebuilt note is the whole stored prefix.
  */
-function nativeImage(content: string): { text: string; paths: string[] } | null {
-  if (!content.includes("[Image attached") && !SCREENSHOT_ROW.test(content)) return null;
-  const lines = content.trimEnd().split("\n");
-  const markerAt: number[] = [];
-  const hintAt: number[] = [];
-  const paths: string[] = [];
-  for (let index = 0; index < lines.length; index++) {
-    const line = lines[index] ?? "";
-    if (SCREENSHOT_LINE.test(line)) {
-      markerAt.push(index);
-      continue;
-    }
-    if (!line.startsWith("[Image attached")) continue;
-    const path = /^\[Image attached at: (\/[^\r\n\x00]+)\]$/.exec(line)?.[1];
-    if (!path) return null;
-    hintAt.push(index);
-    paths.push(path);
-  }
-  if (!paths.length || (markerAt.length && markerAt.length !== paths.length)) return null;
-  const first = hintAt[0];
-  // build_native_content_parts separates the caption and hint list by a blank line.
-  if (first === undefined || (first > 0 && lines[first - 1] !== "")) return null;
-  const drop = new Set([...markerAt, ...hintAt]);
-  const text = lines.filter((_, index) => !drop.has(index)).join("\n");
-  if (IMAGE_NOTE.test(text)) return null;
-  return { text: text.trim(), paths };
+function takeSuccess(content: string): { note: string; path: string; rest: string } | null {
+  if (!content.startsWith(BLOCK_START)) return null;
+  const pathAt = content.indexOf(PATH_START, BLOCK_START.length);
+  if (pathAt < 0) return null;
+  const description = content.slice(BLOCK_START.length, pathAt);
+  if (/\[(?:The user sent an image|If you need a closer look|Image attached)/.test(description)) return null;
+  const end = content.indexOf(BLOCK_END, pathAt + PATH_START.length);
+  if (end < 0) return null;
+  const path = content.slice(pathAt + PATH_START.length, end);
+  if (!PATH_PATTERN.test(path)) return null;
+  const note = successNote(description, path);
+  if (!content.startsWith(note)) return null;
+  const next = content.slice(note.length);
+  if (!next) return { note, path, rest: "" };
+  if (!next.startsWith("\n\n")) return null;
+  return { note, path, rest: next.slice(2) };
 }
 
 /** Byte length of a structurally complete success note at `at`, or -1. */
@@ -232,44 +238,191 @@ function unparsedImageCaption(content: string): string | null {
   return text;
 }
 
-/** Gateway descriptions precede the caption; native hints follow it, unless the image was stored first. */
-function annotations(content: string): { text: string; paths: string[] } | null {
-  let rest = content.trimStart();
+/**
+ * Success notes only, joined the way `_enrich_message_with_vision` joins them:
+ * `"\n\n".join(notes)` plus `"\n\n" + user_text` when the user text is non-empty.
+ * A failure note is not an image row. Any split that does not rebuild the stored
+ * bytes is not fully parsed.
+ */
+function parseVision(content: string): { text: string; paths: string[] } | null {
+  if (!content.startsWith(BLOCK_START)) return null;
+  const notes: string[] = [];
   const paths: string[] = [];
-  while (rest.startsWith("[The user sent an image")) {
-    if (!rest.startsWith(BLOCK_START)) return null;
-    const pathStart = rest.indexOf(PATH_START, BLOCK_START.length);
-    if (pathStart === -1) return null;
-    const description = rest.slice(BLOCK_START.length, pathStart);
-    if (/\[(?:The user sent an image|If you need a closer look|Image attached)/.test(description)) return null;
-    const end = rest.indexOf(BLOCK_END, pathStart + PATH_START.length);
-    if (end === -1) return null;
-    const path = rest.slice(pathStart + PATH_START.length, end);
-    if (!PATH_PATTERN.test(path)) return null;
-    paths.push(path);
-    rest = rest.slice(end + BLOCK_END.length).trimStart();
+  let rest = content;
+  while (rest.startsWith(BLOCK_START)) {
+    const taken = takeSuccess(rest);
+    if (!taken) return null;
+    notes.push(taken.note);
+    paths.push(taken.path);
+    rest = taken.rest;
   }
-  if (!paths.length) {
-    const native = nativeImage(rest);
-    if (native) return native;
-    // An image note we could not read must not fall through as ordinary text.
-    if (rest.includes("[Image attached") || SCREENSHOT_ROW.test(rest) || rest.startsWith("[The user sent an image")) return null;
-  }
-  if (IMAGE_NOTE.test(rest)) return null;
-  return { text: rest.trim(), paths };
+  if (!paths.length || rest.startsWith("[The user sent an image")) return null;
+  const rebuilt = notes.join("\n\n") + (rest ? `\n\n${rest}` : "");
+  if (rebuilt !== content) return null;
+  const text = rest.trim();
+  if (IMAGE_NOTE.test(text)) return null;
+  return { text, paths };
+}
+
+function screenshotMarker(detail: string | null): string {
+  return detail ? `[screenshot detail=${detail}]` : "[screenshot]";
 }
 
 /**
- * Plain text has no Hermes image note. An image row is one whose notes all parsed and
- * whose paths were accepted. Any other note, marker or hint is uncertain: its caption
- * is not trusted, and one such row blocks text fallback for the whole session.
+ * Native rows from `build_native_content_parts` plus `_durable_content`.
+ * The text part is `caption + "\n\n" + hints`. Each image part is one
+ * `[screenshot]` / `[screenshot detail=…]` line, before that text (API image-first)
+ * or after it (turn-time). Hints are `[Image attached at: <path>]`, one per line.
+ * A `]\n[` inside a filename splits the hint, so the rebuild misses the stored bytes.
+ */
+function parseNative(content: string): { text: string; paths: string[] } | null {
+  if (!content.includes("[Image attached") && !content.includes("[screenshot")) return null;
+  const lines = content.split("\n");
+  const hintAt: number[] = [];
+  const markerAt: number[] = [];
+  const paths: string[] = [];
+  const details: (string | null)[] = [];
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index] ?? "";
+    const marker = MARKER_LINE.exec(line);
+    if (marker) {
+      markerAt.push(index);
+      details.push(marker[1] ?? null);
+      continue;
+    }
+    if (!line.startsWith("[Image attached")) continue;
+    const path = HINT_LINE.exec(line)?.[1];
+    if (!path) return null;
+    hintAt.push(index);
+    paths.push(path);
+  }
+  const firstHint = hintAt[0];
+  const lastHint = hintAt[hintAt.length - 1];
+  if (firstHint === undefined || lastHint === undefined || !paths.length) return null;
+  if (markerAt.length && markerAt.length !== paths.length) return null;
+  for (let index = 1; index < hintAt.length; index++) {
+    if (hintAt[index] !== (hintAt[index - 1] ?? -2) + 1) return null;
+  }
+  if (lines[firstHint - 1] !== "") return null;
+  const before = markerAt.filter(index => index < firstHint);
+  const after = markerAt.filter(index => index > lastHint);
+  if (before.length + after.length !== markerAt.length || (before.length > 0 && after.length > 0)) return null;
+  let caption: string;
+  let imageFirst: boolean;
+  if (before.length) {
+    if (before.some((index, offset) => index !== offset) || lastHint !== lines.length - 1) return null;
+    caption = lines.slice(before.length, firstHint - 1).join("\n");
+    imageFirst = true;
+  } else {
+    if (after.length) {
+      if (after[0] !== lastHint + 1 || after[after.length - 1] !== lines.length - 1) return null;
+      if (after.some((index, offset) => index !== lastHint + 1 + offset)) return null;
+    } else if (lastHint !== lines.length - 1) return null;
+    caption = lines.slice(0, firstHint - 1).join("\n");
+    imageFirst = false;
+  }
+  const hints = paths.map(path => `[Image attached at: ${path}]`).join("\n");
+  const body = `${caption}\n\n${hints}`;
+  const markerText = details.map(screenshotMarker).join("\n");
+  const rebuilt = !details.length ? body : imageFirst ? `${markerText}\n${body}` : `${body}\n${markerText}`;
+  if (rebuilt !== content) return null;
+  const text = caption.trim();
+  if (IMAGE_NOTE.test(text)) return null;
+  return { text, paths };
+}
+
+/** Fully parsed image rows are exactly the upstream success-note or native durable strings. */
+function annotations(content: string): { text: string; paths: string[] } | null {
+  return parseVision(content) ?? parseNative(content);
+}
+
+function plainText(content: string): boolean {
+  return PLAIN_BLOCKED.every(marker => !content.includes(marker));
+}
+
+const IMAGE_PART_TYPES = new Set(["image_url", "image", "input_image"]);
+const RESOURCE_PART_TYPES = new Set(["resource", "resource_link", "embedded_resource"]);
+
+function mimeIsImage(value: unknown): boolean {
+  const entry = record(value);
+  if (!entry) return false;
+  for (const key of ["mimeType", "mime_type", "mime", "mediaType", "media_type"]) {
+    const mime = entry[key];
+    if (typeof mime !== "string") continue;
+    const main = mime.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+    if (main.startsWith("image/")) return true;
+  }
+  return false;
+}
+
+/** image_url, image, input_image, or a resource whose mime is image/*. */
+function isImageLikePart(part: unknown): boolean {
+  const entry = record(part);
+  if (!entry) return false;
+  const type = entry.type;
+  if (typeof type === "string" && IMAGE_PART_TYPES.has(type)) return true;
+  const nested = entry.resource;
+  if (typeof type === "string" && RESOURCE_PART_TYPES.has(type)) return mimeIsImage(entry) || mimeIsImage(nested);
+  return mimeIsImage(nested);
+}
+
+function textOf(part: unknown): string | null {
+  if (typeof part === "string") return part;
+  const entry = record(part);
+  if (!entry || entry.type !== "text") return null;
+  if (typeof entry.text === "string") return entry.text;
+  if (typeof entry.content === "string") return entry.content;
+  return null;
+}
+
+function textCaption(parts: readonly unknown[]): string | null {
+  const joined = parts.flatMap(part => {
+    const text = textOf(part);
+    return text === null ? [] : [text];
+  }).join("\n").trim();
+  return joined ? joined : null;
+}
+
+/**
+ * `_decode_content` on display (`_row_to_message_dict`). Image-like parts stay unresolved.
+ * Text-only parts use their joined text as ordinary caption text.
+ */
+function classifyEncoded(content: string): ClassifiedMessage | null {
+  if (!content.startsWith(JSON_PREFIX)) return null;
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(content.slice(JSON_PREFIX.length));
+  } catch {
+    return { kind: "uncertain", text: null };
+  }
+  if (typeof decoded === "string") {
+    return plainText(decoded)
+      ? { kind: "plain", text: decoded.trim() }
+      : { kind: "uncertain", text: unparsedImageCaption(decoded) };
+  }
+  const parts = Array.isArray(decoded) ? decoded : decoded !== null && typeof decoded === "object" ? [decoded] : null;
+  if (!parts) return { kind: "uncertain", text: null };
+  if (parts.some(isImageLikePart)) return { kind: "uncertain", text: textCaption(parts) };
+  if (parts.length > 0 && parts.every(part => textOf(part) !== null)) {
+    return { kind: "plain", text: parts.map(part => textOf(part) ?? "").join("\n").trim() };
+  }
+  return { kind: "uncertain", text: textCaption(parts) };
+}
+
+/**
+ * An image row is fully parsed only when the upstream success note, failure-free
+ * native markers/hints and caption joiner rebuild the stored string byte for byte.
+ * Plain text contains none of the image sentinels. Anything else, including a
+ * `\0json:` row with an image-like part, is uncertain and blocks text fallback.
  */
 function classifyMessage(content: string): ClassifiedMessage {
-  if (!IMAGE_NOTE.test(content)) return { kind: "plain", text: content.trim() };
+  const encoded = classifyEncoded(content);
+  if (encoded) return encoded;
   const parsed = annotations(content);
   if (parsed && parsed.paths.length > 0 && !IMAGE_NOTE.test(parsed.text)) {
     return { kind: "image", text: parsed.text, paths: parsed.paths };
   }
+  if (plainText(content)) return { kind: "plain", text: content.trim() };
   return { kind: "uncertain", text: unparsedImageCaption(content) };
 }
 

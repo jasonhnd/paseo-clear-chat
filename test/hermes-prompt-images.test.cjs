@@ -310,6 +310,114 @@ test("Hermes blocks text fallback when any image row in the session is uncertain
   assert.deepEqual(blocked.images, []);
 });
 
+test("Hermes returns one exact success note by text and by id", async t => {
+  const f = await fixture(t), path = f.image();
+  f.add(annotated([path]), { platformId: ID });
+  const byText = await f.find();
+  assert.equal(byText.matchedMessages, 1);
+  assert.equal(byText.images.length, 1);
+  assert.deepEqual(await byText.images[0].readBytes(), f.png);
+  const byId = await f.find({ messageId: ID, text: "other" });
+  assert.equal(byId.matchedMessages, 1);
+  assert.equal(byId.images.length, 1);
+  assert.deepEqual(await byId.images[0].readBytes(), f.png);
+});
+
+test("Hermes blocks text fallback when a success-note filename contains the closer", async t => {
+  const f = await fixture(t);
+  // The success note ends at the first " ~]". A basename containing it must not
+  // parse as a different caption and leave the sibling as the only image.
+  const tricky = f.retainedImage("Holiday ~].png");
+  const sibling = f.image("jpg", f.jpg);
+  for (const trickyFirst of [true, false]) {
+    f.writer.exec("DELETE FROM messages");
+    const rows = [annotated([tricky]), annotated([sibling])];
+    if (!trickyFirst) rows.reverse();
+    f.add(rows[0], { platformId: ID });
+    f.add(rows[1]);
+    assert.deepEqual(await f.find(), empty(2));
+    const ownedBy = rows[0].includes(tricky) ? null : ID;
+    if (ownedBy) {
+      const byId = await f.find({ messageId: ownedBy, text: "other" });
+      assert.equal(byId.images.length, 1);
+      assert.deepEqual(await byId.images[0].readBytes(), f.jpg);
+    }
+  }
+});
+
+test("Hermes blocks text fallback when a native hint filename contains a bracketed newline", async t => {
+  const f = await fixture(t);
+  // "]\n[" splits `[Image attached at: …]` across lines, so the hint is not the stored path.
+  const broken = join(f.home, "cache", "documents", "native-inputs", "a".repeat(64), "Holiday]\n[2026].png");
+  const sibling = f.image("jpg", f.jpg);
+  for (const brokenFirst of [true, false]) {
+    f.writer.exec("DELETE FROM messages");
+    const rows = [nativeAnnotated([broken]), annotated([sibling])];
+    if (!brokenFirst) rows.reverse();
+    f.add(rows[0]);
+    f.add(rows[1], { platformId: rows[1].includes(sibling) ? ID : null });
+    assert.deepEqual(await f.find(), empty(2));
+  }
+  f.writer.exec("DELETE FROM messages");
+  f.add(annotated([sibling]), { platformId: ID });
+  f.add(nativeAnnotated([broken]));
+  const byId = await f.find({ messageId: ID, text: "other" });
+  assert.equal(byId.images.length, 1);
+  assert.deepEqual(await byId.images[0].readBytes(), f.jpg);
+});
+
+test("Hermes blocks text fallback for structured image parts beside a sibling", async t => {
+  const f = await fixture(t);
+  const sibling = f.image("jpg", f.jpg);
+  const encoded = parts => `\0json:${JSON.stringify(parts)}`;
+  const rows = [
+    encoded([{ type: "text", text: "Different caption" }, { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } }]),
+    encoded([{ type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } }, { type: "text", text: "Different caption" }]),
+    encoded([
+      { type: "text", text: "[Attached image: photo.png]\nURI: file:///tmp/photo.png" },
+      { type: "resource", resource: { uri: "file:///tmp/photo.png", mimeType: "image/png", blob: "AAAA" } },
+    ]),
+    encoded([{ type: "input_image", image_url: "data:image/png;base64,AAAA" }, { type: "text", text: "Different caption" }]),
+    encoded([{ type: "image", source: { type: "base64", media_type: "image/png", data: "AAAA" } }]),
+  ];
+  for (const content of rows) {
+    for (const structuredFirst of [true, false]) {
+      f.writer.exec("DELETE FROM messages");
+      const ordered = structuredFirst ? [content, annotated([sibling])] : [annotated([sibling]), content];
+      f.add(ordered[0], { platformId: ordered[0] === content ? null : ID });
+      f.add(ordered[1], { platformId: ordered[1] === content ? null : ID });
+      assert.deepEqual(await f.find(), empty(2), content.slice(0, 24));
+      const byId = await f.find({ messageId: ID, text: "other" });
+      assert.equal(byId.matchedMessages, 1);
+      assert.equal(byId.images.length, 1);
+      assert.deepEqual(await byId.images[0].readBytes(), f.jpg);
+    }
+  }
+});
+
+test("Hermes treats structured text-only content as plain text", async t => {
+  const f = await fixture(t);
+  const encoded = parts => `\0json:${JSON.stringify(parts)}`;
+  f.add(encoded([{ type: "text", text: "Unrelated question" }]));
+  f.add(annotated([f.image()]), { platformId: ID });
+  const clear = await f.find();
+  assert.equal(clear.matchedMessages, 1);
+  assert.equal(clear.images.length, 1);
+  assert.deepEqual(await clear.images[0].readBytes(), f.png);
+  f.writer.exec("DELETE FROM messages");
+  f.add(encoded([{ type: "text", text: "Synthetic question" }]));
+  f.add(annotated([f.image("jpg", f.jpg)]));
+  assert.deepEqual(await f.find(), empty(2));
+  f.writer.exec("DELETE FROM messages");
+  f.add(encoded([{ type: "text", text: "Line one" }, { type: "text", text: "Line two" }]));
+  assert.deepEqual(await f.find({ text: "Line one\nLine two" }), empty(1));
+  f.add(encoded("Synthetic question"));
+  f.add(annotated([f.image()]), { platformId: ID });
+  const again = await f.find();
+  assert.equal(again.matchedMessages, 2);
+  assert.deepEqual(again.images, []);
+});
+
 test("Hermes rejects ambiguous or incomplete image annotations", async t => {
   const f = await fixture(t), path = f.image();
   for (const content of [
