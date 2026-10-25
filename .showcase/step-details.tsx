@@ -21,9 +21,15 @@ embedFonts();
 installCompactToolSpacing();
 
 const colors = {
-  surface0: "#0f0f11", surface1: "#17171a", surface2: "#1f1f23", border: "#2a2a30",
-  foreground: "#f2f3f5", foregroundMuted: "#a3a6ad", accent: "#7aa2f7", accentForeground: "#0f0f11",
-  statusSuccess: "#4cb782", statusWarning: "#d9a53f", statusDanger: "#f2555a",
+  ...(new URLSearchParams(location.search).get("theme") === "light" ? {
+    surface0: "#f8fafc", surface1: "#ffffff", surface2: "#edf0f5", border: "#d5dbe5",
+    foreground: "#18202d", foregroundMuted: "#586579", accent: "#315fba", accentForeground: "#ffffff",
+    statusSuccess: "#23845b", statusWarning: "#986500", statusDanger: "#c93642",
+  } : {
+    surface0: "#0f0f11", surface1: "#17171a", surface2: "#1f1f23", border: "#2a2a30",
+    foreground: "#f2f3f5", foregroundMuted: "#a3a6ad", accent: "#7aa2f7", accentForeground: "#0f0f11",
+    statusSuccess: "#4cb782", statusWarning: "#d9a53f", statusDanger: "#f2555a",
+  }),
 };
 const host = { id: "demo-host", label: "Demo host" };
 const listeners = new Set<() => void>();
@@ -61,7 +67,9 @@ function Preview() {
     <main style={{ display: "flex", flex: 1, minHeight: 0 }}>
     <div key={location.pathname === "/host-remount" ? ((delayedRemount ? compact : width < TABLET_MIN) ? "chat-compact" : "chat-wide") : "chat"} ref={chat} data-testid="preview-chat" style={{ flex: 1, minWidth: 0, padding: 16, overflow: "auto" }}>
       <div style={{ height: 460 }} aria-hidden="true" />
-      <p>Offline component replay · sanitized conversation</p>
+      <div style={{ maxWidth: 600, padding: 16, borderRadius: 12, background: colors.surface1, border: `1px solid ${colors.border}` }}>
+        <strong>demo-shop</strong><p style={{ marginBottom: 0 }}>Add a free-shipping message when the cart total reaches $50.</p>
+      </div>
       {location.pathname === "/host-context" ? <button data-testid="preview-hydrate-workspace" onClick={hydratePreviewWorkspace}>Hydrate workspace context</button> : null}
       {samples.map((sample, index) => <div key={sample.callId} data-history-row-id={sample.callId} data-index={index}>
         <div style={{ marginBottom: 16 }}><LiveToolCallRenderer
@@ -83,14 +91,14 @@ function Preview() {
         ...sample, detail: { ...sample.detail, output: `${sample.detail?.output}\nUpdated sample output` },
       }))}>Update first step output</button> : null}
       <div style={{ height: 500 }} aria-hidden="true" />
-      <p data-testid="preview-reply">The conversation remains available beside the desktop panel.</p>
+      <p data-testid="preview-reply" style={{ maxWidth: 600, lineHeight: 1.6 }}>I found the cart summary helper and checked the threshold cases. The update is ready to review.</p>
       <button data-testid="preview-action" onClick={() => updateEnhancerPreferences({ collapsedStepAction: preferences.collapsedStepAction === "details" ? "inline" : "details" })}>
         {preferences.collapsedStepAction === "details" ? "Use inline expansion" : "Use step details"}
       </button>
       <div style={{ height: 700 }}>Later conversation</div>
     </div>
     {showPanel && !(location.pathname === "/host-remount" && width < TABLET_MIN) ? <aside key={location.pathname === "/host-remount" ? (width < TABLET_MIN ? "pane-compact" : "pane-wide") : "panel"} data-testid="preview-host-panel" style={{ width: "40vw", maxWidth: 440, flexShrink: 0, display: width >= DESKTOP_MIN ? "flex" : "none", flexDirection: "column", borderLeft: `1px solid ${colors.border}` }}>
-      <button data-testid="preview-host-close" onClick={() => { visible = false; publish(); }}>Close host panel</button>
+      <button data-testid="preview-host-close" onClick={() => { visible = false; publish(); }} style={{ padding: 8, color: colors.foreground, background: colors.surface2, border: 0, borderBottom: `1px solid ${colors.border}`, textAlign: "left" }}>Close host panel</button>
       <Component host={host} params={{ agentId: "demo-agent" }} workspaceId="demo-workspace" revision={0} tab={{ state: undefined, setState() {}, setModified() {} }} layout={{ compact: false, platform: "web" }} theme={{ colors }} />
     </aside> : null}
     </main>
