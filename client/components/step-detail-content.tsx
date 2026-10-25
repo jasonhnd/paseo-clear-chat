@@ -154,6 +154,11 @@ export function StepDetailContent({ step, tokens, onRevealPath, imageFile }: {
       onContentSizeChange={(_, contentHeight) => { layout.current.contentHeight = contentHeight; restoreScroll(); }}
       onScroll={event => {
         if (event.nativeEvent.layoutMeasurement?.height === 0 || event.nativeEvent.layoutMeasurement?.width === 0) return;
+        const viewport = event.nativeEvent.layoutMeasurement;
+        // Web scroll anchoring can fire before onLayout after a resize. Those
+        // offsets belong to the new viewport, while our cells still belong to
+        // the old one. Saving that pair applies the reflow twice on remount.
+        if (viewport && (viewport.width !== layout.current.width || viewport.height !== layout.current.height)) return;
         const offset = event.nativeEvent.contentOffset.y;
         const anchor = restoreAnchor.current;
         const cell = anchor && cells.current.get(anchor.key);

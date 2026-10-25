@@ -1,4 +1,5 @@
 import { useMemo, useSyncExternalStore } from "react";
+export { defineTranslations, useTranslation, PluginTranslationProvider, PluginTranslationRuntime } from "../../node_modules/@getpaseo/plugin/dist/client/translations.js";
 
 const agent = { cwd: "/workspace/demo", workspaceId: "demo-workspace", status: "idle", updatedAt: "2026-01-01T12:00:00Z" };
 const paseo = { agents: { ref: () => ({ refresh: async () => null, timeline: { refetch: async () => ({ entries: [] }) } }) } };
