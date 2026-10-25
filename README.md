@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <img width="800" alt="A 25-second demo: an agent works through a task, finished steps fold into rows, a step opens in the side panel, and the window narrows to phone width" src="images/demo.gif">
+  <img width="800" alt="A 26-second demo: an agent works through a task, finished steps fold into rows, a step opens in the side panel, and the window narrows to phone width" src="images/demo.gif">
 </p>
 
 <p align="center"><sub>Every screenshot and the demo use sample data.</sub></p>
@@ -57,7 +57,7 @@ To update later:
 paseo plugin update clear-chat
 ```
 
-This moves Clear Chat to the newest release on `main`, not the release you first installed, and asks before it changes anything. In a script, add `--yes`. To move to a specific release, or back to an earlier one, add `--ref`, for example `paseo plugin update clear-chat --ref v0.13.0.1`. Updating keeps your settings.
+This moves Clear Chat to the latest version on the `main` branch, not the release you first installed, and asks before it changes anything. In a script, add `--yes`. To move to a specific release, or back to an earlier one, add `--ref`, for example `paseo plugin update clear-chat --ref v0.13.0.1`. Updating keeps your settings.
 
 > [!IMPORTANT]
 > Already using Beautiful Chat? Read [Upgrading from Beautiful Chat](#upgrading-from-beautiful-chat) **before** you install or remove anything. Removing a plugin in Paseo also deletes its settings.
@@ -77,7 +77,7 @@ If Clear Chat is already installed, `install` stops with `Plugin ID clear-chat i
 paseo plugin update clear-chat --ref v0.12.0.1 --yes
 ```
 
-A Clear Chat version is the Paseo version it is built and tested for, plus one more number that counts Clear Chat's releases for that Paseo version. For example, 0.13.0.1 is the first Clear Chat release for Paseo 0.13.0, and 0.13.0.2 would be the next. After Paseo releases a new version, the next Clear Chat release starts counting again, for example 0.13.1.1 for Paseo 0.13.1. Clear Chat does not release a new version just because Paseo did. Releases 1.0.0 and 1.0.1 came out before this rule; 0.12.0.1 is newer than both.
+A Clear Chat version is the Paseo version it is built and tested for, plus one more number that counts Clear Chat's releases for that Paseo version. For example, 0.13.0.1 is the first Clear Chat release for Paseo 0.13.0, and 0.13.0.2 is the second. After Paseo releases a new version, the next Clear Chat release starts counting again, for example 0.13.1.1 for Paseo 0.13.1. Clear Chat does not release a new version just because Paseo did. Releases 1.0.0 and 1.0.1 came out before this rule; 0.12.0.1 is newer than both.
 
 </details>
 
@@ -139,7 +139,7 @@ Search, fetch and web search, plans and checklists, plain text, skills and any o
 - **Find in chat.** Ctrl/Cmd+F opens a find bar that also searches tool cards.
 - **Open files.** File names in cards and paths in replies show the file in Finder, Explorer or your file manager on the host computer. Put a file name or path that contains spaces in inline code, or use a Markdown link.
 - **Highlight text.** `==marked text==` highlights text in replies. Inside code, the equals signs stay as they are.
-- **Pasted images.** With **Enhanced prompt bubble** on, images you paste into a prompt show as thumbnails in the prompt bubble, for Codex and Claude agents. Tap one to see it full size. Images larger than 1.5 MB are not shown.
+- **Pasted images.** With **Enhanced prompt bubble** on, images you paste into a prompt show as thumbnails in the prompt bubble, for Codex and Claude agents. Tap one to see it full size. Images larger than 1.5 MB or 24 megapixels are not shown.
 
 ## Settings
 

@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <img width="800" alt="25 秒演示：Agent 一步步干活，完成的步骤收成一行，点开一个步骤在侧边面板看详情，窗口拉窄到手机宽度" src="images/demo.gif">
+  <img width="800" alt="26 秒演示：Agent 一步步干活，完成的步骤收成一行，点开一个步骤在侧边面板看详情，窗口拉窄到手机宽度" src="images/demo.gif">
 </p>
 
 <p align="center"><sub>所有截图和演示都用示例数据。</sub></p>
@@ -57,7 +57,7 @@ Clear Chat 需要 Paseo 0.13.0 或更新的版本。装好后打开 **Settings �
 paseo plugin update clear-chat
 ```
 
-它会换到 `main` 上的最新版本，不会停在你当初装的那个版本，改动前会先问你一句。在脚本里运行请加 `--yes`。要换到某个指定版本，或退回以前的版本，加上 `--ref`，例如 `paseo plugin update clear-chat --ref v0.13.0.1`。更新不会删掉你的设置。
+它会换到 `main` 分支上的最新一版，不会停在你当初装的那个版本，改动前会先问你一句。在脚本里运行请加 `--yes`。要换到某个指定版本，或退回以前的版本，加上 `--ref`，例如 `paseo plugin update clear-chat --ref v0.13.0.1`。更新不会删掉你的设置。
 
 > [!IMPORTANT]
 > 已经在用 Beautiful Chat？安装或卸载任何插件**之前**，请先看[从 Beautiful Chat 升级](#从-beautiful-chat-升级)。在 Paseo 里卸载插件，会连它的设置一起删掉。
@@ -77,7 +77,7 @@ paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.12.0.1
 paseo plugin update clear-chat --ref v0.12.0.1 --yes
 ```
 
-Clear Chat 的版本号＝这一版对应、测过的 Paseo 版本，再加一位：在这个 Paseo 版本上是第几次发布。例如 0.13.0.1 是对应 Paseo 0.13.0 的第一个版本，下一个是 0.13.0.2。Paseo 出了新版本以后，Clear Chat 的下一次发布重新从 1 数，例如对应 Paseo 0.13.1 就叫 0.13.1.1。Paseo 出新版本时，Clear Chat 没有新东西就不跟着发。1.0.0 和 1.0.1 是定这个规则之前发的，0.12.0.1 比它们都新。
+Clear Chat 的版本号＝这一版对应、测过的 Paseo 版本，再加一位：在这个 Paseo 版本上是第几次发布。例如 0.13.0.1 是对应 Paseo 0.13.0 的第一个版本，0.13.0.2 是第二个。Paseo 出了新版本以后，Clear Chat 的下一次发布重新从 1 数，例如对应 Paseo 0.13.1 就叫 0.13.1.1。Paseo 出新版本时，Clear Chat 没有新东西就不跟着发。1.0.0 和 1.0.1 是定这个规则之前发的，0.12.0.1 比它们都新。
 
 </details>
 
@@ -139,7 +139,7 @@ Paseo 在桌面、网页、iPhone 和 iPad 上运行同一个插件。Clear Chat
 - **对话内查找。** Ctrl/Cmd+F 打开查找栏，工具卡片里的内容也能搜到。
 - **打开文件。** 点卡片里的文件名或回复里的路径，会在主机上的 Finder、资源管理器或文件管理器里显示这个文件。文件名或路径里有空格时，请写成行内代码，或用 Markdown 链接。
 - **高亮文字。** 回复里写 `==要标出的文字==` 会加上高亮。代码里的等号照原样显示。
-- **粘贴的图片。** 开着 **增强提问气泡**（Enhanced prompt bubble）时，提问里粘贴的图片会以缩略图显示在气泡里，支持 Codex 和 Claude 的 Agent。点一下看大图。超过 1.5 MB 的图不显示。
+- **粘贴的图片。** 开着 **增强提问气泡**（Enhanced prompt bubble）时，提问里粘贴的图片会以缩略图显示在气泡里，支持 Codex 和 Claude 的 Agent。点一下看大图。超过 1.5 MB 或 2400 万像素的图不显示。
 
 ## 设置
 
