@@ -44,9 +44,9 @@ export function loadCanonicalTimeline(paseo: Paseo, hostId: string, agentId: str
       ? { direction: "after", cursor, limit: 0, projection: "canonical" }
       : { direction: "tail", limit: 0, projection: "canonical" });
     let reset = !cursor || page.reset || page.staleCursor || page.gap || (page.epoch && page.epoch !== cursor.epoch);
-    // A stale cursor can already return a complete replacement tail. Use it
-    // directly; otherwise allow exactly one full recovery read.
-    if (cursor && reset && (page.error || page.hasOlder || page.hasNewer)) {
+    // A complete reset page already replaces the tail. Incomplete resets and
+    // after pages with more entries ahead allow exactly one full recovery read.
+    if (cursor && (page.hasNewer || (reset && (page.error || page.hasOlder)))) {
       page = await timeline.refetch({ direction: "tail", limit: 0, projection: "canonical" });
       reset = true;
     }

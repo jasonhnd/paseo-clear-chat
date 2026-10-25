@@ -167,6 +167,39 @@ test("an incomplete invalid-cursor response permits only one full recovery read"
   assert.equal(s.requests.length, 3);
 });
 
+test("hasNewer on an incremental page recovers with one full tail read and advances the cursor", async t => {
+  const s = source(); t.after(() => s.h.unmount());
+  const { deriveReplyDurations } = s.h.load("client/reply-duration.ts");
+  s.pages.push(page(turn(0))); await s.read("idle:1");
+  const full = [...turn(0, 30000), ...turn(1, 42000)];
+  s.pages.push(page(turn(1).slice(0, 3), 104, { hasNewer: true }), page(full));
+  const recovered = await s.read("idle:2");
+  assert.deepEqual([...recovered.durations], [...deriveReplyDurations(full)], "recovery rebuilds timing from the full tail");
+  assert.equal(await s.read("idle:2"), recovered);
+  assert.deepEqual(s.requests.map(r => r.direction), ["tail", "after", "tail"]);
+  assert.deepEqual(s.requests[2], { direction: "tail", limit: 0, projection: "canonical" });
+  s.pages.push(page(turn(2)));
+  const next = await s.read("idle:3");
+  assert.equal(s.requests.at(-1).cursor.seq, 127, "the next revision uses the recovered tail cursor");
+  assert.deepEqual([...next.durations], [...deriveReplyDurations([...full, ...turn(2)])]);
+  assert.equal(s.requests.length, 4);
+});
+
+test("an incomplete hasNewer recovery stops after one tail read and preserves settled state", async t => {
+  const s = source(); t.after(() => s.h.unmount());
+  s.pages.push(page(turn(0)));
+  const settled = await s.read("idle:1");
+  s.pages.push(page(turn(1).slice(0, 3), 104, { hasNewer: true }),
+    page([...turn(0), ...turn(1)], 127, { hasNewer: true }));
+  assert.equal(await s.read("idle:2"), settled);
+  assert.equal(await s.read("idle:2"), settled);
+  assert.deepEqual(s.requests.map(r => r.direction), ["tail", "after", "tail"]);
+  s.pages.push(page(turn(1)));
+  assert.equal((await s.read("idle:3")).durations.size, 2);
+  assert.equal(s.requests.at(-1).cursor.seq, 27, "an incomplete recovery leaves the settled cursor intact");
+  assert.equal(s.requests.length, 4);
+});
+
 test("timing and missing sender lookups share one read and merge deliveries across revisions", async t => {
   const s = source(); t.after(() => s.h.unmount());
   const firstDelivery = deliveryEntries.find(e => e.item.agentMessage);
