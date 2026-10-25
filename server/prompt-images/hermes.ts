@@ -11,10 +11,16 @@ import type { FoundImages, PromptImageResolver, ResolverContext } from "./regist
 const BLOCK_START = "[The user sent an image~ Here's what I can see:\n";
 const PATH_START = "]\n[If you need a closer look, use vision_analyze with image_url: ";
 const BLOCK_END = " ~]";
+// gateway/run_inbound.py::_enrich_message_with_vision failure branches. Each attachment is one note.
+const FAILURE_PREFIXES = [
+  "[The user sent an image but I couldn't quite see it this time (>_<) You can try looking at it yourself with vision_analyze using image_url: ",
+  "[The user sent an image but something went wrong when I tried to look at it~ You can try examining it yourself with vision_analyze using image_url: ",
+];
 const MAX_CONFIG_BYTES = 64 * 1024;
 const IMAGE_NOTE = /\[(?:The user sent an image|If you need a closer look|Image attached|screenshot)/;
 const SCREENSHOT_LINE = /^\[screenshot(?: detail=(?:low|high|auto))?\]$/;
 const SCREENSHOT_ROW = /(?:^|\n)\[screenshot(?: detail=(?:low|high|auto))?\](?:\n|$)/;
+const PATH_PATTERN = /^\/[^\r\n\[\]\x00]+$/;
 const empty = (matchedMessages = 0): FoundImages => ({ matchedMessages, images: [] });
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -97,15 +103,80 @@ function nativeImage(content: string): { text: string; paths: string[] } | null 
   return { text: text.trim(), paths };
 }
 
+/** Byte length of a structurally complete success note at `at`, or -1. */
+function successBlockLength(content: string, at: number): number {
+  if (!content.startsWith(BLOCK_START, at)) return -1;
+  const pathStart = content.indexOf(PATH_START, at + BLOCK_START.length);
+  if (pathStart === -1) return -1;
+  const end = content.indexOf(BLOCK_END, pathStart + PATH_START.length);
+  if (end === -1) return -1;
+  const path = content.slice(pathStart + PATH_START.length, end);
+  if (!PATH_PATTERN.test(path)) return -1;
+  return end + BLOCK_END.length - at;
+}
+
+/** Byte length of a structurally complete failure note at `at`, or 0. */
+function failureBlockLength(content: string, at: number): number {
+  for (const prefix of FAILURE_PREFIXES) {
+    if (!content.startsWith(prefix, at)) continue;
+    const end = content.indexOf("]", at + prefix.length);
+    if (end === -1) continue;
+    const path = content.slice(at + prefix.length, end);
+    if (!PATH_PATTERN.test(path)) continue;
+    return end + 1 - at;
+  }
+  return 0;
+}
+
+function earliestFailure(content: string, from: number): number {
+  let best = -1;
+  for (const prefix of FAILURE_PREFIXES) {
+    let search = from;
+    while (search < content.length) {
+      const at = content.indexOf(prefix, search);
+      if (at === -1) break;
+      if (failureBlockLength(content, at) > 0) {
+        if (best === -1 || at < best) best = at;
+        break;
+      }
+      search = at + 1;
+    }
+  }
+  return best;
+}
+
 /**
- * Caption of an image-bearing row whose notes did not parse. Vision failure notes and a
- * marker/hint row with disagreeing counts still occupy the caption, and contribute no paths.
+ * Caption of an image-bearing row whose notes did not parse. Complete success and failure
+ * blocks (either failure format, either order) and image-first markers/hints are removed
+ * first, so the row still occupies the caption. A failure note contributes no paths.
  */
 function unparsedImageCaption(content: string): string | null {
-  const lines = content.trim().split("\n");
   let image = false;
+  let out = "";
+  let index = 0;
+  while (index < content.length) {
+    const successAt = content.indexOf(BLOCK_START, index);
+    const failureAt = earliestFailure(content, index);
+    const successFirst = successAt !== -1 && (failureAt === -1 || successAt <= failureAt);
+    const next = successFirst ? successAt : failureAt;
+    if (next === -1) {
+      out += content.slice(index);
+      break;
+    }
+    out += content.slice(index, next);
+    const length = successFirst ? successBlockLength(content, next) : failureBlockLength(content, next);
+    if (length <= 0) {
+      out += content.slice(next, next + 1);
+      index = next + 1;
+      continue;
+    }
+    image = true;
+    index = next + length;
+  }
+  // Image-first markers sit above the caption and hints below it. Drop both, plus any leftover
+  // note line, so a partial note cannot change the caption or drop the row.
   const kept: string[] = [];
-  for (const line of lines) {
+  for (const line of out.split("\n")) {
     if (line.startsWith("[The user sent an image") || line.startsWith("[If you need a closer look") ||
         line.startsWith("[Image attached") || SCREENSHOT_LINE.test(line)) {
       image = true;
@@ -132,7 +203,7 @@ function annotations(content: string): { text: string; paths: string[] } | null 
     const end = rest.indexOf(BLOCK_END, pathStart + PATH_START.length);
     if (end === -1) return null;
     const path = rest.slice(pathStart + PATH_START.length, end);
-    if (!/^\/[^\r\n\[\]\x00]+$/.test(path)) return null;
+    if (!PATH_PATTERN.test(path)) return null;
     paths.push(path);
     rest = rest.slice(end + BLOCK_END.length).trimStart();
   }
@@ -209,7 +280,7 @@ export function createHermesPromptImageResolver(options: { userHome?: string; pa
             }
             if (typeof row.content !== "string") continue;
             const stripped = annotations(row.content);
-            // Unparsed image notes still occupy the caption, so another row cannot lend its image.
+            // Unparsed notes, including a success block beside a failure, still occupy the caption.
             const caption = stripped ? stripped.text : unparsedImageCaption(row.content);
             if (prompt === row.content.trim() || (caption !== null && prompt === caption)) {
               textMatches++;

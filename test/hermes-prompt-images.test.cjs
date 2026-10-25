@@ -165,6 +165,26 @@ test("Hermes rejects the exact vision failure notes even beside a successful ima
   }
 });
 
+test("Hermes keeps a mixed success and failure note in the caption count and supplies no image", async t => {
+  const f = await fixture(t);
+  const success = f.image();
+  const failed = f.image();
+  // gateway/run_inbound.py::_enrich_message_with_vision builds each attachment note on its own,
+  // joins those notes with "\\n\\n", then appends "\\n\\n" + the user text.
+  const unseen = `[The user sent an image but I couldn't quite see it this time (>_<) You can try looking at it yourself with vision_analyze using image_url: ${failed}]`;
+  const broken = `[The user sent an image but something went wrong when I tried to look at it~ You can try examining it yourself with vision_analyze using image_url: ${failed}]`;
+  const enrich = notes => `${notes.join("\n\n")}\n\nSynthetic question`;
+  for (const failure of [unseen, broken]) {
+    for (const notes of [[block(success), failure], [failure, block(success)]]) {
+      f.writer.exec("DELETE FROM messages");
+      f.add(enrich(notes));
+      assert.deepEqual(await f.find(), empty(1));
+      f.add(annotated([f.image("jpg", f.jpg)]));
+      assert.deepEqual(await f.find(), empty(2));
+    }
+  }
+});
+
 test("Hermes counts a vision failure note so the same caption on a later row stays ambiguous", async t => {
   const f = await fixture(t), path = f.image();
   // gateway/run_inbound.py::_enrich_message_with_vision failure branches, then "\\n\\n" + user text.
