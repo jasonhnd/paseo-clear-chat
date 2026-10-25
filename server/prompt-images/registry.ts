@@ -13,7 +13,8 @@ export interface FoundImage {
   /** Stable within a provider message; never interpreted as a client-supplied path. */
   id: string;
   mime: string;
-  readBytes(): Promise<Buffer>;
+  /** Null means the file failed validation during a later read. */
+  readBytes(): Promise<Buffer | null>;
 }
 
 export interface ResolverContext extends LookupInput {
@@ -177,6 +178,7 @@ export function createPromptImageHandlers(options: {
           check();
           const bytes = await candidate.readBytes();
           check();
+          if (!bytes) { reason = "invalid_image"; continue; }
           if (bytes.length > MAX_INLINE_IMAGE_BYTES) {
             reason = "too_large_bytes";
             continue;
@@ -206,6 +208,7 @@ export function createPromptImageHandlers(options: {
         if (!candidate) throw new LookupError("not_found");
         const bytes = await candidate.readBytes();
         check();
+        if (!bytes) throw new LookupError("invalid_image");
         if (bytes.length > MAX_INLINE_IMAGE_BYTES) throw new LookupError("image_too_large");
         const header = headerImage(bytes, candidate.mime);
         check();

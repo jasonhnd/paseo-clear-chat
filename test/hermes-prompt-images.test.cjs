@@ -1,5 +1,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const { createHash } = require("node:crypto");
+const { spawnSync } = require("node:child_process");
 const { createRequire } = require("node:module");
 const { tmpdir } = require("node:os");
 const { dirname, join, resolve } = require("node:path");
@@ -63,10 +65,16 @@ async function fixture(t, relativeHome = ".hermes") {
     messageId: "paseo-message", clientMessageId: "paseo-client",
     signal: new AbortController().signal, providerCommand: ["hermes", "acp"], providerEnv: { HERMES_HOME: home }, ...overrides });
   let nextImage = 0;
+  function retainedImage(name, bytes = png, digest = createHash("sha256").update(bytes).digest("hex")) {
+    const path = join(home, "cache", "documents", "native-inputs", digest, name);
+    fs.mkdirSync(dirname(path), { recursive: true });
+    fs.writeFileSync(path, bytes);
+    return path;
+  }
   function image(kind = "native", bytes = png) {
     const name = (++nextImage).toString(16).padStart(12, "0");
     const path = kind === "native"
-      ? join(home, "cache", "documents", "native-inputs", "a".repeat(64), `img_${name}.png`)
+      ? join(home, "cache", "documents", "native-inputs", createHash("sha256").update(bytes).digest("hex"), `img_${name}.png`)
       : join(home, "cache", "images", `img_${name}.${kind === "jpg" ? "jpg" : "png"}`);
     fs.mkdirSync(dirname(path), { recursive: true });
     fs.writeFileSync(path, bytes);
@@ -89,7 +97,7 @@ async function fixture(t, relativeHome = ".hermes") {
     assert.deepEqual(h.logs, []);
     return result;
   }
-  return { root, home, paseoHome, path, writer, png, jpg, h, resolver, context, image, add, config, find };
+  return { root, home, paseoHome, path, writer, png, jpg, h, resolver, context, image, retainedImage, add, config, find };
 }
 
 test("Hermes exact stripped text matches only the same session and reads committed live WAL images", async t => {
@@ -245,7 +253,7 @@ test("Hermes skips missing files, unknown formats and byte/pixel oversize while 
   assert.equal(found.images[0].id, "hermes-4");
   fs.unlinkSync(paths[4]);
   assert.deepEqual(await f.find(), empty(1));
-  await assert.rejects(found.images[0].readBytes(), /^Error: invalid_image$/);
+  assert.equal(await found.images[0].readBytes(), null);
 });
 
 test("Hermes works when only one of the two cache roots exists", async t => {
@@ -253,6 +261,89 @@ test("Hermes works when only one of the two cache roots exists", async t => {
   f.add(annotated([f.image("png")]));
   assert.equal((await f.find()).images.length, 1);
 });
+
+test("Hermes accepts retained original basenames and the actual API names in all four formats", async t => {
+  const f = await fixture(t);
+  const gif = Buffer.alloc(23);
+  gif.write("GIF89a"); gif.writeUInt16LE(2, 6); gif.writeUInt16LE(2, 8);
+  gif[13] = 0x2c; gif.writeUInt16LE(2, 18); gif.writeUInt16LE(2, 20);
+  const webp = Buffer.alloc(30);
+  webp.write("RIFF"); webp.writeUInt32LE(22, 4); webp.write("WEBP", 8);
+  webp.write("VP8X", 12); webp.writeUInt32LE(10, 16); webp.writeUIntLE(1, 24, 3); webp.writeUIntLE(1, 27, 3);
+  const paths = [f.retainedImage("Holiday photo 01.png"), f.retainedImage("original.jpeg", f.jpg)];
+  const mimes = ["image/png", "image/jpeg"];
+  // gateway/session_api_media.py::commit_api_images, then capture_native_media.
+  for (const [ext, bytes, mime] of [["png", f.png, "image/png"], ["jpg", f.jpg, "image/jpeg"], ["gif", gif, "image/gif"], ["webp", webp, "image/webp"]]) {
+    const name = `api_${createHash("sha256").update(bytes).digest("hex").slice(0, 32)}.${ext}`;
+    const retained = f.retainedImage(name, bytes);
+    const staged = join(f.home, "cache", "images", name);
+    fs.mkdirSync(dirname(staged), { recursive: true }); fs.writeFileSync(staged, bytes);
+    paths.push(retained, staged);
+    mimes.push(mime, mime);
+  }
+  f.add(nativeAnnotated(paths));
+  const found = await f.find();
+  assert.equal(found.matchedMessages, 1);
+  assert.deepEqual(found.images.map(image => image.mime), mimes);
+  for (const image of found.images) assert.ok((await image.readBytes()).length);
+});
+
+test("Hermes refuses retained bytes whose digest differs from the parent or API basename", async t => {
+  const f = await fixture(t);
+  const wrongParent = f.retainedImage("original.png", f.png, "a".repeat(64));
+  const api = join(f.home, "cache", "images", `api_${"b".repeat(32)}.png`);
+  fs.mkdirSync(dirname(api), { recursive: true }); fs.writeFileSync(api, f.png);
+  f.add(annotated([wrongParent, api, f.retainedImage("valid.png")]));
+  assert.deepEqual((await f.find()).images.map(image => image.id), ["hermes-2"]);
+});
+
+test("Hermes confines original and API names even when escaped files have matching digests", async t => {
+  const f = await fixture(t), native = f.retainedImage("original.png");
+  const outside = join(f.root, "outside"); fs.mkdirSync(outside);
+  const external = join(outside, "original.png"); fs.writeFileSync(external, f.png);
+  const leaf = join(dirname(native), "linked photo.png"); fs.symlinkSync(external, leaf);
+  const otherBytes = Buffer.concat([f.png, Buffer.from([1])]);
+  const digest = createHash("sha256").update(otherBytes).digest("hex");
+  fs.writeFileSync(join(outside, "other.png"), otherBytes);
+  const ancestor = join(f.home, "cache", "documents", "native-inputs", digest);
+  fs.symlinkSync(outside, ancestor);
+  const api = join(f.home, "cache", "images", `api_${createHash("sha256").update(f.png).digest("hex").slice(0, 32)}.png`);
+  fs.mkdirSync(dirname(api), { recursive: true }); fs.symlinkSync(external, api);
+  const unnormalized = `${dirname(native)}/./original.png`;
+  f.add(annotated([leaf, join(ancestor, "other.png"), api, unnormalized, native]));
+  assert.deepEqual((await f.find()).images.map(image => image.id), ["hermes-4"]);
+});
+
+for (const failure of ["removed", "symlink", "changed digest"]) {
+  test(`Hermes skips only a ${failure} image on reread and retains the other image`, async t => {
+    const f = await fixture(t), first = f.retainedImage("first.png"), second = f.retainedImage("second.png");
+    const outside = join(f.root, "external.png"); fs.writeFileSync(outside, f.png);
+    f.add(annotated([first, second]));
+    const resolver = { ...f.resolver, async find(context) {
+      const found = await f.resolver.find(context);
+      fs.unlinkSync(first);
+      if (failure === "symlink") fs.symlinkSync(outside, first);
+      if (failure === "changed digest") fs.writeFileSync(first, Buffer.concat([f.png, Buffer.from([1])]));
+      return found;
+    } };
+    const snapshot = { provider: "custom-provider", command: "hermes acp", env: { HERMES_HOME: f.home },
+      cwd: f.root, persistence: { provider: "custom-provider", sessionId: "session-one" } };
+    const context = { paseo: { agents: { ref: () => ({ refresh: async () => ({ agent: snapshot }) }) } } };
+    const handlers = f.h.createPromptImageHandlers({ resolvers: [resolver] });
+    const input = { agentId: "fake-agent", text: "Synthetic question" };
+    const result = await handlers.images(input, context);
+    assert.equal(result.total, 2);
+    assert.equal(result.reason, "invalid_image");
+    assert.deepEqual(result.images.map(image => image.id), ["hermes-1"]);
+    assert.deepEqual(Buffer.from(result.images[0].thumbDataUri.split(",")[1], "base64"), f.png);
+    fs.rmSync(first, { force: true }); fs.writeFileSync(first, f.png);
+    assert.equal((await handlers.image({ ...input, id: "hermes-0" }, context)).error, "invalid_image");
+    // Unexpected read failures must still fail the lookup.
+    const broken = f.h.createPromptImageHandlers({ resolvers: [{ matches: () => true, find: async () => ({ matchedMessages: 1,
+      images: [{ id: "broken", mime: "image/png", readBytes: async () => { throw new Error("unexpected"); } }] }) }] });
+    assert.equal((await broken.images(input, context)).reason, "lookup_failed");
+  });
+}
 
 test("Hermes rejects traversal, external paths, symlink leaves/ancestors, prefix siblings and undocumented names", async t => {
   const f = await fixture(t);
@@ -366,9 +457,77 @@ test("Hermes fails closed on malformed/missing config, unknown providers and uns
     assert.equal(await f.resolver.matches(context.provider, context), false);
     assert.deepEqual(await f.resolver.find(context), empty(0));
   }
-  for (const HERMES_HOME of ["relative-home", "", 123, `${f.home}/../escape`]) {
+  for (const HERMES_HOME of ["relative-home", "", 123, `${f.home}/../escape`, "~/../escape", "~/nested/../../escape"]) {
+    const context = f.context({ providerEnv: { HERMES_HOME } });
+    assert.equal(await f.resolver.matches(context.provider, context), false);
     assert.deepEqual(await f.find({ providerEnv: { HERMES_HOME } }), empty(0));
   }
+});
+
+test("Hermes bounds config reads at 64 KiB, including growth after stat", async t => {
+  const f = await fixture(t), path = join(f.paseoHome, "config.json");
+  f.config("hermes acp", { HERMES_HOME: f.home });
+  const config = fs.readFileSync(path, "utf8");
+  const unconfigured = { providerCommand: undefined, providerEnv: undefined };
+  f.add(annotated([f.image()]));
+  fs.writeFileSync(path, config.padEnd(64 * 1024, " "));
+  assert.equal((await f.find(unconfigured)).images.length, 1);
+  fs.appendFileSync(path, " ");
+  assert.deepEqual(await f.find(unconfigured), empty(0));
+  const promises = require("node:fs/promises");
+  let bytesRead = 0, closed = 0;
+  const h = harness({ "node:fs/promises": { ...promises, open: async (candidate, flags) => {
+    const file = await promises.open(candidate, flags);
+    if (candidate !== path) return file;
+    return {
+      stat: async () => ({ isFile: () => true, size: 1 }),
+      read: async (...args) => { const result = await file.read(...args); bytesRead += result.bytesRead; return result; },
+      close: async () => { closed++; await file.close(); },
+    };
+  } } });
+  const resolver = h.createHermesPromptImageResolver({ userHome: f.root, paseoHome: f.paseoHome });
+  assert.deepEqual(await resolver.find(f.context(unconfigured)), empty(0));
+  assert.equal(bytesRead, 64 * 1024 + 1);
+  assert.equal(closed, 1);
+});
+
+test("Hermes config reads honor cancellation and close the descriptor", async t => {
+  const f = await fixture(t), path = join(f.paseoHome, "config.json");
+  f.config("hermes acp", { HERMES_HOME: f.home });
+  const promises = require("node:fs/promises"), controller = new AbortController();
+  let reads = 0, closed = 0;
+  const h = harness({ "node:fs/promises": { ...promises, open: async (candidate, flags) => {
+    const file = await promises.open(candidate, flags);
+    if (candidate !== path) return file;
+    assert.ok(flags & fs.constants.O_NONBLOCK);
+    return {
+      stat: () => file.stat(),
+      read: async (...args) => { reads++; const result = await file.read(...args); controller.abort(); return result; },
+      close: async () => { closed++; await file.close(); },
+    };
+  } } });
+  const resolver = h.createHermesPromptImageResolver({ userHome: f.root, paseoHome: f.paseoHome });
+  const context = f.context({ providerCommand: undefined, providerEnv: undefined, signal: controller.signal });
+  assert.equal(await resolver.matches(context.provider, context), false);
+  assert.equal(reads, 1);
+  assert.equal(closed, 1);
+});
+
+test("Hermes config FIFOs never block the lookup", async t => {
+  const f = await fixture(t), path = join(f.paseoHome, "config.json");
+  const created = spawnSync("mkfifo", [path], { encoding: "utf8" });
+  assert.equal(created.status, 0, created.stderr);
+  // A child timeout makes a blocking-open regression fail without hanging the suite.
+  const result = spawnSync(process.execPath, ["-e", `
+    const fs = require('node:fs');
+    const test = fs.readFileSync(process.argv[1], 'utf8');
+    const prefix = test.slice(0, test.indexOf('const ID ='));
+    const { createHermesPromptImageResolver } = new Function('require', '__dirname', prefix + '\\nreturn harness();')(require, process.argv[2]);
+    createHermesPromptImageResolver({ paseoHome: process.argv[3] }).matches('custom-provider', {
+      provider: 'custom-provider', signal: new AbortController().signal,
+    }).then(result => { if (result) process.exitCode = 1; });
+  `, __filename, __dirname, f.paseoHome], { encoding: "utf8", timeout: 5000 });
+  assert.equal(result.status, 0, result.stderr || result.error?.message);
 });
 
 test("Hermes missing databases and cancelled lookups create no files and never read image bytes", async t => {

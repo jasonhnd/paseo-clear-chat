@@ -1,6 +1,8 @@
-import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { constants } from "node:fs";
+import { open } from "node:fs/promises";
 import { homedir } from "node:os";
-import { isAbsolute, join, sep } from "node:path";
+import { isAbsolute, join, normalize, sep } from "node:path";
 import { setImmediate } from "node:timers/promises";
 import { readImageHeader } from "./image-header";
 import { openSqliteReadOnly, readLocalImageReadOnly } from "./read-only";
@@ -9,11 +11,36 @@ import type { FoundImages, PromptImageResolver, ResolverContext } from "./regist
 const BLOCK_START = "[The user sent an image~ Here's what I can see:\n";
 const PATH_START = "]\n[If you need a closer look, use vision_analyze with image_url: ";
 const BLOCK_END = " ~]";
+const MAX_CONFIG_BYTES = 64 * 1024;
 const empty = (matchedMessages = 0): FoundImages => ({ matchedMessages, images: [] });
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown> : undefined;
+}
+
+/** Bound descriptor reads even if config grows after stat; never wait on a FIFO. */
+async function readConfig(path: string, signal: AbortSignal): Promise<unknown> {
+  let file: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    signal.throwIfAborted();
+    file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    signal.throwIfAborted();
+    const entry = await file.stat();
+    if (!entry.isFile() || entry.size > MAX_CONFIG_BYTES) return undefined;
+    const bytes = Buffer.alloc(MAX_CONFIG_BYTES + 1);
+    let length = 0;
+    while (length < bytes.length) {
+      signal.throwIfAborted();
+      const { bytesRead } = await file.read(bytes, length, bytes.length - length, length);
+      signal.throwIfAborted();
+      if (!bytesRead) break;
+      length += bytesRead;
+    }
+    return length <= MAX_CONFIG_BYTES ? JSON.parse(bytes.toString("utf8", 0, length)) : undefined;
+  } finally {
+    await file?.close();
+  }
 }
 
 /** Only the two documented ACP invocations are accepted; never invoke a shell. */
@@ -83,7 +110,7 @@ export function createHermesPromptImageResolver(options: { userHome?: string; pa
     if (context.providerCommand === undefined || context.providerEnv === undefined) {
       try {
         const paseoHome = options.paseoHome ?? (process.env.PASEO_HOME || join(userHome, ".paseo"));
-        const config = record(JSON.parse(await readFile(join(paseoHome, "config.json"), "utf8")));
+        const config = record(await readConfig(join(paseoHome, "config.json"), context.signal));
         const providers = record(record(config?.agents)?.providers);
         if (providers && Object.hasOwn(providers, context.provider)) provider = record(providers[context.provider]);
       } catch { /* Missing or malformed config cannot supply launch hints. */ }
@@ -93,9 +120,9 @@ export function createHermesPromptImageResolver(options: { userHome?: string; pa
     const env = context.providerEnv ?? record(provider?.env);
     const override = env?.HERMES_HOME;
     if (override !== undefined) {
-      if (typeof override !== "string" || !override) return null;
+      if (typeof override !== "string" || !override || override.split(/[\\/]/).includes("..")) return null;
       const home = override.startsWith("~/") ? join(userHome, override.slice(2)) : override;
-      return isAbsolute(home) && !home.split(/[\\/]/).includes("..") ? home : null;
+      return isAbsolute(home) ? normalize(home) : null;
     }
     return selected.name ? join(userHome, ".hermes", "profiles", selected.name) : join(userHome, ".hermes");
   }
@@ -149,20 +176,31 @@ export function createHermesPromptImageResolver(options: { userHome?: string; pa
       const imageRoot = join(home, "cache", "images");
       for (const [index, path] of parsed.paths.entries()) {
         if (context.signal.aborted) break;
+        if (normalize(path) !== path || path.includes("\\")) continue;
         let root: string | null = null;
-        if (path.startsWith(`${nativeRoot}${sep}`) && /^[a-f0-9]{64}\/img_[a-f0-9]{12}\.png$/i.test(path.slice(nativeRoot.length + 1))) root = nativeRoot;
-        if (path.startsWith(`${imageRoot}${sep}`) && /^img_[a-f0-9]{12}\.(jpg|png)$/i.test(path.slice(imageRoot.length + 1))) root = imageRoot;
+        let digest: string | undefined;
+        if (path.startsWith(`${nativeRoot}${sep}`)) {
+          // capture_native_media preserves the original basename under the byte digest.
+          const native = path.slice(nativeRoot.length + 1).match(/^([a-f0-9]{64})\/[^/\\\x00]+\.(?:png|jpe?g|gif|webp)$/i);
+          if (native) { root = nativeRoot; digest = native[1]; }
+        }
+        if (path.startsWith(`${imageRoot}${sep}`)) {
+          const leaf = path.slice(imageRoot.length + 1);
+          if (/^img_[a-f0-9]{12}\.(?:png|jpe?g|gif|webp)$/i.test(leaf)) root = imageRoot;
+          const api = leaf.match(/^api_([a-f0-9]{32})\.(?:png|jpg|gif|webp)$/);
+          if (api) { root = imageRoot; digest = api[1]; }
+        }
         if (!root) continue;
+        const validDigest = (bytes: Buffer) => !digest || createHash("sha256").update(bytes).digest("hex").startsWith(digest);
         const bytes = await readLocalImageReadOnly(path, [root]);
-        if (!bytes) continue;
+        if (!bytes || !validDigest(bytes)) continue;
         const header = readImageHeader(bytes);
-        if (!header || !["image/png", "image/jpeg"].includes(header.mime) ||
+        if (!header ||
             header.width < 1 || header.height < 1 || header.width * header.height > 24_000_000) continue;
         // Revalidate through O_NOFOLLOW on every RPC read, including after cache cleanup.
         images.push({ id: `hermes-${index}`, mime: header.mime, async readBytes() {
           const current = await readLocalImageReadOnly(path, [root]);
-          if (!current) throw new Error("invalid_image");
-          return current;
+          return current && validDigest(current) ? current : null;
         } });
       }
       return { matchedMessages: 1, images };
