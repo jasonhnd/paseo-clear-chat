@@ -87,6 +87,11 @@ async function picture(mime = "image/png", width = 2) {
 const user = (content, extra = {}) => ({ type: "user", uuid: "synthetic-message", sessionId: SESSION,
   message: { role: "user", content }, ...extra });
 const text = (value = TEXT) => ({ type: "text", text: value });
+async function foundBytes(h, lookup) {
+  const found = await h.resolver.find(h.context(lookup));
+  assert.equal(found.matchedMessages, 1);
+  return Promise.all(found.images.map(image => image.readBytes()));
+}
 // Confirmed in the installed Claude Code: queued commands store the content
 // blocks on attachment.prompt and use source_uuid for the resulting user turn.
 const queued = (prompt, extra = {}, attachmentExtra = {}) => ({
@@ -359,6 +364,8 @@ for (const inputId of ["messageId", "clientMessageId"]) {
     for (const reason of ["isSidechain", "isMeta", "sessionId", "uuid", "promptId", "tool_result", "role"]) {
       // A malformed ID needs the other readable ID to identify the rejected line.
       if (reason === storedId) continue;
+      // Tool results copy the turn promptId; only their own uuid is reserved.
+      if (reason === "tool_result" && storedId === "promptId") continue;
       test(`Claude rejected ${reason} reserves ${storedId} for ${inputId} instead of selecting a same-text sibling`, async t => {
         const h = harness(t), bad = await picture(), sibling = await picture("image/png", 3);
         const extra = { uuid: "bad-message", [storedId]: "requested-id" };
@@ -375,6 +382,23 @@ for (const inputId of ["messageId", "clientMessageId"]) {
     }
   }
 }
+
+test("Claude tool results reserve only their own uuid and not the copied promptId", async t => {
+  const h = harness(t), pngA = await picture(), pngB = await picture("image/png", 3);
+  const tool = uuid => user([{ type: "tool_result", tool_use_id: uuid, content: "synthetic result" }],
+    { uuid, promptId: "shared-prompt" });
+  const prompt = user([text(), pngA.block], { uuid: "prompt-uuid", promptId: "shared-prompt" });
+  // A tool-result uuid must not fall through to the prompt when that text is unique.
+  h.store([prompt, tool("tool-1"), tool("tool-2")]);
+  assert.deepEqual(await foundBytes(h, {}), [pngA.bytes]);
+  assert.deepEqual(await h.resolver.find(h.context({ messageId: "tool-1" })), { matchedMessages: 1, images: [] });
+  h.store([prompt, tool("tool-1"), tool("tool-2"), user([text(), pngB.block], { uuid: "sibling" })]);
+  assert.deepEqual(await foundBytes(h, { messageId: "shared-prompt" }), [pngA.bytes]);
+  assert.deepEqual(await foundBytes(h, { messageId: "prompt-uuid", clientMessageId: "shared-prompt" }), [pngA.bytes]);
+  assert.deepEqual(await foundBytes(h, { messageId: "prompt-uuid" }), [pngA.bytes]);
+  assert.deepEqual(await h.resolver.find(h.context({ messageId: "tool-1" })), { matchedMessages: 1, images: [] });
+  assert.deepEqual(await foundBytes(h, { messageId: "sibling" }), [pngB.bytes]);
+});
 
 for (const reason of ["object", "unknown block", "malformed text", "null block", "empty", "number", "missing"]) {
   test(`Claude unreadable ${reason} blocks text fallback to a same-text sibling with a different PNG`, async t => {
