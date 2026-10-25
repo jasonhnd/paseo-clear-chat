@@ -3,6 +3,7 @@ import type { PluginHandlerContext } from "@getpaseo/plugin/server";
 import type { promptImageRpc, promptImagesRpc } from "../../shared/prompt-images-rpc";
 import { readLocalImageReadOnly } from "./read-only";
 import { readImageHeader } from "./image-header";
+import { hermesPromptImageResolver } from "./hermes";
 
 type LookupInput = RpcInput<typeof promptImagesRpc>;
 type ImagesResult = RpcOutput<typeof promptImagesRpc>;
@@ -22,6 +23,9 @@ export interface ResolverContext extends LookupInput {
   nativeHandle: string | null;
   /** Resolvers should stop streaming/scanning when the lookup expires. */
   signal: AbortSignal;
+  /** Optional launch hints; SDK 0.13 normally requires a config-file fallback. */
+  providerCommand?: unknown;
+  providerEnv?: { HERMES_HOME?: unknown };
 }
 
 /** All images must belong to the single message selected by the resolver. */
@@ -41,13 +45,12 @@ export function localFileImage(id: string, mime: string, path: string, allowedRo
 
 export interface PromptImageResolver {
   /** Paseo 0.13 snapshots expose the provider ID, not its configured command. */
-  matches(provider: string): boolean;
+  matches(provider: string, context: ResolverContext): boolean | Promise<boolean>;
   /** Prefer matching IDs; otherwise count every message matching the text. */
   find(context: ResolverContext): Promise<FoundImages>;
 }
 
-/** Provider adapters are added separately; production lookups currently find none. */
-export const promptImageResolvers: readonly PromptImageResolver[] = [];
+export const promptImageResolvers: readonly PromptImageResolver[] = [hermesPromptImageResolver];
 
 const MAX_THUMBNAILS = 3;
 const MAX_PIXELS = 24_000_000;
@@ -138,16 +141,25 @@ export function createPromptImageHandlers(options: {
     const agent = refreshed?.agent ?? ref.current();
     if (!agent) throw new LookupError("agent_not_found");
     const provider = agent.provider;
-    const resolver = resolvers.find(candidate => candidate.matches(provider));
-    if (!resolver) throw new LookupError("unknown_provider");
     const persistence = agent.persistence;
     if (persistence && persistence.provider !== provider) throw new LookupError("provider_mismatch");
-    // Copy only fields needed for local lookup; never pass config or metadata.
-    const found = await resolver.find({
+    // Copy only lookup fields and optional launch hints, never config or metadata.
+    const lookup: ResolverContext = {
       agentId: input.agentId, messageId: input.messageId, clientMessageId: input.clientMessageId, text: input.text,
       provider, cwd: agent.cwd, sessionId: persistence?.sessionId ?? null,
       nativeHandle: persistence?.nativeHandle ?? null, signal,
-    });
+    };
+    const launch = agent as typeof agent & { command?: unknown; env?: { HERMES_HOME?: unknown } };
+    if (launch.command !== undefined) lookup.providerCommand = launch.command;
+    if (launch.env !== undefined) lookup.providerEnv = { HERMES_HOME: launch.env.HERMES_HOME };
+    let resolver: PromptImageResolver | undefined;
+    for (const candidate of resolvers) {
+      if (await candidate.matches(provider, lookup)) { resolver = candidate; break; }
+      check();
+    }
+    check();
+    if (!resolver) throw new LookupError("unknown_provider");
+    const found = await resolver.find(lookup);
     check();
     if (found.matchedMessages === 0) throw new LookupError("no_match");
     if (found.matchedMessages !== 1) throw new LookupError("ambiguous");
