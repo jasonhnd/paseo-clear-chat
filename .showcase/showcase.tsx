@@ -2,6 +2,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { View } from "react-native";
+import { PluginTranslationProvider, PluginTranslationRuntime } from "./shims/plugin-client";
 import { embedFonts } from "../client/components/embed-fonts";
 import { installFrostedGlass } from "../client/components/frosted";
 import { buildThemeTokens } from "../client/components/theme-tokens";
@@ -115,7 +116,7 @@ function Showcase() {
     <Shot id="reasoning" title="A reasoning trace with connected steps"><ReasoningTrace data={REASONING} tokens={tokens} defaultExpanded /></Shot>
     <Shot id="tasks" title="Progress, pending work, and a blocked task"><TaskList data={TASKS} tokens={tokens} /></Shot>
     <Shot id="approval" title="Review the command before approving"><ApprovalCard request={APPROVAL} tokens={tokens} /></Shot>
-    <Shot id="user" title="The prompt and its attached image"><UserMessage text={PROMPT} images={[demoImage]} timestamp={new Date("2026-01-01T12:00:00Z")} tokens={tokens} /></Shot>
+    <Shot id="user" title="Prompt bubble. Copy button and token usage."><Prompt /></Shot>
     <Shot id="syntax" title="Shared syntax highlighting and copy controls"><SyntaxHighlightBlock code={CODE} language="typescript" filename="src/cart.ts" tokens={tokens} showLineNumbers onRevealFile={noop} /><SyntaxHighlightBlock code={DIFF} language="diff" tokens={tokens} showLineNumbers /></Shot>
     <Shot id="settings" title="Presentation preferences" width={760}><ClearChatSettingsPage theme={{ colors }} host={{ id: "demo-host", label: "Demo host" }} layout={{ compact: false, platform: "web" }} /></Shot>
   </main>;
@@ -123,4 +124,5 @@ function Showcase() {
 embedFonts();
 installFrostedGlass();
 document.body.style.background = colors.surface0;
-createRoot(document.getElementById("root")!).render(<Showcase />);
+const translations = new PluginTranslationRuntime({ getLocale: () => "en", subscribe: () => () => {} });
+createRoot(document.getElementById("root")!).render(<PluginTranslationProvider runtime={translations}><Showcase /></PluginTranslationProvider>);
