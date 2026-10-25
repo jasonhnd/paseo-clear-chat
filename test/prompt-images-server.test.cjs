@@ -9,7 +9,7 @@ const ts = require("typescript");
 const { Image, Frame, GIF } = require("imagescript");
 
 // Load the real server TypeScript, while collecting its daemon debug output.
-function harness() {
+function harness(overrides = {}) {
   const cache = new Map();
   const logs = [];
   function load(relative) {
@@ -21,7 +21,7 @@ function harness() {
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
     }).outputText;
     const realRequire = createRequire(filename);
-    const localRequire = id => id.startsWith(".") ? load(resolve(dirname(filename), `${id}.ts`)) : realRequire(id);
+    const localRequire = id => id.startsWith(".") ? load(resolve(dirname(filename), `${id}.ts`)) : (overrides[id] ?? realRequire(id));
     runInThisContext(`(function(require,module,exports,console){${compiled}\n})`, { filename })(
       localRequire, mod, mod.exports, { debug: (...args) => logs.push(args) },
     );
@@ -44,7 +44,10 @@ function fixture(t) {
 const input = { agentId: "sample-agent", messageId: "message-1", clientMessageId: "client-1", text: "Look at this." };
 const empty = reason => ({ images: [], total: 0, reason });
 const emptyFull = error => ({ dataUri: null, mime: null, width: null, height: null, bytes: null, error });
-const resolver = find => ({ matches: provider => provider === "sample", find });
+const resolver = find => ({ matches: provider => provider === "sample", async find(ctx) {
+  const result = await find(ctx);
+  return Array.isArray(result) ? { matchedMessages: 1, images: result } : result;
+} });
 const picture = (id, bytes, mime = "image/png") => ({ id, mime, readBytes: async () => bytes });
 const context = (snapshot = { provider: "sample", cwd: ".", persistence: { provider: "sample", sessionId: "session-1", nativeHandle: "native-1" } }) => ({
   paseo: { agents: { ref: id => {
@@ -195,13 +198,12 @@ test("thumbnail dimensions preserve aspect ratio, stay within 512px and never up
   }
 });
 
-test("JPEG, WebP and animated GIF thumbnails are PNGs while full images retain their original bytes", async () => {
+test("JPEG and animated GIF thumbnails are PNGs while full images retain their original bytes", async () => {
   const h = harness();
   const source = new Image(4, 2).fill(0x4488ccff);
   const gif = new GIF([Frame.from(source, 100), Frame.from(source.clone(), 100)]);
   for (const [mime, bytes] of [
     ["image/jpeg", Buffer.from(await source.encodeJPEG())],
-    ["image/webp", Buffer.from(await source.encodeWebP())],
     ["image/gif", Buffer.from(await gif.encode())],
   ]) {
     const handlers = h.createPromptImageHandlers({ resolvers: [resolver(async () => [picture("sample", bytes, mime)])] });
@@ -248,7 +250,7 @@ test("invalid data and MIME mismatches return only a short error code", async ()
   const h = harness();
   for (const [bytes, mime] of [[Buffer.from("invalid"), "image/png"], [await png(), "image/jpeg"]]) {
     const handlers = h.createPromptImageHandlers({ resolvers: [resolver(async () => [picture("bad", bytes, mime)])] });
-    assert.deepEqual(await handlers.images(input, context()), empty("invalid_image"));
+    assert.deepEqual(await handlers.images(input, context()), { images: [], total: 1, reason: "invalid_image" });
     assert.deepEqual(await handlers.image({ ...input, id: "bad" }, context()), emptyFull("invalid_image"));
   }
 });
@@ -260,7 +262,7 @@ test("snapshot, matcher, resolver and read exceptions never leak auth, headers, 
   for (const phase of ["snapshot", "matcher", "resolver", "bytes"]) {
     const handlers = h.createPromptImageHandlers({ resolvers: [{
       matches: phase === "matcher" ? fail : () => true,
-      find: phase === "resolver" ? fail : async () => [{ id: "one", mime: "image/png", readBytes: fail }],
+      find: phase === "resolver" ? fail : async () => ({ matchedMessages: 1, images: [{ id: "one", mime: "image/png", readBytes: fail }] }),
     }] });
     const ctx = phase === "snapshot" ? { paseo: { agents: { ref: () => ({ refresh: fail }) } } } : context();
     assert.deepEqual(await handlers.images({ ...input, text: secret }, ctx), empty("lookup_failed"));
@@ -274,7 +276,7 @@ test("snapshot, matcher, resolver and read exceptions never leak auth, headers, 
   }
 });
 
-test("safeLocalImagePath allows regular bounded image files and canonical allowed roots", async t => {
+test("readLocalImageReadOnly allows regular bounded image files and canonical allowed roots", async t => {
   const h = harness();
   const root = fixture(t);
   const allowed = join(root, "allowed");
@@ -283,14 +285,14 @@ test("safeLocalImagePath allows regular bounded image files and canonical allowe
   for (const extension of ["png", "jpg", "jpeg", "webp", "gif", "PNG"]) {
     const path = join(allowed, `image.${extension}`);
     fs.writeFileSync(path, "image");
-    assert.equal(await h.safeLocalImagePath(path, [join(root, "root-link")]), path);
+    assert.deepEqual(await h.readLocalImageReadOnly(path, [join(root, "root-link")]), Buffer.from("image"));
   }
   const max = join(allowed, "at-cap.png");
   fs.writeFileSync(max, Buffer.alloc(h.MAX_IMAGE_BYTES));
-  assert.equal(await h.safeLocalImagePath(max, [allowed]), max);
+  assert.deepEqual(await h.readLocalImageReadOnly(max, [allowed]), Buffer.alloc(h.MAX_IMAGE_BYTES));
 });
 
-test("safeLocalImagePath rejects traversal, symlink escapes, prefix siblings, invalid extensions and missing/nonregular/oversized files", async t => {
+test("readLocalImageReadOnly rejects traversal, symlink escapes, prefix siblings, invalid extensions and missing/nonregular/oversized files", async t => {
   const h = harness();
   const root = fixture(t);
   const allowed = join(root, "allowed");
@@ -309,8 +311,8 @@ test("safeLocalImagePath rejects traversal, symlink escapes, prefix siblings, in
     `${allowed}/../outside.png`, `${allowed}/nested/../valid.png`, join(allowed, "escape.png"),
     join(allowed, "disguised.png"), join(sibling, "outside.png"), join(allowed, "wrong.svg"),
     join(allowed, "missing.png"), join(allowed, "directory.png"), join(allowed, "large.png"),
-  ]) assert.equal(await h.safeLocalImagePath(path, [allowed]), null, path);
-  assert.equal(await h.safeLocalImagePath(join(allowed, "valid.png"), []), null);
+  ]) assert.equal(await h.readLocalImageReadOnly(path, [allowed]), null, path);
+  assert.equal(await h.readLocalImageReadOnly(join(allowed, "valid.png"), []), null);
 });
 
 test("readJsonlReadOnly streams valid records around bad lines without changing the file", async t => {
@@ -350,15 +352,192 @@ test("openSqliteReadOnly uses an escaped file URI and rejects writes without cre
   assert.equal(fs.existsSync(missing), false);
 });
 
-test("openSqliteReadOnly refuses live WAL data rather than reading a stale immutable snapshot", async t => {
+test("openSqliteReadOnly sees live WAL commits while refusing writes and preserving main/WAL bytes", async t => {
   const h = harness();
   const root = fixture(t);
   const path = join(root, "live.sqlite");
   const source = new DatabaseSync(path);
   try {
-    source.exec("PRAGMA journal_mode = WAL; CREATE TABLE images (id TEXT); INSERT INTO images VALUES ('one')");
-    const before = fs.readdirSync(root).sort().map(name => [name, fs.readFileSync(join(root, name))]);
-    await assert.rejects(h.openSqliteReadOnly(path), /sqlite_wal_unsupported/);
-    assert.deepEqual(fs.readdirSync(root).sort().map(name => [name, fs.readFileSync(join(root, name))]), before);
+    source.exec("PRAGMA journal_mode = WAL; CREATE TABLE images (id TEXT); PRAGMA wal_checkpoint(TRUNCATE)");
+    const mainBeforeCommit = fs.readFileSync(path);
+    source.exec("INSERT INTO images VALUES ('wal-only')");
+    assert.deepEqual(fs.readFileSync(path), mainBeforeCommit);
+    const main = fs.readFileSync(path), wal = fs.readFileSync(`${path}-wal`);
+    assert.ok(wal.length > 0);
+    const database = await h.openSqliteReadOnly(path);
+    try {
+      assert.equal(database.prepare("PRAGMA query_only").get().query_only, 1);
+      assert.equal(database.prepare("PRAGMA busy_timeout").get().timeout, 250);
+      assert.equal(database.prepare("SELECT id FROM images").get().id, "wal-only");
+      database.exec("PRAGMA query_only = OFF");
+      assert.throws(() => database.exec("INSERT INTO images VALUES ('forbidden')"), /readonly/);
+    } finally { database.close(); }
+    assert.deepEqual(fs.readFileSync(path), main);
+    assert.deepEqual(fs.readFileSync(`${path}-wal`), wal);
+    assert.ok(fs.readdirSync(root).every(name => ["live.sqlite", "live.sqlite-wal", "live.sqlite-shm"].includes(name)));
   } finally { source.close(); }
+});
+
+test("both RPCs require exactly one matched message, including text fallback when IDs were supplied", async () => {
+  const h = harness();
+  const unread = { id: "one", mime: "image/png", readBytes: () => assert.fail("ambiguous or unmatched bytes must not be read") };
+  for (const request of [input, { agentId: input.agentId, text: input.text }]) {
+    for (const [matchedMessages, reason] of [[0, "no_match"], [2, "ambiguous"], [3, "ambiguous"]]) {
+      const handlers = h.createPromptImageHandlers({ resolvers: [resolver(async () => ({ matchedMessages, images: [unread] }))] });
+      assert.deepEqual(await handlers.images(request, context()), empty(reason));
+      assert.deepEqual(await handlers.image({ ...request, id: "one" }, context()), emptyFull(reason));
+    }
+    const handlers = h.createPromptImageHandlers({ resolvers: [resolver(async () => ({ matchedMessages: 1, images: [picture("one", await png())] }))] });
+    assert.equal((await handlers.images(request, context())).images.length, 1);
+    assert.equal((await handlers.image({ ...request, id: "one" }, context())).error, null);
+  }
+  const handlers = h.createPromptImageHandlers({ resolvers: [resolver(async () => ({ matchedMessages: 1, images: [] }))] });
+  assert.deepEqual(await handlers.images(input, context()), empty(null));
+});
+
+test("corrupt decodes and pixel-limit failures preserve earlier thumbnails and total, and later images fill the cap", async () => {
+  const h = harness();
+  const bytes = await png();
+  const tooManyPixels = Buffer.from(bytes);
+  tooManyPixels.writeUInt32BE(6000, 16);
+  tooManyPixels.writeUInt32BE(4001, 20);
+  const corrupt = bytes.subarray(0, 24); // Valid header, broken PNG payload.
+  const candidates = [picture("one", bytes), picture("corrupt", corrupt), picture("pixels", tooManyPixels),
+    picture("two", bytes), picture("three", bytes)];
+  const handlers = h.createPromptImageHandlers({ resolvers: [resolver(async () => candidates)] });
+  const result = await handlers.images(input, context());
+  assert.equal(result.total, 5);
+  assert.equal(result.reason, "image_too_large");
+  assert.deepEqual(result.images.map(image => image.id), ["one", "two", "three"]);
+  assert.deepEqual(await handlers.image({ ...input, id: "pixels" }, context()), emptyFull("image_too_large"));
+  const decodeOnly = h.createPromptImageHandlers({ resolvers: [resolver(async () => candidates.slice(0, 2))] });
+  const retained = await decodeOnly.images(input, context());
+  assert.equal(retained.total, 2);
+  assert.equal(retained.reason, "invalid_image");
+  assert.deepEqual(retained.images.map(image => image.id), ["one"]);
+});
+
+test("unsupported formats, invalid dimensions and oversized PNG/JPEG/GIF headers are refused before decode", async () => {
+  let decodeCalls = 0;
+  const h = harness({ imagescript: { Image, decode: () => { decodeCalls++; throw new Error("unexpected decode"); } } });
+  const hugePng = Buffer.from(await png());
+  hugePng.writeUInt32BE(6000, 16); hugePng.writeUInt32BE(4001, 20);
+  const hugeJpeg = Buffer.from([0xff, 0xd8, 0xff, 0xc0, 0, 8, 8, 0x0f, 0xa1, 0x17, 0x70, 0]);
+  const hugeGif = Buffer.from([71, 73, 70, 56, 57, 97, 0x70, 0x17, 0xa1, 0x0f, 0, 0, 0,
+    0x2c, 0, 0, 0, 0, 0x70, 0x17, 0xa1, 0x0f, 0]);
+  const zeroPng = Buffer.from(await png()); zeroPng.writeUInt32BE(0, 16);
+  const badFrameGif = Buffer.from(hugeGif); badFrameGif.writeUInt16LE(65535, 18);
+  for (const [mime, bytes, reason] of [
+    ["image/png", hugePng, "image_too_large"], ["image/jpeg", hugeJpeg, "image_too_large"],
+    ["image/gif", hugeGif, "image_too_large"], ["image/png", zeroPng, "invalid_image"],
+    ["image/gif", badFrameGif, "invalid_image"],
+    ["image/webp", Buffer.from("UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA", "base64"), "invalid_image"],
+    ["image/tiff", Buffer.from([73, 73, 42, 0, 0, 0, 0, 0]), "invalid_image"],
+  ]) {
+    const handlers = h.createPromptImageHandlers({ resolvers: [resolver(async () => [picture("one", bytes, mime)])] });
+    assert.deepEqual(await handlers.images(input, context()), { images: [], total: 1, reason });
+    assert.deepEqual(await handlers.image({ ...input, id: "one" }, context()), emptyFull(reason));
+  }
+  assert.equal(decodeCalls, 0);
+});
+
+test("ImageScript 1.3.1 decodes and resizes PNG and JPEG to readable thumbnails on the host Node runtime", async () => {
+  assert.equal(require("imagescript/package.json").version, "1.3.1");
+  const h = harness();
+  for (const [width, height, expected] of [[1024, 256, [512, 128]], [256, 1024, [128, 512]], [4, 2, [4, 2]]]) {
+    const source = new Image(width, height).fill(0x4488ccff);
+    for (const [mime, bytes] of [["image/png", Buffer.from(await source.encode())], ["image/jpeg", Buffer.from(await source.encodeJPEG(90))]]) {
+      const handlers = h.createPromptImageHandlers({ resolvers: [resolver(async () => [picture("one", bytes, mime)])] });
+      const result = await handlers.images(input, context());
+      assert.equal(result.reason, null);
+      const thumbnail = await Image.decode(Buffer.from(result.images[0].thumbDataUri.split(",")[1], "base64"));
+      assert.deepEqual([thumbnail.width, thumbnail.height], expected);
+      for (const [channel, expectedValue] of [[0, 0x44], [1, 0x88], [2, 0xcc], [3, 0xff]]) {
+        assert.ok(Math.abs(thumbnail.bitmap[channel] - expectedValue) <= 3, `${mime} channel ${channel}`);
+      }
+      const full = await handlers.image({ ...input, id: "one" }, context());
+      assert.equal(full.error, null);
+      assert.deepEqual([full.width, full.height], [width, height]);
+      assert.deepEqual(Buffer.from(full.dataUri.split(",")[1], "base64"), bytes);
+    }
+  }
+});
+
+test("local file candidates use the descriptor reader for thumbnails and originals", async t => {
+  const h = harness();
+  const root = fixture(t);
+  const path = join(root, "local.png");
+  const bytes = await png();
+  fs.writeFileSync(path, bytes);
+  const handlers = h.createPromptImageHandlers({ resolvers: [resolver(async () => [h.localFileImage("provider-id", "image/png", path, [root])])] });
+  assert.equal((await handlers.images(input, context())).images[0].id, "provider-id");
+  const full = await handlers.image({ ...input, id: "provider-id" }, context());
+  assert.deepEqual(Buffer.from(full.dataUri.split(",")[1], "base64"), bytes);
+  fs.unlinkSync(path);
+  fs.symlinkSync(join(root, "outside.png"), path);
+  assert.deepEqual(await handlers.image({ ...input, id: "provider-id" }, context()), emptyFull("invalid_image"));
+});
+
+test("descriptor validation rejects a file replaced after open and always closes it", async t => {
+  const root = fixture(t);
+  const allowed = join(root, "allowed"); fs.mkdirSync(allowed);
+  const path = join(allowed, "local.png"); fs.writeFileSync(path, "original");
+  let closed = false;
+  const promises = require("node:fs/promises");
+  const h = harness({ "node:fs/promises": { ...promises, async open(...args) {
+    const file = await promises.open(...args);
+    const close = file.close.bind(file);
+    file.close = async () => { closed = true; await close(); };
+    file.read = () => assert.fail("must reject changed identity before reading");
+    fs.renameSync(path, join(root, "moved.png"));
+    fs.writeFileSync(path, "substitute");
+    return file;
+  } } });
+  assert.equal(await h.readLocalImageReadOnly(path, [allowed]), null);
+  assert.equal(closed, true);
+});
+
+test("descriptor reads stay bounded when a file grows after fstat", async t => {
+  const root = fixture(t);
+  const path = join(root, "local.png"); fs.writeFileSync(path, "original");
+  const promises = require("node:fs/promises");
+  let readLimit = 0, closed = false;
+  const h = harness({ "node:fs/promises": { ...promises, async open(...args) {
+    const file = await promises.open(...args);
+    const read = file.read.bind(file), close = file.close.bind(file);
+    file.read = async (buffer, offset, length, position) => {
+      readLimit += length;
+      fs.appendFileSync(path, Buffer.alloc(1024));
+      return read(buffer, offset, length, position);
+    };
+    file.close = async () => { closed = true; await close(); };
+    return file;
+  } } });
+  assert.equal(await h.readLocalImageReadOnly(path, [root]), null);
+  assert.equal(readLimit, 9);
+  assert.equal(closed, true);
+});
+
+test("JSONL skips oversized valid lines, resumes at the next record and handles the exact cap", async t => {
+  const h = harness();
+  const root = fixture(t);
+  const path = join(root, "bounded.jsonl");
+  const file = fs.openSync(path, "w");
+  try {
+    fs.writeSync(file, '{"before":1}\n"');
+    const block = Buffer.alloc(1024 * 1024, 0x61);
+    let remaining = h.MAX_JSONL_LINE_BYTES + 100;
+    while (remaining) { const length = Math.min(remaining, block.length); fs.writeSync(file, block, 0, length); remaining -= length; }
+    fs.writeSync(file, '"\r\n{"after":"🎉"}\n');
+    fs.writeSync(file, Buffer.concat([Buffer.from('"'), Buffer.alloc(h.MAX_JSONL_LINE_BYTES - 2, 0x62), Buffer.from('"\n')]));
+    fs.writeSync(file, '"');
+    remaining = h.MAX_JSONL_LINE_BYTES + 100;
+    while (remaining) { const length = Math.min(remaining, block.length); fs.writeSync(file, block, 0, length); remaining -= length; }
+    fs.writeSync(file, '"'); // Oversized EOF line, without newline.
+  } finally { fs.closeSync(file); }
+  const records = [];
+  for await (const record of h.readJsonlReadOnly(path)) records.push(record);
+  assert.equal(records.length, 3);
+  assert.deepEqual(records.slice(0, 2), [{ before: 1 }, { after: "🎉" }]);
+  assert.equal(records[2].length, h.MAX_JSONL_LINE_BYTES - 2);
 });
