@@ -220,10 +220,11 @@ async function querySqlitePlain<T>(
  * The sidecars and main file identity, size and mtime are checked after that
  * query. A change also catches a writer that checkpoints and removes its
  * sidecars before the check. The result is discarded and the query runs once
- * more on the plain path if either check detects a change. If that retry also
- * fails, this returns null and the caller reports no images. Open failures
- * propagate only when both checks stay unchanged. `node:sqlite` is imported
- * lazily so hosts that lack it fail only the lookup, not startup.
+ * more on the plain path if a sidecar exists, or immutably if only the main
+ * file changed. Another change, a sidecar or a failure during the immutable
+ * retry returns null and the caller reports no images. Open failures propagate
+ * only on the first attempt when both checks stay unchanged. `node:sqlite` is
+ * imported lazily so hosts that lack it fail only the lookup, not startup.
  *
  * `hooks.beforeOpen` runs after the sidecar check and before the file is
  * opened, so a test can create a sidecar in that window. `afterImmutableQuery`
@@ -238,33 +239,45 @@ export async function openSqliteReadOnly<T>(
   },
 ): Promise<T | null> {
   const real = await nativeRealpath(path);
-  if (sqliteSidecar(real)) return querySqlitePlain(real, query, hooks?.beforeOpen);
-  const before = await stat(real, { bigint: true });
-  let outcome: { ok: true; result: T } | { ok: false; error: unknown };
-  try {
-    const database = await openSqliteDatabase(real, true, hooks?.beforeOpen);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (sqliteSidecar(real)) return attempt === 0 ? querySqlitePlain(real, query, hooks?.beforeOpen) : null;
+    let before;
     try {
-      outcome = { ok: true, result: query(database) };
+      before = await stat(real, { bigint: true });
+    } catch (error) {
+      if (attempt === 0) throw error;
+      return null;
+    }
+    let outcome: { ok: true; result: T } | { ok: false; error: unknown };
+    try {
+      const database = await openSqliteDatabase(real, true, hooks?.beforeOpen);
+      try {
+        outcome = { ok: true, result: query(database) };
+      } catch (error) {
+        outcome = { ok: false, error };
+      } finally {
+        database.close();
+      }
+      hooks?.afterImmutableQuery?.();
     } catch (error) {
       outcome = { ok: false, error };
-    } finally {
-      database.close();
     }
-    hooks?.afterImmutableQuery?.();
-  } catch (error) {
-    outcome = { ok: false, error };
+    let unchanged = false;
+    try {
+      const after = await stat(real, { bigint: true });
+      unchanged = before.dev === after.dev && before.ino === after.ino &&
+        before.size === after.size && before.mtimeNs === after.mtimeNs;
+    } catch {
+      // A missing or unreadable main file also invalidates the immutable result.
+    }
+    const sidecar = sqliteSidecar(real);
+    if (unchanged && !sidecar) {
+      if (outcome.ok) return outcome.result;
+      if (attempt === 0) throw outcome.error;
+      return null;
+    }
+    if (attempt === 1) return null;
+    if (sidecar) return querySqlitePlain(real, query, hooks?.beforeOpen);
   }
-  let unchanged = false;
-  try {
-    const after = await stat(real, { bigint: true });
-    unchanged = before.dev === after.dev && before.ino === after.ino &&
-      before.size === after.size && before.mtimeNs === after.mtimeNs;
-  } catch {
-    // A missing or unreadable main file also invalidates the immutable result.
-  }
-  if (unchanged && !sqliteSidecar(real)) {
-    if (outcome.ok) return outcome.result;
-    throw outcome.error;
-  }
-  return querySqlitePlain(real, query, hooks?.beforeOpen);
+  return null;
 }

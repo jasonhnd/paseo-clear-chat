@@ -553,7 +553,7 @@ test("a plain retry that fails returns null instead of a stale image read", asyn
   assert.deepEqual(plans, [true, false]);
 });
 
-test("a checkpoint and close between file samples discards the immutable result and retries once", async t => {
+test("a checkpoint and close between file samples retries immutably without creating sidecars", async t => {
   const h = harness();
   for (const failRetry of [false, true]) {
     const root = fixture(t);
@@ -564,32 +564,101 @@ test("a checkpoint and close between file samples discards the immutable result 
     assert.deepEqual(fs.readdirSync(root), ["checkpoint.sqlite"]);
     const before = fs.statSync(path, { bigint: true });
     const plans = [], queried = [];
-    let after, afterFiles;
+    let after;
     let hooks = 0;
     const result = await h.openSqliteReadOnly(path, database => {
       const id = database.prepare("SELECT id FROM images").get().id;
       queried.push(id);
-      if (failRetry && queried.length === 2) throw new Error("plain lookup failed");
+      if (failRetry && queried.length === 2) throw new Error("immutable retry failed");
       return id;
     }, {
       beforeOpen: plan => plans.push(plan.immutable),
       afterImmutableQuery() {
         hooks++;
+        if (hooks > 1) return;
         const writer = new DatabaseSync(path);
         try {
           writer.exec("UPDATE images SET id = 'checkpointed'; PRAGMA wal_checkpoint(TRUNCATE)");
         } finally { writer.close(); }
-        afterFiles = fs.readdirSync(root);
         after = fs.statSync(path, { bigint: true });
       },
     });
-    assert.deepEqual(afterFiles, ["checkpoint.sqlite"]);
+    assert.deepEqual(fs.readdirSync(root), ["checkpoint.sqlite"]);
     assert.notEqual(before.mtimeNs, after.mtimeNs);
-    assert.deepEqual(plans, [true, false]);
+    assert.deepEqual(plans, [true, true]);
     assert.deepEqual(queried, ["main", "checkpointed"]);
-    assert.equal(hooks, 1);
+    assert.equal(hooks, 2);
     assert.equal(result, failRetry ? null : "checkpointed");
   }
+});
+
+test("another checkpoint during the immutable retry returns null without creating sidecars", async t => {
+  const h = harness();
+  const root = fixture(t);
+  const path = join(root, "checkpoint.sqlite");
+  const source = new DatabaseSync(path);
+  source.exec("PRAGMA journal_mode = WAL; CREATE TABLE images (id TEXT); INSERT INTO images VALUES ('main'); PRAGMA wal_checkpoint(TRUNCATE)");
+  source.close();
+  const plans = [], queried = [];
+  let hooks = 0;
+  const result = await h.openSqliteReadOnly(path, database => {
+    const id = database.prepare("SELECT id FROM images").get().id;
+    queried.push(id);
+    return id;
+  }, {
+    beforeOpen: plan => plans.push(plan.immutable),
+    afterImmutableQuery() {
+      const before = fs.statSync(path, { bigint: true });
+      const writer = new DatabaseSync(path);
+      try {
+        writer.prepare("UPDATE images SET id = ?").run(`checkpoint-${++hooks}`);
+        writer.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+      } finally { writer.close(); }
+      assert.notEqual(fs.statSync(path, { bigint: true }).mtimeNs, before.mtimeNs);
+    },
+  });
+  assert.equal(result, null);
+  assert.deepEqual(plans, [true, true]);
+  assert.deepEqual(queried, ["main", "checkpoint-1"]);
+  assert.equal(hooks, 2);
+  assert.deepEqual(fs.readdirSync(root), ["checkpoint.sqlite"]);
+});
+
+test("a sidecar appearing during the immutable retry returns null without a plain open", async t => {
+  const h = harness();
+  const root = fixture(t);
+  const path = join(root, "checkpoint.sqlite");
+  const source = new DatabaseSync(path);
+  source.exec("PRAGMA journal_mode = WAL; CREATE TABLE images (id TEXT); INSERT INTO images VALUES ('main'); PRAGMA wal_checkpoint(TRUNCATE)");
+  source.close();
+  const plans = [], queried = [];
+  let writer;
+  try {
+    const result = await h.openSqliteReadOnly(path, database => {
+      const id = database.prepare("SELECT id FROM images").get().id;
+      queried.push(id);
+      return id;
+    }, {
+      beforeOpen(plan) {
+        plans.push(plan.immutable);
+        if (plans.length === 2) {
+          writer = new DatabaseSync(path);
+          writer.exec("UPDATE images SET id = 'wal-only'");
+        }
+      },
+      afterImmutableQuery() {
+        if (plans.length !== 1) return;
+        const checkpoint = new DatabaseSync(path);
+        try {
+          checkpoint.exec("UPDATE images SET id = 'checkpointed'; PRAGMA wal_checkpoint(TRUNCATE)");
+        } finally { checkpoint.close(); }
+      },
+    });
+    assert.equal(result, null);
+    assert.deepEqual(plans, [true, true]);
+    assert.deepEqual(queried, ["main", "checkpointed"]);
+    assert.equal(fs.existsSync(`${path}-wal`), true);
+  } finally { writer?.close(); }
 });
 
 test("a locked rollback database returns no image without modifying database or journal bytes", async t => {
