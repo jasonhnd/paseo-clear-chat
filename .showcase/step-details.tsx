@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useWindowDimensions } from "react-native";
 import { createRoot } from "react-dom/client";
 import type { PluginAgentPanelProps, PluginClientContext, PluginAgentPanelContribution } from "@getpaseo/plugin/client";
@@ -9,7 +9,7 @@ import { embedFonts } from "../client/components/embed-fonts";
 import { initializeEnhancerPreferences, updateEnhancerPreferences, useEnhancerPreferences } from "../client/preferences";
 import { DESKTOP_MIN, TABLET_MIN } from "../client/breakpoints";
 import { installCompactToolSpacing } from "../client/tool-row-spacing";
-import { hydratePreviewWorkspace, previewWorkspaceReady } from "./shims/step-detail-client";
+import { hydratePreviewWorkspace, previewWorkspaceReady, PluginTranslationProvider, PluginTranslationRuntime } from "./shims/step-detail-client";
 
 declare global { interface Window {
   __stepDetailSamples: LiveToolCallPayload[];
@@ -41,6 +41,15 @@ installStepDetailPanel({
 
 function Preview() {
   const { width } = useWindowDimensions();
+  // The host may recreate its compact timeline in a later commit, after the
+  // existing sheet has already reflowed and emitted a browser scroll event.
+  const delayedRemount = new URLSearchParams(location.search).get("remount") === "next-frame";
+  const [compact, setCompact] = useState(width < TABLET_MIN);
+  useEffect(() => {
+    if (!delayedRemount) return;
+    const frame = requestAnimationFrame(() => setCompact(width < TABLET_MIN));
+    return () => cancelAnimationFrame(frame);
+  }, [width, delayedRemount]);
   const [samples, setSamples] = useState(window.__stepDetailSamples);
   const chat = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => { if (chat.current) chat.current.scrollTop = 360; }, []);
@@ -50,7 +59,7 @@ function Preview() {
   return <div style={{ display: "flex", flexDirection: "column", width: "100vw", height: "100vh", background: colors.surface0, color: colors.foreground, font: "14px system-ui" }}>
     <header data-testid="preview-host-header" style={{ height: 64, flexShrink: 0, padding: 20, borderBottom: `1px solid ${colors.border}` }}>Conversation</header>
     <main style={{ display: "flex", flex: 1, minHeight: 0 }}>
-    <div key={location.pathname === "/host-remount" ? (width < TABLET_MIN ? "chat-compact" : "chat-wide") : "chat"} ref={chat} data-testid="preview-chat" style={{ flex: 1, minWidth: 0, padding: 16, overflow: "auto" }}>
+    <div key={location.pathname === "/host-remount" ? ((delayedRemount ? compact : width < TABLET_MIN) ? "chat-compact" : "chat-wide") : "chat"} ref={chat} data-testid="preview-chat" style={{ flex: 1, minWidth: 0, padding: 16, overflow: "auto" }}>
       <div style={{ height: 460 }} aria-hidden="true" />
       <p>Offline component replay · sanitized conversation</p>
       {location.pathname === "/host-context" ? <button data-testid="preview-hydrate-workspace" onClick={hydratePreviewWorkspace}>Hydrate workspace context</button> : null}
@@ -89,8 +98,12 @@ function Preview() {
 }
 
 let values = { preferences: { foldLongOutputAfter: 15 }, legacyMigrated: true };
+const translations = new PluginTranslationRuntime({
+  getLocale: () => new URLSearchParams(location.search).get("locale") ?? "en",
+  subscribe: () => () => {},
+});
 void initializeEnhancerPreferences((async (contract: { name: string }, input: { values: typeof values }) => {
   if (contract.name.endsWith(".read")) return { status: "ready", revision: "0", values };
   values = input.values;
   return { status: "saved", revision: "0", values };
-}) as PluginClientContext["rpc"]).then(() => createRoot(document.getElementById("root")!).render(<Preview />));
+}) as PluginClientContext["rpc"]).then(() => createRoot(document.getElementById("root")!).render(<PluginTranslationProvider runtime={translations}><Preview /></PluginTranslationProvider>));

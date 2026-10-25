@@ -334,3 +334,36 @@ for (const platform of ["web", "ios", "android"]) {
     });
   }
 }
+
+// A browser can anchor the old sheet before RN Web delivers its new onLayout;
+// the host then replaces the compact timeline row on its next commit.
+test("sheet reflow scroll before layout does not corrupt the anchor handed to the popover", () => {
+  const h = harness("web");
+  const { StepDetailStateContext, createStepDetailState } = h.load("client/components/step-detail-state.ts");
+  const state = createStepDetailState();
+  const Content = h.load("client/components/step-detail-content.tsx").StepDetailContent;
+  const step = h.load("client/tool-call-data.ts").buildLiveToolCallData(shell);
+  const render = () => h.draw({ type: StepDetailStateContext.Provider, props: { value: state,
+    children: { type: Content, props: { step, tokens: h.tokens } } } });
+  const measure = (width, outputTop, restores) => {
+    const tree = render();
+    const scroll = byId(h, tree, "step-detail-scroll");
+    scroll.props.ref.current = { scrollToOffset: value => restores.push(value.offset) };
+    scroll.props.onLayout({ nativeEvent: { layout: { width, height: 340 } } });
+    for (const cell of h.nodes(tree, node => node.props.testID === "step-detail-cell-output-0")) {
+      cell.props.onLayout({ nativeEvent: { layout: { x: 0, y: outputTop, width: width - 24, height: 2000 } } });
+    }
+    scroll.props.onContentSizeChange(width, 5000);
+    return scroll;
+  };
+  const sheet = measure(388, 280, []);
+  sheet.props.onScroll({ nativeEvent: { contentOffset: { y: 400 }, layoutMeasurement: { width: 388, height: 340 } } });
+  // Chrome already compensated for the 36px reflow, but cells still have sheet coordinates.
+  sheet.props.onScroll({ nativeEvent: { contentOffset: { y: 364 }, layoutMeasurement: { width: 678, height: 627 } } });
+  h.unmount();
+  const restores = [];
+  measure(678, 244, restores);
+  assert.equal(restores.at(-1), 364, "Apply the 36px reflow once, preserving output line 7 (not line 5 at 328px)");
+  assert.deepEqual(state.scrollAnchor, { key: "output-0", offset: 120 });
+  h.unmount();
+});
