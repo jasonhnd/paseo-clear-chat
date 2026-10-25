@@ -23,16 +23,19 @@ interface UserMessage {
 
 function userMessage(value: unknown, sessionId: string): UserMessage | null {
   const line = record(value);
-  if (!line || line.type !== "user" || line.isSidechain === true || line.isMeta === true ||
-      (line.sessionId !== undefined && line.sessionId !== sessionId)) return null;
-  const message = record(line.message);
-  if (!message || message.role !== "user") return null;
-  if ([line.uuid, line.promptId].some(id => id !== undefined && typeof id !== "string")) return null;
+  if (!line || line.type !== "user") return null;
+  // Even rejected user lines reserve their readable IDs. Otherwise a lookup
+  // for that line could fall back to an unrelated message with the same text.
   const ids = [line.uuid, line.promptId].filter((id): id is string => typeof id === "string" && id.length > 0);
-  const unreadable = { ids, text: null, images: [] };
+  const unreadable: UserMessage = { ids, text: null, images: [] };
+  const message = record(line.message);
+  if (!message || message.role !== "user") return unreadable;
+  const rejected = line.isSidechain === true || line.isMeta === true ||
+    (line.sessionId !== undefined && line.sessionId !== sessionId) ||
+    [line.uuid, line.promptId].some(id => id !== undefined && typeof id !== "string");
   if (typeof message.content === "string") return { ids, text: message.content, images: [] };
   if (!Array.isArray(message.content) || !message.content.length) return unreadable;
-  if (message.content.some(value => record(value)?.type === "tool_result")) return null;
+  if (message.content.some(value => record(value)?.type === "tool_result")) return unreadable;
   const texts: string[] = [];
   const images: Record<string, unknown>[] = [];
   for (const value of message.content) {
@@ -43,7 +46,7 @@ function userMessage(value: unknown, sessionId: string): UserMessage | null {
     // message when the requested message has an unreadable content format.
     else return unreadable;
   }
-  return { ids, text: texts.join("\n"), images };
+  return { ids, text: texts.join("\n"), images: rejected ? [] : images };
 }
 
 function image(block: Record<string, unknown>, index: number): FoundImage | null {
@@ -104,6 +107,7 @@ async function find(context: ResolverContext): Promise<FoundImages> {
   const projects = resolve(context.cwd, configDir, "projects");
   const requestedIds = [context.messageId, context.clientMessageId].filter((id): id is string => !!id);
   let idCount = 0, textCount = 0;
+  let unreadableText = false;
   let idMessage: UserMessage | null = null, textMessage: UserMessage | null = null;
   try {
     const files = await sessionFiles(projects, context.cwd, context.sessionId, context.signal);
@@ -113,6 +117,7 @@ async function find(context: ResolverContext): Promise<FoundImages> {
         context.signal.throwIfAborted();
         const message = userMessage(value, context.sessionId);
         if (!message) continue;
+        if (message.text === null) unreadableText = true;
         if (message.ids.some(id => requestedIds.includes(id))) {
           idCount++;
           idMessage = idCount === 1 ? message : null;
@@ -125,7 +130,7 @@ async function find(context: ResolverContext): Promise<FoundImages> {
     }
     const matchedMessages = idCount || textCount;
     const selected = idCount ? idMessage : textMessage;
-    if (matchedMessages !== 1 || !selected) return { matchedMessages, images: [] };
+    if ((!idCount && unreadableText) || matchedMessages !== 1 || !selected) return { matchedMessages, images: [] };
     const images: FoundImage[] = [];
     for (let index = 0; index < selected.images.length && images.length < MAX_IMAGES; index++) {
       context.signal.throwIfAborted();
