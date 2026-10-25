@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { View, Text, Pressable, StyleSheet, Animated } from "react-native";
+import { StreamedText } from "@getpaseo/plugin/client/ui";
 import { Glyph } from "./glyph";
 import { frosted } from "./frosted";
 import { surfaceProps } from "./view-props";
@@ -11,16 +12,17 @@ import { radius } from "./theme-tokens";
 import { selectableSurface } from "./selection";
 import { selectionSurface } from "./selection-actions";
 import type { ExtendedThemeTokens } from "./theme-tokens";
-import type { ReasoningTraceData, ReasoningStep } from "../../shared/contracts";
+import type { ReasoningTraceData } from "../../shared/contracts";
 import { SyntaxHighlightBlock } from "./syntax-highlight";
 
 interface ReasoningTraceProps {
   data: ReasoningTraceData;
   tokens: ExtendedThemeTokens;
   defaultExpanded?: boolean;
+  streaming?: boolean;
 }
 
-export function ReasoningTrace({ data, tokens, defaultExpanded = false }: ReasoningTraceProps) {
+export function ReasoningTrace({ data, tokens, defaultExpanded = false, streaming = false }: ReasoningTraceProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
 
@@ -345,9 +347,12 @@ export function ReasoningTrace({ data, tokens, defaultExpanded = false }: Reason
                     ) : null}
                   </Pressable>
 
-                  <Text selectable style={styles.stepContent}>
-                    {step.content}
-                  </Text>
+                  <StreamedText
+                    selectable
+                    style={styles.stepContent}
+                    text={step.content}
+                    phase={streaming && isStepActive ? "streaming" : "complete"}
+                  />
 
                   {step.codeSnippet && isDetailOpen && (
                     <SyntaxHighlightBlock

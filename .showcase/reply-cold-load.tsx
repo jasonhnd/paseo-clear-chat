@@ -12,7 +12,7 @@ const host = createColdLoadHost();
 const cleanup = contribute({
   rpc: host.rpc,
   addSettingsScreen: () => () => {},
-  addWorkspacePanel: () => () => {},
+  addAgentPanel: () => () => {},
   addTimelineTransformer: host.addTimelineTransformer,
   addTimelineRenderer: host.addTimelineRenderer,
 } as unknown as PluginClientContext);

@@ -36,7 +36,7 @@ async function replay() {
       react: dirname(require.resolve("react/package.json")),
       "react-dom/client": require.resolve("react-dom/client"),
       "react-native": require.resolve("react-native-web"),
-      "@getpaseo/plugin/client/react-native": join(__dirname, "shims/plugin-react-native.tsx"),
+      "@getpaseo/plugin/client/ui": join(__dirname, "shims/plugin-react-native.tsx"),
       "@getpaseo/plugin/client": join(__dirname, "shims/step-detail-client.ts"),
     },
     nodePaths: [join(__dirname, "node_modules")],

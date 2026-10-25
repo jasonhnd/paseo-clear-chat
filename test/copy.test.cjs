@@ -42,7 +42,7 @@ function harness(file, name, copyText, platform = "ios", scale = 1) {
       if (id === "react") return react;
       if (id === "react/jsx-runtime") return { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }), Fragment: "Fragment" };
       if (id === "react-native") return { View: "View", Text: "Text", ScrollView: "ScrollView", Pressable: "Pressable", Image: "Image", Platform: { OS: platform }, StyleSheet: { create: x => x } };
-      if (id === "@getpaseo/plugin/client/react-native") return sdk;
+      if (id === "@getpaseo/plugin/client/ui") return sdk;
       if (id === "./copy-feedback") return load(resolve(dirname(filename), id + ".tsx"));
       if (id === "./theme-tokens" || id === "../theme-tokens") return { radius: {}, withAlpha: value => value };
       if (id === "./parse") return load(resolve(dirname(filename), "parse.ts"));

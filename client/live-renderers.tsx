@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Text, Pressable, useWindowDimensions } from "react-native";
 import { useAgent, usePaseo, useRpc, useWorkspace } from "@getpaseo/plugin/client";
-import { useRevealedText } from "@getpaseo/plugin/client/react-native";
 import type { PluginTimelineItemProps } from "@getpaseo/plugin/client";
 import { buildThemeTokens } from "./components/theme-tokens";
 import { ToolCallout } from "./components/tool-callouts";
@@ -270,22 +269,14 @@ export function LiveReasoningRenderer({
   useSelectionActions(tokens, preferences.selectionActions);
   usePointerGlow(preferences.pointerGlow);
   const data = item.data;
-  // The host owns the reveal cadence, so streamed reasoning animates the same
-  // way it does in the native timeline instead of appearing in whole blocks.
-  const revealed = useRevealedText(
-    data.text || "",
-    data.phase === "streaming" ? "streaming" : "complete",
-  );
-
   const reasoningData: ReasoningTraceData = useMemo(() => {
-    const rawText = revealed;
+    const rawText = data.text || "";
     // Split into paragraphs or steps if separated
     const paragraphs = rawText.split("\n\n").filter(Boolean);
     // No fabricated title: slicing the first 60 characters of the body cut
     // words in half and then repeated the same text underneath.
     // The final paragraph is the one still being written, so it reads as
-    // active while streaming. That is what advances the timeline rail one
-    // tick at a time instead of lighting the whole thing up at once.
+    // active while streaming. StreamedText owns pacing within that paragraph.
     const streaming = data.phase === "streaming";
     const steps = paragraphs.map((p, idx) => ({
       id: `live-step-${idx}`,
@@ -314,7 +305,7 @@ export function LiveReasoningRenderer({
               },
             ],
     };
-  }, [data, revealed]);
+  }, [data]);
 
   return (
     <View {...hostFontEscape}>
@@ -322,6 +313,7 @@ export function LiveReasoningRenderer({
         data={reasoningData}
         tokens={tokens}
         defaultExpanded={data.phase === "streaming"}
+        streaming={data.phase === "streaming"}
       />
     </View>
   );

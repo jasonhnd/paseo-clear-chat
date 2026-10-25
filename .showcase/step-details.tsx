@@ -1,7 +1,7 @@
 import React, { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useWindowDimensions } from "react-native";
 import { createRoot } from "react-dom/client";
-import type { PluginAgentPanelProps, PluginClientContext, PluginWorkspacePanelContribution } from "@getpaseo/plugin/client";
+import type { PluginAgentPanelProps, PluginClientContext, PluginAgentPanelContribution } from "@getpaseo/plugin/client";
 import { LiveToolCallRenderer } from "../client/live-renderers";
 import type { LiveToolCallPayload } from "../client/tool-call-data";
 import { installStepDetailPanel } from "../client/components/step-detail-host";
@@ -29,9 +29,9 @@ const host = { id: "demo-host", label: "Demo host" };
 const listeners = new Set<() => void>();
 const publish = () => { for (const listener of listeners) listener(); };
 let visible = false;
-let contribution: PluginWorkspacePanelContribution;
+let contribution: PluginAgentPanelContribution;
 installStepDetailPanel({
-  addWorkspacePanel(value: PluginWorkspacePanelContribution) { contribution = value; return () => {}; },
+  addAgentPanel(value: PluginAgentPanelContribution) { contribution = value; return () => {}; },
   openPanel() {
     window.__stepDetailPanelAttempts.push({ width: innerWidth, workspaceReady: previewWorkspaceReady() });
     if (!previewWorkspaceReady()) throw new Error("Plugin panel context is unavailable");
@@ -82,7 +82,7 @@ function Preview() {
     </div>
     {showPanel && !(location.pathname === "/host-remount" && width < TABLET_MIN) ? <aside key={location.pathname === "/host-remount" ? (width < TABLET_MIN ? "pane-compact" : "pane-wide") : "panel"} data-testid="preview-host-panel" style={{ width: "40vw", maxWidth: 440, flexShrink: 0, display: width >= DESKTOP_MIN ? "flex" : "none", flexDirection: "column", borderLeft: `1px solid ${colors.border}` }}>
       <button data-testid="preview-host-close" onClick={() => { visible = false; publish(); }}>Close host panel</button>
-      <Component host={host} agentId="demo-agent" workspaceId="demo-workspace" context="agent" layout={{ compact: false, platform: "web" }} theme={{ colors }} />
+      <Component host={host} params={{ agentId: "demo-agent" }} workspaceId="demo-workspace" revision={0} tab={{ state: undefined, setState() {}, setModified() {} }} layout={{ compact: false, platform: "web" }} theme={{ colors }} />
     </aside> : null}
     </main>
   </div>;

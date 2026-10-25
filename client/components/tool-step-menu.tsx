@@ -1,7 +1,7 @@
 import React, { useRef, useState } from "react";
 import { Modal, Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import type { PressableProps, TextStyle } from "react-native";
-import { copyText, useToast } from "@getpaseo/plugin/client/react-native";
+import { copyText, useToast } from "@getpaseo/plugin/client/ui";
 import type { ToolCalloutData } from "../../shared/contracts";
 import { DESKTOP_MIN } from "../breakpoints";
 import { CopyFallbackDialog } from "./copy-feedback";
