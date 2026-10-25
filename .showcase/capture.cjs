@@ -4,14 +4,17 @@
 const { build } = require("esbuild");
 const { chromium } = require("playwright-core");
 const { createServer } = require("node:http");
-const { readFileSync, writeFileSync, mkdirSync, rmSync, statSync, realpathSync } = require("node:fs");
+const { readFileSync, writeFileSync, copyFileSync, mkdirSync, rmSync, statSync, realpathSync } = require("node:fs");
 const { resolve, join, dirname } = require("node:path");
 const { tmpdir } = require("node:os");
 const { execFileSync } = require("node:child_process");
 const { createCapturePlan } = require("./capture-plan.cjs");
 
 const root = resolve(__dirname, "..");
-const plan = createCapturePlan(readFileSync(join(root, "README.md"), "utf8"));
+const groups = createCapturePlan(readFileSync(join(root, "README.md"), "utf8"));
+const selected = process.env.SHOWCASE_CAPTURE_ONLY;
+const plan = selected ? groups.filter(group => group.id === selected) : groups;
+if (!plan.length) throw new Error(`Unknown screenshot group: ${selected}`);
 const output = resolve(process.env.SHOWCASE_OUTPUT_ROOT || root);
 const temp = process.env.KANBAN_TMP;
 if (!temp || realpathSync(temp) !== resolve(temp)) {
@@ -55,7 +58,7 @@ async function capture() {
   try {
     await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
     browser = await chromium.launchPersistentContext(join(work, "chrome-profile"), {
-      channel: "chrome", headless: true, viewport: { width: 1600, height: 1000 },
+      ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : { channel: "chrome" }), headless: true, viewport: { width: 1600, height: 1000 },
       deviceScaleFactor: 1.5, reducedMotion: "reduce", timezoneId: "UTC", locale: "en-US",
       args: ["--disable-background-networking", "--disable-component-update", "--no-first-run"],
     });
@@ -104,7 +107,7 @@ async function capture() {
         const raw = join(work, name);
         await shot.screenshot({ path: raw, animations: "disabled" });
         const destination = join(output, group[theme]);
-        execFileSync("sips", ["-s", "format", "png", raw, "--out", destination], { stdio: "pipe" });
+        copyFileSync(raw, destination);
         // Palette compression keeps large comparison/whole-turn images readable.
         if (statSync(destination).size > 500000) {
           execFileSync("magick", [raw, "-strip", "-colors", "256", "-define", "png:compression-level=9", destination]);
@@ -117,7 +120,7 @@ async function capture() {
       }
     }
     writeFileSync(join(temp, "capture-report.json"), JSON.stringify(report, null, 2) + "\n");
-    console.log(`Captured ${report.length} images with Google Chrome.`);
+    console.log(`Captured ${report.length} images with Chromium.`);
   } finally {
     await browser?.close();
     await new Promise(resolve => server.close(resolve));
