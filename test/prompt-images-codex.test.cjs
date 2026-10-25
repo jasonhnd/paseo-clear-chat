@@ -768,6 +768,83 @@ describe("codex pasted images", { concurrency: false }, () => {
     assert.deepEqual(fs.readFileSync(real), original);
   });
 
+  test("an in-place rewrite with a restored mtime returns no image", async t => {
+    const { execFileSync } = require("node:child_process");
+    const root = fixture(t);
+    const home = join(root, "codex-home");
+    const rollout = writeRollout(home, THREAD, [sessionMeta(THREAD), userMessage("Exact text.", [dataUrl(png)])]);
+    const real = fs.realpathSync(rollout);
+    const original = fs.readFileSync(real);
+    const from = JSON.stringify(userMessage("Exact text.", [dataUrl(png)]));
+    const to = JSON.stringify(userMessage("Exact text.", [dataUrl(decoy)]));
+    assert.equal(Buffer.byteLength(from), Buffer.byteLength(to));
+    assert.equal(original.includes(from), true);
+    const replacement = Buffer.from(original.toString("utf8").replace(from, to));
+    assert.equal(replacement.length, original.length);
+    assert.equal(replacement.includes(decoy.toString("base64")), true);
+    assert.equal(replacement.includes(png.toString("base64")), false);
+    assert.ok(original.length < 64 * 1024);
+    const before = fs.statSync(real, { bigint: true });
+    const restoreMtime = () => {
+      // fs.utimes cannot round-trip mtimeNs. touch -d writes the exact value.
+      const seconds = before.mtimeNs / 1000000000n;
+      const nanos = before.mtimeNs % 1000000000n;
+      execFileSync("touch", ["-m", "-d", `@${seconds}.${nanos.toString().padStart(9, "0")}`, real]);
+    };
+    const writeInPlace = bytes => {
+      const fd = fs.openSync(real, "r+");
+      try {
+        assert.equal(fs.writeSync(fd, bytes, 0, bytes.length, 0), bytes.length);
+      } finally {
+        fs.closeSync(fd);
+      }
+    };
+    const sameRollout = fd => {
+      try {
+        const info = fs.fstatSync(fd, { bigint: true });
+        return info.dev === before.dev && info.ino === before.ino;
+      } catch {
+        return false;
+      }
+    };
+    const wrapped = Object.create(fs);
+    let swaps = 0;
+    Object.defineProperty(wrapped, "read", {
+      value(fd, buffer, offset, length, position, callback) {
+        if (typeof callback !== "function") return fs.read(fd, buffer, offset, length, position, callback);
+        // The stamp is already taken. This read must observe the other PNG.
+        const attack = position === 0 && sameRollout(fd);
+        if (attack) {
+          writeInPlace(replacement);
+          swaps += 1;
+        }
+        return fs.read(fd, buffer, offset, length, position, (error, bytesRead, filled) => {
+          if (attack) {
+            // Bytes and mtime match again before the next fstat. ctime does not.
+            writeInPlace(original);
+            restoreMtime();
+          }
+          callback(error, bytesRead, filled);
+        });
+      },
+    });
+    const h = harness({ "node:fs": wrapped });
+    const listed = await askRegistry(h, home, "Exact text.");
+    assert.equal(swaps, 2);
+    assert.deepEqual(listed.images, emptyList("lookup_failed"));
+    assert.equal(listed.image.dataUri, null);
+    assert.equal(listed.image.error, "lookup_failed");
+    assert.equal(JSON.stringify(listed).includes(decoy.toString("base64")), false);
+    assert.equal(JSON.stringify(listed).includes(png.toString("base64")), false);
+    const after = fs.statSync(real, { bigint: true });
+    assert.equal(after.dev, before.dev);
+    assert.equal(after.ino, before.ino);
+    assert.equal(after.size, before.size);
+    assert.equal(after.mtimeNs, before.mtimeNs);
+    assert.notEqual(after.ctimeNs, before.ctimeNs);
+    assert.deepEqual(fs.readFileSync(real), original);
+  });
+
   test("nativeHandle is used when sessionId misses, and two different files are not mixed", async t => {
     const h = harness();
     const { home } = installRich(t, h);
