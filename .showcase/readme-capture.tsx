@@ -6,6 +6,7 @@ import { installFrostedGlass } from "../client/components/frosted";
 import { installCompactToolSpacing } from "../client/tool-row-spacing";
 import { buildThemeTokens } from "../client/components/theme-tokens";
 import { Demo } from "./demo";
+import { DEFAULT_PREFERENCES } from "../client/preferences";
 
 const params = new URLSearchParams(location.search);
 const colors = params.get("theme") === "dark" ? {
@@ -25,4 +26,5 @@ document.body.style.background = colors.surface0;
 document.documentElement.style.overflow = "hidden";
 document.getElementById("root")!.style.display = "block";
 const translations = new PluginTranslationRuntime({ getLocale: () => "en", subscribe: () => () => {} });
-createRoot(document.getElementById("root")!).render(<PluginTranslationProvider runtime={translations}><Demo tokens={buildThemeTokens(colors)} animate={params.has("animate")} /></PluginTranslationProvider>);
+const textScale = Number(params.get("textScale") || 1);
+createRoot(document.getElementById("root")!).render(<PluginTranslationProvider runtime={translations}><Demo tokens={buildThemeTokens(colors, { ...DEFAULT_PREFERENCES, textScale })} animate={params.has("animate")} /></PluginTranslationProvider>);

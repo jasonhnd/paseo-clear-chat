@@ -28,6 +28,22 @@ async function captureDemo({ page, origin, work, root, errors, plan, settle, ver
     const cell = [...node.querySelectorAll('[data-testid^="step-detail-cell-"]')].find(cell => cell.getBoundingClientRect().top <= top && cell.getBoundingClientRect().bottom > top);
     return { key: cell?.getAttribute("data-testid"), offset: cell ? Math.round(top - cell.getBoundingClientRect().top) : 0, scrollTop: node.scrollTop };
   });
+  const summaryPosition = () => scroll().evaluate(node => {
+    const viewport = node.getBoundingClientRect();
+    return ["Test Files  2 passed (2)", "Tests  12 passed (12)"].map(label => {
+      const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+      while (walker.nextNode()) {
+        const index = walker.currentNode.textContent.indexOf(label);
+        if (index < 0) continue;
+        const range = document.createRange();
+        range.setStart(walker.currentNode, index);
+        range.setEnd(walker.currentNode, index + label.length);
+        const bounds = range.getBoundingClientRect();
+        return { label, top: Math.round(bounds.top - viewport.top), visible: bounds.top >= viewport.top && bounds.bottom <= viewport.bottom, topFraction: (bounds.top - viewport.top) / viewport.height };
+      }
+      return { label, visible: false };
+    });
+  });
   const report = { fps: plan.fps, seconds: plan.seconds, frames: plan.fps * plan.seconds };
   let before;
   const started = Date.now();
@@ -47,10 +63,25 @@ async function captureDemo({ page, origin, work, root, errors, plan, settle, ver
       assert.ok((await demo.getByTestId("step-detail-panel").innerText()).includes("$49.99"));
       report.fonts = await verifyFonts(page, frame.url());
     }
-    if (index >= 156 && index < 192) await scroll().evaluate(node => { node.scrollTop += 7; });
+    if (index === 156) {
+      report.scrollStart = await scroll().evaluate(node => node.scrollTop);
+      report.scrollTarget = await scroll().evaluate(node => {
+        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+        while (walker.nextNode()) {
+          const index = walker.currentNode.textContent.indexOf("Test Files  2 passed (2)");
+          if (index < 0) continue;
+          const range = document.createRange(); range.setStart(walker.currentNode, index); range.setEnd(walker.currentNode, index + 1);
+          return node.scrollTop + range.getBoundingClientRect().top - node.getBoundingClientRect().top - 28;
+        }
+        throw new Error("The npm test summary must exist before scrolling");
+      });
+    }
+    if (index >= 156 && index < 192) await scroll().evaluate((node, target) => { node.scrollTop = target; }, report.scrollStart + (report.scrollTarget - report.scrollStart) * (index - 155) / 36);
     if (index === 198) {
       before = await readingPosition();
       assert.ok(before.scrollTop > 50 && before.key, "The test output must be scrolled before resizing");
+      report.summaryBefore = await summaryPosition();
+      assert.ok(report.summaryBefore.every(line => line.visible && line.topFraction < 0.35), `The summary must be visible at the top of the side panel: ${JSON.stringify(report.summaryBefore)}`);
     }
     // Cross both responsive breakpoints while the same output remains open.
     if (index >= 204 && index <= 228) {
@@ -63,6 +94,8 @@ async function captureDemo({ page, origin, work, root, errors, plan, settle, ver
       assert.equal(after.key, before.key, `The visible output chunk must survive the viewport change: ${JSON.stringify({ before, after })}`);
       assert.ok(Math.abs(after.offset - before.offset) <= 2, `Reading position changed: ${JSON.stringify({ before, after })}`);
       report.readingPosition = { before, after };
+      report.summaryAfter = await summaryPosition();
+      assert.ok(report.summaryAfter.every(line => line.visible && line.topFraction < 0.35), `The test summary must remain visible at the top of the sheet after narrowing: ${JSON.stringify(report.summaryAfter)}`);
     }
     if (index === 264) {
       await demo.getByTestId("step-detail-close").click();
@@ -75,7 +108,7 @@ async function captureDemo({ page, origin, work, root, errors, plan, settle, ver
   }
   assert.deepEqual(errors, []);
   const input = ["-framerate", String(plan.fps), "-i", join(frames, "%04d.png")];
-  const evidence = join(homedir(), "evidence-cc-s6");
+  const evidence = join(homedir(), "evidence-cc-s7");
   mkdirSync(evidence, { recursive: true });
   execFileSync("ffmpeg", ["-y", ...input, "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p", "-movflags", "+faststart", join(evidence, "demo.mp4")], { stdio: "pipe" });
   const destination = join(root, plan.light);
