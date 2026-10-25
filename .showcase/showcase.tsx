@@ -21,6 +21,9 @@ import { AssistantFooter } from "../client/components/turn-footer";
 import { MarkdownView } from "../client/components/markdown/markdown-view";
 import { FinalToolReply } from "../client/components/final-tool-reply";
 import { parseSystemEnvelope } from "../client/system-envelope";
+import { StepDetailPanel } from "../client/components/step-detail-panel";
+import { createStepDetailState } from "../client/components/step-detail-state";
+import type { ToolCalloutData } from "../shared/contracts";
 import { APPROVAL, CALLS, CODE, DIFF, JOB_NOTICE, PROMPT, REASONING, REPLY, TASKS, WRAP_UP } from "./fixtures";
 
 const dark = new URLSearchParams(location.search).get("theme") !== "light";
@@ -121,8 +124,56 @@ function Showcase() {
     <Shot id="settings" title="Presentation preferences" width={760}><ClearChatSettingsPage theme={{ colors }} host={{ id: "demo-host", label: "Demo host" }} layout={{ compact: false, platform: "web" }} /></Shot>
   </main>;
 }
+const HERO_STEPS = ["thinking", "search", "read", "edit", "bash", "git"] as const;
+const heroEdit = CALLS.edit;
+if (!heroEdit) throw new Error("Missing demo edit fixture");
+// The detail panel reads input and copyResult, not the card's diff field.
+const HERO_EDIT: ToolCalloutData = { ...heroEdit, input: DIFF, copyResult: "Updated src/cart.ts." };
+
+function HeroTranscript({ compact }: { compact: boolean }) {
+  return <View style={{ gap: 12, paddingHorizontal: compact ? 12 : 28, paddingTop: compact ? 16 : 24, paddingBottom: 28 }}>
+    <Prompt />
+    {HERO_STEPS.map(name => <Tool key={name} name={name} initialExpanded={false} onOpenDetail={() => {}} />)}
+    <Reply />
+  </View>;
+}
+
+/** 1440×900 conversation: folded steps, with the edit diff in the side panel. */
+function HeroDesktop() {
+  return <div id="shot-hero-desktop" style={{ width: 1440, height: 900, display: "flex", overflow: "hidden", background: colors.surface0, color: colors.foreground, fontFamily: tokens.fontUi }}>
+    <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}><HeroTranscript compact={false} /></div>
+    <div style={{ width: 520, height: 900, display: "flex", flexDirection: "column", minHeight: 0, borderLeft: `1px solid ${colors.border}`, background: colors.surface0 }}>
+      <StepDetailPanel step={HERO_EDIT} open onOpenChange={() => {}} presentation="side" tokens={tokens} />
+    </div>
+  </div>;
+}
+
+/** Same conversation at a 390px browser width, details open in the bottom sheet. */
+function HeroPhone() {
+  const viewState = React.useMemo(() => createStepDetailState(), []);
+  return <div id="shot-hero-phone" style={{ width: 390, height: 820, overflow: "hidden", background: colors.surface0, color: colors.foreground, fontFamily: tokens.fontUi }}>
+    <HeroTranscript compact />
+    <StepDetailPanel step={HERO_EDIT} open onOpenChange={() => {}} presentation="sheet" tokens={tokens} viewState={viewState} />
+  </div>;
+}
+
+function HeroFrame() {
+  const shot = new URLSearchParams(location.search).get("shot");
+  if (shot === "hero-desktop") return <HeroDesktop />;
+  if (shot === "hero-phone") return <HeroPhone />;
+  return <Showcase />;
+}
+
 embedFonts();
 installFrostedGlass();
 document.body.style.background = colors.surface0;
+const heroShot = new URLSearchParams(location.search).get("shot");
+if (heroShot) {
+  document.documentElement.style.background = colors.surface0;
+  document.documentElement.style.overflow = "hidden";
+  document.body.style.overflow = "hidden";
+  const root = document.getElementById("root");
+  if (root) root.style.display = "block";
+}
 const translations = new PluginTranslationRuntime({ getLocale: () => "en", subscribe: () => () => {} });
-createRoot(document.getElementById("root")!).render(<PluginTranslationProvider runtime={translations}><Showcase /></PluginTranslationProvider>);
+createRoot(document.getElementById("root")!).render(<PluginTranslationProvider runtime={translations}><HeroFrame /></PluginTranslationProvider>);
