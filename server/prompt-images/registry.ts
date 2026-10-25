@@ -1,7 +1,8 @@
 import type { RpcInput, RpcOutput } from "@getpaseo/plugin";
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
 import type { promptImageRpc, promptImagesRpc } from "../../shared/prompt-images-rpc";
-import { MAX_IMAGE_BYTES } from "./read-only";
+import { MAX_IMAGE_BYTES, readLocalImageReadOnly } from "./read-only";
+import { readImageHeader } from "./image-header";
 
 type LookupInput = RpcInput<typeof promptImagesRpc>;
 type ImagesResult = RpcOutput<typeof promptImagesRpc>;
@@ -23,10 +24,26 @@ export interface ResolverContext extends LookupInput {
   signal: AbortSignal;
 }
 
+/** All images must belong to the single message selected by the resolver. */
+export interface FoundImages {
+  matchedMessages: number;
+  images: FoundImage[];
+}
+
+/** Local adapters must read through the validated descriptor, never a saved path. */
+export function localFileImage(id: string, mime: string, path: string, allowedRoots: readonly string[]): FoundImage {
+  return { id, mime, async readBytes() {
+    const bytes = await readLocalImageReadOnly(path, allowedRoots);
+    if (!bytes) throw new LookupError("invalid_image");
+    return bytes;
+  } };
+}
+
 export interface PromptImageResolver {
   /** Paseo 0.13 snapshots expose the provider ID, not its configured command. */
   matches(provider: string): boolean;
-  find(context: ResolverContext): Promise<FoundImage[]>;
+  /** Prefer matching IDs; otherwise count every message matching the text. */
+  find(context: ResolverContext): Promise<FoundImages>;
 }
 
 /** Provider adapters are added separately; production lookups currently find none. */
@@ -34,13 +51,10 @@ export const promptImageResolvers: readonly PromptImageResolver[] = [];
 
 const MAX_THUMBNAILS = 3;
 const THUMBNAIL_EDGE = 512;
-const MAX_PIXELS = 24 * 1024 * 1024;
-const IMAGE_MIMES: Record<string, string> = {
-  png: "image/png", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp",
-};
+const MAX_PIXELS = 24_000_000;
 
 type Reason = "unknown_provider" | "agent_not_found" | "provider_mismatch" | "not_found" |
-  "timeout" | "lookup_failed" | "image_too_large" | "invalid_image";
+  "timeout" | "lookup_failed" | "image_too_large" | "invalid_image" | "ambiguous" | "no_match";
 
 class LookupError extends Error {
   constructor(readonly reason: Reason) { super(reason); }
@@ -54,15 +68,23 @@ function dataUri(bytes: Uint8Array, mime: string): string {
   return `data:${mime};base64,${Buffer.from(bytes).toString("base64")}`;
 }
 
-/** Lazy, pure-JS decode; first animation frame only, with an allocation bound. */
+/** Header checks precede importing or invoking the bundled WASM codecs. */
 async function decodeImage(bytes: Buffer, mime: string) {
-  const { decode, Image, ImageType } = await import("imagescript");
-  const kind = ImageType.getType(bytes);
-  if (!kind || !IMAGE_MIMES[kind] || IMAGE_MIMES[kind] !== mime) throw new LookupError("invalid_image");
-  const decoded = await decode(bytes, { onlyFirstFrame: true, maxPixels: MAX_PIXELS });
-  const image = decoded instanceof Image ? decoded : decoded[0];
-  if (!image) throw new LookupError("invalid_image");
-  return image;
+  const header = readImageHeader(bytes);
+  if (!header || header.mime !== mime || header.width < 1 || header.height < 1) throw new LookupError("invalid_image");
+  if (header.width * header.height > MAX_PIXELS) throw new LookupError("image_too_large");
+  // ImageScript is used under its MIT license option.
+  const { decode, Image } = await import("imagescript");
+  try {
+    // 1.3.1 takes a boolean for first-frame-only decoding, with no maxPixels option.
+    const decoded = await decode(bytes, true);
+    const image = decoded instanceof Image ? decoded : decoded[0];
+    if (!image || image.width !== header.width || image.height !== header.height) throw new LookupError("invalid_image");
+    return image;
+  } catch (error) {
+    if (error instanceof LookupError) throw error;
+    throw new LookupError("invalid_image");
+  }
 }
 
 /**
@@ -131,7 +153,9 @@ export function createPromptImageHandlers(options: {
       nativeHandle: persistence?.nativeHandle ?? null, signal,
     });
     check();
-    return found;
+    if (found.matchedMessages === 0) throw new LookupError("no_match");
+    if (found.matchedMessages !== 1) throw new LookupError("ambiguous");
+    return found.images;
   }
 
   return {
@@ -146,13 +170,18 @@ export function createPromptImageHandlers(options: {
           const bytes = await candidate.readBytes();
           check();
           if (bytes.length > MAX_IMAGE_BYTES) { reason = "image_too_large"; continue; }
-          const image = await decodeImage(bytes, candidate.mime);
-          check();
-          const scale = Math.min(1, THUMBNAIL_EDGE / Math.max(image.width, image.height));
-          image.resize(Math.max(1, Math.round(image.width * scale)), Math.max(1, Math.round(image.height * scale)));
-          const thumbnail = await image.encode();
-          check();
-          images.push({ id: candidate.id, thumbDataUri: dataUri(thumbnail, "image/png"), mime: "image/png", width: image.width, height: image.height });
+          try {
+            const image = await decodeImage(bytes, candidate.mime);
+            check();
+            const scale = Math.min(1, THUMBNAIL_EDGE / Math.max(image.width, image.height));
+            image.resize(Math.max(1, Math.round(image.width * scale)), Math.max(1, Math.round(image.height * scale)));
+            const thumbnail = await image.encode();
+            check();
+            images.push({ id: candidate.id, thumbDataUri: dataUri(thumbnail, "image/png"), mime: "image/png", width: image.width, height: image.height });
+          } catch (error) {
+            check();
+            reason = error instanceof LookupError ? error.reason : "invalid_image";
+          }
         }
         return { images, total: found.length, reason };
       }, reason => ({ images: [], total: 0, reason }), result => result.reason);
