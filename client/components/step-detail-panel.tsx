@@ -1,3 +1,5 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "../messages";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Modal, PanResponder, Platform, Pressable, SafeAreaView, StyleSheet, Text, View,
@@ -42,6 +44,7 @@ export function sheetSnapAfterDrag(height: number, startHeight: number, dy: numb
 
 /** One body for the phone sheet, tablet popover and host-owned desktop pane. */
 export function StepDetailPanel({ step, open, onOpenChange, presentation, tokens, onRevealPath, imageFile, viewState }: StepDetailPanelProps) {
+  const { t } = useTranslation(messages);
   const window = useWindowDimensions();
   const localState = useRef<StepDetailState | null>(null);
   if (!localState.current) localState.current = createStepDetailState();
@@ -98,7 +101,7 @@ export function StepDetailPanel({ step, open, onOpenChange, presentation, tokens
       testID="step-detail-panel"
       role={presentation === "side" ? "region" : "dialog"}
       aria-modal={presentation !== "side"}
-      accessibilityLabel="Step details"
+      accessibilityLabel={t("detail.panelTitle")}
       accessibilityViewIsModal={presentation !== "side"}
       onAccessibilityEscape={close}
       style={[
@@ -112,9 +115,9 @@ export function StepDetailPanel({ step, open, onOpenChange, presentation, tokens
         <View
           testID="step-detail-drag-handle"
           accessibilityRole="adjustable"
-          accessibilityLabel="Resize step details"
-          accessibilityValue={{ text: snap === "half" ? "Half screen" : "Full screen" }}
-          accessibilityHint="Drag up for full screen, down for half screen, or further down to close."
+          accessibilityLabel={t("detail.resizeA11y")}
+          accessibilityValue={{ text: snap === "half" ? t("detail.half") : t("detail.full") }}
+          accessibilityHint={t("detail.resizeHint")}
           accessibilityActions={[{ name: "increment" }, { name: "decrement" }, { name: "escape" }]}
           onAccessibilityAction={({ nativeEvent }) => {
             if (nativeEvent.actionName === "increment") setSnap("full");
@@ -134,14 +137,14 @@ export function StepDetailPanel({ step, open, onOpenChange, presentation, tokens
         {presentation === "sheet" ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={snap === "half" ? "Expand step details" : "Half-screen step details"}
+            accessibilityLabel={snap === "half" ? t("detail.expandA11y") : t("detail.halfA11y")}
             onPress={() => setSnap(snap === "half" ? "full" : "half")}
             style={styles.button}
           >
             <Glyph name={snap === "half" ? "Maximize2" : "Minimize2"} size={18} color={tokens.foregroundMuted} />
           </Pressable>
         ) : null}
-        <Pressable testID="step-detail-close" accessibilityRole="button" accessibilityLabel="Close step details" onPress={close} style={styles.button}>
+        <Pressable testID="step-detail-close" accessibilityRole="button" accessibilityLabel={t("detail.closeA11y")} onPress={close} style={styles.button}>
           <Glyph name="X" size={18} color={tokens.foregroundMuted} />
         </Pressable>
       </View>
@@ -155,7 +158,7 @@ export function StepDetailPanel({ step, open, onOpenChange, presentation, tokens
   return (
     <Modal transparent visible={open} animationType={presentation === "sheet" ? "slide" : "fade"} onRequestClose={close}>
       <View style={styles.overlay}>
-        <Pressable testID="step-detail-backdrop" accessibilityRole="button" accessibilityLabel="Dismiss step details" onPress={close} style={styles.backdrop} />
+        <Pressable testID="step-detail-backdrop" accessibilityRole="button" accessibilityLabel={t("detail.dismissA11y")} onPress={close} style={styles.backdrop} />
         <SafeAreaView pointerEvents="box-none" style={styles.safeArea}>
           <View
             pointerEvents="box-none"

@@ -1,3 +1,6 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "../../messages";
+import { translate as t } from "../../translation";
 import React, { useMemo } from "react";
 import { View, Text, ScrollView, StyleSheet, Platform } from "react-native";
 import type { TextStyle, ViewStyle } from "react-native";
@@ -244,6 +247,7 @@ function scaleMetrics(metrics: VariantMetrics, scale: number): VariantMetrics {
 }
 
 export function MarkdownView({ text, tokens, variant, images = [], cwd, expansionIdentity }: MarkdownViewProps) {
+  useTranslation(messages);
   const filePath = useReplyFilePath(cwd);
   const blocks = useMemo(() => parseMarkdown(text), [text]);
   const previews = useMemo(() => {
@@ -577,7 +581,7 @@ function renderInline(
             key={key}
             selectable={selectable}
             accessibilityRole="link"
-            accessibilityLabel={span.filePath ? `${context.copyFilePath ? "Copy" : "Show"} file path: ${span.filePath}` : undefined}
+            accessibilityLabel={span.filePath ? t(context.copyFilePath ? "markdown.copyPathA11y" : "markdown.showPathA11y", { path: span.filePath }) : undefined}
             // No `href`: React Native Web would render a real anchor and the
             // click would navigate the app window itself. The press handler
             // routes through the host's opener instead.

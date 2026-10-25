@@ -1,3 +1,6 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "../messages";
+import { translate as t } from "../translation";
 import React, { useMemo, useState } from "react";
 import { View, Text, Pressable, StyleSheet, Image } from "react-native";
 import { CopyFallbackDialog, copyTouchTarget, useCopyText } from "./copy-feedback";
@@ -43,8 +46,8 @@ function formatTokens(value: number): string {
   if (value < 1000) return String(value);
   // Rounding is done on integers: 97850 / 1000 is held as 97.8499…, so
   // `toFixed(1)` would report 97.8 for a value that is 97.9k.
-  if (value < 1_000_000) return `${(Math.round(value / 100) / 10).toFixed(1)}k`;
-  return `${(Math.round(value / 100_000) / 10).toFixed(1)}M`;
+  if (value < 1_000_000) return t("prompt.tokensK", { count: value / 1000, replace: { count: (Math.round(value / 100) / 10).toFixed(1) } });
+  return t("prompt.tokensM", { count: value / 1_000_000, replace: { count: (Math.round(value / 100_000) / 10).toFixed(1) } });
 }
 
 function formatClock(value: Date): string {
@@ -94,6 +97,7 @@ export function UserMessage({
   pending = false,
   expansionIdentity,
 }: UserMessageProps) {
+  const { t } = useTranslation(messages);
   const { copied, handleCopy, fallbackText, setFallbackText } = useCopyText(text);
   const [failedImages, setFailedImages] = useState<ReadonlySet<string>>(() => new Set());
   const attachmentCount = Math.max(imageCount ?? 0, images?.length ?? 0);
@@ -198,7 +202,7 @@ export function UserMessage({
       <View style={styles.body}>
         <View style={styles.metaRow}>
           <Text selectable style={styles.label}>
-            You
+            {t("prompt.you")}
           </Text>
           {timestamp ? (
             <Text selectable style={styles.clock}>
@@ -208,7 +212,7 @@ export function UserMessage({
           <Pressable
             onPress={handleCopy}
             accessibilityRole="button"
-            accessibilityLabel="Copy prompt"
+            accessibilityLabel={t("prompt.copyA11y")}
             style={styles.copyButton}
           >
             <Pop trigger={copied}>
@@ -226,7 +230,7 @@ export function UserMessage({
         {attachmentCount > 0 ? (
           <View style={styles.imageRow}>
             <Text selectable style={styles.attachmentCount}>
-              {attachmentCount} {attachmentCount === 1 ? "image" : "images"} attached
+              {t("prompt.imagesAttached", { count: attachmentCount })}
             </Text>
             {images?.filter((uri) => !failedImages.has(uri)).map((uri) => (
               <Image
@@ -234,7 +238,7 @@ export function UserMessage({
                 source={{ uri }}
                 style={styles.image}
                 resizeMode="contain"
-                accessibilityLabel="Attached image"
+                accessibilityLabel={t("prompt.imageA11y")}
                 onError={() => setFailedImages((previous) => new Set(previous).add(uri))}
               />
             ))}
@@ -242,12 +246,12 @@ export function UserMessage({
         ) : null}
         {usage ? (
           <View style={styles.usageRow}>
-            <UsageFigure label="in" value={usage.inputTokens} styles={styles} />
-            <UsageFigure label="cached" value={usage.cachedInputTokens} styles={styles} />
-            <UsageFigure label="out" value={usage.outputTokens} styles={styles} />
+            <UsageFigure label={t("prompt.usageIn")} value={usage.inputTokens} styles={styles} />
+            <UsageFigure label={t("prompt.usageCached")} value={usage.cachedInputTokens} styles={styles} />
+            <UsageFigure label={t("prompt.usageOut")} value={usage.outputTokens} styles={styles} />
             {pending ? (
               <Text selectable style={styles.usageKey}>
-                counting…
+                {t("prompt.counting")}
               </Text>
             ) : null}
           </View>

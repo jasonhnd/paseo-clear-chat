@@ -1,3 +1,5 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "../messages";
 import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { View, Text, Pressable, StyleSheet, Animated } from "react-native";
 import { Glyph } from "./glyph";
@@ -20,6 +22,7 @@ interface TaskListProps {
 }
 
 export function TaskList({ data, tokens, onToggleTask }: TaskListProps) {
+  const { t } = useTranslation(messages);
   const [tasks, setTasks] = useState<TaskItemData[]>(data.tasks);
   const [expandedBlockedId, setExpandedBlockedId] = useState<string | null>(null);
   useEffect(() => setTasks(data.tasks), [data.tasks]);
@@ -307,7 +310,7 @@ export function TaskList({ data, tokens, onToggleTask }: TaskListProps) {
                   {data.phaseName}
                 </Text>
                 <Text selectable style={styles.phaseBadge}>
-                  Checklist
+                  {t("tool.task.checklist")}
                 </Text>
               </View>
             </View>
@@ -317,12 +320,12 @@ export function TaskList({ data, tokens, onToggleTask }: TaskListProps) {
               <View style={styles.statusRow}>
                 <PulseDot color={tokens.accent} size={6} />
                 <Text selectable style={styles.statusText}>
-                  Tasks
+                  {t("tool.task.working")}
                 </Text>
               </View>
             ) : null}
             <Text selectable style={styles.progressRatio}>
-              {completedCount}/{totalCount} ({progressPercent}%)
+              {t("tool.task.progress", { completed: completedCount, total: totalCount, percent: progressPercent })}
             </Text>
           </View>
         </View>
@@ -348,7 +351,7 @@ export function TaskList({ data, tokens, onToggleTask }: TaskListProps) {
                 onLayout={(event) => recordTick(taskIndex, event.nativeEvent.layout.y)}
               >
                 <Pressable
-                  accessibilityLabel={`Set ${task.title} status`}
+                  accessibilityLabel={t("tool.task.setStatusA11y", { title: task.title })}
                   onPress={() => toggleStatus(task)}
                   style={styles.taskDot}
                 >
@@ -384,12 +387,12 @@ export function TaskList({ data, tokens, onToggleTask }: TaskListProps) {
                   <View style={styles.taskFooterRow}>
                     {isActive && (
                       <Text selectable style={[styles.statusLabel, { color: tokens.accent }]}>
-                        In Progress
+                        {t("tool.task.inProgress")}
                       </Text>
                     )}
                     {isDone && (
                       <Text selectable style={[styles.statusLabel, { color: tokens.success }]}>
-                        Done
+                        {t("tool.task.done")}
                       </Text>
                     )}
                     {isBlocked && (
@@ -397,7 +400,7 @@ export function TaskList({ data, tokens, onToggleTask }: TaskListProps) {
                         onPress={() => setExpandedBlockedId(isBlockedOpen ? null : task.id)}
                       >
                         <Text style={[styles.statusLabel, { color: tokens.warning }, unselectable]}>
-                          Blocked ▾
+                          {t("tool.task.blocked")}
                         </Text>
                       </Pressable>
                     )}
@@ -411,7 +414,7 @@ export function TaskList({ data, tokens, onToggleTask }: TaskListProps) {
                   {isBlocked && isBlockedOpen && task.blockerReason && (
                     <View style={styles.blockedReasonBox}>
                       <Text selectable style={styles.blockedReasonText}>
-                        Reason: {task.blockerReason}
+                        {t("tool.task.reason", { reason: task.blockerReason })}
                       </Text>
                     </View>
                   )}

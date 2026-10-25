@@ -1,3 +1,5 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "../messages";
 import React, { useMemo } from "react";
 import { View, Text, StyleSheet, Image } from "react-native";
 import { fontUi, radius } from "./theme-tokens";
@@ -70,7 +72,9 @@ function markId(provider: KnownProvider): string | undefined {
 }
 
 export function ProviderLogo({ provider, size = 14, showLabel = false }: ProviderLogoProps) {
+  const { t } = useTranslation(messages);
   const normalized = normalizeProvider(provider);
+  const displayName = t(`provider.${normalized}`);
   const config = PROVIDER_CONFIGS[normalized];
   const id = useMemo(() => markId(normalized), [normalized]);
   const uri = id ? MARK_BITMAPS[id] : undefined;
@@ -86,7 +90,7 @@ export function ProviderLogo({ provider, size = 14, showLabel = false }: Provide
             tint ? { width: size, height: size, tintColor: tint } : { width: size, height: size }
           }
           resizeMode="contain"
-          accessibilityLabel={config.displayName}
+          accessibilityLabel={displayName}
         />
       ) : (
         <View
@@ -99,13 +103,13 @@ export function ProviderLogo({ provider, size = 14, showLabel = false }: Provide
               unselectable,
             ]}
           >
-            {config.displayName.slice(0, 1)}
+            {displayName.slice(0, 1)}
           </Text>
         </View>
       )}
       {showLabel ? (
         <Text style={[styles.label, { color: config.brandColor }, unselectable]}>
-          {config.displayName}
+          {displayName}
         </Text>
       ) : null}
     </View>

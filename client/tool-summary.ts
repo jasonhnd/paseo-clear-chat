@@ -1,3 +1,4 @@
+import { translate as t } from "./translation";
 import type { ToolCalloutData } from "../shared/contracts";
 import { stringValue } from "./tool-detail";
 
@@ -32,18 +33,18 @@ export function readLineRange(detail: Record<string, unknown>, input: Record<str
 
 export function toolSummary(data: ToolCalloutData): string {
   if (["bash", "shell", "git"].includes(data.tool) && (data.shell?.command || data.command)) {
-    return `$ ${singleLine(data.shell?.command || data.command || "")}`;
+    return t("tool.summary.command", { command: singleLine(data.shell?.command || data.command || "") });
   }
-  if (data.skill) return `Skill: ${singleLine(data.skill.name)}`;
+  if (data.skill) return t("tool.summary.skill", { name: singleLine(data.skill.name) });
   const file = data.filePath?.split(/[/\\]/).pop() || data.filePath;
   if (data.tool === "read" && file) return `${file}${data.lineRange ? `:${data.lineRange}` : ""}`;
   if (data.tool === "edit") {
-    const delta = data.changes ? `+${data.changes.added} −${data.changes.removed}` : "";
+    const delta = data.changes ? t("tool.summary.editDelta", { added: data.changes.added, removed: data.changes.removed }) : "";
     return [file, delta].filter(Boolean).join(" · ") || singleLine(data.title);
   }
   if (data.tool === "write" && file) return file;
   if ((data.tool === "search" || data.tool === "web_search") && data.search?.query) {
-    return `${data.tool === "web_search" ? "web_search" : "Search"}: ${singleLine(data.search.query)}`;
+    return t(data.tool === "web_search" ? "tool.summary.webSearch" : "tool.summary.search", { query: singleLine(data.search.query) });
   }
   if (data.tool === "fetch" && data.fetch?.url) return singleLine(data.fetch.url);
   return singleLine(data.title);
@@ -51,6 +52,6 @@ export function toolSummary(data: ToolCalloutData): string {
 
 export function toolDuration(durationMs: number | undefined): string | undefined {
   if (durationMs === undefined || !Number.isFinite(durationMs) || durationMs < 0) return undefined;
-  if (durationMs > 0 && durationMs < 1) return "<1ms";
-  return durationMs < 1000 ? `${Math.round(durationMs)}ms` : `${Math.round(durationMs / 10) / 100}s`;
+  if (durationMs > 0 && durationMs < 1) return t("duration.under1ms");
+  return durationMs < 1000 ? t("duration.ms", { milliseconds: Math.round(durationMs) }) : t("duration.seconds", { seconds: Math.round(durationMs / 10) / 100 });
 }

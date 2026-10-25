@@ -1,3 +1,5 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "../messages";
 import React, { useMemo } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { CopyFallbackDialog, copyTouchTarget, useCopyText } from "./copy-feedback";
@@ -476,6 +478,7 @@ export function SyntaxHighlightBlock({
   compact = false,
   onRevealFile,
 }: SyntaxHighlightProps) {
+  const { t } = useTranslation(messages);
   const { copied, handleCopy, fallbackText, setFallbackText } = useCopyText(copyText ?? code);
 
   const lines = useMemo(() => code.trimEnd().split("\n"), [code]);
@@ -640,7 +643,7 @@ export function SyntaxHighlightBlock({
                 <Pressable
                   onPress={onRevealFile}
                   accessibilityRole="link"
-                  accessibilityLabel={`Show ${filename} in the file manager`}
+                  accessibilityLabel={t("code.showFileA11y", { file: filename })}
                   style={styles.filenameButton}
                 >
                   <Text style={[styles.filename, styles.filenameLink]}>{filename}</Text>
@@ -660,7 +663,7 @@ export function SyntaxHighlightBlock({
           <Pressable
             onPress={handleCopy}
             accessibilityRole="button"
-            accessibilityLabel={copied ? "Code copied" : "Copy code"}
+            accessibilityLabel={copied ? t("code.copiedA11y") : t("code.copyA11y")}
             style={styles.copyButton}
           >
             <Pop trigger={copied}>
@@ -670,7 +673,7 @@ export function SyntaxHighlightBlock({
                 color={copied ? tokens.success : tokens.foregroundMuted}
               />
             </Pop>
-            <Text style={styles.copyText}>{copied ? "Copied" : "Copy"}</Text>
+            <Text style={styles.copyText}>{copied ? t("selection.copied") : t("code.copy")}</Text>
           </Pressable>
         </View>
       )}

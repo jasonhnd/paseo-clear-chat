@@ -1,3 +1,5 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "../messages";
 import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { View, Text, Pressable, StyleSheet, Animated } from "react-native";
 import { StreamedText } from "@getpaseo/plugin/client/ui";
@@ -23,6 +25,7 @@ interface ReasoningTraceProps {
 }
 
 export function ReasoningTrace({ data, tokens, defaultExpanded = false, streaming = false }: ReasoningTraceProps) {
+  const { t } = useTranslation(messages);
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
 
@@ -254,10 +257,10 @@ export function ReasoningTrace({ data, tokens, defaultExpanded = false, streamin
             <View style={styles.titleRow}>
               <Text selectable style={styles.titleText}>
                 {isThinking
-                  ? "Thinking in progress…"
+                  ? t("reasoning.thinking")
                   : data.durationMs > 0
-                    ? `Thought for ${durationFormatted}s`
-                    : "Reasoning summary"}
+                    ? t("reasoning.thoughtFor", { seconds: durationFormatted })
+                    : t("reasoning.summary")}
               </Text>
             </View>
             <View style={styles.badgeRow}>
@@ -268,12 +271,12 @@ export function ReasoningTrace({ data, tokens, defaultExpanded = false, streamin
               ) : null}
               {data.steps.length > 0 ? (
                 <Text selectable style={styles.badge}>
-                  {data.steps.length} steps
+                  {t("reasoning.steps", { count: data.steps.length })}
                 </Text>
               ) : null}
               {data.totalTokens > 0 ? (
                 <Text selectable style={styles.badge}>
-                  {data.totalTokens.toLocaleString()} tokens
+                  {t("reasoning.tokens", { count: data.totalTokens, replace: { count: data.totalTokens.toLocaleString() } })}
                 </Text>
               ) : null}
             </View>
@@ -288,7 +291,7 @@ export function ReasoningTrace({ data, tokens, defaultExpanded = false, streamin
             <View style={styles.statusRow}>
               <PulseDot color={tokens.accent} size={6} />
               <Text selectable style={styles.statusText}>
-                Reasoning
+                {t("reasoning.status")}
               </Text>
             </View>
           ) : null}
@@ -337,12 +340,12 @@ export function ReasoningTrace({ data, tokens, defaultExpanded = false, streamin
                   >
                     <View style={styles.stepTitleRow}>
                       <Text selectable style={styles.stepTitle}>
-                        {step.title ? `${step.number}. ${step.title}` : `Step ${step.number}`}
+                        {step.title ? t("reasoning.stepTitled", { number: step.number, title: step.title }) : t("reasoning.step", { number: step.number })}
                       </Text>
                     </View>
                     {step.durationMs ? (
                       <Text selectable style={styles.stepDuration}>
-                        {(step.durationMs / 1000).toFixed(1)}s
+                        {t("reasoning.stepSeconds", { seconds: (step.durationMs / 1000).toFixed(1) })}
                       </Text>
                     ) : null}
                   </Pressable>
@@ -370,7 +373,7 @@ export function ReasoningTrace({ data, tokens, defaultExpanded = false, streamin
 
           <View style={styles.footer}>
             <Text selectable style={styles.footerText}>
-              Total Tokens: {data.totalTokens}
+              {t("reasoning.totalTokens", { count: data.totalTokens })}
             </Text>
           </View>
         </View>

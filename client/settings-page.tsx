@@ -1,3 +1,5 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "./messages";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
@@ -35,6 +37,29 @@ const ACCENT_OPTIONS: ReadonlyArray<{
   { id: "rose", label: "Rose", color: ACCENT_PRESETS.rose },
 ];
 
+const CODE_FONT_LABELS = {
+  "host": "settings.codeFont.default",
+  "iosevka": "settings.codeFont.iosevka",
+  "menlo": "settings.codeFont.menlo",
+  "consolas": "settings.codeFont.consolas",
+  "fira-code": "settings.codeFont.fira",
+  "cascadia-code": "settings.codeFont.cascadia",
+} as const;
+
+const TEXT_SIZE_LABELS = {
+  "0.9": "settings.textSize.small",
+  "1": "settings.textSize.default",
+  "1.15": "settings.textSize.large",
+  "1.3": "settings.textSize.xl",
+} as const;
+
+const OUTPUT_LINE_LABELS = {
+  "10": "settings.foldOutput.lines10",
+  "15": "settings.foldOutput.lines15",
+  "30": "settings.foldOutput.lines30",
+  "never": "settings.foldOutput.never",
+} as const;
+
 const TRACK_WIDTH = 38;
 const TRACK_HEIGHT = 22;
 const KNOB = 16;
@@ -42,18 +67,19 @@ const KNOB = 16;
 const CUSTOM_SWATCHES = ["#e63946", "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899"];
 
 function CustomAccentPicker({ value, tokens }: { value: string; tokens: ExtendedThemeTokens }) {
+  const { t } = useTranslation(messages);
   const [draft, setDraft] = useState(value);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => { setDraft(value); setError(null); }, [value]);
+  const [error, setError] = useState(false);
+  useEffect(() => { setDraft(value); setError(false); }, [value]);
   const choose = (hex: string) => {
     setDraft(hex);
-    setError(null);
+    setError(false);
     return updateEnhancerPreferences({ customAccent: hex, customAccentEnabled: true });
   };
   const apply = () => {
     const result = customAccentSchema.safeParse(draft);
     if (!result.success) {
-      setError("Enter a HEX colour as #RGB or #RRGGBB.");
+      setError(true);
       return;
     }
     return choose(result.data);
@@ -65,7 +91,7 @@ function CustomAccentPicker({ value, tokens }: { value: string; tokens: Extended
           <Pressable
             key={hex}
             accessibilityRole="button"
-            accessibilityLabel={`Use accent ${hex}`}
+            accessibilityLabel={t("settings.accent.useSwatchA11y", { hex })}
             accessibilityState={{ selected: value === hex }}
             onPress={() => choose(hex)}
             style={[styles.colourChoice, { borderColor: value === hex ? tokens.accent : tokens.border }]}
@@ -76,31 +102,31 @@ function CustomAccentPicker({ value, tokens }: { value: string; tokens: Extended
       </View>
       <View style={styles.hexControls}>
         <TextInput
-          accessibilityLabel="Custom HEX colour"
-          accessibilityHint="Enter #RGB or #RRGGBB, then apply the colour."
+          accessibilityLabel={t("settings.accent.hexLabel")}
+          accessibilityHint={t("settings.accent.hexHint")}
           value={draft}
-          onChangeText={(text) => { setDraft(text); setError(null); }}
+          onChangeText={(text) => { setDraft(text); setError(false); }}
           onSubmitEditing={apply}
           autoCapitalize="none"
           autoCorrect={false}
           spellCheck={false}
-          placeholder="#RRGGBB"
+          placeholder={t("settings.accent.hexPlaceholder")}
           placeholderTextColor={tokens.foregroundMuted}
           returnKeyType="done"
           style={[styles.hexInput, { color: tokens.foreground, borderColor: error ? tokens.danger : tokens.border, fontFamily: tokens.fontMono }]}
         />
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Apply custom accent"
+          accessibilityLabel={t("settings.accent.applyA11y")}
           onPress={apply}
           style={[styles.applyColour, { backgroundColor: tokens.accent }]}
         >
-          <Text style={[styles.accentLabel, { color: tokens.accentForeground, fontFamily: tokens.fontUi }]}>Apply</Text>
+          <Text style={[styles.accentLabel, { color: tokens.accentForeground, fontFamily: tokens.fontUi }]}>{t("settings.accent.apply")}</Text>
         </Pressable>
       </View>
-      {error ? <Text accessibilityRole="alert" style={[styles.rowDescription, { color: tokens.foreground, fontFamily: tokens.fontUi }]}>{error}</Text> : null}
+      {error ? <Text accessibilityRole="alert" style={[styles.rowDescription, { color: tokens.foreground, fontFamily: tokens.fontUi }]}>{t("settings.accent.invalid")}</Text> : null}
       <Text style={[styles.rowDescription, { color: tokens.foregroundMuted, fontFamily: tokens.fontUi }]}>
-        The saved HEX stays unchanged. For readable text, we darken it on light themes or lighten it on dark themes until contrast is at least 4.5:1 on plugin surfaces. Filled buttons use black or white text, whichever has higher contrast. Midtone themes may use solid backgrounds to keep that contrast.
+        {t("settings.accent.contrastHelp")}
       </Text>
     </View>
   );
@@ -286,6 +312,7 @@ function ChoiceRow<T extends string>({
 
 /** Settings content mounted by Paseo under the selected host's Plugin settings. */
 export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
+  const { t } = useTranslation(messages);
   const preferences = useEnhancerPreferences();
   const storageError = useEnhancerPreferencesError();
   const tokens = useMemo(
@@ -302,13 +329,12 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
         ]}
       >
         <Text style={[styles.title, { color: tokens.foreground, fontFamily: tokens.fontUi }]}>
-          Chat presentation
+          {t("settings.title")}
         </Text>
         <Text
           style={[styles.description, { color: tokens.foregroundMuted, fontFamily: tokens.fontUi }]}
         >
-          Changes are saved on the selected host and shared by its clients. New messages follow
-          rendering changes; reload the chat to update existing messages. Accent colours update immediately.
+          {t("settings.intro")}
         </Text>
       </View>
 
@@ -324,7 +350,7 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
       >
         <View style={styles.row}>
           <Text style={[styles.rowTitle, { color: tokens.foreground, fontFamily: tokens.fontUi }]}>
-            Accent colour
+            {t("settings.accent.label")}
           </Text>
           <Text
             style={[
@@ -332,7 +358,7 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
               { color: tokens.foregroundMuted, fontFamily: tokens.fontUi },
             ]}
           >
-            Use the current Paseo theme, or choose a presentation accent.
+            {t("settings.accent.description")}
           </Text>
           <View style={styles.accentOptions}>
             {ACCENT_OPTIONS.map((option) => {
@@ -342,7 +368,7 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
                 <Pressable
                   key={option.id}
                   accessibilityRole="button"
-                  accessibilityLabel={`Accent: ${option.label}`}
+                  accessibilityLabel={t("settings.accent.optionA11y", { label: t(`settings.accent.${option.id}`) })}
                   accessibilityState={{ selected }}
                   onPress={() => updateEnhancerPreferences({ accent: option.id, customAccentEnabled: false })}
                   style={[
@@ -363,14 +389,14 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
                       },
                     ]}
                   >
-                    {option.label}
+                    {t(`settings.accent.${option.id}`)}
                   </Text>
                 </Pressable>
               );
             })}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Accent: Custom"
+              accessibilityLabel={t("settings.accent.customA11y")}
               accessibilityState={{ selected: !!preferences.customAccentEnabled }}
               onPress={() => updateEnhancerPreferences({
                 customAccentEnabled: true,
@@ -382,131 +408,131 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
               }]}
             >
               <View style={[styles.swatch, { backgroundColor: preferences.customAccent ?? ACCENT_PRESETS.violet }]} />
-              <Text style={[styles.accentLabel, { color: preferences.customAccentEnabled ? tokens.accent : tokens.foregroundMuted, fontFamily: tokens.fontUi }]}>Custom</Text>
+              <Text style={[styles.accentLabel, { color: preferences.customAccentEnabled ? tokens.accent : tokens.foregroundMuted, fontFamily: tokens.fontUi }]}>{t("settings.accent.custom")}</Text>
             </Pressable>
           </View>
           {preferences.customAccentEnabled ? <CustomAccentPicker value={preferences.customAccent ?? ACCENT_PRESETS.violet} tokens={tokens} /> : null}
         </View>
 
         <ChoiceRow<UiFontPreference>
-          title="Interface font"
-          description="Choose the embedded Inter face or the system interface face."
+          title={t("settings.uiFont.label")}
+          description={t("settings.uiFont.description")}
           value={preferences.uiFont}
           options={[
-            { value: "inter", label: "Inter" },
-            { value: "system", label: "System" },
+            { value: "inter", label: t("settings.uiFont.inter") },
+            { value: "system", label: t("settings.uiFont.system") },
           ]}
           onChange={(uiFont) => updateEnhancerPreferences({ uiFont })}
           tokens={tokens}
         />
 
         <ChoiceRow<CodeFontPreference>
-          title="Code glyphs"
-          description="For Iosevka, use programming ligatures inside syntax blocks or keep glyphs literal. Other fonts use their own glyphs."
+          title={t("settings.codeGlyphs.label")}
+          description={t("settings.codeGlyphs.description")}
           value={preferences.codeFont}
           options={[
-            { value: "code", label: "Ligatures" },
-            { value: "plain", label: "Literal" },
+            { value: "code", label: t("settings.codeGlyphs.ligatures") },
+            { value: "plain", label: t("settings.codeGlyphs.literal") },
           ]}
           onChange={(codeFont) => updateEnhancerPreferences({ codeFont })}
           tokens={tokens}
         />
 
         <ChoiceRow
-          title="Code font"
-          description="Paseo's code font is not exposed by the plugin SDK. Default (Iosevka) uses Iosevka and your Code glyphs choice. Other fonts must be installed on web or desktop; missing fonts use Iosevka. iOS and Android use platform monospace."
+          title={t("settings.codeFont.label")}
+          description={t("settings.codeFont.description")}
           value={preferences.codeFontFamily}
-          options={CODE_FONT_OPTIONS}
+          options={CODE_FONT_OPTIONS.map(option => ({ ...option, label: t(CODE_FONT_LABELS[option.value]) }))}
           onChange={(codeFontFamily) => updateEnhancerPreferences({ codeFontFamily })}
           tokens={tokens}
         />
 
         <ChoiceRow
-          title="Text size"
-          description="Scales the text this plugin draws, from replies and code blocks to callouts and badges. Saved on this host for all your devices."
+          title={t("settings.textSize.label")}
+          description={t("settings.textSize.description")}
           value={String(preferences.textScale)}
-          options={TEXT_SIZE_OPTIONS}
+          options={TEXT_SIZE_OPTIONS.map(option => ({ ...option, label: t(TEXT_SIZE_LABELS[option.value]) }))}
           onChange={(textScale) => updateEnhancerPreferences({ textScale: Number(textScale) })}
           tokens={tokens}
         />
 
         <ToggleRow
-          title="Fold finished steps"
-          description="Collapse finished tool calls by default. Turning this off expands every step. Saved choices for individual calls take precedence."
+          title={t("settings.foldSteps.label")}
+          description={t("settings.foldSteps.description")}
           value={preferences.foldFinishedSteps}
           onChange={(foldFinishedSteps) => updateEnhancerPreferences({ foldFinishedSteps })}
           tokens={tokens}
         />
 
         <ChoiceRow
-          title="When a collapsed step is pressed"
-          description="Open a detail sheet, popover or side panel, or expand the card in the conversation."
+          title={t("settings.collapsedAction.label")}
+          description={t("settings.collapsedAction.description")}
           value={preferences.collapsedStepAction}
           options={[
-            { value: "details", label: "Open details" },
-            { value: "inline", label: "Expand inline" },
+            { value: "details", label: t("settings.collapsedAction.details") },
+            { value: "inline", label: t("settings.collapsedAction.inline") },
           ]}
           onChange={(collapsedStepAction) => updateEnhancerPreferences({ collapsedStepAction })}
           tokens={tokens}
         />
 
         <ChoiceRow
-          title="Fold long output after"
-          description="Preview long tool output, reply code and prompts with a button to reveal every line."
+          title={t("settings.foldOutput.label")}
+          description={t("settings.foldOutput.description")}
           value={String(preferences.foldLongOutputAfter)}
-          options={OUTPUT_LINE_OPTIONS}
+          options={OUTPUT_LINE_OPTIONS.map(option => ({ ...option, label: t(OUTPUT_LINE_LABELS[option.value]) }))}
           onChange={(value) => updateEnhancerPreferences({ foldLongOutputAfter: value === "never" ? "never" : Number(value) as OutputLineLimit })}
           tokens={tokens}
         />
 
         <ToggleRow
-          title="Frosted glass"
-          description="Blur surfaces where the host supports it, or use solid surfaces instead."
+          title={t("settings.frosted.label")}
+          description={t("settings.frosted.description")}
           value={preferences.frostedGlass}
           onChange={(frostedGlass) => updateEnhancerPreferences({ frostedGlass })}
           tokens={tokens}
         />
 
         <ToggleRow
-          title="Pointer glow"
-          description="A soft light follows the pointer across each card. Desktop and web only: touch platforms have no hover, and the light is skipped when the system asks for reduced motion."
+          title={t("settings.glow.label")}
+          description={t("settings.glow.description")}
           value={preferences.pointerGlow}
           onChange={(pointerGlow) => updateEnhancerPreferences({ pointerGlow })}
           tokens={tokens}
         />
 
         <ToggleRow
-          title="Enhanced prompt bubble"
-          description="Paseo removes pasted images before a plugin sees the message, so the enhanced bubble cannot show them. Turn this off for Paseo's own bubble with image previews. New prompts follow the change. On iOS, text cannot be selected by dragging when this is enabled. Use the Copy button to copy text."
+          title={t("settings.promptBubble.label")}
+          description={t("settings.promptBubble.description")}
           value={preferences.enhancedUserBubble}
           onChange={(enhancedUserBubble) => updateEnhancerPreferences({ enhancedUserBubble })}
           tokens={tokens}
         />
 
         <ToggleRow
-          title="Selection actions"
-          description="Highlighting text in a callout raises a small bar with Copy and Add to chat. Add to chat drops the highlight into the composer as a quote, or a fenced block when it came from code. Desktop and web only: iOS and Android use the platform's own selection menu."
+          title={t("settings.selection.label")}
+          description={t("settings.selection.description")}
           value={preferences.selectionActions}
           onChange={(selectionActions) => updateEnhancerPreferences({ selectionActions })}
           tokens={tokens}
         />
 
         <ToggleRow
-          title="Assistant markdown"
-          description="Draws the reply with the plugin's own headings, lists and syntax-highlighted code blocks. The plugin cannot reach Paseo's markdown pipeline, so its version is a subset: turn this off for mermaid diagrams, images, and the host's file-path links. On iOS, text cannot be selected by dragging when this is enabled. Use the Copy button to copy text."
+          title={t("settings.markdown.label")}
+          description={t("settings.markdown.description")}
           value={preferences.assistantMarkdown}
           onChange={(assistantMarkdown) => updateEnhancerPreferences({ assistantMarkdown })}
           tokens={tokens}
         />
 
         <ChoiceRow
-          title="Markdown style"
-          description="Document is airy and built for long answers. Compact tightens the spacing for short replies. Terminal sets the body in the code face."
+          title={t("settings.markdownStyle.label")}
+          description={t("settings.markdownStyle.description")}
           value={preferences.markdownVariant}
           options={[
-            { value: "document", label: "Document" },
-            { value: "compact", label: "Compact" },
-            { value: "terminal", label: "Terminal" },
+            { value: "document", label: t("settings.markdownStyle.document") },
+            { value: "compact", label: t("settings.markdownStyle.compact") },
+            { value: "terminal", label: t("settings.markdownStyle.terminal") },
           ]}
           onChange={(markdownVariant) => updateEnhancerPreferences({ markdownVariant })}
           tokens={tokens}
@@ -521,7 +547,7 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
         <Text
           style={[styles.resetText, { color: tokens.foregroundMuted, fontFamily: tokens.fontUi }]}
         >
-          Reset defaults
+          {t("settings.reset")}
         </Text>
       </Pressable>
 
@@ -535,7 +561,7 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
         ]}
       >
         <Text style={[styles.rowTitle, { color: tokens.foreground, fontFamily: tokens.fontUi }]}>
-          Report a problem
+          {t("settings.report")}
         </Text>
       </Pressable>
     </View>

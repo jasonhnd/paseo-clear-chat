@@ -1,0 +1,551 @@
+{
+  "settings": {
+    "title": "聊天显示",
+    "intro": "改动会保存在所选主机上，连到这台主机的客户端都共用。显示方面的改动对新消息生效；要更新已有消息，请重新加载聊天。强调色会马上更新。",
+    "accent": {
+      "label": "强调色",
+      "description": "使用当前的 Paseo 主题，或选一个显示用的强调色。",
+      "host": "跟随主题",
+      "jade": "翡翠绿",
+      "violet": "紫罗兰",
+      "amber": "琥珀",
+      "rose": "玫瑰",
+      "custom": "自定义",
+      "optionA11y": "强调色：{{label}}",
+      "customA11y": "强调色：自定义",
+      "useSwatchA11y": "使用强调色 {{hex}}",
+      "hexLabel": "自定义 HEX 颜色",
+      "hexHint": "输入 #RGB 或 #RRGGBB，然后应用颜色。",
+      "hexPlaceholder": "#RRGGBB",
+      "applyA11y": "应用自定义强调色",
+      "apply": "应用",
+      "invalid": "请按 #RGB 或 #RRGGBB 格式输入 HEX 颜色。",
+      "contrastHelp": "保存的 HEX 值不会改变。为了让文字看得清，在浅色主题下会调深、在深色主题下会调浅，直到插件界面上的对比度不低于 4.5:1。实心按钮的文字用黑或白，哪个对比度高用哪个。中间色调的主题可能会改用纯色背景来保证对比度。"
+    },
+    "uiFont": {
+      "label": "界面字体",
+      "description": "使用内置的 Inter 字体，或系统界面字体。",
+      "inter": "Inter",
+      "system": "系统"
+    },
+    "codeGlyphs": {
+      "label": "代码字形",
+      "description": "使用 Iosevka 时，可以在代码块里用编程连字，或保持字符原样。其他字体使用各自的字形。",
+      "ligatures": "连字",
+      "literal": "原样"
+    },
+    "codeFont": {
+      "label": "代码字体",
+      "description": "插件 SDK 读不到 Paseo 的代码字体设置。默认（Iosevka）使用 Iosevka 和你的代码字形选择。在网页和桌面上，其他字体要先装在电脑上，没装的会改用 Iosevka。iOS 和 Android 使用系统等宽字体。",
+      "default": "默认（Iosevka）",
+      "iosevka": "Iosevka",
+      "menlo": "Menlo",
+      "consolas": "Consolas",
+      "fira": "Fira Code",
+      "cascadia": "Cascadia Code"
+    },
+    "textSize": {
+      "label": "文字大小",
+      "description": "缩放这个插件画出的文字，从回复和代码块到提示框和标签都包括在内。保存在这台主机上，你的所有设备共用。",
+      "small": "小",
+      "default": "默认",
+      "large": "大",
+      "xl": "特大"
+    },
+    "foldSteps": {
+      "label": "折叠已完成的步骤",
+      "description": "默认收起已完成的工具调用。关掉后所有步骤都展开。你为单个调用做过的选择优先。"
+    },
+    "collapsedAction": {
+      "label": "点按收起的步骤时",
+      "description": "打开详情弹窗、浮窗或侧边面板，或在对话里直接展开卡片。",
+      "details": "打开详情",
+      "inline": "原地展开"
+    },
+    "foldOutput": {
+      "label": "长输出折叠行数",
+      "description": "很长的工具输出、回复里的代码和提问只先显示一部分，用按钮查看全部行。",
+      "lines10": "10 行",
+      "lines15": "15 行",
+      "lines30": "30 行",
+      "never": "不折叠"
+    },
+    "frosted": {
+      "label": "毛玻璃",
+      "description": "在主机支持时给界面加模糊效果，否则用纯色。"
+    },
+    "glow": {
+      "label": "指针光晕",
+      "description": "指针在卡片上移动时会跟着一圈柔光。只在桌面和网页上有效：触屏没有悬停；系统要求减少动态效果时也不显示。"
+    },
+    "promptBubble": {
+      "label": "增强提问气泡",
+      "description": "Paseo 会在插件拿到消息前去掉粘贴的图片，所以增强气泡显示不了图片。想看图片预览，请关掉这项，改用 Paseo 自带的气泡。新的提问按改动后的设置显示。开着这项时，在 iOS 上不能拖动选择文字，请用复制按钮复制。"
+    },
+    "selection": {
+      "label": "选中文字后的操作",
+      "description": "在卡片里选中文字时，会出现一个小工具条，有“复制”和“添加到聊天”。“添加到聊天”会把选中的内容作为引用放进输入框；如果选自代码，会放成代码块。只在桌面和网页上有效：iOS 和 Android 使用系统自带的选择菜单。"
+    },
+    "markdown": {
+      "label": "助手回复 Markdown",
+      "description": "用插件自己的标题、列表和带语法高亮的代码块来显示回复。插件接触不到 Paseo 的 Markdown 处理流程，所以只支持其中一部分：要看 mermaid 图、图片和主机自带的文件路径链接，请关掉这项。开着这项时，在 iOS 上不能拖动选择文字，请用复制按钮复制。"
+    },
+    "markdownStyle": {
+      "label": "Markdown 样式",
+      "description": "文档：行距宽松，适合长回答。紧凑：间距更小，适合短回复。终端：正文使用代码字体。",
+      "document": "文档",
+      "compact": "紧凑",
+      "terminal": "终端"
+    },
+    "reset": "恢复默认",
+    "report": "报告问题",
+    "retry": "重试"
+  },
+  "startup": {
+    "incompatibleHost": "Clear Chat 需要 Paseo 的插件设置和时间线支持。请更新运行 daemon 的主机和所有连着的应用上的 Paseo，再重新加载 Clear Chat。",
+    "startupFailed": "Paseo 没能注册插件，Clear Chat 无法启动。请更新 Paseo 并重新加载 Clear Chat。还不行的话，先备份插件设置，再用 Paseo CLI 重新安装。",
+    "settingsRead": "Clear Chat 读不到主机上的设置。请重新连接所选主机，然后点“重试”。还不行的话，请检查 daemon 能不能访问插件设置文件夹。",
+    "settingsInvalid": "Clear Chat 的设置无效或格式不支持。请先备份插件设置，用一份正常的备份恢复，或在 daemon 主机上修好设置文件，然后点“重试”。",
+    "settingsWrite": "Clear Chat 保存不了主机上的设置。请检查 daemon 的写入权限和剩余磁盘空间，重新连接后再改一次设置。",
+    "settingsConflict": "Clear Chat 的设置正被另一个客户端不停改动。请等那边改完，再改一次设置。"
+  },
+  "find": {
+    "barTitle": "在这个聊天里已加载的消息中查找",
+    "placeholder": "在聊天中查找",
+    "previous": "上一个",
+    "next": "下一个",
+    "close": "关闭查找",
+    "count": "{{current}}/{{total}}",
+    "none": "无结果"
+  },
+  "selection": {
+    "copy": "复制",
+    "copied": "已复制",
+    "add": "添加到聊天",
+    "added": "已添加",
+    "copiedInstead": "已改为复制"
+  },
+  "toast": {
+    "copied": "已复制到剪贴板",
+    "copyFailed": "无法复制。请在弹窗里全选文字，再用“复制”。",
+    "pathCopied": "路径已复制。请到主机电脑上打开。",
+    "cwdMissing": "拿不到会话的工作目录。请复制路径，到主机电脑上打开。",
+    "pathUnopened": "无法在主机上打开这个路径。它可能不存在或无法访问。",
+    "pathHostDown": "无法在主机上打开这个路径。请在主机连上后再试。"
+  },
+  "copy": {
+    "dialogTitle": "复制文字",
+    "dialogBody": "自动复制失败了。请长按文字，选“全选”，再选“复制”。",
+    "dialogFieldA11y": "要复制的文字"
+  },
+  "prompt": {
+    "you": "你",
+    "copyA11y": "复制提问",
+    "imagesAttached": "附带 {{count}} 张图片",
+    "imagesAttached_other": "附带 {{count}} 张图片",
+    "imageA11y": "附带的图片",
+    "usageIn": "输入",
+    "usageCached": "缓存",
+    "usageOut": "输出",
+    "counting": "统计中…",
+    "tokensK": "{{count}}k",
+    "tokensM": "{{count}}M"
+  },
+  "reply": {
+    "copyA11y": "复制回复",
+    "copiedA11y": "回复已复制",
+    "copy": "复制",
+    "copied": "已复制",
+    "workedFor": "用时 {{duration}}"
+  },
+  "duration": {
+    "workedZero": "0 秒",
+    "workedSeconds": "{{seconds}} 秒",
+    "workedMinutes": "{{minutes}} 分钟",
+    "workedMinutesSeconds": "{{minutes}} 分 {{seconds}} 秒",
+    "workedHours": "{{hours}} 小时",
+    "workedHoursMinutes": "{{hours}} 小时 {{minutes}} 分",
+    "under1ms": "<1ms",
+    "ms": "{{milliseconds}}ms",
+    "seconds": "{{seconds}}s",
+    "hubMs": "{{milliseconds}}ms",
+    "hubSeconds": "{{seconds}}s",
+    "hubMinutes": "{{minutes}}m",
+    "hubMinutesSeconds": "{{minutes}}m {{seconds}}s",
+    "hubHours": "{{hours}}h",
+    "hubHoursMinutes": "{{hours}}h {{minutes}}m"
+  },
+  "tool": {
+    "status": {
+      "running": "运行中",
+      "completed": "已完成",
+      "failed": "失败",
+      "canceled": "已取消",
+      "waiting": "等待中",
+      "waitingLabel": "等待中"
+    },
+    "spinnerA11y": "运行中",
+    "exitChip": "退出码 {{code}}",
+    "summary": {
+      "command": "$ {{command}}",
+      "skill": "Skill：{{name}}",
+      "search": "搜索：{{query}}",
+      "webSearch": "web_search：{{query}}",
+      "searchBare": "搜索",
+      "webSearchBare": "web_search",
+      "fetch": "抓取：{{url}}",
+      "fetchBare": "抓取",
+      "subagent": "Subagent",
+      "subagentCount": "{{count}} 个 subagent",
+      "noSubagents": "没有 subagent",
+      "readFile": "读取文件",
+      "readNamed": "读取 {{file}}",
+      "writeFile": "写入文件",
+      "writeNamed": "写入 {{file}}",
+      "editFile": "编辑文件",
+      "editNamed": "编辑 {{file}}",
+      "editDelta": "+{{added}} −{{removed}}",
+      "gitCommand": "Git 命令",
+      "execute": "执行命令",
+      "reasoning": "推理过程",
+      "paseo": "Paseo：{{name}}",
+      "userDecision": "用户决定",
+      "hub": "Hub：{{op}}",
+      "hubOperation": "操作",
+      "eval": "Eval：{{title}}",
+      "evalKernel": "Eval 内核",
+      "github": "GitHub",
+      "unknown": "{{name}} · {{detail}}",
+      "valueUnavailable": "无法显示此值",
+      "unnamedSkill": "未命名的 Skill",
+      "plan": "计划",
+      "checklist": "清单进度"
+    },
+    "row": {
+      "collapseA11y": "收起 {{summary}}",
+      "expandA11y": "展开 {{summary}}",
+      "detailsA11y": "查看详情：{{summary}}",
+      "detailsHint": "打开步骤详情"
+    },
+    "error": {
+      "none": "失败（没有报告错误信息）"
+    },
+    "expansion": {
+      "prefix": "无法保存或读取工具的展开状态：{{error}}",
+      "generic": "无法保存或读取工具的展开状态。",
+      "disconnected": "工具展开状态的存储没有连上主机。",
+      "conflict": "工具的选择在另一个客户端里被改了。请再点一次这个调用。"
+    },
+    "shell": {
+      "waiting": "等待命令输出…",
+      "failed": "命令失败，没有输出。",
+      "canceled": "命令已取消，没有输出。",
+      "completed": "命令已完成，没有输出。",
+      "noOutput": "这次调用没有输出。"
+    },
+    "thinking": {
+      "live": "实时推理中…",
+      "done": "推理完成",
+      "tokens": "{{count}} 个 token",
+      "placeholder": "正在分析条件、制定步骤..."
+    },
+    "mcp": {
+      "input": "输入参数",
+      "response": "返回内容",
+      "error": "错误：{{message}}"
+    },
+    "file": {
+      "empty": "// [内容为空或仍在传输]",
+      "editApplied": "// [编辑：已应用差异]"
+    },
+    "eval": {
+      "cell": "常驻内核单元",
+      "stdout": "stdout"
+    },
+    "ask": {
+      "offered": "给出的选项：",
+      "waiting": "等待决定：",
+      "recommended": "推荐",
+      "typed": "手动输入",
+      "answered": "已回答"
+    },
+    "detail": {
+      "noOutput": "没有输出。状态：{{status}}。",
+      "noTasks": "没有报告任务。状态：{{status}}。",
+      "query": "查询：{{query}}",
+      "notReported": "未报告",
+      "scope": "范围：{{scope}}",
+      "scopeWeb": "网页",
+      "scopeWorkspace": "工作区",
+      "scopeFilter": "{{scope}}（{{filter}}）",
+      "matches": "匹配：{{count}}",
+      "matchesTruncated": "匹配：{{count}}（已截断）",
+      "openResultA11y": "打开 {{target}}",
+      "searching": "搜索中…",
+      "noResults": "没有报告结果。",
+      "noContent": "没有报告内容。状态：{{status}}。",
+      "parameter": "{{name}}："
+    },
+    "subagent": {
+      "headline": "{{count}} 个 subagent",
+      "bare": "subagent",
+      "spawning": "正在启动 subagent…",
+      "spawningOne": "正在启动 1 个 subagent…",
+      "spawningMany": "正在启动 {{count}} 个 subagent…",
+      "context": "共享上下文",
+      "model": "模型：{{model}}",
+      "taskMissing": "Provider 没有报告任务。",
+      "agentN": "Agent {{index}}",
+      "typeTask": "任务",
+      "typeAgent": "Agent"
+    },
+    "task": {
+      "checklist": "清单",
+      "working": "任务",
+      "progress": "{{completed}}/{{total}}（{{percent}}%）",
+      "inProgress": "进行中",
+      "done": "完成",
+      "blocked": "受阻 ▾",
+      "reason": "原因：{{reason}}",
+      "setStatusA11y": "设置“{{title}}”的状态",
+      "none": "没有报告任务。"
+    },
+    "github": {
+      "waiting": "等待 GitHub…",
+      "noOutput": "这个操作没有输出。",
+      "request": "请求",
+      "showRequestA11y": "显示请求",
+      "hideRequestA11y": "隐藏请求",
+      "pullRequest": "PR",
+      "base": "基准",
+      "branches": "{{base}} ← {{head}}",
+      "defaultBranch": "默认",
+      "currentBranch": "当前分支",
+      "file": "文件",
+      "op": "github"
+    }
+  },
+  "fold": {
+    "showAll": "显示全部 {{count}} 行",
+    "showFewer": "收起",
+    "saveFailed": "无法保存或读取展开状态。请再点一次重试。"
+  },
+  "diff": {
+    "noChanges": "没有改动。",
+    "replacement": " 替换 {{index}}",
+    "noNewline": "\\ No newline at end of file"
+  },
+  "hub": {
+    "badge": "hub {{op}}",
+    "unknown": "未知",
+    "replyTo": "回复 {{id}}",
+    "timeout": "超时 {{duration}}",
+    "from": "来自 {{name}}",
+    "ago": "{{duration}}前",
+    "justNow": "刚刚",
+    "noReply": "还没有回复。",
+    "waitEmpty": "等待结束，没有收到消息。",
+    "peek": "仅查看 — 仍在队列中",
+    "messagesOne": "{{count}} 条消息",
+    "messagesOther": "{{count}} 条消息",
+    "inboxEmpty": "收件箱是空的。",
+    "countRunning": "{{count}} 个运行中",
+    "countIdle": "{{count}} 个空闲",
+    "countParked": "{{count}} 个暂停",
+    "countShown": "显示 {{count}} 个",
+    "countHidden": "隐藏 {{count}} 个",
+    "peerCount": "{{count}} 个同伴",
+    "unread": "{{count}} 条未读",
+    "peersEmpty": "没有匹配的同伴。",
+    "noJobs": "没有任务",
+    "waitingOne": "等待 {{count}} 个任务",
+    "waitingOther": "等待 {{count}} 个任务",
+    "jobCount": "{{count}} 个任务",
+    "failedCount": "{{count}} 个失败",
+    "showFirst": "只显示前 {{count}} 个",
+    "showMore": "再显示 {{count}} 个任务",
+    "cancelledHeading": "已取消",
+    "agentsWithoutJob": "没有任务记录的 subagent",
+    "nothingRunning": "没有正在运行的任务。",
+    "under": "隶属 {{id}}",
+    "notLive": "已不在线",
+    "advisor": "顾问",
+    "schema": "schema {{status}}",
+    "processOne": "{{count}} 个进程",
+    "processOther": "{{count}} 个进程",
+    "timedOut": "已超时",
+    "cwd": "cwd {{path}}",
+    "restart": "重启 {{value}}",
+    "readyLog": "就绪日志 {{text}}",
+    "readyPort": "就绪端口 {{port}}",
+    "pty": "pty",
+    "matched": "已匹配",
+    "stdin": "已发送到 stdin",
+    "cursor": "游标 {{n}}",
+    "pid": "pid {{n}}",
+    "restarts": "重启 {{count}} 次",
+    "match": "匹配 {{text}}",
+    "started": "启动于 {{age}}",
+    "persist": "持久",
+    "detached": "已分离",
+    "noDetail": "这次调用没有返回详情。"
+  },
+  "paseo": {
+    "modelsFor": "{{provider}} 的模型",
+    "activityFor": "{{agent}} 的活动",
+    "discovered": "发现的 Provider（{{count}}）",
+    "newAgent": "新 Agent",
+    "running": "运行中",
+    "mode": "{{mode}} 模式",
+    "initialPrompt": "初始任务提示",
+    "backends": "在本地 daemon 上发现的已配置 Agent 后端：",
+    "modelsIntro": "支持的模型和推理模式：",
+    "reasoning": "推理",
+    "target": "目标：{{agent}}",
+    "activities": "最近 {{count}} 条活动"
+  },
+  "provider": {
+    "paseo": "Paseo",
+    "claude": "Claude",
+    "codex": "Codex",
+    "omp": "Oh My Pi",
+    "gemini": "Gemini",
+    "antigravity": "Antigravity",
+    "copilot": "Copilot",
+    "opencode": "OpenCode",
+    "minimax": "MiniMax",
+    "deepseek": "DeepSeek",
+    "grok": "Grok",
+    "ollama": "Ollama",
+    "generic": "Agent"
+  },
+  "agent": {
+    "messageReceived": "收到消息",
+    "finished": "Agent 已完成",
+    "errored": "Agent 出错",
+    "permission": "Agent 需要权限",
+    "closed": "Agent 已关闭",
+    "from": "来自 {{sender}} 的消息",
+    "eventFrom": "{{event}} · {{sender}}",
+    "senderLine": "发送者：{{id}}"
+  },
+  "system": {
+    "job": "任务",
+    "agent": "Agent",
+    "reminder": "提醒",
+    "process": "进程",
+    "notice": "通知",
+    "noticeTitle": "系统通知",
+    "lines": "{{count}} 行"
+  },
+  "notice": {
+    "error": "错误",
+    "warning": "警告",
+    "info": "提示"
+  },
+  "approval": {
+    "approved": "已批准",
+    "denied": "已拒绝",
+    "waiting": "等待批准",
+    "body": "这项编辑正在 Paseo 里等待批准。",
+    "collapseA11y": "收起审批详情",
+    "expandA11y": "展开审批详情"
+  },
+  "reasoning": {
+    "thinking": "思考中…",
+    "thoughtFor": "思考了 {{seconds}} 秒",
+    "summary": "推理摘要",
+    "status": "推理",
+    "steps": "{{count}} 步",
+    "tokens": "{{count}} 个 token",
+    "step": "第 {{number}} 步",
+    "stepTitled": "{{number}}. {{title}}",
+    "stepSeconds": "{{seconds}} 秒",
+    "totalTokens": "总 token 数：{{count}}",
+    "thoughtProcess": "思考过程"
+  },
+  "wrap": {
+    "heading": "收尾",
+    "question": "问题",
+    "blocked": "受阻",
+    "empty": "没有报告最终回复内容。",
+    "clipboardQuestion": "## 问题",
+    "clipboardOptions": "## 选项",
+    "clipboardBlocked": "## 受阻"
+  },
+  "menu": {
+    "copyCommand": "复制命令",
+    "copyPath": "复制路径",
+    "copyResult": "复制结果",
+    "open": "在文件管理器中打开",
+    "actionsA11y": "步骤操作",
+    "closeA11y": "关闭步骤操作"
+  },
+  "hover": {
+    "noOutput": "没有报告输出。"
+  },
+  "detail": {
+    "panelTitle": "步骤详情",
+    "empty": "选一个收起的步骤查看详情。用面板标签上的关闭按钮可以把这块空间还给聊天。",
+    "resizeA11y": "调整步骤详情大小",
+    "half": "半屏",
+    "full": "全屏",
+    "resizeHint": "向上拖动变成全屏，向下变成半屏，再往下就关闭。",
+    "expandA11y": "放大步骤详情",
+    "halfA11y": "半屏显示步骤详情",
+    "closeA11y": "关闭步骤详情",
+    "dismissA11y": "关掉步骤详情",
+    "status": "状态：{{status}}",
+    "duration": "耗时：{{duration}}",
+    "exitCode": "退出码：{{code}}",
+    "section": {
+      "input": "输入",
+      "output": "输出",
+      "error": "错误",
+      "stdout": "Stdout",
+      "stderr": "Stderr"
+    },
+    "sectionInline": {
+      "input": "输入",
+      "output": "输出",
+      "error": "错误",
+      "stdout": "Stdout",
+      "stderr": "Stderr"
+    },
+    "copy": "复制",
+    "copyA11y": "复制{{section}}",
+    "none": "没有报告{{section}}。",
+    "emptySection": "{{section}}为空。"
+  },
+  "code": {
+    "copy": "复制",
+    "copyA11y": "复制代码",
+    "copiedA11y": "代码已复制",
+    "showFileA11y": "在文件管理器中显示 {{file}}",
+    "fileTypeA11y": "{{type}} 文件",
+    "folderA11y": "文件夹",
+    "fileA11y": "文件"
+  },
+  "image": {
+    "hide": "隐藏",
+    "show": "显示",
+    "hideA11y": "隐藏图片",
+    "showA11y": "显示图片",
+    "bytes": "{{count}} B",
+    "kilobytes": "{{count}} KB",
+    "megabytes": "{{count}} MB",
+    "dimensions": "{{width}} × {{height}}",
+    "openSourceA11y": "打开图片来源",
+    "generatedAlt": "生成的图片",
+    "altFallback": "图片",
+    "unsupported": "不支持这种图片来源。",
+    "failed": "图片加载失败。",
+    "openAddressA11y": "打开图片地址：{{url}}",
+    "copyAddressA11y": "复制图片地址",
+    "emptyAddress": "图片地址为空"
+  },
+  "markdown": {
+    "showPathA11y": "显示文件路径：{{path}}",
+    "copyPathA11y": "复制文件路径：{{path}}"
+  }
+}

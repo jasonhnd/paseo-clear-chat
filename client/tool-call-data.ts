@@ -1,3 +1,4 @@
+import { translate as t } from "./translation";
 import type { EvalCell, GitHubToolData, HubData, McpToolData, PaseoToolData, ToolCallKind, ToolCalloutData } from "../shared/contracts";
 import { buildHubData } from "./hub-details";
 import { buildGitHubData } from "./github-request";
@@ -113,13 +114,13 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
   if (/(?:^|[._/])skill_view$/.test(rawName)) {
     toolKind = "read";
     skill = skillData(detail, input);
-    title = `Skill: ${skill.name}`;
+    title = t("tool.summary.skill", { name: skill.name });
   } else if (isType("search") || isType("web_search")) {
     const web = detailType === "web_search" || detail.toolName === "web_search" || rawName === "web_search";
     toolKind = web ? "web_search" : "search";
     search = searchData(detail, input, output, web);
     if (web && search.results.length === 0) fetch = fetchData(detail, input, output);
-    title = `${web ? "web_search" : "Search"}${search.query ? `: ${search.query}` : ""}`;
+    title = search.query ? t(web ? "tool.summary.webSearch" : "tool.summary.search", { query: search.query }) : t(web ? "tool.summary.webSearchBare" : "tool.summary.searchBare");
   } else if (isType("tool_search") || (rawName === "tool_search" && ["unknown", "plain_text", ""].includes(detailType))) {
     toolKind = "tool_search";
     toolSearch = {
@@ -130,11 +131,11 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
   } else if (isType("fetch", ["fetch", "webfetch"])) {
     toolKind = "fetch";
     fetch = fetchData(detail, input, output);
-    title = fetch.title ?? (fetch.url ? `Fetch: ${fetch.url}` : "Fetch");
+    title = fetch.title ?? (fetch.url ? t("tool.summary.fetch", { url: fetch.url }) : t("tool.summary.fetchBare"));
   } else if (isType("sub_agent")) {
     toolKind = "sub_agent";
     subagent = subagentData(detail, input, record(data.metadata));
-    title = subagent.agents[0]?.name ?? "Subagent";
+    title = subagent.agents[0]?.name ?? t("tool.summary.subagent");
   } else if (isType("plan", ["plan", "update_plan"]) || isType("todo", ["todo", "todowrite", "todo_write"])) {
     toolKind = isType("plan", ["plan", "update_plan"]) ? "plan" : "todo";
     checklist = buildChecklist(detail, input, toolKind);
@@ -153,25 +154,25 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
     github = buildGitHubData(request, reply);
     title = github
       ? [github.op, github.repo, github.subject].filter(Boolean).join(" ")
-      : "GitHub";
+      : t("tool.summary.github");
   } else if (isGitCommand) {
     toolKind = "git";
-    title = command ? `$ ${command.trim().slice(0, 55)}` : "Git command";
+    title = command ? t("tool.summary.command", { command: command.trim().slice(0, 55) }) : t("tool.summary.gitCommand");
   } else if (isType("read")) {
     toolKind = "read";
-    title = filePath ? `Read ${filePath.split(/[/\\]/).pop() || filePath}` : "Read file";
+    title = filePath ? t("tool.summary.readNamed", { file: filePath.split(/[/\\]/).pop() || filePath }) : t("tool.summary.readFile");
   } else if (isType("write")) {
     toolKind = "write";
-    title = filePath ? `Write ${filePath.split(/[/\\]/).pop() || filePath}` : "Write file";
+    title = filePath ? t("tool.summary.writeNamed", { file: filePath.split(/[/\\]/).pop() || filePath }) : t("tool.summary.writeFile");
   } else if (isType("edit", ["edit", "multiedit", "multi_edit"])) {
     toolKind = "edit";
-    title = filePath ? `Edit ${filePath.split(/[/\\]/).pop() || filePath}` : "Edit file";
+    title = filePath ? t("tool.summary.editNamed", { file: filePath.split(/[/\\]/).pop() || filePath }) : t("tool.summary.editFile");
   } else if (isType("shell", ["bash", "shell"])) {
     toolKind = rawName === "shell" || detailType === "shell" ? "shell" : "bash";
-    title = command ? `$ ${command.trim().slice(0, 55)}` : "Execute command";
+    title = command ? t("tool.summary.command", { command: command.trim().slice(0, 55) }) : t("tool.summary.execute");
   } else if (rawName === "thinking") {
     toolKind = "thinking";
-    title = "Reasoning Process";
+    title = t("tool.summary.reasoning");
   } else if (
     rawName === "create_agent" ||
     rawName === "list_providers" ||
@@ -181,7 +182,7 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
     rawName === "get_agent_status"
   ) {
     toolKind = "paseo";
-    title = `Paseo: ${rawName}`;
+    title = t("tool.summary.paseo", { name: rawName });
     paseo = buildPaseoData(rawName, input, outputText, durationMs);
   } else if (rawName.startsWith("mcp__") || rawName === "mcp") {
     toolKind = "mcp";
@@ -190,24 +191,24 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
   } else if (rawName === "ask") {
     toolKind = "ask";
     const asked = extractAskQuestion(input);
-    title = asked?.question || "User Decision";
+    title = asked?.question || t("tool.summary.userDecision");
     askOptions = asked?.options ?? [];
     askAnswer = extractAskSelections(output, outputText);
   } else if (rawName === "hub") {
     toolKind = "hub";
-    title = `Hub: ${stringValue(input.op) ?? "operation"}`;
+    title = t("tool.summary.hub", { op: stringValue(input.op) ?? t("tool.summary.hubOperation") });
     hub = buildHubData(input, outputText, output);
   } else if (rawName === "eval") {
     toolKind = "eval";
     evalCells = extractEvalCells(detail, input, output);
     const cellTitle = evalCells.find((cell) => cell.title)?.title;
-    title = cellTitle ? `Eval: ${cellTitle}` : "Eval Kernel";
+    title = cellTitle ? t("tool.summary.eval", { title: cellTitle }) : t("tool.summary.evalKernel");
   } else if (rawName === "task") {
     toolKind = "task";
     subagent = buildSubagentBatch(input);
     const count = subagent?.agents.length ?? 0;
     title =
-      count === 1 ? (subagent?.agents[0]?.name ?? "Subagent") : `${count || "No"} subagents`;
+      count === 1 ? (subagent?.agents[0]?.name ?? t("tool.summary.subagent")) : count ? t("tool.summary.subagentCount", { count }) : t("tool.summary.noSubagents");
   }
   if (toolKind === "unknown") title = unknownTitle(title, input);
   const edit = toolKind === "edit" ? buildEditDiff(detail, input, diff) : undefined;

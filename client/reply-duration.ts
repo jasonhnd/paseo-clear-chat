@@ -1,3 +1,4 @@
+import { translate as t } from "./translation";
 import { useEffect, useState } from "react";
 import { useAgent, usePaseo } from "@getpaseo/plugin/client";
 import { buildLiveToolCallData } from "./tool-call-data";
@@ -18,13 +19,13 @@ function replyKey(item: ReplyIdentity, at: number): string {
 
 /** Same flooring and units as the host's utils/time.ts:formatDuration. */
 export function formatWorkedDuration(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return "0s";
+  if (!Number.isFinite(ms) || ms < 0) return t("duration.workedZero");
   const seconds = Math.floor(Math.max(0, ms) / 1000);
-  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 60) return t("duration.workedSeconds", { seconds });
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return seconds % 60 ? `${minutes}m ${seconds % 60}s` : `${minutes}m`;
+  if (minutes < 60) return seconds % 60 ? t("duration.workedMinutesSeconds", { minutes, seconds: seconds % 60 }) : t("duration.workedMinutes", { minutes });
   const hours = Math.floor(minutes / 60);
-  return minutes % 60 ? `${hours}h ${minutes % 60}m` : `${hours}h`;
+  return minutes % 60 ? t("duration.workedHoursMinutes", { hours, minutes: minutes % 60 }) : t("duration.workedHours", { hours });
 }
 
 /**

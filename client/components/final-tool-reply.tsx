@@ -1,3 +1,5 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "../messages";
 import React, { useMemo } from "react";
 import { View, Text } from "react-native";
 import { finalReplyOptionPrefix, parseFinalToolReply } from "../tool-final-reply";
@@ -15,7 +17,8 @@ export function FinalToolReply({ text, tokens, variant, cwd, expansionIdentity }
   cwd?: string | null;
   expansionIdentity?: ToolExpansionIdentity;
 }) {
-  const content = useMemo(() => parseFinalToolReply(text), [text]);
+  const { t } = useTranslation(messages);
+  const content = useMemo(() => parseFinalToolReply(text), [text, t]);
   const markdown = (text: string, part: string) => (
     <MarkdownView text={text} cwd={cwd} tokens={tokens} variant={variant}
       expansionIdentity={expansionIdentity ? {
@@ -38,7 +41,7 @@ export function FinalToolReply({ text, tokens, variant, cwd, expansionIdentity }
       ) : null}
       {content.ask ? (
         <View testID="wrap-up-question" style={{ gap: 4 }}>
-          <Text accessibilityRole="header" style={heading}>Question</Text>
+          <Text accessibilityRole="header" style={heading}>{t("wrap.question")}</Text>
           {markdown(content.ask, "ask")}
         </View>
       ) : null}
@@ -56,7 +59,7 @@ export function FinalToolReply({ text, tokens, variant, cwd, expansionIdentity }
       ) : null}
       {content.isBlocked ? (
         <View testID="wrap-up-blocked" accessibilityRole="alert" style={{ gap: 4, padding: 10, borderLeftWidth: 3, borderLeftColor: tokens.danger, backgroundColor: tokens.dangerBg }}>
-          <Text accessibilityRole="header" style={[heading, { color: tokens.danger }]}>Blocked</Text>
+          <Text accessibilityRole="header" style={[heading, { color: tokens.danger }]}>{t("wrap.blocked")}</Text>
           {content.blocked.map((reason, index) => <View key={index}>{markdown(reason, `blocked-${index}`)}</View>)}
         </View>
       ) : null}
@@ -65,7 +68,7 @@ export function FinalToolReply({ text, tokens, variant, cwd, expansionIdentity }
   return (
     <View testID="final-reply-card" style={{ marginVertical: 8, borderWidth: 1, borderColor: tokens.borderSubtle, borderRadius: 8, backgroundColor: tokens.surfaceGlass }}>
       <View testID="final-reply-header" style={{ paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: tokens.borderSubtle, backgroundColor: tokens.surface1 }}>
-        <Text accessibilityRole="header" style={heading}>Wrap up</Text>
+        <Text accessibilityRole="header" style={heading}>{t("wrap.heading")}</Text>
       </View>
       <View testID="final-reply-body" style={{ padding: 12 }}>{body}</View>
     </View>
