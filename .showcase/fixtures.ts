@@ -3,6 +3,15 @@ import type { ApprovalRequest, ReasoningTraceData, TaskListData, ToolCalloutData
 
 export const PROMPT = "Add a free-shipping message when the cart total reaches $50.";
 export const REPLY = "## Ready to review\n\nThe cart now shows **Free shipping** at $50.\n\nUpdated `src/cart.ts` and covered the boundary cases. All **12 tests passed**.";
+export const FOLLOW_UP = "What will shoppers see around the $50 threshold?";
+export const FOLLOW_UP_REPLY = "The message follows the cart subtotal:\n\n- **$49.99** — Shipping calculated at checkout\n- **$50** — Free shipping\n- **$50.01** — Free shipping\n\nThe label updates as items are added or removed.";
+export const DEMO_TIMES = {
+  now: "2026-10-22T14:09:37Z",
+  prompt: "2026-10-22T14:07:23Z",
+  reply: "2026-10-22T14:08:14Z",
+  followUp: "2026-10-22T14:08:46Z",
+  followUpReply: "2026-10-22T14:09:12Z",
+};
 export const BEFORE_CODE = `export function shippingLabel(total: number) {
   return "Shipping calculated at checkout";
 }`;
@@ -18,6 +27,17 @@ export const DIFF = `@@ -1,3 +1,5 @@
 +    ? "Free shipping"
 +    : "Shipping calculated at checkout";
  }`;
+export const EDIT_PATCH = `*** Begin Patch
+*** Update File: src/cart.ts
+@@
+ export function shippingLabel(total: number) {
+-  return "Shipping calculated at checkout";
++  return total >= 50
++    ? "Free shipping"
++    : "Shipping calculated at checkout";
+ }
+*** End Patch`;
+export const EDIT_RESULT = "Success. Updated the following files:\nM src/cart.ts";
 export const WRAP_UP = JSON.stringify({
   recap: "## Cart update complete\n\n**Free shipping** now appears at $50. All 12 demo tests passed.",
   ask: "Which checkout detail should we tackle next?",
@@ -39,7 +59,7 @@ export const APPROVAL: ApprovalRequest = {
   id: "demo-approval", toolName: "bash", title: "Run the demo build", riskLevel: "low",
   rationale: "Writes generated files only inside the demo output directory.",
   command: "npm run build", targetPath: "/workspace/demo-shop/dist", cwd: "/workspace/demo-shop",
-  timeoutSeconds: 60, status: "pending", timestamp: "2026-01-01T12:00:00Z",
+  timeoutSeconds: 60, status: "pending", timestamp: DEMO_TIMES.prompt,
 };
 export const REASONING: ReasoningTraceData = {
   id: "demo-reasoning", agentModel: "Demo model", durationMs: 3200, totalTokens: 280, status: "completed",
@@ -87,9 +107,28 @@ export const TEST_OUTPUT = [
   "   PASS  cart updates refresh the shipping label",
   "   PASS  checkout renders the shipping summary",
   "",
+  "Verification:",
+  "  Helper: src/cart.ts > shippingLabel",
+  "  Currency: USD",
+  "  Threshold: $50 (inclusive)",
+  "  Existing checkout message preserved below $50",
+  "  Cart and checkout suites completed",
+  "  No skipped tests",
+  "  No failed tests",
+  "  No snapshot changes",
+  "",
   " Test Files  2 passed (2)",
   "      Tests  12 passed (12)",
   "   Duration  1.25s",
+  "",
+  "Shipping boundary report:",
+  JSON.stringify({
+    cases: [
+      { name: "below-threshold", subtotal: "$49.99", currency: "USD", threshold: "$50", comparison: "49.99 >= 50", eligible: false, expected: "Shipping calculated at checkout", received: "Shipping calculated at checkout", passed: true },
+      { name: "at-threshold", subtotal: "$50", currency: "USD", threshold: "$50", comparison: "50 >= 50", eligible: true, expected: "Free shipping", received: "Free shipping", passed: true },
+      { name: "above-threshold", subtotal: "$50.01", currency: "USD", threshold: "$50", comparison: "50.01 >= 50", eligible: true, expected: "Free shipping", received: "Free shipping", passed: true },
+    ],
+  }, null, 2),
   "",
   "12 tests passed",
 ].join("\n");
@@ -99,7 +138,7 @@ export const CALLS: Record<string, ToolCalloutData> = {
     shell: { command: "npm test", cwd: "/workspace/demo-shop", exitCode: 0, stdout: TEST_OUTPUT } },
   git: { ...completed, id: "demo-git", durationMs: 200, tool: "git", title: "git diff --stat", command: "git diff --stat", shell: { command: "git diff --stat", stdout: "src/cart.ts       | 4 +++-\ntest/cart.test.ts | 9 +++++++++\n2 files changed, 12 insertions(+), 1 deletion(-)" } },
   read: { ...completed, id: "demo-read", durationMs: 100, tool: "read", title: "Read src/cart.ts", filePath: "src/cart.ts", language: "typescript", lineRange: "1-5", code: BEFORE_CODE, input: "src/cart.ts:1-5", copyResult: BEFORE_CODE },
-  edit: { ...completed, id: "demo-edit", durationMs: 200, input: "src/cart.ts", copyResult: DIFF, tool: "edit", title: "Edit src/cart.ts", filePath: "src/cart.ts", diff: DIFF, changes: { added: 3, removed: 1 } },
+  edit: { ...completed, id: "demo-edit", durationMs: 200, input: EDIT_PATCH, copyResult: EDIT_RESULT, tool: "edit", title: "Edit src/cart.ts", filePath: "src/cart.ts", diff: DIFF, changes: { added: 3, removed: 1 } },
   image: { ...completed, id: "demo-image", tool: "read", title: "Read assets/checkout.png", filePath: "assets/checkout.png" },
   thinking: { ...completed, id: "demo-thinking", durationMs: 400, tool: "thinking", title: "Check the shipping rule", thinking: { text: "The threshold includes exactly $50. Keep the existing message below that amount.", status: "completed", tokenCount: 120, steps: ["Locate the cart helper", "Use total >= 50", "Test the boundary values"] } },
   mcp: { ...completed, id: "demo-mcp", tool: "mcp", title: "catalog.lookup", mcp: { server: "demo-catalog", tool: "lookup", transport: "stdio", arguments: { sku: "sample-mug" }, result: '{"name":"Sample mug","price":25,"currency":"USD"}' } },
