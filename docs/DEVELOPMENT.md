@@ -197,7 +197,7 @@ the shared details, and never draw this plugin's keyboard focus outline or borde
 
 #### Native capability audit
 
-The supported interfaces were checked against SDK 0.12.0 and React Native 0.81:
+This check was done on SDK 0.12.0 and React Native 0.81. It has not been repeated on 0.13.0:
 
 | Evidence | Finding |
 | --- | --- |
@@ -476,9 +476,10 @@ until a user performs them; the replay does not certify native gesture handling.
 
 ## Plugin SDK limitations found while building this
 
-The current SDK and minimum supported host are 0.12.0. See the
-[0.8.0 to 0.12.0 API audit](SDK-0.12.md) for newly available interfaces, feature
-applications, compatibility changes, and current spacing/grouping/font limits.
+The current SDK and minimum supported host are 0.13.0. See the
+[SDK 0.13 migration notes](SDK-0.13.md) for the interfaces this release uses
+and for compatibility with older hosts. The
+[0.8.0 to 0.12.0 API audit](SDK-0.12.md) is kept as history.
 
 The historical findings below were measured against `@getpaseo/plugin` 0.8.0 and
 the Paseo 0.8.0 desktop build. Each entry names the evidence and the workaround
@@ -490,13 +491,11 @@ timestamp, item}`. Client navigation offers `openSettings`, `openSurface` and `o
    target (`{kind:"file", path}`, reachable in-app through `?open=file:<path>`) is not exposed, and
    the `paseo://` scheme only carries agent deep links. Workaround: a daemon-side RPC that reveals
    the path in the operating system's file manager.
-2. **Some hosts strip prompt attachments.** A host can map a user message to only `text`,
-   `messageId`, and `clientMessageId` before transformers run. The plugin cannot recover or count
-   attachments removed this way. Text-only items still use the enhanced bubble and its folding
-   controls, without inventing an attachment count. When image metadata is available, the bubble
-   keeps available thumbnails and the complete reported count, including missing or failed previews.
-   Announced non-image or unsupported attachments remain with the host. Disable **Enhanced prompt
-   bubble** to use Paseo's own UI when its timeline omits attachment information.
+2. **Paseo 0.13 gives plugins no prompt images.** A `user_message` timeline item carries only
+   `text`, `messageId` and `clientMessageId`. Plugins receive no image data, so the enhanced
+   bubble cannot show pasted images. The images are still sent to the agent. Text-only items
+   still use the enhanced bubble and its folding controls. Turn off **Enhanced prompt bubble**
+   to use Paseo's own bubble, which can show image previews.
 3. **Interception is all or nothing.** A transformer replaces the host item completely. There is no
    way to decorate an item or keep host affordances that the plugin does not reimplement. Returning
    `undefined` is the only opt-out.
