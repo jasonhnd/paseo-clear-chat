@@ -23,33 +23,44 @@ interface UserMessage {
   images: Record<string, unknown>[];
   /** Tool-result lines reserve their own uuid but are not unknown content. */
   toolResult: boolean;
+  /** True for a queued_command attachment line. */
+  queued: boolean;
+  /** User-turn uuid this queued attachment belongs to. */
+  sourceUuid: string | null;
+  /** Sidechain, meta, another session, or a non-string id. */
+  rejected: boolean;
 }
 
 function userMessage(value: unknown, sessionId: string): UserMessage | null {
   const line = record(value);
   if (!line) return null;
   const attachment = line.type === "attachment" ? record(line.attachment) : null;
-  if (line.type !== "user" && attachment?.type !== "queued_command") return null;
+  const queued = attachment?.type === "queued_command" ? attachment : null;
+  if (line.type !== "user" && !queued) return null;
   // Even rejected user lines reserve their readable IDs. Otherwise a lookup
   // for that line could fall back to an unrelated message with the same text.
-  const rawIds = [line.uuid, line.promptId, ...(attachment ? [attachment.source_uuid] : [])];
+  const rawIds = [line.uuid, line.promptId, ...(queued ? [queued.source_uuid] : [])];
   const ids = rawIds.filter((id): id is string => typeof id === "string" && id.length > 0);
   const uuid = typeof line.uuid === "string" && line.uuid.length > 0 ? line.uuid : null;
-  const unreadable: UserMessage = { uuid, ids, text: null, images: [], toolResult: false };
-  const message = record(line.message);
-  if (!attachment && (!message || message.role !== "user")) return unreadable;
-  const rejected = line.isSidechain === true || line.isMeta === true || attachment?.isMeta === true ||
+  const sourceUuid = queued && typeof queued.source_uuid === "string" && queued.source_uuid.length > 0
+    ? queued.source_uuid : null;
+  const rejected = line.isSidechain === true || line.isMeta === true || queued?.isMeta === true ||
     (line.sessionId !== undefined && line.sessionId !== sessionId) ||
     rawIds.some(id => id !== undefined && typeof id !== "string");
-  const content = attachment ? attachment.prompt : message!.content;
-  if (typeof content === "string") return { uuid, ids, text: content, images: [], toolResult: false };
+  const parsed = (text: string | null, images: Record<string, unknown>[], toolResult = false): UserMessage => ({
+    uuid, ids: toolResult ? (uuid ? [uuid] : []) : ids, text, images, toolResult,
+    queued: !!queued, sourceUuid, rejected,
+  });
+  const unreadable = parsed(null, []);
+  const message = record(line.message);
+  if (!queued && (!message || message.role !== "user")) return unreadable;
+  const content = queued ? queued.prompt : message!.content;
+  if (typeof content === "string") return parsed(content, []);
   if (!Array.isArray(content) || !content.length) return unreadable;
   // Claude copies the turn promptId onto every tool_result line. That copy is
   // not another message. Reserve only this line's uuid: a lookup of the uuid
   // still selects nothing, and the prompt id still selects the user turn.
-  if (content.some(value => record(value)?.type === "tool_result")) {
-    return { uuid, ids: uuid ? [uuid] : [], text: null, images: [], toolResult: true };
-  }
+  if (content.some(value => record(value)?.type === "tool_result")) return parsed(null, [], true);
   const texts: string[] = [];
   const images: Record<string, unknown>[] = [];
   for (const value of content) {
@@ -60,7 +71,68 @@ function userMessage(value: unknown, sessionId: string): UserMessage | null {
     // message when the requested message has an unreadable content format.
     else return unreadable;
   }
-  return { uuid, ids, text: texts.join("\n"), images: rejected ? [] : images, toolResult: false };
+  return parsed(texts.join("\n"), rejected ? [] : images);
+}
+
+function sameImage(left: Record<string, unknown>, right: Record<string, unknown>): boolean {
+  const a = record(left.source), b = record(right.source);
+  return left.type === "image" && right.type === "image" && !!a && !!b &&
+    a.type === b.type && a.media_type === b.media_type && typeof a.data === "string" && a.data === b.data;
+}
+
+function dedupeImages(first: readonly Record<string, unknown>[], second: readonly Record<string, unknown>[]): Record<string, unknown>[] {
+  const images = [...first];
+  for (const block of second) {
+    if (!images.some(existing => sameImage(existing, block))) images.push(block);
+  }
+  return images;
+}
+
+/** A queued_command and the user turn its source_uuid names are one prompt. */
+function foldQueuedTurns(messages: UserMessage[]): UserMessage[] {
+  const users = new Map<string, number[]>();
+  messages.forEach((message, index) => {
+    if (!message.queued && !message.toolResult && message.uuid) {
+      const list = users.get(message.uuid) ?? [];
+      list.push(index);
+      users.set(message.uuid, list);
+    }
+  });
+  const paired = new Map<number, number>();
+  const used = new Set<number>();
+  messages.forEach((message, index) => {
+    if (!message.queued || message.toolResult || !message.sourceUuid) return;
+    const sourceIndex = (users.get(message.sourceUuid) ?? []).find(candidate => !used.has(candidate));
+    if (sourceIndex === undefined) return;
+    used.add(sourceIndex);
+    paired.set(index, sourceIndex);
+  });
+  const folded: UserMessage[] = [];
+  messages.forEach((message, index) => {
+    if (used.has(index)) return;
+    const sourceIndex = paired.get(index);
+    if (sourceIndex === undefined) {
+      folded.push(message);
+      return;
+    }
+    const source = messages[sourceIndex]!;
+    // A discarded or unreadable user turn stays empty. A discarded attachment
+    // contributes nothing, but it must not hide the user turn's own images.
+    const attachmentImages = source.rejected || source.text === null || message.rejected || message.text === null
+      ? [] : message.images;
+    const images = index < sourceIndex
+      ? dedupeImages(attachmentImages, source.images)
+      : dedupeImages(source.images, attachmentImages);
+    const text = source.text !== null && (message.text === null || message.text === source.text)
+      ? source.text : null;
+    folded.push({
+      uuid: source.uuid ?? message.uuid,
+      ids: [...new Set([...message.ids, ...source.ids])],
+      text, images, toolResult: false, queued: false, sourceUuid: null,
+      rejected: source.rejected,
+    });
+  });
+  return folded;
 }
 
 function image(block: Record<string, unknown>, id: string): FoundImage | null {
@@ -125,10 +197,14 @@ async function find(context: ResolverContext): Promise<FoundImages> {
     for (const path of files) {
       context.signal.throwIfAborted();
       identity = await fileIdentity(path);
+      const parsed: UserMessage[] = [];
       for await (const value of readJsonlReadOnly(path, { allowedRoots: [projects], signal: context.signal })) {
         context.signal.throwIfAborted();
         const message = userMessage(value, context.sessionId);
-        if (!message) continue;
+        if (message) parsed.push(message);
+      }
+      if (identity !== await fileIdentity(path)) return empty;
+      for (const message of foldQueuedTurns(parsed)) {
         // Tool results are a known non-prompt shape. They must not make every
         // session that used a tool fail closed on text fallback.
         if (message.text === null && !message.toolResult) unreadableText = true;
@@ -141,7 +217,6 @@ async function find(context: ResolverContext): Promise<FoundImages> {
           textMessage = textCount === 1 ? message : null;
         }
       }
-      if (identity !== await fileIdentity(path)) return empty;
     }
     const matchedMessages = idCount || textCount;
     const selected = idCount ? idMessage : textMessage;
