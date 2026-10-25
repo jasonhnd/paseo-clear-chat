@@ -275,3 +275,41 @@ test("820px popovers cap their height to the safe viewport with room for margins
   assert.ok(find(h, mounted.render(), "step-detail-scroll"));
   h.unmount();
 });
+
+for (const platform of ["web", "ios", "android"]) {
+  for (const widths of [[1440, 820, 390], [1440, 390], [1180, 820, 390], [820, 390], [390]]) {
+    test(`${platform}: one detail owner through ${widths.join(" -> ")} with separate host roots`, async () => {
+      const h = createToolHarness(platform, { dimensions: { width: widths[0], height: 900 } });
+      const identity = { compact: widths[0] < 744, platform };
+      const mounted = h.mount(call, true, { layout: identity });
+      const check = tree => {
+        const panels = h.nodes(tree, node => node.props.testID === "step-detail-panel");
+        assert.equal(panels.length, 1, "Exactly one panel, including portals outside hidden Explorer");
+        assert.equal(panels[0].props.dataSet.presentation, h.dimensions.width < 744 ? "sheet" : h.dimensions.width < 1024 ? "popover" : "side");
+        assert.equal(find(h, tree, "step-detail-scroll").props.contentOffset.y, 400);
+      };
+      find(h, mounted.tree, "step-detail-scroll").props.onScroll({ nativeEvent: { contentOffset: { y: 400 } } });
+      check(mounted.render());
+      for (const width of widths.slice(1)) {
+        h.dimensions.width = width;
+        if (width < 744) {
+          // Viewport subscribers can render before the host removes Explorer.
+          // Rebuild the compact row independently of the existing panel root.
+          // The host passes compact to the replacement timeline row.
+          identity.compact = true;
+        }
+        check(width < 744 ? mounted.replaceRow() : mounted.render());
+        if (width < 744) {
+          h.setPanelMounted(false);
+          check(mounted.render());
+          await tick();
+          check(mounted.render());
+        }
+      }
+      find(h, mounted.render(), "step-detail-close").props.onPress();
+      assert.equal(find(h, mounted.render(), "step-detail-panel"), undefined);
+      h.unmount();
+      await tick();
+    });
+  }
+}

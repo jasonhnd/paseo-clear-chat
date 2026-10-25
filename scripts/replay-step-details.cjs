@@ -73,7 +73,7 @@ async function replay() {
   const server = createServer((request, response) => {
     response.setHeader("Content-Type", request.url === "/preview.js" ? "text/javascript; charset=utf-8" : "text/html; charset=utf-8");
     const fieldIndex = /^\/fields\/(\d+)$/.exec(request.url)?.[1];
-    response.end(request.url === "/preview.js" ? bundle.outputFiles[0].contents : html(fieldIndex !== undefined ? [fieldSamples[Number(fieldIndex)]] : request.url === "/layout" ? layoutSamples : ["/switching", "/keyboard", "/rotation"].includes(request.url) ? longSamples : request.url === "/large-output" ? [largeSample] : [sample]));
+    response.end(request.url === "/preview.js" ? bundle.outputFiles[0].contents : html(fieldIndex !== undefined ? [fieldSamples[Number(fieldIndex)]] : request.url === "/layout" ? layoutSamples : ["/switching", "/keyboard", "/rotation"].includes(request.url) ? longSamples : request.url === "/host-remount" ? [longSamples[0]] : request.url === "/large-output" ? [largeSample] : [sample]));
   });
   let browser;
   const report = [];
@@ -83,7 +83,7 @@ async function replay() {
     const origin = `http://127.0.0.1:${server.address().port}`;
     const port = await debugPort();
     browser = await chromium.launchPersistentContext(join(work, "profile"), {
-      channel: "chrome", headless: true, viewport: { width: 1440, height: 844 }, hasTouch: !inputsOnly,
+      channel: "chrome", executablePath: process.env.CHROME_PATH, headless: true, viewport: { width: 1440, height: 844 }, hasTouch: !inputsOnly,
       reducedMotion: "reduce", args: [`--remote-debugging-port=${port}`, "--disable-background-networking", "--no-first-run"],
     });
     browser.setDefaultTimeout(15000);
@@ -163,6 +163,29 @@ async function replay() {
         throw error;
       }
       return detailScroll();
+    }
+    if (process.argv.includes("--resize-only")) {
+      for (const widths of [[1440, 820, 390], [1440, 390], [1180, 820, 390], [820, 390], [390]]) {
+        await page.setViewportSize({ width: widths[0], height: 900 });
+        await page.goto(`${origin}/host-remount`, { waitUntil: "networkidle" });
+        await row.click();
+        await waitOpen();
+        const reading = await startReading(200);
+        for (const width of widths) {
+          await page.setViewportSize({ width, height: 900 });
+          await page.waitForFunction(expected => document.querySelector('[data-testid="step-detail-panel"]')?.getAttribute("data-presentation") === expected,
+            width < 744 ? "sheet" : width < 1024 ? "popover" : "side");
+          await waitOpen();
+          const visible = panel.filter({ visible: true });
+          assert.equal(await visible.count(), 1, `${widths.join(" -> ")} at ${width}: one visible panel`);
+          assert.equal(await panel.count(), 1, "No hidden detail owner may retain a modal");
+          await waitReading(reading.top);
+          report.push({ widths, width, panel: await panel.boundingBox(), scrollTop: (await detailScroll()).top });
+        }
+      }
+      assert.deepEqual(errors, []);
+      console.log(JSON.stringify(report, null, 2));
+      return;
     }
     if (inputsOnly) {
       // Keep metrics, navigation and real inputs on one session. Disconnecting
