@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { lstat, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -6,7 +7,7 @@ import { MAX_IMAGE_BYTES, readJsonlReadOnly } from "./read-only";
 import { readImageHeader } from "./image-header";
 
 const SESSION_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-const MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif"]);
+const MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 const MAX_IMAGES = 20;
 const MAX_PIXELS = 24_000_000;
 
@@ -16,6 +17,7 @@ function record(value: unknown): Record<string, unknown> | null {
 }
 
 interface UserMessage {
+  uuid: string | null;
   ids: string[];
   text: string | null;
   images: Record<string, unknown>[];
@@ -23,22 +25,27 @@ interface UserMessage {
 
 function userMessage(value: unknown, sessionId: string): UserMessage | null {
   const line = record(value);
-  if (!line || line.type !== "user") return null;
+  if (!line) return null;
+  const attachment = line.type === "attachment" ? record(line.attachment) : null;
+  if (line.type !== "user" && attachment?.type !== "queued_command") return null;
   // Even rejected user lines reserve their readable IDs. Otherwise a lookup
   // for that line could fall back to an unrelated message with the same text.
-  const ids = [line.uuid, line.promptId].filter((id): id is string => typeof id === "string" && id.length > 0);
-  const unreadable: UserMessage = { ids, text: null, images: [] };
+  const rawIds = [line.uuid, line.promptId, ...(attachment ? [attachment.source_uuid] : [])];
+  const ids = rawIds.filter((id): id is string => typeof id === "string" && id.length > 0);
+  const uuid = typeof line.uuid === "string" && line.uuid.length > 0 ? line.uuid : null;
+  const unreadable: UserMessage = { uuid, ids, text: null, images: [] };
   const message = record(line.message);
-  if (!message || message.role !== "user") return unreadable;
-  const rejected = line.isSidechain === true || line.isMeta === true ||
+  if (!attachment && (!message || message.role !== "user")) return unreadable;
+  const rejected = line.isSidechain === true || line.isMeta === true || attachment?.isMeta === true ||
     (line.sessionId !== undefined && line.sessionId !== sessionId) ||
-    [line.uuid, line.promptId].some(id => id !== undefined && typeof id !== "string");
-  if (typeof message.content === "string") return { ids, text: message.content, images: [] };
-  if (!Array.isArray(message.content) || !message.content.length) return unreadable;
-  if (message.content.some(value => record(value)?.type === "tool_result")) return unreadable;
+    rawIds.some(id => id !== undefined && typeof id !== "string");
+  const content = attachment ? attachment.prompt : message!.content;
+  if (typeof content === "string") return { uuid, ids, text: content, images: [] };
+  if (!Array.isArray(content) || !content.length) return unreadable;
+  if (content.some(value => record(value)?.type === "tool_result")) return unreadable;
   const texts: string[] = [];
   const images: Record<string, unknown>[] = [];
-  for (const value of message.content) {
+  for (const value of content) {
     const block = record(value);
     if (block?.type === "text" && typeof block.text === "string") texts.push(block.text);
     else if (block?.type === "image") images.push(block);
@@ -46,10 +53,10 @@ function userMessage(value: unknown, sessionId: string): UserMessage | null {
     // message when the requested message has an unreadable content format.
     else return unreadable;
   }
-  return { ids, text: texts.join("\n"), images: rejected ? [] : images };
+  return { uuid, ids, text: texts.join("\n"), images: rejected ? [] : images };
 }
 
-function image(block: Record<string, unknown>, index: number): FoundImage | null {
+function image(block: Record<string, unknown>, id: string): FoundImage | null {
   const source = record(block.source);
   if (!source || source.type !== "base64" || typeof source.media_type !== "string" ||
       !MIME_TYPES.has(source.media_type) || typeof source.data !== "string") return null;
@@ -64,22 +71,10 @@ function image(block: Record<string, unknown>, index: number): FoundImage | null
   const header = readImageHeader(bytes);
   if (!header || header.mime !== source.media_type || header.width < 1 || header.height < 1 ||
       header.width * header.height > MAX_PIXELS) return null;
-  return { id: `claude-image-${index}`, mime: source.media_type, readBytes: async () => Buffer.from(bytes) };
+  return { id, mime: source.media_type, readBytes: async () => Buffer.from(bytes) };
 }
 
-async function sessionFiles(projects: string, cwd: string, sessionId: string, signal: AbortSignal): Promise<string[]> {
-  // Claude's documented escaping is per character (including spaces/dots).
-  // https://code.claude.com/docs/en/sessions#where-transcripts-are-stored
-  const encoded = cwd.replace(/[^a-zA-Z0-9]/g, "-");
-  if (encoded.length > 0 && encoded.length <= 200) {
-    const expected = join(projects, encoded, `${sessionId}.jsonl`);
-    try {
-      const entry = await lstat(expected);
-      return entry.isFile() ? [expected] : [];
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
-  }
+async function sessionFiles(projects: string, sessionId: string, signal: AbortSignal): Promise<string[]> {
   const files: string[] = [];
   // Long paths may be hashed; resumed sessions may live under another cwd.
   // Inspect immediate project directories only, never subagent transcripts.
@@ -96,6 +91,12 @@ async function sessionFiles(projects: string, cwd: string, sessionId: string, si
   return files;
 }
 
+async function fileIdentity(path: string): Promise<string> {
+  const entry = await lstat(path, { bigint: true });
+  if (!entry.isFile()) throw new Error("invalid_store");
+  return [entry.dev, entry.ino, entry.size, entry.mtimeNs].join(":");
+}
+
 async function find(context: ResolverContext): Promise<FoundImages> {
   const empty = { matchedMessages: 0, images: [] };
   if (!context.sessionId || !SESSION_ID.test(context.sessionId) || context.signal.aborted) return empty;
@@ -110,9 +111,13 @@ async function find(context: ResolverContext): Promise<FoundImages> {
   let unreadableText = false;
   let idMessage: UserMessage | null = null, textMessage: UserMessage | null = null;
   try {
-    const files = await sessionFiles(projects, context.cwd, context.sessionId, context.signal);
+    const files = await sessionFiles(projects, context.sessionId, context.signal);
+    // A copied session is ambiguous even if only one copy contains the lookup.
+    if (files.length > 1) return { matchedMessages: files.length, images: [] };
+    let identity = "";
     for (const path of files) {
       context.signal.throwIfAborted();
+      identity = await fileIdentity(path);
       for await (const value of readJsonlReadOnly(path, { allowedRoots: [projects], signal: context.signal })) {
         context.signal.throwIfAborted();
         const message = userMessage(value, context.sessionId);
@@ -127,14 +132,19 @@ async function find(context: ResolverContext): Promise<FoundImages> {
           textMessage = textCount === 1 ? message : null;
         }
       }
+      if (identity !== await fileIdentity(path)) return empty;
     }
     const matchedMessages = idCount || textCount;
     const selected = idCount ? idMessage : textMessage;
-    if ((!idCount && unreadableText) || matchedMessages !== 1 || !selected) return { matchedMessages, images: [] };
+    if ((!idCount && unreadableText) || matchedMessages !== 1 || !selected?.uuid) return { matchedMessages, images: [] };
+    // prompt.image repeats the lookup. Binding the opaque IDs to both the
+    // message UUID and transcript identity makes an old list ID fail to match
+    // after replacement, edits or appends, without keeping transcript caches.
+    const binding = createHash("sha256").update(JSON.stringify([files[0], identity, selected.uuid])).digest("hex");
     const images: FoundImage[] = [];
     for (let index = 0; index < selected.images.length && images.length < MAX_IMAGES; index++) {
       context.signal.throwIfAborted();
-      const found = image(selected.images[index]!, index);
+      const found = image(selected.images[index]!, `claude-image-${binding}-${index}`);
       if (found) images.push(found);
     }
     return { matchedMessages, images };
