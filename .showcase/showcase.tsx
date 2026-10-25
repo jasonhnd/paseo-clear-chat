@@ -21,10 +21,8 @@ import { SystemCard } from "../client/components/system-card";
 import { AssistantFooter } from "../client/components/turn-footer";
 import { MarkdownView } from "../client/components/markdown/markdown-view";
 import { FinalToolReply } from "../client/components/final-tool-reply";
-import { StepDetailPanel } from "../client/components/step-detail-panel";
-import { createStepDetailState } from "../client/components/step-detail-state";
 import { parseSystemEnvelope } from "../client/system-envelope";
-import { APPROVAL, CALLS, CODE, DIFF, JOB_NOTICE, PHONE_EDIT, PHONE_MENU_STEP, PROMPT, REASONING, REPLY, TASKS, WRAP_UP } from "./fixtures";
+import { APPROVAL, CALLS, CODE, DIFF, JOB_NOTICE, PROMPT, REASONING, REPLY, TASKS, WRAP_UP } from "./fixtures";
 import type { ToolCalloutData } from "../shared/contracts";
 
 const dark = new URLSearchParams(location.search).get("theme") !== "light";
@@ -127,101 +125,8 @@ function Showcase() {
     <Shot id="settings" title="Presentation preferences" width={760}><ClearChatSettingsPage theme={{ colors }} host={{ id: "demo-host", label: "Demo host" }} layout={{ compact: false, platform: "web" }} /></Shot>
   </main>;
 }
-const HERO_STEPS = ["thinking", "search", "read", "edit", "bash", "git"] as const;
-const heroEdit = CALLS.edit;
-if (!heroEdit) throw new Error("Missing demo edit fixture");
-// The detail panel reads input and copyResult, not the card's diff field.
-const HERO_EDIT: ToolCalloutData = { ...heroEdit, input: DIFF, copyResult: "Updated src/cart.ts." };
-
-function HeroTranscript({ compact }: { compact: boolean }) {
-  return <View style={{ gap: 12, paddingHorizontal: compact ? 12 : 28, paddingTop: compact ? 16 : 24, paddingBottom: 28 }}>
-    <Prompt />
-    {HERO_STEPS.map(name => <Tool key={name} name={name} initialExpanded={false} onOpenDetail={() => {}} />)}
-    <Reply />
-  </View>;
-}
-
-/** 1440×900 conversation: folded steps, with the edit diff in the side panel. */
-function HeroDesktop() {
-  return <div id="shot-hero-desktop" style={{ width: 1440, height: 900, display: "flex", overflow: "hidden", background: colors.surface0, color: colors.foreground, fontFamily: tokens.fontUi }}>
-    <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}><HeroTranscript compact={false} /></div>
-    <div style={{ width: 520, height: 900, display: "flex", flexDirection: "column", minHeight: 0, borderLeft: `1px solid ${colors.border}`, background: colors.surface0 }}>
-      <StepDetailPanel step={HERO_EDIT} open onOpenChange={() => {}} presentation="side" tokens={tokens} />
-    </div>
-  </div>;
-}
-
-/** Same conversation at a 390px browser width, details open in the bottom sheet. */
-function HeroPhone() {
-  const viewState = React.useMemo(() => createStepDetailState(), []);
-  return <div id="shot-hero-phone" style={{ width: 390, height: 820, overflow: "hidden", background: colors.surface0, color: colors.foreground, fontFamily: tokens.fontUi }}>
-    <HeroTranscript compact />
-    <StepDetailPanel step={HERO_EDIT} open onOpenChange={() => {}} presentation="sheet" tokens={tokens} viewState={viewState} />
-  </div>;
-}
-
-function HeroFrame() {
-  const shot = new URLSearchParams(location.search).get("shot");
-  if (shot === "hero-desktop") return <HeroDesktop />;
-  if (shot === "hero-phone") return <HeroPhone />;
-  return <Showcase />;
-}
-
-function PhoneScene({ id, fill = false, children }: { id: string; fill?: boolean; children: React.ReactNode }) {
-  return <div id={`shot-${id}`} data-fixture={id} style={{ width: 390, minHeight: fill ? "100vh" : undefined, background: colors.surface0, color: colors.foreground, fontFamily: tokens.fontUi }}>
-    <View style={{ paddingTop: 12, paddingBottom: 20, paddingHorizontal: 8, gap: 8 }}>{children}</View>
-  </div>;
-}
-
-/** Folded steps use the same details affordance a narrow window shows. */
-function FoldedSteps({ steps }: { steps: Array<{ name?: string; data?: ToolCalloutData }> }) {
-  return <>{steps.map(step => <Tool key={step.data?.id ?? step.name} name={step.name} data={step.data} initialExpanded={false} onOpenDetail={noop} />)}</>;
-}
-
-function PhoneTimeline() {
-  return <PhoneScene id="phone-timeline">
-    <Prompt />
-    <FoldedSteps steps={[{ name: "search" }, { name: "read" }, { name: "edit" }, { name: "bash" }]} />
-    <Reply />
-  </PhoneScene>;
-}
-
-function PhoneDetails() {
-  const state = React.useRef(createStepDetailState()).current;
-  return <PhoneScene id="phone-details" fill>
-    <Prompt />
-    <FoldedSteps steps={[{ data: PHONE_EDIT }, { name: "search" }, { name: "read" }, { name: "bash" }]} />
-    <Reply />
-    <StepDetailPanel step={PHONE_EDIT} open presentation="sheet" onOpenChange={noop} tokens={tokens} viewState={state} />
-  </PhoneScene>;
-}
-
-function PhoneMenu() {
-  return <PhoneScene id="phone-menu">
-    <Prompt />
-    <FoldedSteps steps={[{ name: "search" }, { data: PHONE_MENU_STEP }, { name: "edit" }, { name: "read" }]} />
-    <Reply />
-  </PhoneScene>;
-}
-
-function PhoneShot({ id }: { id: string }) {
-  if (id === "phone-timeline") return <PhoneTimeline />;
-  if (id === "phone-details") return <PhoneDetails />;
-  if (id === "phone-menu") return <PhoneMenu />;
-  return null;
-}
-
 embedFonts();
 installFrostedGlass();
 document.body.style.background = colors.surface0;
-const heroShot = new URLSearchParams(location.search).get("shot");
-if (heroShot) {
-  document.documentElement.style.background = colors.surface0;
-  document.documentElement.style.overflow = "hidden";
-  document.body.style.overflow = "hidden";
-  const root = document.getElementById("root");
-  if (root) root.style.display = "block";
-}
 const translations = new PluginTranslationRuntime({ getLocale: () => "en", subscribe: () => () => {} });
-const shot = new URLSearchParams(location.search).get("shot");
-createRoot(document.getElementById("root")!).render(<PluginTranslationProvider runtime={translations}>{shot?.startsWith("phone-") ? <PhoneShot id={shot} /> : <HeroFrame />}</PluginTranslationProvider>);
+createRoot(document.getElementById("root")!).render(<PluginTranslationProvider runtime={translations}><Showcase /></PluginTranslationProvider>);

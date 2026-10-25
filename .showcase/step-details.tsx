@@ -1,23 +1,14 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { useWindowDimensions, View } from "react-native";
+import React, { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useWindowDimensions } from "react-native";
 import { createRoot } from "react-dom/client";
 import type { PluginAgentPanelProps, PluginClientContext, PluginAgentPanelContribution } from "@getpaseo/plugin/client";
 import { LiveToolCallRenderer } from "../client/live-renderers";
-import { buildLiveToolCallData, type LiveToolCallPayload } from "../client/tool-call-data";
-import { installStepDetailPanel, openHostStepDetail } from "../client/components/step-detail-host";
+import { type LiveToolCallPayload } from "../client/tool-call-data";
+import { installStepDetailPanel } from "../client/components/step-detail-host";
 import { embedFonts } from "../client/components/embed-fonts";
-import { installFrostedGlass } from "../client/components/frosted";
 import { initializeEnhancerPreferences, updateEnhancerPreferences, useEnhancerPreferences } from "../client/preferences";
-import { DESKTOP_MIN, stepDetailPresentation, TABLET_MIN } from "../client/breakpoints";
+import { DESKTOP_MIN, TABLET_MIN } from "../client/breakpoints";
 import { installCompactToolSpacing } from "../client/tool-row-spacing";
-import { buildThemeTokens } from "../client/components/theme-tokens";
-import { ToolCallout } from "../client/components/tool-callouts";
-import { UserMessage } from "../client/components/user-message";
-import { MarkdownView } from "../client/components/markdown/markdown-view";
-import { AssistantFooter } from "../client/components/turn-footer";
-import { StepDetailPanel } from "../client/components/step-detail-panel";
-import type { ToolCalloutData } from "../shared/contracts";
-import { CALLS, DIFF, PROMPT, REPLY } from "./fixtures";
 import { hydratePreviewWorkspace, previewWorkspaceReady, PluginTranslationProvider, PluginTranslationRuntime } from "./shims/step-detail-client";
 
 declare global { interface Window {
@@ -28,8 +19,6 @@ window.__stepDetailPanelAttempts = [];
 
 embedFonts();
 installCompactToolSpacing();
-const captureShot = new URLSearchParams(location.search).get("capture") === "ipad";
-if (captureShot) installFrostedGlass();
 
 const colors = {
   ...(new URLSearchParams(location.search).get("theme") === "light" ? {
@@ -56,70 +45,7 @@ installStepDetailPanel({
   },
 } as unknown as PluginClientContext);
 
-/** Same synthetic turn as the hero comparison, with the edit step opened. */
-const CAPTURE_STEPS = ["thinking", "search", "read", "edit", "bash", "git"] as const;
-const captureEditCall: LiveToolCallPayload = {
-  name: "edit", status: "completed", callId: "demo-edit",
-  detail: {
-    type: "edit", filePath: "src/cart.ts", durationMs: 84, unifiedDiff: DIFF,
-    input: {
-      path: "src/cart.ts",
-      old_string: "  return \"Shipping calculated at checkout\";",
-      new_string: "  return total >= 50\n    ? \"Free shipping\"\n    : \"Shipping calculated at checkout\";",
-    },
-    output: DIFF,
-  },
-};
-
-function CaptureFrame() {
-  const { width } = useWindowDimensions();
-  const presentation = stepDetailPresentation(width);
-  const tokens = useMemo(() => buildThemeTokens(colors), []);
-  const editStep = useMemo(() => buildLiveToolCallData(captureEditCall), []);
-  const showPanel = useSyncExternalStore(listener => { listeners.add(listener); return () => { listeners.delete(listener); }; }, () => visible);
-  const [popover, setPopover] = useState<ToolCalloutData | null>(null);
-  useEffect(() => {
-    document.documentElement.style.background = colors.surface0;
-    document.body.style.margin = "0";
-    document.body.style.background = colors.surface0;
-    document.body.style.fontFamily = '"OMP Inter", sans-serif';
-    const root = document.getElementById("root");
-    if (!root) return;
-    root.style.display = "block";
-    root.style.width = "100%";
-    root.style.height = "100%";
-  }, []);
-  const openStep = (step: ToolCalloutData) => {
-    if (presentation === "side" && openHostStepDetail("demo-host", "demo-agent", "demo-workspace", { key: step.id, step }, true)) {
-      setPopover(null);
-      return;
-    }
-    setPopover(step);
-  };
-  const Component = contribution.Component as React.ComponentType<PluginAgentPanelProps>;
-  return <div data-pmono="" data-testid="ipad-capture" style={{ display: "flex", width: "100%", height: "100%", overflow: "hidden", boxSizing: "border-box", background: colors.surface0, color: colors.foreground, fontFamily: '"OMP Inter", sans-serif' }}>
-    <main data-testid="preview-chat" style={{ flex: 1, minWidth: 0, overflow: "auto", padding: "16px 20px" }}>
-      <View style={{ gap: 12 }}>
-        <UserMessage text={PROMPT} timestamp={new Date("2026-01-01T12:00:00Z")} tokens={tokens} usage={{ inputTokens: 240, cachedInputTokens: 800, outputTokens: 160 }} />
-        {CAPTURE_STEPS.map(name => {
-          const step = name === "edit" ? editStep : CALLS[name]!;
-          return <ToolCallout key={name} data={step} tokens={tokens} expanded={false} onExpandedChange={() => {}} onOpenDetail={() => openStep(step)} />;
-        })}
-        <View>
-          <MarkdownView text={REPLY} tokens={tokens} variant="document" />
-          <AssistantFooter text={REPLY} at={new Date("2026-01-01T12:01:00Z")} tokens={tokens} />
-        </View>
-      </View>
-    </main>
-    {showPanel ? <aside data-testid="preview-host-panel" style={{ width: "40vw", maxWidth: 440, flexShrink: 0, boxSizing: "border-box", display: width >= DESKTOP_MIN ? "flex" : "none", flexDirection: "column", minHeight: 0, background: colors.surface0, borderLeft: `1px solid ${colors.border}` }}>
-      <Component host={host} params={{ agentId: "demo-agent" }} workspaceId="demo-workspace" revision={0} tab={{ state: undefined, setState() {}, setModified() {} }} layout={{ compact: false, platform: "web" }} theme={{ colors }} />
-    </aside> : null}
-    <StepDetailPanel step={popover} open={popover !== null && presentation !== "side"} presentation={presentation === "side" ? "popover" : presentation} onOpenChange={next => { if (!next) setPopover(null); }} tokens={tokens} />
-  </div>;
-}
-
 function Preview() {
-  if (captureShot) return <CaptureFrame />;
   const { width } = useWindowDimensions();
   // The host may recreate its compact timeline in a later commit, after the
   // existing sheet has already reflowed and emitted a browser scroll event.
