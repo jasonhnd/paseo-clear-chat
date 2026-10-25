@@ -29,4 +29,4 @@ const translations = new PluginTranslationRuntime({ getLocale: () => "en", subsc
 const textScale = Number(params.get("textScale") || 1);
 const codeFont = params.has("hero") ? "plain" : DEFAULT_PREFERENCES.codeFont;
 const detailWidth = params.has("hero") ? Number(params.get("detailWidth")) || undefined : undefined;
-createRoot(document.getElementById("root")!).render(<PluginTranslationProvider runtime={translations}><Demo tokens={buildThemeTokens(colors, { ...DEFAULT_PREFERENCES, textScale, codeFont })} animate={params.has("animate")} detailWidth={detailWidth} /></PluginTranslationProvider>);
+createRoot(document.getElementById("root")!).render(<PluginTranslationProvider runtime={translations}><Demo tokens={buildThemeTokens(colors, { ...DEFAULT_PREFERENCES, textScale, codeFont })} animate={params.has("animate")} detailWidth={detailWidth} detailPresentation={params.has("heroDesktop") ? "side" : undefined} /></PluginTranslationProvider>);
