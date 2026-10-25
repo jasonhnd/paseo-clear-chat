@@ -22,12 +22,12 @@ test("published capture planning routes theme pairs to their documented director
 
 test("all README languages retain matching published pairs alongside the separate v2 inventory", () => {
   const expected = files(createCapturePlan(readme("README.md")));
-  assert.equal(expected.length, 36);
+  assert.equal(expected.length, 48);
   for (const file of ["README.md", "README.zh-CN.md", "README.ja.md"]) {
     const content = readme(file);
     assert.deepEqual(files(createCapturePlan(content)), expected);
     const pictures = [...content.matchAll(/<picture>([\s\S]*?)<\/picture>/g)];
-    assert.equal(pictures.filter(match => match[1].includes("docs/images/")).length, 17);
+    assert.equal(pictures.filter(match => match[1].includes("docs/images/")).length, 22);
     for (const [, picture] of pictures) {
       const dark = picture.match(/<source media="\(prefers-color-scheme: dark\)" srcset="([^"]+-dark\.png)">/);
       const light = picture.match(/<img[^>]+src="([^"]+-light\.png)">/);
