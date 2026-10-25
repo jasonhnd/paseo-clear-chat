@@ -373,7 +373,7 @@ export function ReasoningTrace({ data, tokens, defaultExpanded = false, streamin
 
           <View style={styles.footer}>
             <Text selectable style={styles.footerText}>
-              {t("reasoning.totalTokens", { count: data.totalTokens, replace: { count: data.totalTokens.toLocaleString() } })}
+              {t("reasoning.totalTokens", { count: data.totalTokens })}
             </Text>
           </View>
         </View>

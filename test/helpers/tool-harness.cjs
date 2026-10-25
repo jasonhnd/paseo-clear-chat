@@ -48,8 +48,16 @@ function createToolHarness(platform = "ios", options = {}) {
       }];
     },
     useRef: value => frame.values[next(() => ({ current: value }))],
-    useMemo: fn => fn(),
-    useCallback: fn => fn,
+    useMemo(fn, deps) {
+      const index = frame.cursor++;
+      const previous = frame.values[index];
+      if (!previous || !deps || deps.length !== previous.deps?.length
+        || deps.some((value, i) => !Object.is(value, previous.deps[i]))) {
+        frame.values[index] = { deps, value: fn() };
+      }
+      return frame.values[index].value;
+    },
+    useCallback: (fn, deps) => react.useMemo(() => fn, deps),
     useSyncExternalStore: (subscribe, getSnapshot) => {
       if (frame) react.useEffect(() => subscribe(noop), [subscribe]);
       return getSnapshot();
