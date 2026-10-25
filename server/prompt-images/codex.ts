@@ -24,9 +24,11 @@ import { readJsonlReadOnly } from "./read-only";
  * must stay inside the session root, and its device and inode must match the
  * confirmed file. Messages and images come from one read of that descriptor,
  * bounded by the size at open. A second open must report the same device,
- * inode, size, and mtime. Any mismatch returns no image. Text matches from
- * concatenated input_text and from a single part are one set. An incomplete
- * scan, a changed file, or more than one qualifying message returns no image.
+ * inode, size, and mtime. Any mismatch returns no image. A JSONL record the
+ * reader skipped is an incomplete scan and also returns no image. Text matches
+ * from concatenated input_text and from a single part are one set. An
+ * incomplete scan, a changed file, or more than one qualifying message
+ * returns no image.
  */
 
 /** Payloads kept for one message. Further accepted images are counted without their bytes. */
@@ -410,16 +412,23 @@ async function openRollout(ref: ConfirmedRollout): Promise<{ file: FileHandle; s
   }
 }
 
-async function readMessages(ref: ConfirmedRollout, file: FileHandle, byteLength: number, signal: AbortSignal): Promise<MessageText[] | null> {
+async function readMessages(ref: ConfirmedRollout, file: FileHandle, byteLength: number, signal: AbortSignal): Promise<MessageText[] | null | "skipped"> {
   const messages: MessageText[] = [];
+  let skipped = false;
   let index = 0;
-  for await (const entry of readJsonlReadOnly(ref.path, { fd: file.fd, byteLength })) {
+  for await (const entry of readJsonlReadOnly(ref.path, {
+    fd: file.fd,
+    byteLength,
+    onSkipped: () => { skipped = true; },
+  })) {
     if (signal.aborted) return null;
     const parsed = parseUser(entry, true);
     if (!parsed) continue;
     messages.push({ index, ids: parsed.ids, parts: parsed.parts, images: parsed.images });
     index += 1;
   }
+  // A dropped line could have been another match. Do not guess from what parsed.
+  if (skipped) return "skipped";
   return messages;
 }
 
@@ -434,6 +443,7 @@ async function readUniqueMatch(ref: ConfirmedRollout, context: ResolverContext):
   try {
     if (opened.stamp.size > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("lookup_failed");
     const messages = await readMessages(ref, opened.file, Number(opened.stamp.size), context.signal);
+    if (messages === "skipped") throw new Error("lookup_failed");
     if (!messages || context.signal.aborted) return none();
     const after = await descriptorStamp(opened.file, ref);
     if (!sameStamp(opened.stamp, after)) throw new Error("lookup_failed");
