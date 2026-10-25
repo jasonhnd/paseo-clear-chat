@@ -29,7 +29,7 @@ export function resolveCodeFonts(
   platform: string,
 ): { mono: string; code: string } {
   // Directory plugins cannot register native font assets through the plugin SDK
-  // (checked through 0.12.0).
+  // (checked on 0.12.0; not re-verified on 0.13.0).
   if (platform !== "web") {
     const family = platform === "ios" ? "Menlo" : "monospace";
     return { mono: family, code: family };
