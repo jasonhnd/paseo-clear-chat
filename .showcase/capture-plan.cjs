@@ -23,16 +23,21 @@ const pair = (id, width, height, deviceScaleFactor, detail) => ({
   viewport: { width, height }, deviceScaleFactor, detail,
 });
 const readmeV2Groups = [
-  pair("hero", 2000, 1376, 1, "side"),
+  pair("hero", 2000, 1016, 1, "side"),
   pair("phone-timeline", 390, 460, 3),
   pair("phone-details", 390, 900, 3, "sheet"),
   pair("phone-menu", 390, 460, 3, "menu"),
   pair("ipad-popover", 834, 1194, 2, "popover"),
   pair("ipad-side", 1194, 834, 2, "side"),
 ];
+const heroCapture = {
+  marginX: 48, marginY: 40, gap: 24,
+  desktop: { width: 1360, height: 936, textScale: 2.5, detailWidth: 760 },
+  phone: { width: 490, height: 1200, displayWidth: 520, textScale: 2.35 },
+};
 const phoneGroups = readmeV2Groups.filter(group => group.id.startsWith("phone-"));
 function withPhoneGroups(groups) {
   return [...groups, ...phoneGroups.filter(phone => !groups.some(group => group.id === phone.id))];
 }
 const demoCapture = { id: "demo", light: "images/demo.gif", width: 1200, height: 800, fps: 12, seconds: 26 };
-module.exports = { createCapturePlan, readmeV2Groups, withPhoneGroups, phoneGroups, demoCapture };
+module.exports = { createCapturePlan, readmeV2Groups, withPhoneGroups, phoneGroups, demoCapture, heroCapture };
