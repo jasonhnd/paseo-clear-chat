@@ -1,4 +1,4 @@
-import { constants, createReadStream, existsSync, realpath } from "node:fs";
+import { constants, existsSync, realpath, type ReadStream } from "node:fs";
 import { open, stat } from "node:fs/promises";
 import { promisify } from "node:util";
 import { extname, isAbsolute, relative, resolve, sep } from "node:path";
@@ -54,18 +54,32 @@ export async function readLocalImageReadOnly(candidate: string, allowedRoots: re
   }
 }
 
-/** Streams bounded records; malformed, partial and oversized lines are skipped. */
-export async function* readJsonlReadOnly(path: string): AsyncGenerator<unknown> {
-  const stream = createReadStream(path, { flags: "r" });
-  let chunks: Buffer[] = [];
-  let length = 0;
-  let oversized = false;
-  const parse = () => {
-    if (oversized || !length) return [];
-    try { return [JSON.parse(Buffer.concat(chunks, length).toString("utf8")) as unknown]; }
-    catch { return []; }
-  };
+/** Streams bounded records from a validated descriptor; invalid lines are skipped. */
+export async function* readJsonlReadOnly(path: string, allowedRoots?: readonly string[], signal?: AbortSignal): AsyncGenerator<unknown> {
+  signal?.throwIfAborted();
+  if (path.split(/[\\/]/).includes("..")) throw new Error("invalid_store");
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  let stream: ReadStream | undefined;
   try {
+    const entry = await file.stat();
+    if (!entry.isFile()) throw new Error("invalid_store");
+    if (allowedRoots) {
+      const roots = await Promise.all(allowedRoots.map(root => nativeRealpath(root)));
+      const target = await nativeRealpath(path);
+      const current = await stat(target);
+      if (!insideRoot(target, roots) || current.dev !== entry.dev || current.ino !== entry.ino) {
+        throw new Error("invalid_store");
+      }
+    }
+    stream = file.createReadStream({ autoClose: false, signal });
+    let chunks: Buffer[] = [];
+    let length = 0;
+    let oversized = false;
+    const parse = () => {
+      if (oversized || !length) return [];
+      try { return [JSON.parse(Buffer.concat(chunks, length).toString("utf8")) as unknown]; }
+      catch { return []; }
+    };
     for await (const chunk of stream) {
       const bytes = chunk as Buffer;
       let start = 0;
@@ -85,7 +99,8 @@ export async function* readJsonlReadOnly(path: string): AsyncGenerator<unknown> 
     }
     for (const record of parse()) yield record;
   } finally {
-    stream.destroy();
+    stream?.destroy();
+    await file.close();
   }
 }
 
