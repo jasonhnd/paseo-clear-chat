@@ -1,5 +1,6 @@
 /** Offline captures of real plugin components, backed only by fixtures.ts. */
 import React from "react";
+import { Demo } from "./demo";
 import { createRoot } from "react-dom/client";
 import { View } from "react-native";
 import { PluginTranslationProvider, PluginTranslationRuntime } from "./shims/plugin-client";
@@ -125,4 +126,4 @@ embedFonts();
 installFrostedGlass();
 document.body.style.background = colors.surface0;
 const translations = new PluginTranslationRuntime({ getLocale: () => "en", subscribe: () => () => {} });
-createRoot(document.getElementById("root")!).render(<PluginTranslationProvider runtime={translations}><Showcase /></PluginTranslationProvider>);
+createRoot(document.getElementById("root")!).render(<PluginTranslationProvider runtime={translations}>{new URLSearchParams(location.search).has("demo") ? <Demo tokens={tokens} /> : <Showcase />}</PluginTranslationProvider>);

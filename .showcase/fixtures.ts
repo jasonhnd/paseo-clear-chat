@@ -69,3 +69,12 @@ export const CALLS: Record<string, ToolCalloutData> = {
   github: { ...completed, id: "demo-github", tool: "github", title: "Demo checks", github: { op: "checks", subject: "Demo checkout update", rows: [{ label: "Cart tests", value: "12 passed", tone: "ok" }, { label: "Type check", value: "passed", tone: "ok" }] } },
 };
 export const JOB_NOTICE = `<system-notice>\nBackground job CopyReviewer has completed.\n<task-result id="CopyReviewer" agent="task" status="completed" duration="12s">\n<meta lines="2" size="80B" />\n<preview>Shipping copy is concise. All demo boundary cases are covered.</preview>\n</task-result>\n</system-notice>`;
+
+/** Extended synthetic output used only by the animated README capture. */
+const demoOutput = Array.from({ length: 90 }, (_, index) =>
+  `PASS cart case ${String(index + 1).padStart(2, "0")} · $${index + 10}`,
+).join("\n") + "\n\n90 tests passed";
+export const DEMO_STEPS: ToolCalloutData[] = [CALLS.search!, CALLS.read!, CALLS.edit!, {
+  ...CALLS.bash!, id: "demo-motion-tests", input: "npm test", stdout: demoOutput,
+  shell: { command: "npm test", stdout: demoOutput, exitCode: 0 },
+}];
