@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=date"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <a href="https://paseo.sh"><img alt="Paseo 0.12.0+" src="https://img.shields.io/badge/Paseo-%3E%3D0.12.0-5b5bd6"></a>
+  <a href="https://paseo.sh"><img alt="Paseo 0.13.0+" src="https://img.shields.io/badge/Paseo-%3E%3D0.13.0-5b5bd6"></a>
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
 
 - **See the answer first.** Finished steps fold into one compact row each: icon, summary, status, and time when the agent reports it. The reply that ends the turn always stays open.
 - **Every agent, drawn right.** Claude, Codex and Hermes calls all get proper cards. All 12 tool kinds that Paseo reports have their own card, and Hermes tools such as `skill_view` and `memory` get dedicated rows. In replays of real conversations, no card is empty.
-- **Nothing gets lost.** Your Beautiful Chat settings move over unchanged, pasted images keep their count, and a failed call shows why it failed.
+- **Nothing gets lost.** Your Beautiful Chat settings move over unchanged, and a failed call shows why it failed.
 - **Maintained.** Version 1.0.0 closes seven open issues and pull requests reported against the original plugin. Problems go to GitHub Issues, and every release is listed in the [changelog](CHANGELOG.md).
 - **Fast.** In our test, a 221-step conversation shows its first screen in about 1.3 seconds, about the same as Paseo without the plugin (also about 1.3 seconds). Scrolling a long conversation stays smooth, with no stutter.<sup>1</sup>
 
@@ -32,15 +32,17 @@
 ## Install
 
 ```bash
-paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v0.12.0.1
+paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v0.13.0.1
 ```
+
+Clear Chat needs Paseo 0.13.0 or later. Still on Paseo 0.12? Install Clear Chat 0.12.0.1 instead by using `--ref v0.12.0.1`.
 
 Then open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
 
 **Version numbers.** A Clear Chat version is the Paseo version it is built and tested for, plus one more number that counts Clear Chat's releases for that Paseo version. For example, 0.12.0.1 is the first Clear Chat release for Paseo 0.12.0, and 0.12.0.2 would be the next. After Paseo releases a new version, the next Clear Chat release starts counting again: 0.12.1.1 for Paseo 0.12.1, or 0.13.0.1 for Paseo 0.13.0. Clear Chat does not release a new version just because Paseo did. Releases 1.0.0 and 1.0.1 came out before this rule; 0.12.0.1 is newer than both.
 
 > [!IMPORTANT]
-> Already using Beautiful Chat? Read [Upgrading from Beautiful Chat](#upgrading-from-beautiful-chat) **before** you install or remove anything. Removing a plugin in Paseo 0.12 also deletes its settings.
+> Already using Beautiful Chat? Read [Upgrading from Beautiful Chat](#upgrading-from-beautiful-chat) **before** you install or remove anything. Removing a plugin in Paseo also deletes its settings.
 
 ## Upgrading from Beautiful Chat
 
@@ -64,7 +66,7 @@ cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_back
 **2. Install**
 
 ```bash
-paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v0.12.0.1
+paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v0.13.0.1
 ```
 
 **3. Check, then remove the old plugin**
@@ -134,7 +136,7 @@ Search, fetch and web search, plans and checklists, plain text, skills and any o
 | | |
 |---|---|
 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/reasoning-dark.png"><img alt="Reasoning trace" src="docs/images/reasoning-light.png"></picture><br>**Reasoning trace.** Collapsible steps with time per step and a token total. | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tasks-dark.png"><img alt="Checklist" src="docs/images/tasks-light.png"></picture><br>**Checklist.** Phase, status per task and the reason a task is blocked. |
-| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/approval-dark.png"><img alt="Approval" src="docs/images/approval-light.png"></picture><br>**Approvals.** Risk, the exact command and target. Past approvals stay as short status rows. | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/user-dark.png"><img alt="Prompt bubble" src="docs/images/user-light.png"></picture><br>**Prompt bubble.** Copy button, token usage and pasted images, such as "3 images attached". |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/approval-dark.png"><img alt="Approval" src="docs/images/approval-light.png"></picture><br>**Approvals.** Risk, the exact command and target. Past approvals stay as short status rows. | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/user-dark.png"><img alt="Prompt bubble" src="docs/images/user-light.png"></picture><br>**Prompt bubble.** Copy button and token usage. |
 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/syntax-dark.png"><img alt="Syntax block" src="docs/images/syntax-light.png"></picture><br>**Code.** Language detection, line numbers, diff colours and a full-source copy. | |
 
 ### Also included
@@ -173,7 +175,7 @@ Search, fetch and web search, plans and checklists, plain text, skills and any o
 
 **Code font.** The plugin SDK does not give plugins Paseo's own code font setting. **Default (Iosevka)** uses Iosevka with your **Code glyphs** choice. On web and desktop, the other fonts must be installed on your computer; if one is missing, the embedded Iosevka is used. On iOS and iPadOS, code always uses Menlo, and on Android it uses the system monospace font, because the plugin SDK does not let plugins add fonts to the native apps.
 
-Settings are saved on the host, so every device connected to that host shares them. Accent colours, folding and step-click settings apply at once, including to rows already shown. Other changes apply to new messages; reload the chat to update older ones.
+Clear Chat's own text follows the Paseo app language: English, Simplified Chinese or Japanese. Settings are saved on the host, so every device connected to that host shares them. Accent colours, folding and step-click settings apply at once, including to rows already shown. Other changes apply to new messages; reload the chat to update older ones.
 
 > [!NOTE]
 > **On iOS and iPadOS** you cannot select text by dragging while **Assistant markdown** or **Enhanced prompt bubble** is on. Use the **Copy** button on the reply, prompt or code block instead. If copying fails, a dialog shows the full text for you to select by hand.
@@ -183,6 +185,8 @@ Settings are saved on the host, so every device connected to that host shares th
 | Problem | What to do |
 |---|---|
 | Installing through the Cafe plugin fails, or Paseo reports a missing Shiki dependency such as `@shikijs/core`. | Retry with the Paseo CLI command in [Install](#install), using the same repository and release ref. Clear Chat installs its dependencies with `npm ci --include=dev`, so Node.js and npm must be available on the daemon host, and its network must reach the npm registry. If you manage the checkout yourself, run `npm ci --include=dev` there before retrying. |
+| Installation stops with `Plugin "clear-chat" requires Paseo >=0.13.0. Your daemon is 0.12.x.` (or `Your app is …`). | Update Paseo on the daemon host and in every connected app to 0.13.0 or later. To stay on Paseo 0.12, install Clear Chat 0.12.0.1 with `--ref v0.12.0.1`. |
+| Images you pasted into a prompt do not show in the prompt bubble. | The images are still sent to the agent. Paseo 0.13 does not pass them to plugins, so Clear Chat's **Enhanced prompt bubble** cannot show them. To see them in the conversation, turn off **Enhanced prompt bubble** in **Settings → Plugins → Clear Chat**; Paseo's own bubble is used instead. |
 | Paseo rejects the plugin version, or Clear Chat says plugin settings or timeline support is missing. | Update Paseo on the daemon host and in every connected app, then reload Clear Chat. The Paseo version Clear Chat needs is declared in `paseo-plugin.json`. |
 | Clear Chat cannot start because plugin registration failed. | Update Paseo and reload Clear Chat. If it still fails, back up the plugin settings before you reinstall from the CLI. |
 | Clear Chat cannot read its settings from the host. | Reconnect to the host and choose **Retry** in **Settings → Plugins → Clear Chat**. If it still fails, check that the daemon can access the plugin settings folder. |

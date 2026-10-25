@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=date"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <a href="https://paseo.sh"><img alt="Paseo 0.12.0+" src="https://img.shields.io/badge/Paseo-%3E%3D0.12.0-5b5bd6"></a>
+  <a href="https://paseo.sh"><img alt="Paseo 0.13.0+" src="https://img.shields.io/badge/Paseo-%3E%3D0.13.0-5b5bd6"></a>
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
 
 - **まず結論が見えます。** 終わったステップは 1 行ずつにまとまります（アイコン、要点、状態。エージェントが時間を伝えた場合は時間も）。ターンの最後の返信はいつも全文表示です。
 - **どのエージェントも正しく表示します。** Claude、Codex、Hermes の呼び出しをすべてきちんとしたカードで表示します。Paseo が伝える 12 種類のツールにはそれぞれ専用カードがあり、`skill_view` や `memory` などの Hermes ツールにも専用の表示があります。実際の会話を再生したテストでは、空のカードは 1 枚もありません。
-- **何もなくなりません。** Beautiful Chat の設定はそのまま引き継がれます。貼り付けた画像は枚数が表示され、失敗した呼び出しには失敗の理由が表示されます。
+- **何もなくなりません。** Beautiful Chat の設定はそのまま引き継がれます。失敗した呼び出しには失敗の理由が表示されます。
 - **メンテナンスしています。** 1.0.0 では、元のプラグインで未対応だった Issue と PR を 7 件対応しました。問題は GitHub Issues で受け付け、リリースごとの変更は [CHANGELOG](CHANGELOG.md) にまとめています。
 - **速いです。** 私たちのテストでは、221 ステップの会話で最初の画面が約 1.3 秒で表示されました。プラグインなしの場合（同じく約 1.3 秒）とほぼ同じです。長い会話でもスクロールが引っかかりません。<sup>1</sup>
 
@@ -32,15 +32,17 @@
 ## インストール
 
 ```bash
-paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v0.12.0.1
+paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v0.13.0.1
 ```
+
+Clear Chat には Paseo 0.13.0 以降が必要です。Paseo 0.12 を使っている場合は、`--ref v0.12.0.1` で Clear Chat 0.12.0.1 をインストールしてください。
 
 インストール後、**Settings → Plugins → Clear Chat** で色、フォント、折りたたみを選べます。
 
 **バージョン番号について。** Clear Chat のバージョンは、対応してテストした Paseo のバージョンに、その Paseo のバージョンで何回目のリリースかを表す番号を 1 つ足したものです。たとえば 0.12.0.1 は Paseo 0.12.0 向けの最初のリリースで、次は 0.12.0.2 です。Paseo の新しいバージョンが出たら、Clear Chat の次のリリースから数え直します。Paseo 0.12.1 向けなら 0.12.1.1、0.13.0 向けなら 0.13.0.1 です。Paseo が新しくなっても、Clear Chat に新しい変更がなければリリースはしません。1.0.0 と 1.0.1 はこのルールの前に出したもので、0.12.0.1 のほうが新しい版です。
 
 > [!IMPORTANT]
-> すでに Beautiful Chat を使っていますか？プラグインのインストールや削除を**する前に**、[Beautiful Chat からのアップグレード](#beautiful-chat-からのアップグレード)をお読みください。Paseo 0.12 ではプラグインを削除すると、その設定も一緒に消えます。
+> すでに Beautiful Chat を使っていますか？プラグインのインストールや削除を**する前に**、[Beautiful Chat からのアップグレード](#beautiful-chat-からのアップグレード)をお読みください。Paseo ではプラグインを削除すると、その設定も一緒に消えます。
 
 ## Beautiful Chat からのアップグレード
 
@@ -64,7 +66,7 @@ cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_back
 **2. インストール**
 
 ```bash
-paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v0.12.0.1
+paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v0.13.0.1
 ```
 
 **3. 確認してから古いプラグインを削除**
@@ -134,7 +136,7 @@ Clear Chat で変えた設定は Beautiful Chat には戻りません。バッ�
 | | |
 |---|---|
 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/reasoning-dark.png"><img alt="推論の流れ" src="docs/images/reasoning-light.png"></picture><br>**推論の流れ。** たためるステップに、ステップごとの時間とトークンの合計を付けます。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tasks-dark.png"><img alt="チェックリスト" src="docs/images/tasks-light.png"></picture><br>**チェックリスト。** フェーズ、タスクごとの状態、止まっているタスクの理由を表示します。 |
-| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/approval-dark.png"><img alt="承認" src="docs/images/approval-light.png"></picture><br>**承認。** リスク、実行するコマンド、対象を表示します。済んだ承認は短い状態の行として残ります。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/user-dark.png"><img alt="プロンプトの吹き出し" src="docs/images/user-light.png"></picture><br>**プロンプトの吹き出し。** コピーボタン、トークン使用量、貼り付けた画像（例：「3 images attached」）を表示します。 |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/approval-dark.png"><img alt="承認" src="docs/images/approval-light.png"></picture><br>**承認。** リスク、実行するコマンド、対象を表示します。済んだ承認は短い状態の行として残ります。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/user-dark.png"><img alt="プロンプトの吹き出し" src="docs/images/user-light.png"></picture><br>**プロンプトの吹き出し。** コピーボタンとトークン使用量を表示します。 |
 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/syntax-dark.png"><img alt="コード" src="docs/images/syntax-light.png"></picture><br>**コード。** 言語の判定、行番号、差分の色分けがあり、コピーではコード全体をコピーします。 | |
 
 ### そのほか
@@ -173,7 +175,7 @@ Clear Chat で変えた設定は Beautiful Chat には戻りません。バッ�
 
 **コードのフォント。** プラグイン SDK からは Paseo 自体のコードフォント設定を読めません。**Default (Iosevka)** は Iosevka を使い、**Code glyphs** の選択もそのまま使います。Web とデスクトップでは、ほかのフォントはコンピューターにインストールされている必要があり、ない場合は内蔵の Iosevka で表示します。iOS と iPadOS ではコードは常に Menlo、Android ではシステムの等幅フォントになります。プラグイン SDK では、ネイティブアプリにフォントを追加できないためです。
 
-設定はホストに保存されるので、同じホストにつないだ端末どうしで共有されます。アクセントカラー、折りたたみ、ステップを押したときの設定はすぐに反映され、表示済みの行にも効きます。そのほかの変更は新しいメッセージから反映され、前のメッセージを更新するには会話を再読み込みしてください。
+Clear Chat 自身の表示文字は Paseo アプリの言語（英語、簡体字中国語、日本語）に合わせます。設定はホストに保存されるので、同じホストにつないだ端末どうしで共有されます。アクセントカラー、折りたたみ、ステップを押したときの設定はすぐに反映され、表示済みの行にも効きます。そのほかの変更は新しいメッセージから反映され、前のメッセージを更新するには会話を再読み込みしてください。
 
 > [!NOTE]
 > **iOS と iPadOS では**、**Assistant markdown** または **Enhanced prompt bubble** がオンのとき、ドラッグで文字を選べません。返信、プロンプト、コードブロックの **Copy** ボタンを使ってください。コピーに失敗したときは全文を表示する画面が出るので、そこから手で選んでコピーできます。
@@ -183,6 +185,8 @@ Clear Chat で変えた設定は Beautiful Chat には戻りません。バッ�
 | 症状 | 対処 |
 |---|---|
 | Cafe プラグインからのインストールに失敗する、または Paseo が `@shikijs/core` などの Shiki の依存パッケージが足りないと表示する。 | [インストール](#インストール)にある Paseo CLI のコマンドで、同じリポジトリとリリースの ref を指定してやり直してください。Clear Chat は `npm ci --include=dev` で依存パッケージを入れるので、daemon を動かすホストに Node.js と npm が必要で、ネットワークから npm レジストリにつながる必要があります。チェックアウトを自分で管理している場合は、先にそこで `npm ci --include=dev` を実行してからやり直してください。 |
+| インストールが止まり、`Plugin "clear-chat" requires Paseo >=0.13.0. Your daemon is 0.12.x.`（または `Your app is …`）と表示される。 | daemon のホストと、つないでいるすべてのアプリの Paseo を 0.13.0 以降に更新してください。Paseo 0.12 のまま使う場合は、`--ref v0.12.0.1` で Clear Chat 0.12.0.1 をインストールしてください。 |
+| プロンプトに貼り付けた画像が、プロンプトの吹き出しに表示されない。 | 画像はエージェントにはそのまま送られています。Paseo 0.13 は画像をプラグインに渡さないため、Clear Chat の **Enhanced prompt bubble** では表示できません。会話の中で画像を見たい場合は、**Settings → Plugins → Clear Chat** で **Enhanced prompt bubble** をオフにすると、Paseo の標準の吹き出しで表示されます。 |
 | Paseo がプラグインのバージョンを受け付けない、または Clear Chat がプラグインの設定やタイムラインの対応がないと表示する。 | daemon のホストと、つないでいるすべてのアプリの Paseo を更新してから、Clear Chat を再読み込みしてください。Clear Chat に必要な Paseo のバージョンは `paseo-plugin.json` に書いてあります。 |
 | プラグインの登録に失敗し、Clear Chat が起動しない。 | Paseo を更新して Clear Chat を再読み込みしてください。それでも直らない場合は、プラグインの設定をバックアップしてから CLI で入れ直してください。 |
 | Clear Chat がホストの設定を読み込めない。 | ホストにつなぎ直し、**Settings → Plugins → Clear Chat** で **Retry** を選んでください。それでも直らない場合は、daemon がプラグインの設定フォルダーにアクセスできるか確認してください。 |
