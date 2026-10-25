@@ -71,9 +71,10 @@ test("prompt RPC contracts keep their exact names, optional nullable IDs and nul
   assert.equal(h.promptImageRpc.input.safeParse(input).success, false);
 });
 
-test("the production registry starts empty and unknown providers return no images for both RPCs", async () => {
-  const h = harness();
-  assert.deepEqual(h.promptImageResolvers, []);
+test("the production registry includes Hermes and unknown providers return no images for both RPCs", async () => {
+  const promises = require("node:fs/promises");
+  const h = harness({ "node:fs/promises": { ...promises, readFile: async () => { throw new Error("missing_config"); } } });
+  assert.equal(h.promptImageResolvers.length, 1);
   const handlers = h.createPromptImageHandlers();
   assert.deepEqual(await handlers.images(input, context()), empty("unknown_provider"));
   assert.deepEqual(await handlers.image({ ...input, id: "anything" }, context()), emptyFull("unknown_provider"));
@@ -134,15 +135,17 @@ test("missing agents and persistence provider mismatches fail closed", async () 
   assert.equal(h.logs.length, 2);
 });
 
-for (const phase of ["snapshot", "resolver", "bytes"]) {
+for (const phase of ["snapshot", "matcher", "resolver", "bytes"]) {
   test(`the deadline covers ${phase} and logs one fixed code`, async () => {
     const h = harness();
     const forever = () => new Promise(() => {});
     let signal;
-    const handlers = h.createPromptImageHandlers({ timeoutMs: 20, resolvers: [resolver(async ctx => {
+    const registered = resolver(async ctx => {
       signal = ctx.signal;
       return phase === "resolver" ? forever() : [{ id: "image-1", mime: "image/png", readBytes: forever }];
-    })] });
+    });
+    if (phase === "matcher") registered.matches = (_provider, ctx) => { signal = ctx.signal; return forever(); };
+    const handlers = h.createPromptImageHandlers({ timeoutMs: 20, resolvers: [registered] });
     const ctx = phase === "snapshot" ? { paseo: { agents: { ref: () => ({ refresh: forever }) } } } : context();
     assert.deepEqual(await handlers.images(input, ctx), empty("timeout"));
     if (signal) assert.equal(signal.aborted, true);
