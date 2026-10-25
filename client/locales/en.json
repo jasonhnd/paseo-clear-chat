@@ -80,7 +80,7 @@
     },
     "promptBubble": {
       "label": "Enhanced prompt bubble",
-      "description": "Paseo removes pasted images before a plugin sees the message, so the enhanced bubble cannot show them. Turn this off for Paseo's own bubble with image previews. New prompts follow the change. On iOS, text cannot be selected by dragging when this is enabled. Use the Copy button to copy text."
+      "description": "Styles your prompts. Pasted images show as thumbnails for Codex and Claude agents; for Hermes agents, turn this off to see them in Paseo's own bubble. New prompts follow the change. On iOS, text cannot be selected by dragging when this is enabled. Use the Copy button to copy text."
     },
     "selection": {
       "label": "Selection actions",
