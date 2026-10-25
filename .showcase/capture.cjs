@@ -99,7 +99,12 @@ async function capture() {
         await shot.waitFor();
         const text = await shot.innerText();
         if (id === "settings") {
-          for (const label of ["Fold finished steps", "Fold long output after", "Report a problem"]) {
+          for (const label of [
+            "Accent colour", "Interface font", "Code glyphs", "Code font", "Text size",
+            "Fold finished steps", "When a collapsed step is pressed", "Fold long output after",
+            "Frosted glass", "Pointer glow", "Enhanced prompt bubble", "Selection actions",
+            "Assistant markdown", "Markdown style", "Report a problem",
+          ]) {
             if (!text.includes(label)) throw new Error(`Settings capture is missing ${label}`);
           }
         }
