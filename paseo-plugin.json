@@ -1,9 +1,19 @@
 {
   "id": "clear-chat",
   "name": "Clear Chat",
-  "description": "Paseo plugin: clear, syntax-aware chat cards for OMP tools, reasoning, prompts, and tasks",
+  "description": "Makes agent conversations easy to read: one-line steps, a card for every tool and step details.",
   "requirements": {
     "paseo": ">=0.13.0"
   },
-  "build": [["node", "scripts/install.cjs"]]
+  "build": [
+    [
+      "node",
+      "scripts/install.cjs"
+    ]
+  ],
+  "translations": {
+    "zh-CN": {
+      "description": "让 Agent 对话一眼看懂：步骤收成一行，每种工具都有卡片，点开看详情。"
+    }
+  }
 }
