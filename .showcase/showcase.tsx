@@ -20,11 +20,11 @@ import { SystemCard } from "../client/components/system-card";
 import { AssistantFooter } from "../client/components/turn-footer";
 import { MarkdownView } from "../client/components/markdown/markdown-view";
 import { FinalToolReply } from "../client/components/final-tool-reply";
-import { parseSystemEnvelope } from "../client/system-envelope";
 import { StepDetailPanel } from "../client/components/step-detail-panel";
 import { createStepDetailState } from "../client/components/step-detail-state";
+import { parseSystemEnvelope } from "../client/system-envelope";
+import { APPROVAL, CALLS, CODE, DIFF, JOB_NOTICE, PHONE_EDIT, PHONE_MENU_STEP, PROMPT, REASONING, REPLY, TASKS, WRAP_UP } from "./fixtures";
 import type { ToolCalloutData } from "../shared/contracts";
-import { APPROVAL, CALLS, CODE, DIFF, JOB_NOTICE, PROMPT, REASONING, REPLY, TASKS, WRAP_UP } from "./fixtures";
 
 const dark = new URLSearchParams(location.search).get("theme") !== "light";
 const colors = dark ? {
@@ -40,9 +40,11 @@ const tokens = buildThemeTokens(colors);
 const demoImage = (globalThis as { __showcaseImage?: string }).__showcaseImage ?? "";
 const sampleImage = { dataUri: demoImage, width: 480, height: 240, bytes: atob(demoImage.split(",")[1] ?? "").length, error: null };
 const noop = () => {};
-function Tool({ name, initialExpanded = true, ...props }: { name: string; initialExpanded?: boolean } & Partial<ToolCalloutProps>) {
+function Tool({ name, data, initialExpanded = true, ...props }: { name?: string; data?: ToolCalloutData; initialExpanded?: boolean } & Partial<ToolCalloutProps>) {
   const [expanded, setExpanded] = React.useState(initialExpanded);
-  return <ControlledToolCallout data={CALLS[name]!} tokens={tokens} expanded={expanded} onExpandedChange={setExpanded} onRevealPath={noop} {...props} />;
+  const call = data ?? (name ? CALLS[name] : undefined);
+  if (!call) return null;
+  return <ControlledToolCallout data={call} tokens={tokens} expanded={expanded} onExpandedChange={setExpanded} onRevealPath={noop} {...props} />;
 }
 function Prompt() {
   return <UserMessage text={PROMPT} timestamp={new Date("2026-01-01T12:00:00Z")} tokens={tokens} usage={{ inputTokens: 240, cachedInputTokens: 800, outputTokens: 160 }} />;
@@ -164,6 +166,50 @@ function HeroFrame() {
   return <Showcase />;
 }
 
+function PhoneScene({ id, fill = false, children }: { id: string; fill?: boolean; children: React.ReactNode }) {
+  return <div id={`shot-${id}`} data-fixture={id} style={{ width: 390, minHeight: fill ? "100vh" : undefined, background: colors.surface0, color: colors.foreground, fontFamily: tokens.fontUi }}>
+    <View style={{ paddingTop: 12, paddingBottom: 20, paddingHorizontal: 8, gap: 8 }}>{children}</View>
+  </div>;
+}
+
+/** Folded steps use the same details affordance a narrow window shows. */
+function FoldedSteps({ steps }: { steps: Array<{ name?: string; data?: ToolCalloutData }> }) {
+  return <>{steps.map(step => <Tool key={step.data?.id ?? step.name} name={step.name} data={step.data} initialExpanded={false} onOpenDetail={noop} />)}</>;
+}
+
+function PhoneTimeline() {
+  return <PhoneScene id="phone-timeline">
+    <Prompt />
+    <FoldedSteps steps={[{ name: "search" }, { name: "read" }, { name: "edit" }, { name: "bash" }]} />
+    <Reply />
+  </PhoneScene>;
+}
+
+function PhoneDetails() {
+  const state = React.useRef(createStepDetailState()).current;
+  return <PhoneScene id="phone-details" fill>
+    <Prompt />
+    <FoldedSteps steps={[{ data: PHONE_EDIT }, { name: "search" }, { name: "read" }, { name: "bash" }]} />
+    <Reply />
+    <StepDetailPanel step={PHONE_EDIT} open presentation="sheet" onOpenChange={noop} tokens={tokens} viewState={state} />
+  </PhoneScene>;
+}
+
+function PhoneMenu() {
+  return <PhoneScene id="phone-menu">
+    <Prompt />
+    <FoldedSteps steps={[{ name: "search" }, { data: PHONE_MENU_STEP }, { name: "edit" }, { name: "read" }]} />
+    <Reply />
+  </PhoneScene>;
+}
+
+function PhoneShot({ id }: { id: string }) {
+  if (id === "phone-timeline") return <PhoneTimeline />;
+  if (id === "phone-details") return <PhoneDetails />;
+  if (id === "phone-menu") return <PhoneMenu />;
+  return null;
+}
+
 embedFonts();
 installFrostedGlass();
 document.body.style.background = colors.surface0;
@@ -176,4 +222,5 @@ if (heroShot) {
   if (root) root.style.display = "block";
 }
 const translations = new PluginTranslationRuntime({ getLocale: () => "en", subscribe: () => () => {} });
-createRoot(document.getElementById("root")!).render(<PluginTranslationProvider runtime={translations}><HeroFrame /></PluginTranslationProvider>);
+const shot = new URLSearchParams(location.search).get("shot");
+createRoot(document.getElementById("root")!).render(<PluginTranslationProvider runtime={translations}>{shot?.startsWith("phone-") ? <PhoneShot id={shot} /> : <HeroFrame />}</PluginTranslationProvider>);

@@ -69,3 +69,19 @@ export const CALLS: Record<string, ToolCalloutData> = {
   github: { ...completed, id: "demo-github", tool: "github", title: "Demo checks", github: { op: "checks", subject: "Demo checkout update", rows: [{ label: "Cart tests", value: "12 passed", tone: "ok" }, { label: "Type check", value: "passed", tone: "ok" }] } },
 };
 export const JOB_NOTICE = `<system-notice>\nBackground job CopyReviewer has completed.\n<task-result id="CopyReviewer" agent="task" status="completed" duration="12s">\n<meta lines="2" size="80B" />\n<preview>Shipping copy is concise. All demo boundary cases are covered.</preview>\n</task-result>\n</system-notice>`;
+
+/** Phone-width details. The sheet shows this edit's unified diff as its result. */
+export const PHONE_EDIT: ToolCalloutData = {
+  ...CALLS.edit,
+  id: "demo-phone-edit",
+  input: "src/cart.ts",
+  copyResult: DIFF,
+};
+
+/** One folded step whose long-press menu can copy the command, path, and result. */
+export const PHONE_MENU_STEP: ToolCalloutData = {
+  ...CALLS.bash,
+  id: "demo-phone-menu",
+  filePath: "src/cart.ts",
+  copyResult: "PASS test/cart.test.ts\n  exactly $50: free shipping\n\n12 tests passed",
+};
