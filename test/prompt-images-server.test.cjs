@@ -255,7 +255,7 @@ test("small originals are inlined with their header dimensions, mime and bytes",
   }
 });
 
-test("images over the inline cap are skipped with no error while later images fill the cap and total still counts them", async () => {
+test("images over the inline cap log a fixed skip reason while later images fill the cap and total still counts them", async () => {
   const h = harness();
   const bytes = png();
   const oversized = Buffer.alloc(h.MAX_INLINE_IMAGE_BYTES + 1);
@@ -267,10 +267,13 @@ test("images over the inline cap are skipped with no error while later images fi
   const result = await handlers.images(input, context());
   assert.equal(result.total, 5);
   assert.deepEqual(result.images.map(image => image.id), ["one", "two", "three"]);
-  assert.equal(result.reason, null);
-  assert.deepEqual(h.logs, []);
+  assert.equal(result.reason, "too_large_bytes");
+  assert.deepEqual(h.logs, [["[clear-chat] prompt.images: too_large_bytes"]]);
   assert.deepEqual(await handlers.image({ ...input, id: "too-large" }, context()), emptyFull("image_too_large"));
-  assert.deepEqual(h.logs, [["[clear-chat] prompt.image: image_too_large"]]);
+  assert.deepEqual(h.logs, [
+    ["[clear-chat] prompt.images: too_large_bytes"],
+    ["[clear-chat] prompt.image: image_too_large"],
+  ]);
 });
 
 test("the inline cap includes its boundary and one extra byte is refused; full image IDs stay within the message", async () => {
@@ -284,7 +287,7 @@ test("the inline cap includes its boundary and one extra byte is refused; full i
   const listed = await handlers.images(input, context());
   assert.equal(listed.total, 2);
   assert.deepEqual(listed.images.map(image => image.id), ["one"]);
-  assert.equal(listed.reason, null);
+  assert.equal(listed.reason, "too_large_bytes");
   assert.equal(listed.images[0].mime, "image/png");
   assert.deepEqual([listed.images[0].width, listed.images[0].height], [1024, 256]);
   assert.equal(Buffer.from(listed.images[0].thumbDataUri.split(",")[1], "base64").length, h.MAX_INLINE_IMAGE_BYTES);
@@ -382,28 +385,32 @@ test("readJsonlReadOnly streams valid records around bad lines without changing 
   await assert.rejects(async () => { for await (const _ of h.readJsonlReadOnly(join(root, "missing"))) {} }, /ENOENT/);
 });
 
-test("an idle database opens immutable, reads its rows and creates no sidecars during or after the read", async t => {
+test("an idle WAL database opens immutable, reads its rows and creates no sidecars during or after the read", async t => {
   const h = harness();
   const root = fixture(t);
   const path = join(root, "records #?.sqlite");
   const source = new DatabaseSync(path);
-  source.exec("CREATE TABLE images (id TEXT); INSERT INTO images VALUES ('one')");
+  source.exec("PRAGMA journal_mode = WAL; CREATE TABLE images (id TEXT); INSERT INTO images VALUES ('one'); PRAGMA wal_checkpoint(TRUNCATE)");
   source.close();
+  for (const suffix of ["-wal", "-shm"]) fs.rmSync(`${path}${suffix}`, { force: true });
   const before = fs.readFileSync(path);
+  assert.equal(before[18], 2, "the main file must retain WAL mode");
   const names = ["records #?.sqlite"];
   const plans = [];
+  const during = [];
   const seen = await h.openSqliteReadOnly(path, database => {
-    assert.deepEqual(fs.readdirSync(root), names);
+    during.push(fs.readdirSync(root));
     assert.equal(database.prepare("PRAGMA query_only").get().query_only, 1);
     const id = database.prepare("SELECT id FROM images").get().id;
-    assert.deepEqual(fs.readdirSync(root), names);
+    during.push(fs.readdirSync(root));
     assert.throws(() => database.exec("INSERT INTO images VALUES ('two')"), /readonly/);
     assert.throws(() => database.prepare("DELETE FROM images").run(), /readonly/);
     database.exec("PRAGMA query_only = OFF");
     assert.throws(() => database.exec("CREATE TABLE forbidden (id TEXT)"), /readonly/);
-    assert.deepEqual(fs.readdirSync(root), names);
+    during.push(fs.readdirSync(root));
     return id;
   }, { beforeOpen: plan => plans.push(plan) });
+  for (const files of during) assert.deepEqual(files, names);
   assert.equal(seen, "one");
   assert.equal(plans.length, 1);
   assert.equal(plans[0].immutable, true);
@@ -490,6 +497,64 @@ test("a plain retry that fails returns null instead of a stale image read", asyn
   });
   assert.equal(seen, null);
   assert.deepEqual(plans, [true, false]);
+});
+
+test("a checkpoint and close between file samples discards the immutable result and retries once", async t => {
+  const h = harness();
+  for (const failRetry of [false, true]) {
+    const root = fixture(t);
+    const path = join(root, "checkpoint.sqlite");
+    const source = new DatabaseSync(path);
+    source.exec("PRAGMA journal_mode = WAL; CREATE TABLE images (id TEXT); INSERT INTO images VALUES ('main'); PRAGMA wal_checkpoint(TRUNCATE)");
+    source.close();
+    assert.deepEqual(fs.readdirSync(root), ["checkpoint.sqlite"]);
+    const before = fs.statSync(path, { bigint: true });
+    const plans = [], queried = [];
+    let after, afterFiles;
+    let hooks = 0;
+    const result = await h.openSqliteReadOnly(path, database => {
+      const id = database.prepare("SELECT id FROM images").get().id;
+      queried.push(id);
+      if (failRetry && queried.length === 2) throw new Error("plain lookup failed");
+      return id;
+    }, {
+      beforeOpen: plan => plans.push(plan.immutable),
+      afterImmutableQuery() {
+        hooks++;
+        const writer = new DatabaseSync(path);
+        try {
+          writer.exec("UPDATE images SET id = 'checkpointed'; PRAGMA wal_checkpoint(TRUNCATE)");
+        } finally { writer.close(); }
+        afterFiles = fs.readdirSync(root);
+        after = fs.statSync(path, { bigint: true });
+      },
+    });
+    assert.deepEqual(afterFiles, ["checkpoint.sqlite"]);
+    assert.notEqual(before.mtimeNs, after.mtimeNs);
+    assert.deepEqual(plans, [true, false]);
+    assert.deepEqual(queried, ["main", "checkpointed"]);
+    assert.equal(hooks, 1);
+    assert.equal(result, failRetry ? null : "checkpointed");
+  }
+});
+
+test("a locked rollback database returns no image without modifying database or journal bytes", async t => {
+  const h = harness();
+  const root = fixture(t);
+  const path = join(root, "locked.sqlite");
+  const writer = new DatabaseSync(path);
+  try {
+    writer.exec("CREATE TABLE images (id TEXT); INSERT INTO images VALUES ('main'); BEGIN EXCLUSIVE; UPDATE images SET id = 'uncommitted'");
+    const main = fs.readFileSync(path), journal = fs.readFileSync(`${path}-journal`);
+    const plans = [];
+    const result = await h.openSqliteReadOnly(path, database => database.prepare("SELECT id FROM images").get().id, {
+      beforeOpen: plan => plans.push(plan.immutable),
+    });
+    assert.equal(result, null);
+    assert.deepEqual(plans, [false]);
+    assert.deepEqual(fs.readFileSync(path), main);
+    assert.deepEqual(fs.readFileSync(`${path}-journal`), journal);
+  } finally { writer.close(); }
 });
 
 test("hot rollback journals present before or during an immutable open return no image without recovery", async t => {
@@ -580,6 +645,10 @@ test("headers above 24 megapixels are refused and an exact 24 megapixel header i
     assert.deepEqual(result.images.map(image => image.id), ["one", "two"], mime);
     assert.deepEqual(await refused.image({ ...input, id: "over" }, context()), emptyFull("image_too_large"));
   }
+  assert.deepEqual(h.logs, Array.from({ length: 4 }, () => [
+    ["[clear-chat] prompt.images: image_too_large"],
+    ["[clear-chat] prompt.image: image_too_large"],
+  ]).flat());
 });
 
 test("a valid header with a truncated payload is inlined, and an invalid image keeps earlier results", async () => {

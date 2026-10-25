@@ -59,7 +59,7 @@ const MAX_PIXELS = 24_000_000;
 export const MAX_INLINE_IMAGE_BYTES = 1_572_864;
 
 type Reason = "unknown_provider" | "agent_not_found" | "provider_mismatch" | "not_found" |
-  "timeout" | "lookup_failed" | "image_too_large" | "invalid_image" | "ambiguous" | "no_match";
+  "timeout" | "lookup_failed" | "image_too_large" | "too_large_bytes" | "invalid_image" | "ambiguous" | "no_match";
 
 class LookupError extends Error {
   constructor(readonly reason: Reason) { super(reason); }
@@ -84,9 +84,10 @@ function headerImage(bytes: Buffer, mime: string) {
 /**
  * prompt.images returns up to three originals at or below the inline cap.
  * Width and height come from the header. An image over that cap is omitted,
- * with no error, while total still counts it. prompt.image returns the same
- * original bytes under the same cap. Pixel-limit and type failures use only
- * fixed reason/error codes; no local paths or provider errors cross the RPC.
+ * with reason `too_large_bytes`, while total still counts it. prompt.image
+ * returns the same original bytes under the same cap. Pixel-limit and type
+ * failures use only fixed reason/error codes; no local paths or provider errors
+ * cross the RPC.
  */
 export function createPromptImageHandlers(options: {
   resolvers?: readonly PromptImageResolver[];
@@ -164,8 +165,10 @@ export function createPromptImageHandlers(options: {
           check();
           const bytes = await candidate.readBytes();
           check();
-          // Over the inline cap: leave it out of the list and report no error.
-          if (bytes.length > MAX_INLINE_IMAGE_BYTES) continue;
+          if (bytes.length > MAX_INLINE_IMAGE_BYTES) {
+            reason = "too_large_bytes";
+            continue;
+          }
           try {
             const header = headerImage(bytes, candidate.mime);
             check();
