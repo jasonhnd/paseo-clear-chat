@@ -88,51 +88,102 @@ function dedupeImages(first: readonly Record<string, unknown>[], second: readonl
   return images;
 }
 
-/** A queued_command and the user turn its source_uuid names are one prompt. */
+function acceptedLine(message: UserMessage): boolean {
+  // Sidechain, meta, another session and unreadable content are not a prompt.
+  return !message.rejected && !message.toolResult && message.text !== null;
+}
+
+/**
+ * Fold queued_command lines into the one user turn their source_uuid names
+ * only when that turn is unique, every folded line is accepted, and the text
+ * matches. Any other pairing stays separate so an ambiguous or discarded line
+ * cannot lend its id the other line's images.
+ */
 function foldQueuedTurns(messages: UserMessage[]): UserMessage[] {
   const users = new Map<string, number[]>();
+  const attachments = new Map<string, number[]>();
   messages.forEach((message, index) => {
-    if (!message.queued && !message.toolResult && message.uuid) {
+    if (message.toolResult) return;
+    if (message.queued && message.sourceUuid) {
+      const list = attachments.get(message.sourceUuid) ?? [];
+      list.push(index);
+      attachments.set(message.sourceUuid, list);
+    } else if (!message.queued && message.uuid) {
       const list = users.get(message.uuid) ?? [];
       list.push(index);
       users.set(message.uuid, list);
     }
   });
-  const paired = new Map<number, number>();
-  const used = new Set<number>();
-  messages.forEach((message, index) => {
-    if (!message.queued || message.toolResult || !message.sourceUuid) return;
-    const sourceIndex = (users.get(message.sourceUuid) ?? []).find(candidate => !used.has(candidate));
-    if (sourceIndex === undefined) return;
-    used.add(sourceIndex);
-    paired.set(index, sourceIndex);
-  });
+  const consumed = new Set<number>();
+  const foldedAt = new Map<number, UserMessage>();
+  for (const [sourceUuid, attachmentIndexes] of attachments) {
+    const sourceIndexes = users.get(sourceUuid) ?? [];
+    if (sourceIndexes.length !== 1) continue;
+    const sourceIndex = sourceIndexes[0]!;
+    const source = messages[sourceIndex]!;
+    if (!acceptedLine(source)) continue;
+    const folding = attachmentIndexes.filter(index => {
+      const attachment = messages[index]!;
+      return acceptedLine(attachment) && attachment.text === source.text;
+    });
+    if (!folding.length) continue;
+    consumed.add(sourceIndex);
+    for (const index of folding) consumed.add(index);
+    const parts = [...folding, sourceIndex].sort((left, right) => left - right);
+    let images: Record<string, unknown>[] = [];
+    const ids: string[] = [];
+    for (const index of parts) {
+      const part = messages[index]!;
+      images = dedupeImages(images, part.images);
+      ids.push(...part.ids);
+    }
+    foldedAt.set(Math.min(...parts), {
+      uuid: source.uuid,
+      ids: [...new Set(ids)],
+      text: source.text,
+      images,
+      toolResult: false,
+      queued: false,
+      sourceUuid: null,
+      rejected: false,
+    });
+  }
   const folded: UserMessage[] = [];
   messages.forEach((message, index) => {
-    if (used.has(index)) return;
-    const sourceIndex = paired.get(index);
-    if (sourceIndex === undefined) {
+    if (consumed.has(index)) {
+      const replacement = foldedAt.get(index);
+      if (replacement) folded.push(replacement);
+      return;
+    }
+    if (!message.queued || message.toolResult || !message.sourceUuid) {
       folded.push(message);
       return;
     }
-    const source = messages[sourceIndex]!;
-    // A discarded or unreadable user turn stays empty. A discarded attachment
-    // contributes nothing, but it must not hide the user turn's own images.
-    const attachmentImages = source.rejected || source.text === null || message.rejected || message.text === null
-      ? [] : message.images;
-    const images = index < sourceIndex
-      ? dedupeImages(attachmentImages, source.images)
-      : dedupeImages(source.images, attachmentImages);
-    const text = source.text !== null && (message.text === null || message.text === source.text)
-      ? source.text : null;
-    folded.push({
-      uuid: source.uuid ?? message.uuid,
-      ids: [...new Set([...message.ids, ...source.ids])],
-      text, images, toolResult: false, queued: false, sourceUuid: null,
-      rejected: source.rejected,
-    });
+    const sources = (users.get(message.sourceUuid) ?? []).map(candidate => messages[candidate]!);
+    folded.push(sources.length ? separateAttachment(message, sources) : message);
   });
   return folded;
+}
+
+function separateAttachment(attachment: UserMessage, sources: UserMessage[]): UserMessage {
+  // More than one user line carries this source id. Keep every id in play and
+  // drop the attachment bytes: the pairing is not a unique prompt.
+  if (sources.length !== 1) return { ...attachment, images: [] };
+  const source = sources[0]!;
+  const shared = new Set(source.ids);
+  const ids = attachment.ids.filter(id => !shared.has(id));
+  const agrees = attachment.text !== null && attachment.text === source.text;
+  // A discarded attachment must not repeat the accepted source's id or text,
+  // or a lookup of the attachment would serve the source image.
+  if (acceptedLine(source) && !acceptedLine(attachment) && agrees) {
+    return {
+      ...attachment, ids, text: null, images: [], toolResult: true, queued: false, sourceUuid: null,
+    };
+  }
+  // A discarded or unreadable source owns the turn. Its attachment contributes
+  // its own ids and no images, and must not make the source id ambiguous.
+  if (!acceptedLine(source)) return { ...attachment, ids, images: [] };
+  return { ...attachment, ids };
 }
 
 function image(block: Record<string, unknown>, id: string): FoundImage | null {

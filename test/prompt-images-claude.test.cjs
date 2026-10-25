@@ -273,6 +273,78 @@ test("Claude queued command and the user turn it points at are one message", asy
   assert.deepEqual(await foundBytes(h, {}), [png.bytes]);
 });
 
+test("Claude does not fold a queued attachment when more than one user carries its source id", async t => {
+  const h = harness(t), pngA = await picture(), pngB = await picture("image/png", 3), jpegC = await picture("image/jpeg");
+  h.store([
+    user([text("other"), pngA.block], { uuid: "source-message" }),
+    user([text(), pngB.block], { uuid: "source-message" }),
+    queued([text(), jpegC.block], { uuid: "queued-message" }),
+  ]);
+  for (const lookup of [
+    { messageId: "queued-message" }, { clientMessageId: "queued-message" },
+    { messageId: "source-message" }, { clientMessageId: "source-message" }, {},
+  ]) {
+    assert.deepEqual((await h.resolver.find(h.context(lookup))).images, []);
+  }
+});
+
+test("Claude does not serve a source image for a rejected queued attachment id", async t => {
+  const h = harness(t), png = await picture(), jpeg = await picture("image/jpeg");
+  const { handlers, ctx, input } = rpc(h);
+  for (const [extra, attachmentExtra] of [
+    [{ isSidechain: true }, {}], [{ isMeta: true }, {}], [{}, { isMeta: true }],
+    [{ sessionId: OTHER_SESSION }, {}],
+  ]) {
+    h.store([
+      user([text(), png.block], { uuid: "source-message" }),
+      queued([text(), jpeg.block], { uuid: "queued-message", ...extra }, attachmentExtra),
+    ]);
+    assert.deepEqual(await foundBytes(h, { messageId: "source-message" }), [png.bytes]);
+    assert.deepEqual(await foundBytes(h, { clientMessageId: "source-message" }), [png.bytes]);
+    assert.deepEqual(await foundBytes(h, {}), [png.bytes]);
+    const listed = await handlers.images({ ...input, messageId: "source-message" }, ctx);
+    assert.equal(listed.images.length, 1);
+    const queuedImages = await handlers.images({ ...input, messageId: "queued-message" }, ctx);
+    assert.equal(queuedImages.total, 0);
+    assert.equal(queuedImages.reason, null);
+    const stolen = await handlers.image({ ...input, messageId: "queued-message", id: listed.images[0].id }, ctx);
+    assert.equal(stolen.error, "not_found");
+    assert.equal(stolen.dataUri, null);
+    const stolenClient = await handlers.image({ ...input, clientMessageId: "queued-message", id: listed.images[0].id }, ctx);
+    assert.equal(stolenClient.error, "not_found");
+  }
+  assert.ok(h.logs.every(entry => entry[0] === "[clear-chat] prompt.image: not_found"));
+});
+
+test("Claude does not fold a valid queued attachment into a rejected source", async t => {
+  const h = harness(t), png = await picture(), jpeg = await picture("image/jpeg");
+  for (const extra of [{ isSidechain: true }, { isMeta: true }, { sessionId: OTHER_SESSION }]) {
+    h.store([
+      user([text(), png.block], { uuid: "source-message", ...extra }),
+      queued([text(), jpeg.block], { uuid: "queued-message" }),
+    ]);
+    for (const lookup of [{ messageId: "queued-message" }, { clientMessageId: "queued-message" },
+      { messageId: "source-message" }, { clientMessageId: "source-message" }]) {
+      assert.deepEqual((await h.resolver.find(h.context(lookup))).images, []);
+    }
+  }
+  h.store([user({ future: "content" }, { uuid: "source-message" }), queued([text(), jpeg.block], { uuid: "queued-message" })]);
+  assert.deepEqual((await h.resolver.find(h.context({ messageId: "queued-message" }))).images, []);
+  assert.deepEqual((await h.resolver.find(h.context({ messageId: "source-message" }))).images, []);
+});
+
+test("Claude keeps disagreeing queued text and its source as separate images", async t => {
+  const h = harness(t), png = await picture(), jpeg = await picture("image/jpeg");
+  h.store([
+    user([text("other"), png.block], { uuid: "source-message" }),
+    queued([text(), jpeg.block], { uuid: "queued-message" }),
+  ]);
+  assert.deepEqual(await foundBytes(h, { messageId: "source-message" }), [png.bytes]);
+  assert.deepEqual(await foundBytes(h, { messageId: "queued-message" }), [jpeg.bytes]);
+  assert.deepEqual(await foundBytes(h, { text: "other" }), [png.bytes]);
+  assert.deepEqual(await foundBytes(h, {}), [jpeg.bytes]);
+});
+
 test("Claude queued commands share message ambiguity and image caps/checks with user messages", async t => {
   const h = harness(t), png = await picture(), sibling = await picture("image/png", 3);
   h.store([queued([text(), png.block]), user([text(), sibling.block])]);
