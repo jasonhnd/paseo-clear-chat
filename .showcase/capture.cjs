@@ -75,9 +75,28 @@ async function verifyCapture(page, detail) {
     assert.equal(await page.getByTestId("step-detail-output").innerText(), "Success. Updated the following files:\nM src/cart.ts");
     const output = await page.getByTestId("step-detail-output").boundingBox();
     const scroll = await page.getByTestId("step-detail-scroll").boundingBox();
-    assert.ok(output.y >= scroll.y && output.y + output.height <= scroll.y + scroll.height, "The complete success result must be in view");
+    if (detail === "sheet") {
+      // At the original half-height snap, the result continues below the fold.
+      // Keep Output and its first line in view without hiding the list header.
+      const heading = await page.getByTestId("step-detail-panel").getByText("Output", { exact: true }).boundingBox();
+      assert.ok(heading.y >= scroll.y && heading.y + heading.height <= scroll.y + scroll.height, "Output must be visible");
+      assert.ok(output.y >= scroll.y && output.y < scroll.y + scroll.height, "The success result must begin in view");
+    } else {
+      assert.ok(output.y >= scroll.y && output.y + output.height <= scroll.y + scroll.height, "The complete success result must be in view");
+    }
   }
   if (detail === "sheet") {
+    const panel = page.getByTestId("step-detail-panel");
+    const scroll = page.getByTestId("step-detail-scroll");
+    assert.equal(await scroll.evaluate(node => node.scrollTop), 0, "The sheet list must start at offset zero");
+    const viewport = await scroll.boundingBox();
+    for (const text of ["Status: completed", "Duration: 200ms"]) {
+      const row = panel.getByText(text, { exact: true });
+      assert.ok(await row.isVisible(), `${text} must be visible in the sheet`);
+      const bounds = await row.boundingBox();
+      assert.ok(bounds.y >= viewport.y && bounds.y + bounds.height <= viewport.y + viewport.height,
+        `${text} must be fully inside the sheet list viewport`);
+    }
     // Inspect actual text line rectangles, rather than just element bounding boxes.
     const cut = await page.evaluate(() => {
       const edge = document.querySelector('[data-testid="step-detail-panel"]').getBoundingClientRect().top;
@@ -250,8 +269,8 @@ async function capture() {
           if (group.detail === "menu") await longPressRow(page);
           else if (group.detail) await openEdit(page);
           if (group.detail === "sheet") {
-            // Include the success result; use the panel's own scroll surface.
-            await page.getByTestId("step-detail-scroll").evaluate(node => { node.scrollTop = node.scrollHeight; });
+            // Keep the metadata header above the path, Input, and Output.
+            await page.getByTestId("step-detail-scroll").evaluate(node => { node.scrollTop = 0; });
             await settle(page);
           }
           const fonts = await verifyCapture(page, group.detail);
