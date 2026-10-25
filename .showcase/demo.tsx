@@ -24,7 +24,7 @@ function HostPrompt({ text, at, tokens, marginTop = 0 }: { text: string; at: str
   </div>;
 }
 
-export function Demo({ tokens, animate = false }: { tokens: ExtendedThemeTokens; animate?: boolean }) {
+export function Demo({ tokens, animate = false, detailWidth }: { tokens: ExtendedThemeTokens; animate?: boolean; detailWidth?: number }) {
   const { width } = useWindowDimensions();
   const compact = width < 744;
   const [phase, setPhase] = React.useState(animate ? -1 : DEMO_STEPS.length);
@@ -65,7 +65,7 @@ export function Demo({ tokens, animate = false }: { tokens: ExtendedThemeTokens;
           </> : null}
         </div>
       </div>
-      {selected ? <aside style={{ display: presentation === "side" ? "flex" : "contents", width: tokens.textScale > 1 ? 690 : width >= 1400 ? 520 : 440, flexShrink: 0, minHeight: 0, borderLeft: `1px solid ${tokens.border}` }}>
+      {selected ? <aside style={{ display: presentation === "side" ? "flex" : "contents", width: detailWidth ?? (tokens.textScale > 1 ? 690 : width >= 1400 ? 520 : 440), flexShrink: 0, minHeight: 0, borderLeft: `1px solid ${tokens.border}` }}>
         <StepDetailPanel key={selected.id} step={selected} open onOpenChange={open => { if (!open) setSelected(null); }} presentation={presentation} tokens={tokens} viewState={viewState} />
       </aside> : null}
     </main>
