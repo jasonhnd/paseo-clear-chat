@@ -1,3 +1,5 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "../messages";
 import React, { useContext, useEffect, useMemo, useRef } from "react";
 import { FlatList, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type { ToolCalloutData } from "../../shared/contracts";
@@ -15,25 +17,26 @@ type Section = "input" | "output" | "error" | "stdout" | "stderr";
 type DetailRow = { key: string; section: Section } & (
   { kind: "heading"; text: string | undefined } | { kind: "text"; text: string; lineNumber?: number; gutterWidth?: number }
 );
-const titles = { input: "Input", output: "Output", error: "Error", stdout: "Stdout", stderr: "Stderr" };
+
 type ScrollNode = { scrollTop?: number; clientHeight?: number; getScrollableNode?: () => ScrollNode };
 
 function SectionHeading({ section, text, tokens }: { section: Section; text: string | undefined; tokens: ExtendedThemeTokens }) {
+  const { t } = useTranslation(messages);
   const { copied, handleCopy, fallbackText, setFallbackText } = useCopyText(text ?? "");
   return <View>
     <View style={styles.heading}>
-      <Text accessibilityRole="header" style={{ color: tokens.foreground, fontFamily: tokens.fontUi, fontSize: tokens.fs(13), fontWeight: "600" }}>{titles[section]}</Text>
+      <Text accessibilityRole="header" style={{ color: tokens.foreground, fontFamily: tokens.fontUi, fontSize: tokens.fs(13), fontWeight: "600" }}>{t(`detail.section.${section}`)}</Text>
       {text !== undefined ? <Pressable
         testID={`step-detail-copy-${section}`}
-        accessibilityRole="button" accessibilityLabel={`Copy ${section}`}
+        accessibilityRole="button" accessibilityLabel={t("detail.copyA11y", { section: t(`detail.sectionInline.${section}`) })}
         onPress={handleCopy} style={styles.copy}
       >
         <Glyph name={copied ? "Check" : "Copy"} size={14} color={tokens.accent} />
-        <Text style={{ color: tokens.accent, fontFamily: tokens.fontUi, fontSize: tokens.fs(12) }}>{copied ? "Copied" : "Copy"}</Text>
+        <Text style={{ color: tokens.accent, fontFamily: tokens.fontUi, fontSize: tokens.fs(12) }}>{copied ? t("selection.copied") : t("detail.copy")}</Text>
       </Pressable> : null}
     </View>
     {text === undefined || text === "" ? <Text style={{ color: tokens.foregroundMuted, paddingBottom: 12, fontSize: tokens.fs(12) }}>
-      {text === undefined ? `No ${section} was reported.` : `Empty ${section}.`}
+      {t(text === undefined ? "detail.none" : "detail.emptySection", { section: t(`detail.sectionInline.${section}`) })}
     </Text> : null}
     <CopyFallbackDialog text={fallbackText} onClose={() => setFallbackText(null)} tokens={tokens} />
   </View>;
@@ -46,6 +49,7 @@ export function StepDetailContent({ step, tokens, onRevealPath, imageFile }: {
   onRevealPath?: (path: string) => void;
   imageFile?: ImageFile | null;
 }) {
+  const { t } = useTranslation(messages);
   const readingState = useContext(StepDetailStateContext);
   const list = useRef<FlatList<DetailRow>>(null);
   // Restore after mounting or resizing; virtual cell measurements keep the current position.
@@ -132,9 +136,9 @@ export function StepDetailContent({ step, tokens, onRevealPath, imageFile }: {
       keyboardShouldPersistTaps="handled"
       contentInsetAdjustmentBehavior="automatic"
       ListHeaderComponent={<View style={styles.metadata}>
-        <Text style={{ color: tokens.foregroundMuted, fontSize: tokens.fs(12) }}>Status: {step.status}</Text>
-        {duration !== undefined ? <Text testID="step-detail-duration" style={{ color: tokens.foregroundMuted, fontSize: tokens.fs(12) }}>{`Duration: ${duration}`}</Text> : null}
-        {exitCode !== undefined ? <Text testID="step-detail-exit-code" style={{ color: exitCode ? tokens.danger : tokens.foregroundMuted, fontSize: tokens.fs(12) }}>{`Exit code: ${exitCode}`}</Text> : null}
+        <Text style={{ color: tokens.foregroundMuted, fontSize: tokens.fs(12) }}>{t("detail.status", { status: t(`tool.status.${step.status}`) })}</Text>
+        {duration !== undefined ? <Text testID="step-detail-duration" style={{ color: tokens.foregroundMuted, fontSize: tokens.fs(12) }}>{t("detail.duration", { duration })}</Text> : null}
+        {exitCode !== undefined ? <Text testID="step-detail-exit-code" style={{ color: exitCode ? tokens.danger : tokens.foregroundMuted, fontSize: tokens.fs(12) }}>{t("detail.exitCode", { code: exitCode })}</Text> : null}
         {step.filePath ? <Text selectable onPress={onRevealPath ? () => onRevealPath(step.filePath!) : undefined} style={{ color: tokens.accent, fontFamily: tokens.fontMono, fontSize: tokens.fs(12) }}>{step.filePath}</Text> : null}
         {step.filePath && imageFile !== undefined ? <ImagePreview path={step.filePath} file={imageFile} tokens={tokens} onReveal={onRevealPath ? () => onRevealPath(step.filePath!) : undefined} /> : null}
       </View>}

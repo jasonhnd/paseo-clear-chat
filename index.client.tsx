@@ -1,3 +1,5 @@
+import { messages } from "./client/messages";
+import { initializeClientTranslations, translate as t } from "./client/translation";
 import type { PluginClientContext, PluginTimelineTransformerContribution } from "@getpaseo/plugin/client";
 import { z } from "zod";
 import { requireHostMethods, STARTUP_MESSAGES } from "./shared/startup-diagnostics";
@@ -49,11 +51,13 @@ function addTextTransformer<ItemType extends "user_message" | "assistant_message
 }
 
 export default function contribute(client: PluginClientContext) {
-  requireHostMethods(client, ["rpc", "addSettingsScreen", "addTimelineTransformer", "addTimelineRenderer"]);
+  initializeClientTranslations(client);
   try {
+    requireHostMethods(client, ["rpc", "addSettingsScreen", "addTimelineTransformer", "addTimelineRenderer"]);
     return registerClient(client);
-  } catch {
-    throw new Error(STARTUP_MESSAGES.startupFailed);
+  } catch (error) {
+    if (error instanceof Error && error.message === STARTUP_MESSAGES.incompatibleHost) throw new Error(t("startup.incompatibleHost"));
+    throw new Error(t("startup.startupFailed"));
   }
 }
 
@@ -74,7 +78,7 @@ function registerClient(client: PluginClientContext) {
   // Configuration lives in the host Settings area.
   client.addSettingsScreen({
     id: "chat-presentation",
-    title: "Chat presentation",
+    title: messages.message("settings.title"),
     icon: "Blocks",
     Component: ClearChatSettingsPage,
   });

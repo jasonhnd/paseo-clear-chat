@@ -1,3 +1,4 @@
+import { translate as t } from "../translation";
 import { useState } from "react";
 import { Platform, useWindowDimensions } from "react-native";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -16,22 +17,22 @@ export function useReplyFilePath(cwd?: string | null) {
     if (copy) {
       try {
         await copyText(path);
-        toast.show("Path copied. Open it on the host computer.", { variant: "success" });
+        toast.show(t("toast.pathCopied"), { variant: "success" });
       } catch {
         setFallbackText(path);
-        toast.error("Could not copy. Select all the text in the dialog and use Copy.");
+        toast.error(t("toast.copyFailed"));
       }
       return;
     }
     if (!cwd && !isAbsoluteFilePath(path)) {
-      toast.error("The session working directory is unavailable. Copy the path and open it on the host computer.");
+      toast.error(t("toast.cwdMissing"));
       return;
     }
     try {
       const result = await reveal({ cwd: cwd ?? "", path });
-      if (!result.revealed) toast.error("The path could not be opened on the host. It may not exist or may be inaccessible.");
+      if (!result.revealed) toast.error(t("toast.pathUnopened"));
     } catch {
-      toast.error("The path could not be opened on the host. Try again when the host is connected.");
+      toast.error(t("toast.pathHostDown"));
     }
   };
   return { openFilePath, copy, fallbackText, setFallbackText };

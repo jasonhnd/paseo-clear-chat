@@ -1,3 +1,5 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "../messages";
 import React, { useRef, useState } from "react";
 import { Modal, Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import type { PressableProps, TextStyle } from "react-native";
@@ -37,6 +39,7 @@ function anchoredOffset(point: number, size: number, available: number): number 
 }
 
 export function useToolStepMenu(data: ToolCalloutData, tokens: ExtendedThemeTokens, onRevealPath?: (path: string) => void) {
+  const { t } = useTranslation(messages);
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<Point | null>(null);
   const [menuSize, setMenuSize] = useState<{ width: number; height: number } | null>(null);
@@ -82,12 +85,12 @@ export function useToolStepMenu(data: ToolCalloutData, tokens: ExtendedThemeToke
   const copy = async (text: string) => {
     try {
       await copyText(text);
-      toast.show("Copied to clipboard", { variant: "success" });
+      toast.show(t("toast.copied"), { variant: "success" });
       setOpen(false);
     } catch {
       setOpen(false);
       setFallback(text);
-      toast.error("Could not copy. Select all the text in the dialog and use Copy.");
+      toast.error(t("toast.copyFailed"));
     }
   };
   const action = (id: string, label: string, onPress: () => void) => (
@@ -110,9 +113,9 @@ export function useToolStepMenu(data: ToolCalloutData, tokens: ExtendedThemeToke
       {open ? (
         <Modal transparent visible animationType="none" onRequestClose={() => setOpen(false)} supportedOrientations={["portrait", "landscape"]}>
           <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 8 }}>
-            <Pressable testID="step-menu-dismiss" accessibilityRole="button" accessibilityLabel="Close step actions"
+            <Pressable testID="step-menu-dismiss" accessibilityRole="button" accessibilityLabel={t("menu.closeA11y")}
               onPress={() => setOpen(false)} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "#00000040" }} />
-            <View testID="tool-step-menu" accessibilityRole="menu" accessibilityLabel="Step actions" accessibilityViewIsModal
+            <View testID="tool-step-menu" accessibilityRole="menu" accessibilityLabel={t("menu.actionsA11y")} accessibilityViewIsModal
               onLayout={event => {
                 const { width, height } = event.nativeEvent.layout;
                 setMenuSize(previous => previous?.width === width && previous.height === height ? previous : { width, height });
@@ -123,11 +126,11 @@ export function useToolStepMenu(data: ToolCalloutData, tokens: ExtendedThemeToke
                   top: anchoredOffset(anchor.y, menuSize?.height ?? 0, height) } : {}),
                 borderRadius: 12, borderWidth: 1, borderColor: tokens.border, overflow: "hidden", backgroundColor: tokens.surface0 }}>
               <ScrollView bounces={false}>
-                {command ? action("step-copy-command", "Copy command", () => copy(command)) : null}
-                {path ? action("step-copy-path", "Copy path", () => copy(path)) : null}
-                {result !== undefined ? action("step-copy-result", "Copy result", () => copy(result)) : null}
+                {command ? action("step-copy-command", t("menu.copyCommand"), () => copy(command)) : null}
+                {path ? action("step-copy-path", t("menu.copyPath"), () => copy(path)) : null}
+                {result !== undefined ? action("step-copy-result", t("menu.copyResult"), () => copy(result)) : null}
                 {path && onRevealPath && Platform.OS === "web" && width >= DESKTOP_MIN
-                  ? action("step-open-path", "Open in file manager", () => { setOpen(false); onRevealPath(path); }) : null}
+                  ? action("step-open-path", t("menu.open"), () => { setOpen(false); onRevealPath(path); }) : null}
               </ScrollView>
             </View>
           </View>

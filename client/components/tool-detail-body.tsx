@@ -1,3 +1,5 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "../messages";
 import React from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import type { ToolCalloutData } from "../../shared/contracts";
@@ -16,6 +18,7 @@ export function ToolDetailBody({ data, tokens, onRevealPath }: {
   tokens: ExtendedThemeTokens;
   onRevealPath?: (path: string) => void;
 }) {
+  const { t } = useTranslation(messages);
   const styles = StyleSheet.create({
     body: { gap: 8 },
     row: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
@@ -25,11 +28,11 @@ export function ToolDetailBody({ data, tokens, onRevealPath }: {
     link: { fontFamily: tokens.fontMono, fontSize: tokens.fs(12), color: tokens.accent, flexShrink: 1 },
     result: { gap: 3, paddingVertical: 5, borderBottomWidth: 1, borderBottomColor: tokens.borderSubtle },
   });
-  const empty = <Text selectable style={styles.key}>{`No output. Status: ${data.status}.`}</Text>;
+  const empty = <Text selectable style={styles.key}>{t("tool.detail.noOutput", { status: t(`tool.status.${data.status}`) })}</Text>;
 
   if (data.skill) return (
     <View style={styles.body}>
-      <Text selectable style={styles.title}>{`Skill: ${data.skill.name}`}</Text>
+      <Text selectable style={styles.title}>{t("tool.summary.skill", { name: data.skill.name })}</Text>
       {data.skill.text?.trim() ? <ToolOutput text={data.skill.text} tokens={tokens}>{shown => <Text selectable style={styles.text}>{shown}</Text>}</ToolOutput> : empty}
     </View>
   );
@@ -37,7 +40,7 @@ export function ToolDetailBody({ data, tokens, onRevealPath }: {
   if (data.tool === "plan" || data.tool === "todo") return (
     <View style={styles.body}>
       <TaskList data={data.checklist ?? { id: data.id, phaseName: data.title, tasks: [] }} tokens={tokens} />
-      {!data.checklist?.tasks.length ? <Text selectable style={styles.key}>{`No tasks reported. Status: ${data.status}.`}</Text> : null}
+      {!data.checklist?.tasks.length ? <Text selectable style={styles.key}>{t("tool.detail.noTasks", { status: t(`tool.status.${data.status}`) })}</Text> : null}
     </View>
   );
 
@@ -49,7 +52,7 @@ export function ToolDetailBody({ data, tokens, onRevealPath }: {
 
   if (data.tool === "tool_search") return (
     <View testID="tool-discovery-content" style={styles.body}>
-      <Text selectable style={styles.text}>{`Query: ${data.toolSearch?.query || "Not reported"}`}</Text>
+      <Text selectable style={styles.text}>{t("tool.detail.query", { query: data.toolSearch?.query || t("tool.detail.notReported") })}</Text>
       {data.toolSearch?.text?.trim() ? (
         <ToolOutput text={data.toolSearch.text} tokens={tokens}>{shown => <Text selectable style={styles.text}>{shown}</Text>}</ToolOutput>
       ) : empty}
@@ -58,15 +61,15 @@ export function ToolDetailBody({ data, tokens, onRevealPath }: {
 
   if (data.tool === "search" || data.tool === "web_search") return (
     <View style={styles.body}>
-      <Text selectable style={styles.text}>{`Query: ${data.search?.query || "Not reported"}`}</Text>
-      <Text selectable style={styles.key}>{`Scope: ${data.search?.scope || (data.tool === "web_search" ? "Web" : "Workspace")}`}</Text>
-      <Text selectable style={styles.key}>{`Matches: ${data.search?.count ?? 0}${data.search?.truncated ? " (truncated)" : ""}`}</Text>
+      <Text selectable style={styles.text}>{t("tool.detail.query", { query: data.search?.query || t("tool.detail.notReported") })}</Text>
+      <Text selectable style={styles.key}>{t("tool.detail.scope", { scope: data.search?.scope || (data.tool === "web_search" ? t("tool.detail.scopeWeb") : t("tool.detail.scopeWorkspace")) })}</Text>
+      <Text selectable style={styles.key}>{t(data.search?.truncated ? "tool.detail.matchesTruncated" : "tool.detail.matches", { count: data.search?.count ?? 0 })}</Text>
       {data.search?.results.map((row, index) => (
         <Pressable
           key={`${row.label}-${index}`}
           style={styles.result}
           accessibilityRole={row.url || row.path ? "link" : undefined}
-          accessibilityLabel={`Open ${row.url ?? row.path ?? row.label}`}
+          accessibilityLabel={t("tool.detail.openResultA11y", { target: row.url ?? row.path ?? row.label })}
           onPress={() => row.url ? openLink(row.url) : onRevealPath?.(row.path ?? ".")}
         >
           <Text selectable style={styles.link} numberOfLines={1}>{row.label}</Text>
@@ -77,7 +80,7 @@ export function ToolDetailBody({ data, tokens, onRevealPath }: {
       {data.search?.preview && data.search.results.length > 0 ? <Text selectable style={styles.text}>{data.search.preview}</Text> : null}
       {!data.search?.results.length && data.fetch ? <FetchPreview data={data.fetch} tokens={tokens} status={data.status} /> : null}
       {!data.search?.results.length && !data.fetch ? (
-        <Text selectable style={styles.key}>{data.status === "running" ? "Searching…" : "No results reported."}</Text>
+        <Text selectable style={styles.key}>{data.status === "running" ? t("tool.detail.searching") : t("tool.detail.noResults")}</Text>
       ) : null}
     </View>
   );
@@ -88,7 +91,7 @@ export function ToolDetailBody({ data, tokens, onRevealPath }: {
     <View testID="tool-generic-content" style={styles.body}>
       {data.fallback?.parameters.map((parameter) => (
         <View key={parameter.name} style={styles.row}>
-          <Text selectable style={styles.key}>{`${parameter.name}:`}</Text>
+          <Text selectable style={styles.key}>{t("tool.detail.parameter", { name: parameter.name })}</Text>
           <ToolOutput text={parameter.value} tokens={tokens}>{shown => <Text selectable style={styles.text}>{shown}</Text>}</ToolOutput>
         </View>
       ))}
@@ -102,17 +105,18 @@ function FetchPreview({ data, tokens, status }: {
   tokens: ExtendedThemeTokens;
   status?: ToolCalloutData["status"];
 }) {
+  const { t } = useTranslation(messages);
   const text = { fontFamily: tokens.fontMono, fontSize: tokens.fs(12), lineHeight: tokens.fs(18), color: tokens.foreground };
   return (
     <View style={{ gap: 6 }}>
       {data?.url ? (
-        <Pressable accessibilityRole="link" accessibilityLabel={`Open ${data.url}`} onPress={() => openLink(data.url!)}>
+        <Pressable accessibilityRole="link" accessibilityLabel={t("tool.detail.openResultA11y", { target: data.url })} onPress={() => openLink(data.url!)}>
           <Text selectable style={[text, { color: tokens.accent }]}>{data.url}</Text>
         </Pressable>
       ) : null}
-      {data?.query ? <Text selectable style={text}>{`Query: ${data.query}`}</Text> : null}
+      {data?.query ? <Text selectable style={text}>{t("tool.detail.query", { query: data.query })}</Text> : null}
       {data?.title ? <Text selectable style={[text, { fontWeight: "600" }]}>{data.title}</Text> : null}
-      <Text selectable style={text}>{data?.preview || `No content reported. Status: ${status ?? "completed"}.`}</Text>
+      <Text selectable style={text}>{data?.preview || t("tool.detail.noContent", { status: t(`tool.status.${status ?? "completed"}`) })}</Text>
     </View>
   );
 }

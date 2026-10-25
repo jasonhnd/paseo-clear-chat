@@ -1,3 +1,5 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "../messages";
 import React, { useCallback, useMemo, useState } from "react";
 import { View, Text, Pressable, useWindowDimensions } from "react-native";
 import { PHONE_MAX } from "../breakpoints";
@@ -88,6 +90,7 @@ function hasTypedToolBody(data: ToolCalloutData): boolean {
 export function ToolCallout({
   data, tokens, expanded, onExpandedChange, onOpenDetail, navigationScope = "", onRevealPath, imageFile,
 }: ToolCalloutProps) {
+  const { t } = useTranslation(messages);
   const stepMenu = useToolStepMenu(data, tokens, onRevealPath);
   const hoverPreview = useToolHoverPreview(data, expanded, tokens);
   const keyboard = useToolKeyboard(navigationScope, () => {
@@ -111,8 +114,8 @@ export function ToolCallout({
       {...hoverPreview}
       testID="tool-summary-row"
       accessibilityRole="button"
-      accessibilityLabel={`${expanded ? "Collapse" : onOpenDetail ? "View details:" : "Expand"} ${toolSummary(data)}`}
-      accessibilityHint={!expanded && onOpenDetail ? "Opens step details" : undefined}
+      accessibilityLabel={t(expanded ? "tool.row.collapseA11y" : onOpenDetail ? "tool.row.detailsA11y" : "tool.row.expandA11y", { summary: toolSummary(data) })}
+      accessibilityHint={!expanded && onOpenDetail ? t("tool.row.detailsHint") : undefined}
       accessibilityState={{ expanded }}
       aria-expanded={expanded}
       aria-haspopup={!expanded && onOpenDetail ? "dialog" : undefined}
@@ -137,12 +140,12 @@ export function ToolCallout({
       <View style={styles.headerRight}>
         {duration !== undefined ? <Text testID="tool-duration" style={styles.durationBadge} numberOfLines={1}>{duration}</Text> : null}
         {data.exitCode !== undefined && data.exitCode !== 0 ? (
-          <Text style={[styles.durationBadge, { color: tokens.danger }]} numberOfLines={1}>exit {data.exitCode}</Text>
+          <Text style={[styles.durationBadge, { color: tokens.danger }]} numberOfLines={1}>{t("tool.exitChip", { code: data.exitCode })}</Text>
         ) : null}
-        <View testID={`tool-status-${data.status}`} accessibilityLabel={data.status}>
+        <View testID={`tool-status-${data.status}`} accessibilityLabel={t(`tool.status.${data.status}`)}>
           {isRunning ? <ToolSpinner color={tokens.accent} size={phone ? 11 : 13} /> : (
             <Text style={styles.indicatorText} numberOfLines={1}>
-              {isSuccess ? "✓" : isFailed ? "✗" : isWaiting ? "Waiting" : "canceled"}
+              {isSuccess ? "✓" : isFailed ? "✗" : isWaiting ? t("tool.status.waitingLabel") : t("tool.status.canceled")}
             </Text>
           )}
         </View>
@@ -171,6 +174,7 @@ export type ToolCalloutBodyProps = Pick<ToolCalloutProps, "data" | "tokens" | "o
 
 /** Expanded timeline card body; full step details use their virtual document. */
 export function ToolCalloutBody({ data, tokens, onRevealPath, imageFile }: ToolCalloutBodyProps) {
+  const { t } = useTranslation(messages);
   const { foldLongOutputAfter } = useEnhancerPreferences();
   const [visibleOutputs, setVisibleOutputs] = useState<{ limit: OutputLineLimit; texts: ReadonlySet<string> }>();
   const reportVisibility = useCallback((text: string, visible: boolean) => {
@@ -231,7 +235,7 @@ export function ToolCalloutBody({ data, tokens, onRevealPath, imageFile }: ToolC
             <View style={styles.terminalWindow}>
               {(data.shell?.command || data.command) && (
                 <ToolCodeBlock
-                  code={`$ ${data.shell?.command || data.command}`}
+                  code={t("tool.summary.command", { command: data.shell?.command || data.command })}
                   language="bash"
                   tokens={tokens}
                   compact
@@ -256,12 +260,12 @@ export function ToolCalloutBody({ data, tokens, onRevealPath, imageFile }: ToolC
               {!data.shell?.stdout && !data.shell?.stderr && !data.output && (
                 <Text selectable style={styles.silentCommandText}>
                   {isRunning
-                    ? "Waiting for command output…"
-                    : isFailed ? "Command failed without output."
-                    : data.status === "canceled" ? "Command canceled without output."
+                    ? t("tool.shell.waiting")
+                    : isFailed ? t("tool.shell.failed")
+                    : data.status === "canceled" ? t("tool.shell.canceled")
                     : isShellCall
-                      ? "Command completed without output."
-                      : "The call returned no output."}
+                      ? t("tool.shell.completed")
+                      : t("tool.shell.noOutput")}
                 </Text>
               )}
             </View>
@@ -284,13 +288,13 @@ export function ToolCalloutBody({ data, tokens, onRevealPath, imageFile }: ToolC
                   <Glyph name="Brain" size={13} color={tokens.accent} />
                   <Text selectable style={styles.thinkingTitle}>
                     {data.thinking?.status === "thinking"
-                      ? "Live Reasoning Stream…"
-                      : "Reasoning Completed"}
+                      ? t("tool.thinking.live")
+                      : t("tool.thinking.done")}
                   </Text>
                 </View>
                 {data.thinking?.tokenCount ? (
                   <Text selectable style={styles.thinkingTokenBadge}>
-                    {data.thinking.tokenCount} tokens
+                    {t("tool.thinking.tokens", { count: data.thinking.tokenCount })}
                   </Text>
                 ) : null}
               </View>
@@ -299,7 +303,7 @@ export function ToolCalloutBody({ data, tokens, onRevealPath, imageFile }: ToolC
                 {data.thinking?.text ||
                   data.code ||
                   data.output ||
-                  "Analyzing constraints and formulating steps..."}
+                  t("tool.thinking.placeholder")}
               </Text>
               {data.thinking?.steps && data.thinking.steps.length > 0 && (
                 <View style={styles.thinkingStepsList}>
@@ -367,7 +371,7 @@ export function ToolCalloutBody({ data, tokens, onRevealPath, imageFile }: ToolC
 
               <View style={{ gap: 4 }}>
                 <Text selectable style={styles.mcpSectionTitle}>
-                  Input Parameters
+                  {t("tool.mcp.input")}
                 </Text>
                 <ToolCodeBlock
                   code={JSON.stringify(data.mcp.arguments, null, 2)}
@@ -380,7 +384,7 @@ export function ToolCalloutBody({ data, tokens, onRevealPath, imageFile }: ToolC
               {data.mcp.result !== undefined && (
                 <View style={{ gap: 4, marginTop: 4 }}>
                   <Text selectable style={styles.mcpSectionTitle}>
-                    Response Payload
+                    {t("tool.mcp.response")}
                   </Text>
                   <ToolCodeBlock
                     code={
@@ -398,7 +402,7 @@ export function ToolCalloutBody({ data, tokens, onRevealPath, imageFile }: ToolC
               {data.mcp.error && (
                 <View style={styles.mcpErrorBox}>
                   <Text selectable style={styles.mcpErrorText}>
-                    Error: {data.mcp.error}
+                    {t("tool.mcp.error", { message: data.mcp.error })}
                   </Text>
                 </View>
               )}
@@ -415,7 +419,7 @@ export function ToolCalloutBody({ data, tokens, onRevealPath, imageFile }: ToolC
               />
             ) : (
               <ToolCodeBlock
-                code={data.code || "// [Empty content or pending stream]"}
+                code={data.code || t("tool.file.empty")}
                 language={data.language ?? "text"}
                 filename={data.filePath ? `${data.filePath} ${data.lineRange || ""}` : undefined}
                 tokens={tokens}
@@ -427,7 +431,7 @@ export function ToolCalloutBody({ data, tokens, onRevealPath, imageFile }: ToolC
 
           {data.tool === "edit" && (
             <ToolCodeBlock
-              code={data.diff || data.code || "// [Edit: diff applied]"}
+              code={data.diff || data.code || t("tool.file.editApplied")}
               language={data.changes ? "diff" : "text"}
               filename={data.filePath}
               tokens={tokens}
@@ -453,7 +457,7 @@ export function ToolCalloutBody({ data, tokens, onRevealPath, imageFile }: ToolC
                     <ToolCodeBlock
                       code={cell.code}
                       language={cell.language}
-                      filename={cell.title || "Persistent Kernel Cell"}
+                      filename={cell.title || t("tool.eval.cell")}
                       tokens={tokens}
                       showLineNumbers
                       compact
@@ -462,7 +466,7 @@ export function ToolCalloutBody({ data, tokens, onRevealPath, imageFile }: ToolC
                   {cell.output ? (
                     <View style={styles.evalOutput}>
                       <Text selectable style={styles.evalOutputLabel}>
-                        stdout
+                        {t("tool.eval.stdout")}
                       </Text>
                       <ToolOutput text={cell.output} tokens={tokens}>
                         {shown => <Text selectable {...selectionCodeText} style={styles.evalOutputText}>{renderTerminalOutput(shown, tokens)}</Text>}
@@ -477,7 +481,7 @@ export function ToolCalloutBody({ data, tokens, onRevealPath, imageFile }: ToolC
           {data.tool === "ask" && data.askOptions && (
             <View style={styles.askContainer}>
               <Text selectable style={styles.askPrompt}>
-                {answered.length > 0 ? "Options offered:" : "Waiting for a decision:"}
+                {answered.length > 0 ? t("tool.ask.offered") : t("tool.ask.waiting")}
               </Text>
               {data.askOptions.map((opt) => {
                 // The answer is whatever the tool reported, so a label match
@@ -501,7 +505,7 @@ export function ToolCalloutBody({ data, tokens, onRevealPath, imageFile }: ToolC
                         </Text>
                         {opt.recommended ? (
                           <Text selectable style={styles.recommendedBadge}>
-                            Recommended
+                            {t("tool.ask.recommended")}
                           </Text>
                         ) : null}
                       </View>
@@ -522,7 +526,7 @@ export function ToolCalloutBody({ data, tokens, onRevealPath, imageFile }: ToolC
               {answered.length > 0 ? (
                 <View style={styles.askAnswerRow}>
                   <Text selectable style={styles.askAnswerKey}>
-                    {typedReply ? "typed" : "answered"}
+                    {typedReply ? t("tool.ask.typed") : t("tool.ask.answered")}
                   </Text>
                   <Text selectable style={styles.askAnswerValue}>
                     {answered.join(", ")}

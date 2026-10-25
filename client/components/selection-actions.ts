@@ -1,3 +1,7 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "../messages";
+import { refreshChatFindTranslations } from "./chat-find";
+import { translate as t } from "../translation";
 import { useEffect } from "react";
 import { Platform } from "react-native";
 import type { TextProps, ViewProps } from "react-native";
@@ -250,24 +254,24 @@ function createBar(): Bar {
     }, RESET_LABEL_MS);
   };
 
-  const copyButton = makeButton("Copy", (button) => {
+  const copyButton = makeButton(t("selection.copy"), (button) => {
     const snapshot = readSelection();
     if (!snapshot) return;
     void copyText(snapshot.text);
-    flash(button, "Copied");
+    flash(button, t("selection.copied"));
   });
 
-  const addButton = makeButton("Add to chat", (button) => {
+  const addButton = makeButton(t("selection.add"), (button) => {
     const snapshot = readSelection();
     if (!snapshot) return;
     if (insertIntoComposer(quote(snapshot))) {
-      flash(button, "Added");
+      flash(button, t("selection.added"));
       return;
     }
     // No composer on screen — the snippet still reaches the clipboard, and the
     // label says which of the two actions actually happened.
     void copyText(snapshot.text);
-    flash(button, "Copied instead");
+    flash(button, t("selection.copiedInstead"));
   });
 
   // The bar keeps the selection alive: a press inside it must not move the
@@ -280,6 +284,9 @@ function createBar(): Bar {
   return {
     host,
     setTheme(tokens) {
+      window.clearTimeout(labelTimer);
+      copyButton.textContent = copyButton.dataset.label = t("selection.copy");
+      addButton.textContent = addButton.dataset.label = t("selection.add");
       hoverColor = tokens.accentBg;
       // Every derived surface token is translucent by design — they sit on the
       // host background inside the timeline. A bar floating over text needs to
@@ -389,6 +396,8 @@ function startController(): Controller {
  * so the calls are reference counts rather than instances.
  */
 export function useSelectionActions(tokens: ExtendedThemeTokens, enabled: boolean): void {
+  const { locale } = useTranslation(messages);
+  useEffect(refreshChatFindTranslations, [locale]);
   useEffect(() => {
     if (Platform.OS !== "web" || typeof document === "undefined" || !enabled) return;
     const active = controller ?? (controller = startController());
@@ -404,5 +413,5 @@ export function useSelectionActions(tokens: ExtendedThemeTokens, enabled: boolea
   useEffect(() => {
     if (!enabled) return;
     controller?.bar.setTheme(tokens);
-  }, [tokens, enabled]);
+  }, [tokens, enabled, locale]);
 }

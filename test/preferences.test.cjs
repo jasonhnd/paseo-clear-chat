@@ -37,14 +37,16 @@ function harness(platform = "ios", legacy, current) {
   };
   function load(relative) {
     const filename = resolve(__dirname, "..", relative);
+    if (filename.endsWith(".json")) return JSON.parse(readFileSync(filename, "utf8"));
     if (cache.has(filename)) return cache.get(filename).exports;
     const mod = { exports: {} };
     cache.set(filename, mod);
     const compiled = ts.transpileModule(readFileSync(filename, "utf8"), {
-      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX },
+      compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX },
     }).outputText;
     const realRequire = createRequire(filename);
     const localRequire = (id) => {
+      if (id === "@getpaseo/plugin/client") return require("./helpers/translations.cjs").createTranslations();
       if (id === "react-native") return { Platform: { OS: platform } };
       // Host startup migration has its own filesystem tests. Client tests never
       // read or write the real daemon's settings directory.
@@ -53,7 +55,7 @@ function harness(platform = "ios", legacy, current) {
       if (id.includes("/components/")) return new Proxy({}, { get: () => () => () => {} });
       if (id.startsWith(".")) {
         const base = resolve(dirname(filename), id);
-        return load(base + (base.endsWith(".tsx") || base.endsWith(".ts") ? "" : ".ts"));
+        return load(base + (base.endsWith(".tsx") || base.endsWith(".ts") || base.endsWith(".json") ? "" : ".ts"));
       }
       return realRequire(id);
     };

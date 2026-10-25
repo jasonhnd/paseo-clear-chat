@@ -1,3 +1,5 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "../messages";
 import React, { useMemo } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { CopyFallbackDialog, copyTouchTarget, useCopyText } from "./copy-feedback";
@@ -47,6 +49,7 @@ export function formatReplyTime(date: Date, now: Date = new Date()): string {
 }
 
 export function AssistantFooter({ text, at, tokens, durationMs }: AssistantFooterProps) {
+  const { t } = useTranslation(messages);
   const { copied, handleCopy, fallbackText, setFallbackText } = useCopyText(text);
 
   const styles = useMemo(
@@ -98,7 +101,7 @@ export function AssistantFooter({ text, at, tokens, durationMs }: AssistantFoote
       <CopyFallbackDialog text={fallbackText} onClose={() => setFallbackText(null)} tokens={tokens} />
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={copied ? "Reply copied" : "Copy reply"}
+        accessibilityLabel={copied ? t("reply.copiedA11y") : t("reply.copyA11y")}
         onPress={handleCopy}
         style={styles.copyButton}
       >
@@ -107,11 +110,11 @@ export function AssistantFooter({ text, at, tokens, durationMs }: AssistantFoote
           size={12}
           color={copied ? tokens.success : tokens.foregroundMuted}
         />
-        <Text style={styles.copyLabel}>{copied ? "Copied" : "Copy"}</Text>
+        <Text style={styles.copyLabel}>{copied ? t("reply.copied") : t("reply.copy")}</Text>
       </Pressable>
       <Text style={styles.time}>{time}</Text>
       {durationMs !== undefined && Number.isFinite(durationMs) && durationMs >= 0 ? (
-        <Text testID="reply-duration" style={styles.time}>{`Worked for ${formatWorkedDuration(durationMs)}`}</Text>
+        <Text testID="reply-duration" style={styles.time}>{t("reply.workedFor", { duration: formatWorkedDuration(durationMs) })}</Text>
       ) : null}
     </View>
   );

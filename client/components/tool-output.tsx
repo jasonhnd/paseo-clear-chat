@@ -1,3 +1,5 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "../messages";
 import React, { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 import { View, Text, Pressable } from "react-native";
 import { useEnhancerPreferences } from "../preferences";
@@ -19,6 +21,7 @@ export function ToolOutput({ text, tokens, children, expansion }: {
   children: (shown: string) => ReactNode;
   expansion?: OutputExpansion;
 }) {
+  const { t } = useTranslation(messages);
   const { foldLongOutputAfter: limit } = useEnhancerPreferences();
   const reportVisibility = useContext(ToolOutputVisibility);
   const [choice, setChoice] = useStepDetailState<{ limit: typeof limit; expanded: boolean } | undefined>(`output:${text}`, undefined);
@@ -36,7 +39,7 @@ export function ToolOutput({ text, tokens, children, expansion }: {
       {folded ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={expanded ? "Show fewer lines" : `Show all ${lines.length} lines`}
+          accessibilityLabel={expanded ? t("fold.showFewer") : t("fold.showAll", { count: lines.length })}
           accessibilityState={{ expanded: Boolean(expanded) }}
           style={{ minHeight: 44, justifyContent: "center", alignSelf: "flex-start" }}
           onPress={() => {
@@ -46,13 +49,13 @@ export function ToolOutput({ text, tokens, children, expansion }: {
           }}
         >
           <Text style={{ color: tokens.accent, fontFamily: tokens.fontUi, fontSize: tokens.fs(11), paddingVertical: 4 }}>
-            {expanded ? "Show fewer lines" : `Show all ${lines.length} lines`}
+            {expanded ? t("fold.showFewer") : t("fold.showAll", { count: lines.length })}
           </Text>
         </Pressable>
       ) : null}
       {expansion?.error ? (
         <Text accessibilityRole="alert" style={{ color: tokens.danger, fontSize: tokens.fs(11) }}>
-          Expansion choice could not be saved or loaded. Toggle again to retry.
+          {t("fold.saveFailed")}
         </Text>
       ) : null}
     </View>

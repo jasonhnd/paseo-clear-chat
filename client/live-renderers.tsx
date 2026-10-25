@@ -1,3 +1,6 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "./messages";
+import { translatedDiagnostic } from "./translation";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Text, Pressable, useWindowDimensions } from "react-native";
 import { useAgent, usePaseo, useRpc, useWorkspace } from "@getpaseo/plugin/client";
@@ -52,12 +55,13 @@ export function LiveApprovalRenderer({
   item,
   theme,
 }: PluginTimelineItemProps<{ status: ApprovalStatus }>) {
+  const { t } = useTranslation(messages);
   const preferences = useEnhancerPreferences();
   const tokens = useMemo(() => buildThemeTokens(theme.colors, preferences), [theme.colors, preferences]);
   const [expanded, setExpanded] = useState(true);
   const status = item.data.status;
   const waiting = status === "waiting";
-  const label = status === "approved" ? "Approved" : status === "denied" ? "Denied" : "Awaiting approval";
+  const label = status === "approved" ? t("approval.approved") : status === "denied" ? t("approval.denied") : t("approval.waiting");
   const color = status === "approved" ? tokens.success : status === "denied" ? tokens.danger : tokens.accent;
   const summary = (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 6 }}>
@@ -73,7 +77,7 @@ export function LiveApprovalRenderer({
         <Pressable
           testID="approval-summary-row"
           accessibilityRole="button"
-          accessibilityLabel={`${expanded ? "Collapse" : "Expand"} approval details`}
+          accessibilityLabel={t(expanded ? "approval.collapseA11y" : "approval.expandA11y")}
           accessibilityState={{ expanded }}
           onPress={() => setExpanded(!expanded)}
         >
@@ -82,7 +86,7 @@ export function LiveApprovalRenderer({
       ) : summary}
       {waiting && expanded ? (
         <Text selectable testID="approval-body" style={{ color: tokens.foregroundMuted, fontSize: tokens.fs(12), paddingLeft: 21, paddingBottom: 6 }}>
-          This edit is awaiting approval in Paseo.
+          {t("approval.body")}
         </Text>
       ) : null}
     </View>
@@ -113,6 +117,7 @@ export function LiveToolCallRenderer({
   timestamp,
   layout,
 }: PluginTimelineItemProps<LiveToolCallPayload>) {
+  const { t } = useTranslation(messages);
   const revealPath = useRpc(revealPathRpc);
   const cwd = useAgent(agentId, (agent) => agent.cwd);
   const workspaceId = useAgent(agentId, (agent) => agent.workspaceId);
@@ -131,7 +136,7 @@ export function LiveToolCallRenderer({
   const data = useMemo(() => recoveredMessage ? { ...item.data, agentMessage: recoveredMessage } : item.data,
     [item.data, recoveredMessage]);
 
-  const calloutData = useMemo(() => buildLiveToolCallData(data), [data]);
+  const calloutData = useMemo(() => buildLiveToolCallData(data), [data, t]);
   const durationMs = useReplyDuration(host.id, agentId, timestamp,
     calloutData.finalReply ? { type: "tool_call", callId: data.callId, name: data.name } : null);
   const replyImages = useMemo(() => new Set(extractGeneratedImages(calloutData.finalReply)
@@ -243,7 +248,7 @@ export function LiveToolCallRenderer({
       />
       {expansion.error ? (
         <Text accessibilityRole="alert" style={{ color: tokens.danger, fontSize: tokens.fs(11) }}>
-          Tool expansion choice could not be saved or loaded: {expansion.error}
+          {t("tool.expansion.prefix", { error: translatedDiagnostic(expansion.error, t) })}
         </Text>
       ) : null}
       <TimelineTailHub
@@ -261,6 +266,7 @@ export function LiveReasoningRenderer({
   item,
   theme,
 }: PluginTimelineItemProps<LiveReasoningPayload>) {
+  const { t } = useTranslation(messages);
   const preferences = useEnhancerPreferences();
   const tokens = useMemo(
     () => buildThemeTokens(theme.colors, preferences),
@@ -299,13 +305,13 @@ export function LiveReasoningRenderer({
               {
                 id: "step-1",
                 number: 1,
-                title: "Thought Process",
+                title: t("reasoning.thoughtProcess"),
                 status: "completed" as const,
                 content: rawText,
               },
             ],
     };
-  }, [data]);
+  }, [data, t]);
 
   return (
     <View {...hostFontEscape}>
@@ -320,6 +326,7 @@ export function LiveReasoningRenderer({
 }
 
 export function LiveTodoRenderer({ item, theme }: PluginTimelineItemProps<LiveTodoPayload>) {
+  const { t } = useTranslation(messages);
   const preferences = useEnhancerPreferences();
   const tokens = useMemo(
     () => buildThemeTokens(theme.colors, preferences),
@@ -336,7 +343,7 @@ export function LiveTodoRenderer({ item, theme }: PluginTimelineItemProps<LiveTo
       <View testID="tool-card-body">
         <TaskList data={taskListData} tokens={tokens} />
         {!taskListData.tasks.length ? (
-          <Text selectable style={{ color: tokens.foregroundMuted, fontSize: tokens.fs(12) }}>No tasks reported.</Text>
+          <Text selectable style={{ color: tokens.foregroundMuted, fontSize: tokens.fs(12) }}>{t("tool.task.none")}</Text>
         ) : null}
       </View>
     </View>
@@ -363,6 +370,7 @@ export function LiveAssistantRenderer({
   theme,
   timestamp,
 }: PluginTimelineItemProps<LiveAssistantPayload>) {
+  const { t } = useTranslation(messages);
   const cwd = useAgent(agentId, (agent) => agent.cwd);
   const preferences = useEnhancerPreferences();
   const tokens = useMemo(
@@ -379,7 +387,7 @@ export function LiveAssistantRenderer({
   // Job results, IRC relays and reminders arrive as replies because the host
   // files any unclaimed `custom` message under this item kind. They are not
   // the model's words, so they are drawn as a card, not as prose.
-  const envelope = useMemo(() => parseSystemEnvelope(item.data.text), [item.data.text]);
+  const envelope = useMemo(() => parseSystemEnvelope(item.data.text), [item.data.text, t]);
   const durationMs = useReplyDuration(host.id, agentId, timestamp,
     envelope ? null : { type: "assistant_message", text: item.data.text });
 
@@ -461,6 +469,7 @@ export function LiveUserMessageRenderer({
   timestamp,
   host,
 }: PluginTimelineItemProps<LiveUserMessagePayload>) {
+  const { t } = useTranslation(messages);
   const preferences = useEnhancerPreferences();
   const tokens = useMemo(
     () => buildThemeTokens(theme.colors, preferences),
@@ -507,7 +516,7 @@ export function LiveUserMessageRenderer({
   // The same envelopes reach this item kind on some hosts and on history
   // replay. A job result is not something the user said, so it never takes the
   // user bubble.
-  const envelope = useMemo(() => parseSystemEnvelope(item.data.text), [item.data.text]);
+  const envelope = useMemo(() => parseSystemEnvelope(item.data.text), [item.data.text, t]);
 
   return (
     <View {...surfaceProps(hostFontEscape, promptRowAnchor(item.data.messageId))}>

@@ -25,6 +25,7 @@ function harness(file, name, copyText, platform = "ios", scale = 1) {
     useMemo: fn => fn(), useCallback: fn => fn,
     useEffect(fn) { const cleanup = fn(); if (cleanup) cleanups.push(cleanup); },
   };
+  const translations = require("./helpers/translations.cjs").createTranslations(react);
   const sdk = {
     copyText(text) { calls.push(text); return copyText(text); },
     useToast: () => ({ show: (message, options) => toasts.push({ message, ...options }), error: message => toasts.push({ message, variant: "error" }) }),
@@ -32,17 +33,21 @@ function harness(file, name, copyText, platform = "ios", scale = 1) {
   };
   const cache = new Map();
   function load(path) {
-    const filename = resolve(__dirname, "..", path);
+    let filename = resolve(__dirname, "..", path);
+    if (filename.endsWith(".json")) return JSON.parse(readFileSync(filename, "utf8"));
+    if (!/\.[jt]sx?$/.test(filename)) filename += ".ts";
     if (cache.has(filename)) return cache.get(filename).exports;
     const mod = { exports: {} }; cache.set(filename, mod);
     const source = ts.transpileModule(readFileSync(filename, "utf8"), {
-      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX },
+      compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX },
     }).outputText;
     const localRequire = id => {
       if (id === "react") return react;
       if (id === "react/jsx-runtime") return { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }), Fragment: "Fragment" };
       if (id === "react-native") return { View: "View", Text: "Text", ScrollView: "ScrollView", Pressable: "Pressable", Image: "Image", Platform: { OS: platform }, StyleSheet: { create: x => x } };
       if (id === "@getpaseo/plugin/client/ui") return sdk;
+      if (id === "@getpaseo/plugin/client") return translations;
+      if (id.endsWith("/messages") || id.endsWith("/translation") || id.endsWith(".json")) return load(resolve(dirname(filename), id));
       if (id === "./copy-feedback") return load(resolve(dirname(filename), id + ".tsx"));
       if (id === "./theme-tokens" || id === "../theme-tokens") return { radius: {}, withAlpha: value => value };
       if (id === "./parse") return load(resolve(dirname(filename), "parse.ts"));

@@ -1,3 +1,4 @@
+import { translate as t } from "./translation";
 /**
  * Harness text that the host files as a chat message.
  *
@@ -98,7 +99,7 @@ function readJobEnvelope(inner: string): SystemEnvelope | null {
     const lines = metaAttrs.get("lines");
     const size = metaAttrs.get("size");
     // A bare "75" on a chip says nothing; the unit is the information.
-    if (lines) chips.push({ label: "lines", value: `${lines} lines` });
+    if (lines) chips.push({ label: "lines", value: t("system.lines", { count: Number(lines), replace: { count: lines } }) });
     if (size) chips.push({ label: "size", value: size });
   }
 
@@ -150,11 +151,11 @@ export function parseSystemEnvelope(text: string): SystemEnvelope | null {
     const sender = inner.match(IRC_SENDER);
     if (sender) {
       const body = inner.slice((sender.index ?? 0) + sender[0].length).trim();
-      return { kind, title: `Message from ${sender[1]}`, chips: [], body, failed: false };
+      return { kind, title: t("agent.from", { sender: sender[1] }), chips: [], body, failed: false };
     }
   }
 
-  const title = firstProseLine(inner) ?? (kind === "reminder" ? "Reminder" : "System notice");
+  const title = firstProseLine(inner) ?? (kind === "reminder" ? t("system.reminder") : t("system.noticeTitle"));
   const body = stripTags(inner.replace(title, "")).trim();
   return { kind, title, chips: [], body, failed: /error|fail/i.test(title) };
 }

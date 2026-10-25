@@ -1,14 +1,15 @@
+import { translate as t } from "./translation";
 import { z } from "zod";
 import type { ToolCalloutData } from "../shared/contracts";
 import type { LiveToolCallPayload } from "./tool-call-data";
 import { toolStatus } from "./tool-summary";
 
 const labels = {
-  message: "Message received",
-  finished: "Agent finished",
-  errored: "Agent errored",
-  "permission-required": "Agent needs permission",
-  closed: "Agent closed",
+  message: "agent.messageReceived",
+  finished: "agent.finished",
+  errored: "agent.errored",
+  "permission-required": "agent.permission",
+  closed: "agent.closed",
 } as const;
 
 const deliverySchema = z.object({
@@ -44,13 +45,13 @@ export function agentMessageCallout(data: LiveToolCallPayload): ToolCalloutData 
   if (!message && !isAgentMessageCall(data)) return undefined;
   const sender = message && agentSenderTitle(message.sender.title, message.sender.id, data.callId);
   const body = message?.text ?? (typeof data.detail?.text === "string" ? data.detail.text : "");
-  const text = message ? `Sender: ${message.sender.id}\n\n${body}` : body;
+  const text = message ? `${t("agent.senderLine", { id: message.sender.id })}\n\n${body}` : body;
   return {
     id: data.callId ?? "agent-delivery",
     tool: "plain_text",
     title: message && sender
-      ? message.event === "message" ? `Message from ${sender}` : `${labels[message.event]} · ${sender}`
-      : message ? labels[message.event] : labels.message,
+      ? message.event === "message" ? t("agent.from", { sender }) : t("agent.eventFrom", { event: t(labels[message.event]), sender })
+      : t(message ? labels[message.event] : labels.message),
     status: toolStatus(data.status),
     agentMessage: true,
     plainText: text,

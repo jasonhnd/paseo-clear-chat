@@ -1,3 +1,6 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "../messages";
+import { translate as t } from "../translation";
 import React, { useMemo, useState } from "react";
 import { Image, View, Text, Pressable, StyleSheet } from "react-native";
 import type { ImageStyle, TextStyle, ViewStyle } from "react-native";
@@ -92,24 +95,24 @@ interface HubViewProps<T> {
  */
 function formatDuration(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return "";
-  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 1000) return t("duration.hubMs", { milliseconds: Math.round(ms) });
 
   const seconds = ms / 1000;
-  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  if (seconds < 60) return t("duration.hubSeconds", { seconds: seconds.toFixed(1) });
 
   const minutes = Math.floor(seconds / 60);
   const restSeconds = Math.round(seconds - minutes * 60);
-  if (minutes < 60) return restSeconds > 0 ? `${minutes}m ${restSeconds}s` : `${minutes}m`;
+  if (minutes < 60) return restSeconds > 0 ? t("duration.hubMinutesSeconds", { minutes, seconds: restSeconds }) : t("duration.hubMinutes", { minutes });
 
   const hours = Math.floor(minutes / 60);
   const restMinutes = minutes - hours * 60;
-  return restMinutes > 0 ? `${hours}h ${restMinutes}m` : `${hours}h`;
+  return restMinutes > 0 ? t("duration.hubHoursMinutes", { hours, minutes: restMinutes }) : t("duration.hubHours", { hours });
 }
 
 /** An epoch-millisecond stamp as an age. A wall clock says less than the gap. */
 function formatAge(ts: number): string {
   const gap = formatDuration(Date.now() - ts);
-  return gap ? `${gap} ago` : "just now";
+  return gap ? t("hub.ago", { duration: gap }) : t("hub.justNow");
 }
 
 /* -------------------------------------------------------------------- tones */
@@ -201,12 +204,13 @@ function HubHeader({
   tokens: ExtendedThemeTokens;
   styles: HubStyles;
 }) {
+  const { t } = useTranslation(messages);
   return (
     <View style={styles.header}>
       <View style={styles.titleRow}>
         <Glyph name={icon} size={13} color={tokens.accent} />
         <Text selectable style={styles.opBadge}>
-          hub {op}
+          {t("hub.badge", { op })}
         </Text>
         {detail ? (
           <Text selectable style={styles.headline} numberOfLines={1}>
@@ -355,6 +359,7 @@ function EmptyState({
 /* -------------------------------------------------------------------- views */
 
 function SendView({ data, text, tokens, styles }: HubViewProps<HubSendData>) {
+  const { t } = useTranslation(messages);
   const route = [data.from, data.to].filter(Boolean).join(" ➔ ");
   const empty = !data.message && data.receipts.length === 0;
 
@@ -369,7 +374,7 @@ function SendView({ data, text, tokens, styles }: HubViewProps<HubSendData>) {
         trailing={
           data.replyTo ? (
             <Text selectable style={styles.figure}>
-              reply to {data.replyTo}
+              {t("hub.replyTo", { id: data.replyTo })}
             </Text>
           ) : null
         }
@@ -413,7 +418,7 @@ function SendView({ data, text, tokens, styles }: HubViewProps<HubSendData>) {
             </Text>
           </View>
         ) : (
-          <Text style={styles.placeholder}>No reply yet.</Text>
+          <Text style={styles.placeholder}>{t("hub.noReply")}</Text>
         )
       ) : null}
 
@@ -423,6 +428,7 @@ function SendView({ data, text, tokens, styles }: HubViewProps<HubSendData>) {
 }
 
 function WaitedView({ data, text, tokens, styles }: HubViewProps<HubWaitedData>) {
+  const { t } = useTranslation(messages);
   const message = data.message;
 
   return (
@@ -430,13 +436,13 @@ function WaitedView({ data, text, tokens, styles }: HubViewProps<HubWaitedData>)
       <HubHeader
         icon="MessageSquare"
         op="wait"
-        detail={message ? `from ${message.from}` : data.from}
+        detail={message ? t("hub.from", { name: message.from }) : data.from}
         tokens={tokens}
         styles={styles}
         trailing={
           typeof data.timeoutMs === "number" ? (
             <Text selectable style={styles.figure}>
-              timeout {formatDuration(data.timeoutMs)}
+              {t("hub.timeout", { duration: formatDuration(data.timeoutMs) })}
             </Text>
           ) : null
         }
@@ -447,7 +453,7 @@ function WaitedView({ data, text, tokens, styles }: HubViewProps<HubWaitedData>)
           <View style={styles.rowHead}>
             {message.replyTo ? (
               <Text selectable style={styles.figure}>
-                reply to {message.replyTo}
+                {t("hub.replyTo", { id: message.replyTo })}
               </Text>
             ) : null}
             {typeof message.ts === "number" ? (
@@ -461,7 +467,7 @@ function WaitedView({ data, text, tokens, styles }: HubViewProps<HubWaitedData>)
       ) : (
         <EmptyState
           text={text}
-          placeholder="The wait ended without a message."
+          placeholder={t("hub.waitEmpty")}
           tokens={tokens}
           styles={styles}
         />
@@ -471,6 +477,7 @@ function WaitedView({ data, text, tokens, styles }: HubViewProps<HubWaitedData>)
 }
 
 function InboxView({ data, text, tokens, styles }: HubViewProps<HubInboxData>) {
+  const { t } = useTranslation(messages);
   const count = data.messages.length;
 
   return (
@@ -478,12 +485,12 @@ function InboxView({ data, text, tokens, styles }: HubViewProps<HubInboxData>) {
       <HubHeader
         icon="Inbox"
         op="inbox"
-        detail={`${count} ${count === 1 ? "message" : "messages"}`}
+        detail={t(count === 1 ? "hub.messagesOne" : "hub.messagesOther", { count })}
         tokens={tokens}
         styles={styles}
         trailing={
           data.peek ? (
-            <Chip label="peek — still queued" tone={mutedTone(tokens)} styles={styles} plain />
+            <Chip label={t("hub.peek")} tone={mutedTone(tokens)} styles={styles} plain />
           ) : null
         }
       />
@@ -496,7 +503,7 @@ function InboxView({ data, text, tokens, styles }: HubViewProps<HubInboxData>) {
             </Text>
             {message.replyTo ? (
               <Text selectable style={styles.figure}>
-                reply to {message.replyTo}
+                {t("hub.replyTo", { id: message.replyTo })}
               </Text>
             ) : null}
             {typeof message.ts === "number" ? (
@@ -512,21 +519,22 @@ function InboxView({ data, text, tokens, styles }: HubViewProps<HubInboxData>) {
       ))}
 
       {count === 0 ? (
-        <EmptyState text={text} placeholder="The inbox is empty." tokens={tokens} styles={styles} />
+        <EmptyState text={text} placeholder={t("hub.inboxEmpty")} tokens={tokens} styles={styles} />
       ) : null}
     </>
   );
 }
 
 function PeersView({ data, text, tokens, styles }: HubViewProps<HubPeersData>) {
+  const { t } = useTranslation(messages);
   const counts = data.counts;
   const summary = counts
     ? [
-        `${counts.running} running`,
-        `${counts.idle} idle`,
-        `${counts.parked} parked`,
-        typeof counts.shown === "number" ? `${counts.shown} shown` : "",
-        counts.truncated ? `${counts.truncated} hidden` : "",
+        t("hub.countRunning", { count: counts.running }),
+        t("hub.countIdle", { count: counts.idle }),
+        t("hub.countParked", { count: counts.parked }),
+        typeof counts.shown === "number" ? t("hub.countShown", { count: counts.shown }) : "",
+        counts.truncated ? t("hub.countHidden", { count: counts.truncated }) : "",
       ]
         .filter(Boolean)
         .join(" · ")
@@ -537,7 +545,7 @@ function PeersView({ data, text, tokens, styles }: HubViewProps<HubPeersData>) {
       <HubHeader
         icon="Users"
         op="list"
-        detail={summary || `${data.peers.length} peers`}
+        detail={summary || t("hub.peerCount", { count: data.peers.length })}
         tokens={tokens}
         styles={styles}
         trailing={
@@ -570,7 +578,7 @@ function PeersView({ data, text, tokens, styles }: HubViewProps<HubPeersData>) {
             ) : null}
             {(peer.unread ?? 0) > 0 ? (
               <Chip
-                label={`${peer.unread} unread`}
+                label={t("hub.unread", { count: peer.unread })}
                 tone={{ fg: tokens.warning, bg: tokens.warningBg }}
                 styles={styles}
                 plain
@@ -591,13 +599,14 @@ function PeersView({ data, text, tokens, styles }: HubViewProps<HubPeersData>) {
       ))}
 
       {data.peers.length === 0 ? (
-        <EmptyState text={text} placeholder="No peers match." tokens={tokens} styles={styles} />
+        <EmptyState text={text} placeholder={t("hub.peersEmpty")} tokens={tokens} styles={styles} />
       ) : null}
     </>
   );
 }
 
 function JobsView({ data, text, tokens, styles }: HubViewProps<HubJobsData>) {
+  const { t } = useTranslation(messages);
   const [allRows, setAllRows] = useState(false);
   const cancelled = data.cancelled ?? [];
   const agents = data.agents ?? [];
@@ -613,13 +622,13 @@ function JobsView({ data, text, tokens, styles }: HubViewProps<HubJobsData>) {
   // not failure, so the headline says so instead of leaning on a status count.
   const summary =
     data.jobs.length === 0
-      ? "no jobs"
+      ? t("hub.noJobs")
       : running === data.jobs.length
-        ? `waiting on ${running} ${running === 1 ? "job" : "jobs"}`
+        ? t(running === 1 ? "hub.waitingOne" : "hub.waitingOther", { count: running })
         : [
-            `${data.jobs.length} jobs`,
-            running > 0 ? `${running} running` : "",
-            failed > 0 ? `${failed} failed` : "",
+            t("hub.jobCount", { count: data.jobs.length }),
+            running > 0 ? t("hub.countRunning", { count: running }) : "",
+            failed > 0 ? t("hub.failedCount", { count: failed }) : "",
           ]
             .filter(Boolean)
             .join(" · ");
@@ -634,7 +643,7 @@ function JobsView({ data, text, tokens, styles }: HubViewProps<HubJobsData>) {
 
       {restRows > 0 || allRows ? (
         <MoreControl
-          label={allRows ? `show only the first ${ROW_CAP}` : `show ${restRows} more jobs`}
+          label={allRows ? t("hub.showFirst", { count: ROW_CAP }) : t("hub.showMore", { count: restRows })}
           onPress={() => setAllRows((previous) => !previous)}
           styles={styles}
         />
@@ -642,7 +651,7 @@ function JobsView({ data, text, tokens, styles }: HubViewProps<HubJobsData>) {
 
       {cancelled.length > 0 ? (
         <>
-          <Text style={styles.sectionLabel}>cancelled</Text>
+          <Text style={styles.sectionLabel}>{t("hub.cancelledHeading")}</Text>
           {cancelled.map((row) => (
             <View key={row.id} style={styles.rowHead}>
               <Chip label={row.status} tone={jobTone(row.status, tokens)} styles={styles} />
@@ -661,7 +670,7 @@ function JobsView({ data, text, tokens, styles }: HubViewProps<HubJobsData>) {
 
       {agents.length > 0 ? (
         <>
-          <Text style={styles.sectionLabel}>subagents without a job entry</Text>
+          <Text style={styles.sectionLabel}>{t("hub.agentsWithoutJob")}</Text>
           {agents.map((agent) => (
             <AgentRow key={agent.id} agent={agent} tokens={tokens} styles={styles} />
           ))}
@@ -669,7 +678,7 @@ function JobsView({ data, text, tokens, styles }: HubViewProps<HubJobsData>) {
       ) : null}
 
       {empty ? (
-        <EmptyState text={text} placeholder="Nothing is running." tokens={tokens} styles={styles} />
+        <EmptyState text={text} placeholder={t("hub.nothingRunning")} tokens={tokens} styles={styles} />
       ) : null}
     </>
   );
@@ -770,6 +779,7 @@ function JobRow({
   tokens: ExtendedThemeTokens;
   styles: HubStyles;
 }) {
+  const { t } = useTranslation(messages);
   const schema = job.schema;
   const running = job.status === "running";
 
@@ -802,7 +812,7 @@ function JobRow({
           {job.resolvedModel ? (
             <JobModel value={job.resolvedModel} tokens={tokens} styles={styles} />
           ) : null}
-          {job.advisor ? <Text style={styles.marker}>advisor</Text> : null}
+          {job.advisor ? <Text style={styles.marker}>{t("hub.advisor")}</Text> : null}
         </View>
       ) : null}
 
@@ -819,7 +829,7 @@ function JobRow({
       {schema ? (
         <View style={styles.rowHead}>
           <Text selectable style={styles.figure}>
-            schema {schema.status}
+            {t("hub.schema", { status: schema.status })}
           </Text>
           {schema.error ? (
             <Text selectable style={styles.errorText}>
@@ -846,6 +856,7 @@ function AgentRow({
   tokens: ExtendedThemeTokens;
   styles: HubStyles;
 }) {
+  const { t } = useTranslation(messages);
   return (
     <View style={styles.stackRow}>
       <View style={styles.rowHead}>
@@ -854,7 +865,7 @@ function AgentRow({
         </Text>
         {agent.parentId ? (
           <Text selectable style={styles.figure}>
-            under {agent.parentId}
+            {t("hub.under", { id: agent.parentId })}
           </Text>
         ) : null}
         {typeof agent.ageMs === "number" ? (
@@ -864,7 +875,7 @@ function AgentRow({
         ) : null}
         {agent.live === false ? (
           <Chip
-            label="no longer live"
+            label={t("hub.notLive")}
             tone={{ fg: tokens.warning, bg: tokens.warningBg }}
             styles={styles}
             plain
@@ -881,6 +892,7 @@ function AgentRow({
 }
 
 function ProcessView({ data, text, tokens, styles }: HubViewProps<HubProcessData>) {
+  const { t } = useTranslation(messages);
   const daemons = data.daemons;
   const logs = data.logs ?? [];
   const spec = data.spec;
@@ -889,7 +901,7 @@ function ProcessView({ data, text, tokens, styles }: HubViewProps<HubProcessData
 
   // A roster addresses every process, so it carries a count, not a name.
   const detail = daemons
-    ? `${daemons.length} ${daemons.length === 1 ? "process" : "processes"}`
+    ? t(daemons.length === 1 ? "hub.processOne" : "hub.processOther", { count: daemons.length })
     : data.name;
 
   return (
@@ -907,7 +919,7 @@ function ProcessView({ data, text, tokens, styles }: HubViewProps<HubProcessData
             ) : null}
             {data.timedOut ? (
               <Chip
-                label="timed out"
+                label={t("hub.timedOut")}
                 tone={{ fg: tokens.warning, bg: tokens.warningBg }}
                 styles={styles}
               />
@@ -934,32 +946,32 @@ function ProcessView({ data, text, tokens, styles }: HubViewProps<HubProcessData
           <View style={styles.rowHead}>
             {spec.cwd ? (
               <Text selectable style={styles.figure}>
-                cwd {spec.cwd}
+                {t("hub.cwd", { path: spec.cwd })}
               </Text>
             ) : null}
             {spec.restart ? (
               <Text selectable style={styles.figure}>
-                restart {spec.restart}
+                {t("hub.restart", { value: spec.restart })}
               </Text>
             ) : null}
             {spec.readyLog ? (
               <Text selectable style={styles.figure}>
-                ready log {spec.readyLog}
+                {t("hub.readyLog", { text: spec.readyLog })}
               </Text>
             ) : null}
             {typeof spec.readyPort === "number" ? (
               <Text selectable style={styles.figure}>
-                ready port {spec.readyPort}
+                {t("hub.readyPort", { port: spec.readyPort })}
               </Text>
             ) : null}
-            {spec.pty ? <Text style={styles.marker}>pty</Text> : null}
+            {spec.pty ? <Text style={styles.marker}>{t("hub.pty")}</Text> : null}
           </View>
         </View>
       ) : null}
 
       {data.matched ? (
         <View style={styles.rowHead}>
-          <Text style={styles.sectionLabel}>matched</Text>
+          <Text style={styles.sectionLabel}>{t("hub.matched")}</Text>
           <Text selectable style={styles.rowLabel}>
             {data.matched}
           </Text>
@@ -968,7 +980,7 @@ function ProcessView({ data, text, tokens, styles }: HubViewProps<HubProcessData
 
       {data.input ? (
         <>
-          <Text style={styles.sectionLabel}>sent to stdin</Text>
+          <Text style={styles.sectionLabel}>{t("hub.stdin")}</Text>
           <MessageBody body={data.input} styles={styles} />
         </>
       ) : null}
@@ -981,7 +993,7 @@ function ProcessView({ data, text, tokens, styles }: HubViewProps<HubProcessData
           footer={
             typeof data.cursor === "number" ? (
               <Text selectable style={styles.figure}>
-                cursor {data.cursor}
+                {t("hub.cursor", { n: data.cursor })}
               </Text>
             ) : null
           }
@@ -1004,6 +1016,7 @@ function DaemonRow({
   styles: HubStyles;
   detailed?: boolean;
 }) {
+  const { t } = useTranslation(messages);
   const exited = typeof row.exitCode === "number";
 
   return (
@@ -1015,17 +1028,17 @@ function DaemonRow({
         </Text>
         {typeof row.pid === "number" ? (
           <Text selectable style={styles.figure}>
-            pid {row.pid}
+            {t("hub.pid", { n: row.pid })}
           </Text>
         ) : null}
         {row.restarts ? (
           <Text selectable style={styles.figure}>
-            {row.restarts} restarts
+            {t("hub.restarts", { count: row.restarts })}
           </Text>
         ) : null}
         {exited ? (
           <Text selectable style={row.exitCode === 0 ? styles.figure : styles.errorText}>
-            exit {row.exitCode}
+            {t("tool.exitChip", { code: row.exitCode })}
           </Text>
         ) : null}
       </View>
@@ -1039,16 +1052,16 @@ function DaemonRow({
           ) : null}
           {row.readyMatch ? (
             <Text selectable style={styles.figure}>
-              match {row.readyMatch}
+              {t("hub.match", { text: row.readyMatch })}
             </Text>
           ) : null}
           {typeof row.startedAt === "number" ? (
             <Text selectable style={styles.figure}>
-              started {formatAge(row.startedAt)}
+              {t("hub.started", { age: formatAge(row.startedAt) })}
             </Text>
           ) : null}
-          {row.persist ? <Text style={styles.marker}>persist</Text> : null}
-          {row.detached ? <Text style={styles.marker}>detached</Text> : null}
+          {row.persist ? <Text style={styles.marker}>{t("hub.persist")}</Text> : null}
+          {row.detached ? <Text style={styles.marker}>{t("hub.detached")}</Text> : null}
         </View>
       ) : null}
     </View>
@@ -1056,12 +1069,13 @@ function DaemonRow({
 }
 
 function NoteView({ data, text, tokens, styles }: HubViewProps<{ op: string }>) {
+  const { t } = useTranslation(messages);
   return (
     <>
       <HubHeader icon="Radio" op={data.op} tokens={tokens} styles={styles} />
       <EmptyState
         text={text}
-        placeholder="The call returned no detail."
+        placeholder={t("hub.noDetail")}
         tokens={tokens}
         styles={styles}
       />

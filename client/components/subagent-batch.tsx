@@ -1,3 +1,5 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "../messages";
 import React, { useMemo, useState } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import type { TextStyle, ViewStyle } from "react-native";
@@ -65,6 +67,7 @@ export function SubagentBatch({
   tokens: ExtendedThemeTokens;
   showModel?: boolean;
 }) {
+  const { t } = useTranslation(messages);
   const [contextOpen, setContextOpen] = useState(false);
   const styles = useSubagentStyles(tokens);
 
@@ -73,13 +76,13 @@ export function SubagentBatch({
   // A batch of one is a single delegation rather than a list, so its name
   // leads the header and the row below carries the brief on its own.
   const only = count === 1 ? agents[0] : undefined;
-  const headline = only ? only.name : count === 0 ? "subagents" : `${count} subagents`;
+  const headline = only ? only.name : count === 0 ? t("tool.subagent.bare") : t("tool.subagent.headline", { count });
   const pending =
     count === 0
-      ? "spawning subagents…"
+      ? t("tool.subagent.spawning")
       : count === 1
-        ? "spawning 1 subagent…"
-        : `spawning ${count} subagents…`;
+        ? t("tool.subagent.spawningOne")
+        : t("tool.subagent.spawningMany", { count });
 
   return (
     <View style={styles.batch}>
@@ -101,7 +104,7 @@ export function SubagentBatch({
             <Rotate active={contextOpen}>
               <Glyph name="ChevronDown" size={12} color={tokens.foregroundMuted} />
             </Rotate>
-            <Text style={styles.contextLabel}>shared context</Text>
+            <Text style={styles.contextLabel}>{t("tool.subagent.context")}</Text>
           </Pressable>
           <Text selectable style={styles.contextBody} numberOfLines={contextOpen ? undefined : 2}>
             {batch.context}
@@ -123,7 +126,7 @@ export function SubagentBatch({
             {agent.task}
           </Text>
           {showModel || agent.model ? (
-            <Text selectable style={styles.brief}>{`Model: ${agent.model ?? "Not reported"}`}</Text>
+            <Text selectable style={styles.brief}>{t("tool.subagent.model", { model: agent.model ?? t("tool.detail.notReported") })}</Text>
           ) : null}
         </View>
       ))}

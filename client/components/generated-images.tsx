@@ -1,3 +1,6 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "../messages";
+import { translate as t } from "../translation";
 import React from "react";
 import { View, Linking, Platform } from "react-native";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -22,7 +25,7 @@ export function openImage(source: string): void {
     // Keep embedded SVG in an image context, including when the source opens
     // in a new tab. The viewer's policy prevents active document content.
     const escaped = source.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const viewer = `<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:"><img alt="Generated image" src="${escaped}">`;
+    const viewer = `<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:"><img alt="${t("image.generatedAlt").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")}" src="${escaped}">`;
     const target = URL.createObjectURL(new Blob([viewer], { type: "text/html" }));
     setTimeout(() => URL.revokeObjectURL(target), 60_000);
     globalThis.open?.(target, "_blank", "noopener,noreferrer");
@@ -37,6 +40,7 @@ function GeneratedImagePreview({ image, cwd, tokens, renderUnavailable }: {
   tokens: ExtendedThemeTokens;
   renderUnavailable?: (image: GeneratedImage) => React.ReactNode;
 }) {
+  const { t } = useTranslation(messages);
   const reveal = useRpc(revealPathRpc);
   const local = useImageFile(image.path, cwd);
   const file = image.path ? local : {
@@ -53,7 +57,7 @@ function GeneratedImagePreview({ image, cwd, tokens, renderUnavailable }: {
     file={file}
     unavailable={unavailable}
     tokens={tokens}
-    revealLabel={image.path ? `Show ${image.source} in the file manager` : "Open image source"}
+    revealLabel={image.path ? t("code.showFileA11y", { file: image.source }) : t("image.openSourceA11y")}
     onReveal={() => {
       if (image.path) void reveal({ cwd: cwd ?? "", path: image.path }).catch(() => {});
       else openImage(image.source);

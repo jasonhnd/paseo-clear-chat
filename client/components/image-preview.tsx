@@ -1,3 +1,6 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "../messages";
+import { translate as t } from "../translation";
 import React, { useMemo, useState } from "react";
 import { View, Text, Pressable, Image, StyleSheet } from "react-native";
 import { Glyph } from "./glyph";
@@ -24,9 +27,9 @@ interface ImagePreviewProps {
 const MAX_HEIGHT = 280;
 
 function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024) return t("image.bytes", { count: bytes });
+  if (bytes < 1024 * 1024) return t("image.kilobytes", { count: Math.round(bytes / 1024) });
+  return t("image.megabytes", { count: bytes / (1024 * 1024), replace: { count: (bytes / (1024 * 1024)).toFixed(1) } });
 }
 
 /**
@@ -42,6 +45,7 @@ function formatBytes(bytes: number): string {
  * loads but reports no size still has to occupy an honest amount of room.
  */
 export function ImagePreview({ path, file, tokens, onReveal, revealLabel, unavailable }: ImagePreviewProps) {
+  const { t } = useTranslation(messages);
   const [shown, setShown] = useStepDetailState(`image:${path}`, true);
   const [failedUri, setFailedUri] = useState<string | null>(null);
   const failed = Boolean(file?.dataUri && failedUri === file.dataUri);
@@ -124,7 +128,7 @@ export function ImagePreview({ path, file, tokens, onReveal, revealLabel, unavai
   );
 
   const chips: string[] = [];
-  if (file?.width && file.height) chips.push(`${file.width} × ${file.height}`);
+  if (file?.width && file.height) chips.push(t("image.dimensions", { width: file.width, height: file.height }));
   if (file?.bytes) chips.push(formatBytes(file.bytes));
 
   // Size from the image's own pixels: a box sized by width alone letterboxes a
@@ -153,7 +157,7 @@ export function ImagePreview({ path, file, tokens, onReveal, revealLabel, unavai
           <Pressable
             style={styles.source}
             accessibilityRole="link"
-            accessibilityLabel={revealLabel ?? `Show ${path} in the file manager`}
+            accessibilityLabel={revealLabel ?? t("code.showFileA11y", { file: path })}
             onPress={(event) => { event?.stopPropagation?.(); onReveal(); }}
           >
             <Text style={styles.path} numberOfLines={1}>
@@ -176,12 +180,12 @@ export function ImagePreview({ path, file, tokens, onReveal, revealLabel, unavai
         {file?.dataUri && !failed ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={shown ? "Hide the image" : "Show the image"}
+            accessibilityLabel={shown ? t("image.hideA11y") : t("image.showA11y")}
             onPress={() => setShown((previous) => !previous)}
             style={styles.eye}
           >
             <Glyph name={shown ? "Eye" : "EyeOff"} size={12} color={tokens.foregroundMuted} />
-            <Text style={styles.eyeLabel}>{shown ? "Hide" : "Show"}</Text>
+            <Text style={styles.eyeLabel}>{shown ? t("image.hide") : t("image.show")}</Text>
           </Pressable>
         ) : null}
       </View>
