@@ -4,16 +4,16 @@
 const { build } = require("esbuild");
 const { chromium } = require("playwright-core");
 const { createServer } = require("node:http");
-const { readFileSync, writeFileSync, copyFileSync, mkdirSync, rmSync, statSync, realpathSync } = require("node:fs");
+const { readFileSync, writeFileSync, copyFileSync, mkdirSync, rmSync, statSync, realpathSync, mkdtempSync } = require("node:fs");
 const { resolve, join, dirname } = require("node:path");
 const { tmpdir } = require("node:os");
 const { execFileSync } = require("node:child_process");
-const { createCapturePlan } = require("./capture-plan.cjs");
+const { createCapturePlan, demoCapture } = require("./capture-plan.cjs");
 
 const root = resolve(__dirname, "..");
 const groups = createCapturePlan(readFileSync(join(root, "README.md"), "utf8"));
 const selected = process.env.SHOWCASE_CAPTURE_ONLY;
-const plan = selected ? groups.filter(group => group.id === selected) : groups;
+const plan = selected === "demo" ? [demoCapture] : selected ? groups.filter(group => group.id === selected) : groups;
 if (!plan.length) throw new Error(`Unknown screenshot group: ${selected}`);
 const output = resolve(process.env.SHOWCASE_OUTPUT_ROOT || root);
 const temp = process.env.KANBAN_TMP;
@@ -57,7 +57,7 @@ async function capture() {
   const report = [];
   try {
     await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
-    browser = await chromium.launchPersistentContext(join(work, "chrome-profile"), {
+    browser = await chromium.launchPersistentContext(mkdtempSync(join(work, "chrome-profile-")), {
       ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : { channel: "chrome" }), headless: true, viewport: { width: 1600, height: 1000 },
       deviceScaleFactor: 1.5, reducedMotion: "reduce", timezoneId: "UTC", locale: "en-US",
       args: ["--disable-background-networking", "--disable-component-update", "--no-first-run"],
@@ -81,6 +81,10 @@ async function capture() {
       const url = new URL(route.request().url());
       return url.hostname === "127.0.0.1" ? route.continue() : route.abort();
     });
+    if (selected === "demo") {
+      await require("./capture-demo.cjs").captureDemo({ page, server, work, output, temp, errors, plan: demoCapture });
+      return;
+    }
     for (const theme of ["light", "dark"]) {
       await page.goto(`http://127.0.0.1:${server.address().port}/?theme=${theme}`, { waitUntil: "networkidle" });
       await page.waitForFunction(() => document.querySelector("#shot-settings") || window.__err?.length);

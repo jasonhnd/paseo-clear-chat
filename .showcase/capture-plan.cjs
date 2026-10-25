@@ -19,4 +19,6 @@ function createCapturePlan(readme) {
   return [...groups.values()];
 }
 
-module.exports = { createCapturePlan };
+const demoCapture = { id: "demo", light: "images/demo.gif", width: 1200, height: 800, fps: 12, seconds: 26 };
+
+module.exports = { createCapturePlan, demoCapture };
