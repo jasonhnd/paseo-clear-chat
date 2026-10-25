@@ -4,6 +4,17 @@ All notable changes to Clear Chat are listed here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and each version is the Paseo version it is built and tested for plus one number that counts Clear Chat's releases for that Paseo version, for example 0.12.0.1 for the first release for Paseo 0.12.0. Releases 1.0.0 and 1.0.1 came out before this rule.
 
+## [0.13.0.2] - Unreleased
+
+### Added
+
+- With **Enhanced prompt bubble** on, images you paste into a prompt now show in the prompt bubble, for Codex and Claude agents. Up to three thumbnails show, with a count for the rest; tap one to see it full size. Clear Chat finds the images read-only in the agent's own history on the host, and shows nothing rather than a wrong image when it cannot match them. The images are not sent to any other service. Images larger than 1.5 MB are not shown. Hermes agents are not supported yet; turn **Enhanced prompt bubble** off to see their pasted images in Paseo's own bubble.
+
+### Changed
+
+- Long conversations stay smoother, especially on slower devices such as phones. Clear Chat no longer reloads the whole conversation each time an agent starts or finishes a turn; it reads only what is new. In our test with a long Codex conversation, the pauses long enough to make the screen stutter dropped from six to two per turn.
+- The README is rewritten, with new screenshots for phones, iPad and the settings page, and a list of what a plugin cannot do.
+
 ## [0.13.0.1] - 2026-10-25
 
 Needs Paseo 0.13.0 or later. If you still use Paseo 0.12, install Clear Chat 0.12.0.1.
@@ -99,6 +110,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.13.0.2]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.13.0.2
 [0.13.0.1]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.13.0.1
 [0.12.0.1]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.12.0.1
 [1.0.1]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v1.0.1
