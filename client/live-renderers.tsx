@@ -47,7 +47,7 @@ import { useProjectedAgentMessage } from "./projected-agent-message";
 import { stepDetailPresentation } from "./breakpoints";
 import { StepDetailPanel } from "./components/step-detail-panel";
 import { createStepDetailState, useStepDetailSession } from "./components/step-detail-state";
-import { hostStepDetailState, openHostStepDetail, updateHostStepDetail } from "./components/step-detail-host";
+import { hostStepDetailState, openHostStepDetail, reclaimHostStepDetail, updateHostStepDetail } from "./components/step-detail-host";
 
 export function LiveApprovalRenderer({
   item,
@@ -184,7 +184,7 @@ export function LiveToolCallRenderer({
   const { open: detailOpen, setOpen: setDetailOpen, state: detailState } = useStepDetailSession(
     JSON.stringify([host.id, agentId, detailKey]), hostStepDetailState(host.id, agentId, detailKey),
     // Compact navigation removes Explorer; its replacement row owns the overlay.
-    Boolean(layout?.compact && presentation !== "side"),
+    presentation === "sheet",
   );
   const selectedDetail = useMemo(() => ({
     key: detailKey,
@@ -203,8 +203,13 @@ export function LiveToolCallRenderer({
   }, [host.id, agentId, selectedDetail]);
   useEffect(() => {
     if (preferences.collapsedStepAction === "inline") setDetailOpen(false);
-    else if (detailOpen && presentation === "side" && openHostStepDetail(host.id, agentId, workspaceId ?? undefined, selectedDetail)) setDetailOpen(false);
-  }, [preferences.collapsedStepAction, detailOpen, presentation, host.id, agentId, workspaceId, panelWorkspaceId, selectedDetail, setDetailOpen]);
+    else if (presentation === "sheet" && hostStepDetailState(host.id, agentId, detailKey)) {
+      // Claim the open session before Explorer's owner cleanup can clear it.
+      // This also covers hosts that keep the existing timeline row mounted.
+      setDetailOpen(true);
+      reclaimHostStepDetail(host.id, agentId, detailKey);
+    } else if (detailOpen && presentation === "side" && openHostStepDetail(host.id, agentId, workspaceId ?? undefined, selectedDetail)) setDetailOpen(false);
+  }, [preferences.collapsedStepAction, detailOpen, presentation, host.id, agentId, workspaceId, panelWorkspaceId, detailKey, selectedDetail, setDetailOpen]);
 
   return (
     <View testID="tool-timeline-item" {...surfaceProps(hostFontEscape, toolRowMarker(!calloutData.finalReply && !generatedImages.length && !expansion.expanded && !expansion.error))}>
