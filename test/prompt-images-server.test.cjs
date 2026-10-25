@@ -1,6 +1,8 @@
 const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const { createRequire } = require("node:module");
+const { tmpdir } = require("node:os");
 const { dirname, join, resolve } = require("node:path");
 const { DatabaseSync } = require("node:sqlite");
 const test = require("node:test");
@@ -33,9 +35,7 @@ function harness(overrides = {}) {
 }
 
 function fixture(t) {
-  const base = resolve(__dirname, "..", ".tmp");
-  fs.mkdirSync(base, { recursive: true });
-  const root = fs.mkdtempSync(join(base, "prompt-images-"));
+  const root = fs.mkdtempSync(join(tmpdir(), "prompt-images-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   return root;
 }
@@ -490,6 +490,55 @@ test("a plain retry that fails returns null instead of a stale image read", asyn
   });
   assert.equal(seen, null);
   assert.deepEqual(plans, [true, false]);
+});
+
+test("hot rollback journals present before or during an immutable open return no image without recovery", async t => {
+  const h = harness();
+  for (const raced of [false, true]) {
+    const root = fixture(t);
+    const path = join(root, "hot.sqlite");
+    const createHotJournal = () => {
+      // Exit without closing the writer after spilling uncommitted blob pages.
+      const child = spawnSync(process.execPath, ["-e", `
+        const { DatabaseSync } = require("node:sqlite");
+        const database = new DatabaseSync(process.argv[1]);
+        database.exec("PRAGMA journal_mode = DELETE; PRAGMA cache_size = 1; CREATE TABLE images (data BLOB)");
+        database.prepare("INSERT INTO images VALUES (?)").run(Buffer.alloc(80000, 0x61));
+        database.exec("BEGIN IMMEDIATE");
+        database.prepare("UPDATE images SET data = ?").run(Buffer.alloc(80000, 0x62));
+        process.exit(0);
+      `, path], { encoding: "utf8", timeout: 10000 });
+      assert.equal(child.status, 0, child.stderr);
+      assert.equal(fs.existsSync(`${path}-journal`), true);
+    };
+    let main, journal;
+    const snapshot = () => {
+      main = fs.readFileSync(path);
+      journal = fs.readFileSync(`${path}-journal`);
+    };
+    if (raced) {
+      // The helper resolves the path before beforeOpen installs the hot journal.
+      fs.writeFileSync(path, "");
+    } else {
+      createHotJournal();
+      snapshot();
+    }
+    const plans = [];
+    let queries = 0;
+    const result = await h.openSqliteReadOnly(path, database => {
+      queries++;
+      return database.prepare("SELECT data FROM images").get().data;
+    }, { beforeOpen(plan) {
+      plans.push(plan.immutable);
+      if (raced && plan.immutable) { createHotJournal(); snapshot(); }
+    } });
+    assert.equal(result, null);
+    assert.deepEqual(plans, raced ? [true, false] : [false]);
+    assert.equal(queries, raced ? 2 : 1);
+    assert.deepEqual(fs.readFileSync(path), main);
+    assert.deepEqual(fs.readFileSync(`${path}-journal`), journal);
+    assert.deepEqual(fs.readdirSync(root).sort(), ["hot.sqlite", "hot.sqlite-journal"]);
+  }
 });
 
 test("both RPCs require exactly one matched message, including text fallback when IDs were supplied", async () => {

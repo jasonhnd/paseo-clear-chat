@@ -92,7 +92,7 @@ export async function* readJsonlReadOnly(path: string): AsyncGenerator<unknown> 
 type SqliteDatabase = import("node:sqlite").DatabaseSync;
 
 function sqliteSidecar(path: string): boolean {
-  return existsSync(`${path}-wal`) || existsSync(`${path}-shm`);
+  return existsSync(`${path}-wal`) || existsSync(`${path}-shm`) || existsSync(`${path}-journal`);
 }
 
 /** Opens one read-only connection. The caller closes it. */
@@ -120,24 +120,29 @@ async function querySqlitePlain<T>(
   path: string,
   query: (database: SqliteDatabase) => T,
   beforeOpen?: (plan: { immutable: boolean; uri: string }) => void,
-): Promise<T> {
-  const database = await openSqliteDatabase(path, false, beforeOpen);
+): Promise<T | null> {
+  let database: SqliteDatabase | undefined;
   try {
+    database = await openSqliteDatabase(path, false, beforeOpen);
     return query(database);
+  } catch {
+    // Hot journal recovery requires writes, which this reader must never make.
+    return null;
   } finally {
-    database.close();
+    database?.close();
   }
 }
 
 /**
  * Reads one query, then closes the database.
  *
- * When neither `<db>-wal` nor `<db>-shm` exists, nothing is writing, so the
- * file opens as `file:<realpath>?mode=ro&immutable=1` with `{ readOnly: true }`
- * and `query_only`. That creates no sidecar files. When either sidecar exists,
+ * When no `<db>-wal`, `<db>-shm` or `<db>-journal` exists, the file is a
+ * candidate for `file:<realpath>?mode=ro&immutable=1` with `{ readOnly: true }`
+ * and `query_only`. That creates no sidecar files. When any sidecar exists,
  * the plain `mode=ro` path is used, with `query_only` and a 250 ms busy
  * timeout. The plain read-only path may update reader marks in the existing
  * `-shm` (SQLite's coordination file), but it never changes database content.
+ * Hot journals and lock errors on the plain path return null without recovery.
  *
  * A writer can create a sidecar after the check and before the immutable open.
  * The sidecars are checked again after that query. If one has appeared, the
@@ -173,9 +178,5 @@ export async function openSqliteReadOnly<T>(
     if (outcome.ok) return outcome.result;
     throw outcome.error;
   }
-  try {
-    return await querySqlitePlain(real, query, hooks?.beforeOpen);
-  } catch {
-    return null;
-  }
+  return querySqlitePlain(real, query, hooks?.beforeOpen);
 }
