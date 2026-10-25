@@ -2,7 +2,6 @@
 
 const { mkdirSync, writeFileSync, statSync } = require("node:fs");
 const { join } = require("node:path");
-const { homedir } = require("node:os");
 const { execFileSync } = require("node:child_process");
 const assert = require("node:assert/strict");
 
@@ -108,9 +107,6 @@ async function captureDemo({ page, origin, work, root, errors, plan, settle, ver
   }
   assert.deepEqual(errors, []);
   const input = ["-framerate", String(plan.fps), "-i", join(frames, "%04d.png")];
-  const evidence = join(homedir(), "evidence-cc-s7");
-  mkdirSync(evidence, { recursive: true });
-  execFileSync("ffmpeg", ["-y", ...input, "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p", "-movflags", "+faststart", join(evidence, "demo.mp4")], { stdio: "pipe" });
   const destination = join(root, plan.light);
   execFileSync("ffmpeg", ["-y", ...input, "-filter_complex", "[0:v]split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=none:diff_mode=rectangle", "-loop", "0", destination], { stdio: "pipe" });
   report.bytes = statSync(destination).size;

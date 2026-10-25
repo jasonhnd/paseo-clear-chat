@@ -27,6 +27,6 @@ document.documentElement.style.overflow = "hidden";
 document.getElementById("root")!.style.display = "block";
 const translations = new PluginTranslationRuntime({ getLocale: () => "en", subscribe: () => () => {} });
 const textScale = Number(params.get("textScale") || 1);
-const codeFont = params.has("hero") ? "plain" : DEFAULT_PREFERENCES.codeFont;
+const codeFont = "plain";
 const detailWidth = params.has("hero") ? Number(params.get("detailWidth")) || undefined : undefined;
 createRoot(document.getElementById("root")!).render(<PluginTranslationProvider runtime={translations}><Demo tokens={buildThemeTokens(colors, { ...DEFAULT_PREFERENCES, textScale, codeFont })} animate={params.has("animate")} detailWidth={detailWidth} detailPresentation={params.has("heroDesktop") ? "side" : undefined} /></PluginTranslationProvider>);

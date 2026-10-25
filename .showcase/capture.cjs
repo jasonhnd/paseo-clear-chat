@@ -1,11 +1,12 @@
 "use strict";
 
-// One offline build, one synthetic conversation, fresh Chromium profiles for each scale.
+// Offline builds, synthetic fixtures, fresh Chrome or Chromium profiles for each scale.
 const assert = require("node:assert/strict");
 const { build } = require("esbuild");
 const { chromium } = require("playwright-core");
 const { createServer } = require("node:http");
-const { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, readdirSync } = require("node:fs");
+const { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, readdirSync, copyFileSync, statSync } = require("node:fs");
+const { execFileSync } = require("node:child_process");
 const { resolve, join, dirname } = require("node:path");
 const { readmeV2Groups, demoCapture, heroCapture } = require("./capture-plan.cjs");
 const { captureDemo } = require("./capture-demo.cjs");
@@ -14,8 +15,8 @@ const { rowMetrics } = require("./capture-row-metrics.cjs");
 const root = resolve(__dirname, "..");
 const work = join(__dirname, ".capture-temp");
 const selected = process.env.SHOWCASE_CAPTURE_ONLY;
-const plan = readmeV2Groups.filter(group => !selected || group.id === selected || group.id.startsWith(`${selected}-`));
-if (selected && selected !== "demo" && !plan.length) throw new Error(`Unknown capture: ${selected}`);
+const plan = readmeV2Groups.filter(group => !selected || selected.split(",").some(id => group.id === id || group.id.startsWith(`${id}-`)));
+if (selected && selected !== "demo" && selected !== "settings" && !plan.length) throw new Error(`Unknown capture: ${selected}`);
 rmSync(work, { recursive: true, force: true });
 mkdirSync(work, { recursive: true });
 process.env.TMPDIR = work;
@@ -61,6 +62,12 @@ async function verifyFonts(page, frameUrl) {
     }
   }
   assert.ok(report.length, "Rendered embedded font evidence is required");
+  const codeFamilies = await page.evaluate(frameUrl => {
+    const doc = frameUrl ? [...document.querySelectorAll("iframe")].find(frame => frame.src === frameUrl).contentDocument : document;
+    return [...new Set([...doc.querySelectorAll("[style]")].filter(node => !node.children.length && node.textContent.trim())
+      .map(node => doc.defaultView.getComputedStyle(node).fontFamily).filter(family => family.includes("Iosevka")))];
+  }, frameUrl);
+  assert.ok(codeFamilies.length && codeFamilies.every(family => family === '"OMP Iosevka"'), "All README code must use literal glyphs");
   await session.detach();
   return report;
 }
@@ -185,7 +192,7 @@ function heroHtml(dark) {
 }
 
 async function capture() {
-  const bundle = await build({
+  const buildOptions = {
     absWorkingDir: root, entryPoints: [join(__dirname, "readme-capture.tsx")], bundle: true, write: false,
     jsx: "automatic", platform: "browser", logLevel: "warning", define: { global: "globalThis" },
     alias: {
@@ -194,11 +201,16 @@ async function capture() {
       "@getpaseo/plugin/client/ui": join(__dirname, "shims/plugin-react-native.tsx"),
       "@getpaseo/plugin/client": join(__dirname, "shims/plugin-client.tsx"),
     }, nodePaths: [join(__dirname, "node_modules")],
-  });
+  };
+  const bundle = await build(buildOptions);
+  const settingsBundle = !selected || selected === "settings"
+    ? await build({ ...buildOptions, entryPoints: [join(__dirname, "showcase.tsx")] }) : null;
   const raw = new Map();
   const server = createServer((request, response) => {
     const url = new URL(request.url, "http://localhost");
     if (url.pathname === "/showcase.js") { response.setHeader("Content-Type", "text/javascript"); response.end(bundle.outputFiles[0].contents); }
+    else if (url.pathname === "/settings.js") { response.setHeader("Content-Type", "text/javascript"); response.end(settingsBundle.outputFiles[0].contents); }
+    else if (url.pathname === "/settings") { response.setHeader("Content-Type", "text/html"); response.end(readFileSync(join(__dirname, "index.html"), "utf8").replace("./showcase.js", "./settings.js")); }
     else if (url.pathname === "/compose") { response.setHeader("Content-Type", "text/html"); response.end(heroHtml(url.searchParams.get("theme") === "dark")); }
     else if (url.pathname.startsWith("/raw/")) { response.setHeader("Content-Type", "image/png"); response.end(raw.get(url.pathname.slice(5))); }
     else { response.setHeader("Content-Type", "text/html"); response.end(readFileSync(join(__dirname, "index.html"))); }
@@ -258,6 +270,40 @@ async function capture() {
       writeFileSync(join(work, "row-metrics.json"), JSON.stringify(measurements, null, 2) + "\n");
       console.log(JSON.stringify(measurements, null, 2));
       return;
+    }
+    if (settingsBundle) {
+      const { page, errors } = await newPage("settings", { width: 1600, height: 1000 }, 1.5);
+      for (const theme of ["light", "dark"]) {
+        await page.goto(`${origin}/settings?theme=${theme}`, { waitUntil: "networkidle" });
+        const shot = page.locator("#shot-settings");
+        await shot.waitFor();
+        await settle(page);
+        await page.addStyleTag({ content: freeze });
+        const text = await shot.innerText();
+        for (const label of [
+          "Accent colour", "Interface font", "Code glyphs", "Code font", "Text size",
+          "Fold finished steps", "When a collapsed step is pressed", "Fold long output after",
+          "Frosted glass", "Pointer glow", "Enhanced prompt bubble", "Selection actions",
+          "Assistant markdown", "Markdown style", "Report a problem",
+        ]) {
+          if (!text.includes(label)) throw new Error(`Settings capture is missing ${label}`);
+        }
+        assert.deepEqual(errors, []);
+        const file = `docs/images/settings-${theme}.png`;
+        const raw = join(work, `settings-${theme}.png`);
+        const destination = join(root, file);
+        await shot.screenshot({ path: raw, animations: "disabled" });
+        copyFileSync(raw, destination);
+        if (statSync(destination).size > 500000) {
+          execFileSync("magick", [raw, "-strip", "-colors", "256", "-define", "png:compression-level=9", destination]);
+        }
+        const bytes = statSync(destination).size;
+        if (bytes > 500000) throw new Error(`${file} exceeds 500 KB (${bytes} bytes)`);
+        report.push({ file, fixture: "settings", bytes, text });
+        console.log(`${file}: ${bytes} bytes`);
+        rmSync(raw);
+      }
+      await browser.close(); browser = undefined;
     }
     for (const group of plan) {
       let { page, errors } = await newPage(group.id, group.id === "hero" ? heroCapture.desktop : group.viewport, group.id === "hero" ? heroCapture.desktop.deviceScaleFactor : group.deviceScaleFactor, group.id.startsWith("phone-"));
@@ -324,6 +370,7 @@ async function capture() {
       await browser.close(); browser = undefined;
     }
     writeFileSync(join(work, "capture-report.json"), JSON.stringify(report, null, 2) + "\n");
+    console.log(`Captured ${report.length} image reports with ${chrome}.`);
   } finally {
     await browser?.close();
     await new Promise(done => server.close(done));
