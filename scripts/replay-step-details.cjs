@@ -4,7 +4,7 @@ const { build } = require("../.showcase/node_modules/esbuild");
 const { chromium } = require("playwright-core");
 const { createServer } = require("node:http");
 const net = require("node:net");
-const { mkdirSync, readFileSync, writeFileSync, rmSync } = require("node:fs");
+const { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } = require("node:fs");
 const { resolve, join, dirname } = require("node:path");
 const { createRequire } = require("node:module");
 
@@ -71,10 +71,12 @@ async function replay() {
   });
   const html = samples => `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body,#root{margin:0;width:100%;height:100%}*{box-sizing:border-box}</style></head><body><div id="root"></div><script>window.__stepDetailSamples=${JSON.stringify(samples).replace(/</g, "\\u003c")}</script><script src="/preview.js"></script></body></html>`;
   const server = createServer((request, response) => {
-    response.setHeader("Content-Type", request.url === "/preview.js" ? "text/javascript; charset=utf-8" : "text/html; charset=utf-8");
-    const fieldIndex = /^\/fields\/(\d+)$/.exec(request.url)?.[1];
-    response.end(request.url === "/preview.js" ? bundle.outputFiles[0].contents : html(fieldIndex !== undefined ? [fieldSamples[Number(fieldIndex)]] : request.url === "/layout" ? layoutSamples : ["/switching", "/keyboard", "/rotation"].includes(request.url) ? longSamples : request.url === "/host-remount" ? [longSamples[0]] : request.url === "/large-output" ? [largeSample] : [sample]));
+    const pathname = new URL(request.url, "http://localhost").pathname;
+    response.setHeader("Content-Type", pathname === "/preview.js" ? "text/javascript; charset=utf-8" : "text/html; charset=utf-8");
+    const fieldIndex = /^\/fields\/(\d+)$/.exec(pathname)?.[1];
+    response.end(pathname === "/preview.js" ? bundle.outputFiles[0].contents : html(fieldIndex !== undefined ? [fieldSamples[Number(fieldIndex)]] : pathname === "/layout" ? layoutSamples : ["/switching", "/keyboard", "/rotation"].includes(pathname) ? longSamples : pathname === "/host-remount" ? [longSamples[0]] : pathname === "/large-output" ? [largeSample] : [sample]));
   });
+  const profile = mkdtempSync(join(work, "profile-"));
   let browser;
   const report = [];
   const performanceFailures = [];
@@ -82,7 +84,7 @@ async function replay() {
     await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
     const origin = `http://127.0.0.1:${server.address().port}`;
     const port = await debugPort();
-    browser = await chromium.launchPersistentContext(join(work, "profile"), {
+    browser = await chromium.launchPersistentContext(profile, {
       channel: "chrome", executablePath: process.env.CHROME_PATH, headless: true, viewport: { width: 1440, height: 844 }, hasTouch: !inputsOnly,
       reducedMotion: "reduce", args: [`--remote-debugging-port=${port}`, "--disable-background-networking", "--no-first-run"],
     });
@@ -164,28 +166,36 @@ async function replay() {
       }
       return detailScroll();
     }
-    if (process.argv.includes("--resize-only")) {
-      for (const widths of [[1440, 820, 390, 1440], [1440, 390, 820], [1180, 820, 390, 1440], [820, 390, 820], [390, 1440], [390, 820]]) {
-        await page.setViewportSize({ width: widths[0], height: 900 });
-        await page.goto(`${origin}/host-remount`, { waitUntil: "networkidle" });
-        await row.click();
-        await waitOpen();
-        const reading = await startReading(400);
-        assert.ok(reading.visibleCodeLine, "Reading setup must identify a visible output line");
-        for (const width of widths) {
-          await page.setViewportSize({ width, height: 900 });
-          await page.waitForFunction(expected => document.querySelector('[data-testid="step-detail-panel"]')?.getAttribute("data-presentation") === expected,
-            width < 744 ? "sheet" : width < 1024 ? "popover" : "side");
-          await waitOpen();
-          const visible = panel.filter({ visible: true });
-          assert.equal(await visible.count(), 1, `${widths.join(" -> ")} at ${width}: one visible panel`);
-          assert.equal(await panel.count(), 1, "No hidden detail owner may retain a modal");
-          await page.waitForTimeout(250);
-          const returned = await detailScroll();
-          assert.equal(returned.visibleCodeLine, reading.visibleCodeLine, `First output line at ${width}: ${JSON.stringify({ reading, returned })}`);
-          report.push({ widths, width, panel: await panel.boundingBox(), scrollTop: returned.top, firstVisibleLine: returned.visibleCodeLine });
+    if (!fieldsOnly && !inputsOnly) {
+      // Exercise both host commit orders, including reflow before row replacement.
+      for (const locale of ["en", "zh-CN"]) {
+        for (const remount of ["same-commit", "next-frame"]) {
+          for (const widths of [[1440, 820, 390, 1440], [1440, 390, 820], [1180, 820, 390, 1440], [820, 390, 820], [390, 1440], [390, 820], [820, 1440]]) {
+            console.log(JSON.stringify({ checkpoint: "resize route", locale, remount, widths }));
+            await page.setViewportSize({ width: widths[0], height: 900 });
+            await page.goto(`${origin}/host-remount?locale=${locale}&remount=${remount}`, { waitUntil: "networkidle" });
+            await row.click();
+            await waitOpen();
+            const reading = await startReading(400);
+            assert.ok(reading.visibleCodeLine, "Reading setup must identify a visible output line");
+            for (const width of widths) {
+              await page.setViewportSize({ width, height: 900 });
+              await page.waitForFunction(expected => document.querySelector('[data-testid="step-detail-panel"]')?.getAttribute("data-presentation") === expected,
+                width < 744 ? "sheet" : width < 1024 ? "popover" : "side");
+              await waitOpen();
+              const visible = panel.filter({ visible: true });
+              assert.equal(await visible.count(), 1, `${widths.join(" -> ")} at ${width}: one visible panel`);
+              assert.equal(await panel.count(), 1, "No hidden detail owner may retain a modal");
+              await page.waitForTimeout(250);
+              const returned = await detailScroll();
+              assert.equal(returned.visibleCodeLine, reading.visibleCodeLine, `First output line at ${width}: ${JSON.stringify({ reading, returned })}`);
+              report.push({ locale, remount, widths, width, panel: await panel.boundingBox(), scrollTop: returned.top, firstVisibleLine: returned.visibleCodeLine });
+            }
+          }
         }
       }
+    }
+    if (process.argv.includes("--resize-only")) {
       assert.deepEqual(errors, []);
       console.log(JSON.stringify(report, null, 2));
       return;
@@ -716,7 +726,7 @@ async function replay() {
   } finally {
     await browser?.close();
     await new Promise(resolve => server.close(resolve));
-    rmSync(join(work, "profile"), { recursive: true, force: true });
+    rmSync(profile, { recursive: true, force: true });
   }
 }
 replay().catch(error => { console.error(error); process.exitCode = 1; });
