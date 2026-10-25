@@ -475,25 +475,39 @@ describe("codex pasted images", { concurrency: false }, () => {
     assert.equal(outsideBytes.length > 0, true);
   });
 
-  test("an oversized data URL is skipped before use and a later valid image is kept", async t => {
+  test("an oversized data URL stays in the count and its payload is not returned", async t => {
     const h = harness();
     const root = fixture(t);
     const home = join(root, "codex-home");
     const prefix = png.toString("base64");
     const encodedLength = (Math.floor(h.MAX_INLINE_IMAGE_BYTES / 3) + 1) * 4;
     const over = prefix + "A".repeat(encodedLength - prefix.length);
-    assert.ok((over.length / 4) * 3 > h.MAX_INLINE_IMAGE_BYTES);
-    assert.ok((over.length / 4) * 3 <= h.MAX_IMAGE_BYTES);
+    const decodedLength = (over.length / 4) * 3;
+    assert.ok(decodedLength > h.MAX_INLINE_IMAGE_BYTES);
+    assert.ok(decodedLength <= h.MAX_IMAGE_BYTES);
     writeRollout(home, THREAD, [
       sessionMeta(THREAD),
       userMessage("Big picture.", [`data:image/png;base64,${over}`, dataUrl(png)]),
     ]);
     const result = await findIn(h, home, { text: "Big picture." });
     assert.equal(result.matchedMessages, 1);
-    assert.deepEqual(result.images.map(image => [image.id, image.mime]), [["1", "image/png"]]);
-    const [bytes] = await imageBytes(result);
-    assert.deepEqual(bytes, png);
-    assert.ok(bytes.length <= h.MAX_INLINE_IMAGE_BYTES);
+    assert.deepEqual(result.images.map(image => [image.id, image.mime]), [["0", "image/png"], ["1", "image/png"]]);
+    const oversized = await result.images[0].readBytes();
+    assert.ok(oversized.length > h.MAX_INLINE_IMAGE_BYTES);
+    assert.notEqual(oversized.length, decodedLength);
+    assert.equal(oversized.subarray(0, 8).equals(png.subarray(0, 8)), false);
+    const kept = await result.images[1].readBytes();
+    assert.deepEqual(kept, png);
+    const listed = await askRegistry(h, home, "Big picture.", { id: "0" });
+    assert.equal(listed.images.total, 2);
+    assert.equal(listed.images.reason, "too_large_bytes");
+    assert.deepEqual(listed.images.images.map(image => image.id), ["1"]);
+    assert.equal(listed.image.dataUri, null);
+    assert.equal(listed.image.error, "image_too_large");
+    const full = await askRegistry(h, home, "Big picture.", { id: "1" });
+    assert.equal(full.image.error, null);
+    assert.equal(full.image.mime, "image/png");
+    assert.deepEqual(Buffer.from(full.image.dataUri.split(",")[1], "base64"), png);
   });
 
   test("a rollout is used only when it is unique across the live and archived trees", async t => {
