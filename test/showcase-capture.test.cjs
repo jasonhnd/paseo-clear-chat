@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const { readFileSync, readdirSync } = require("node:fs");
 const { resolve } = require("node:path");
 const { test } = require("node:test");
-const { createCapturePlan, readmeV2Groups, demoCapture } = require("../.showcase/capture-plan.cjs");
+const { createCapturePlan, readmeV2Groups, demoCapture, heroCapture } = require("../.showcase/capture-plan.cjs");
 
 const root = resolve(__dirname, "..");
 const readme = file => readFileSync(resolve(root, file), "utf8");
@@ -53,6 +53,26 @@ test("v2 stills retain the required filenames, viewport sizes, and pixel densiti
   assert.equal(gif.subarray(0, 3).toString(), "GIF");
   assert.equal(gif.readUInt16LE(6), 1200);
   assert.ok(gif.length <= 10_000_000);
+});
+
+test("the hero uses default text size and uniform page scaling inside the 2000px composition", () => {
+  const hero = readmeV2Groups.find(group => group.id === "hero");
+  const { desktop, phone, marginX, marginY, gap } = heroCapture;
+  assert.equal(hero.viewport.width, 2000);
+  assert.equal(marginX, 48);
+  assert.equal(marginY, 48);
+  assert.equal(gap, 48);
+  assert.equal(desktop.displayWidth + phone.displayWidth + gap + 2 * marginX, hero.viewport.width);
+  assert.equal(desktop.deviceScaleFactor, phone.deviceScaleFactor);
+  for (const device of [desktop, phone]) {
+    assert.equal(device.textScale, 1);
+    assert.ok(device.deviceScaleFactor > 1);
+    const atReadmeWidth = device.displayWidth / device.width * 800 / hero.viewport.width;
+    // At these real compact viewports the authored label is 11px; code is 12px.
+    for (const authoredSize of [11, 12]) assert.ok(authoredSize * atReadmeWidth >= 11 && authoredSize * atReadmeWidth <= 12.1);
+  }
+  const contentHeight = desktop.height * desktop.displayWidth / desktop.width;
+  assert.equal(Math.ceil(contentHeight + 2 * marginY), hero.viewport.height);
 });
 
 test("the synthetic read, edit, test output, and final reply describe the same change", () => {

@@ -23,7 +23,7 @@ const pair = (id, width, height, deviceScaleFactor, detail) => ({
   viewport: { width, height }, deviceScaleFactor, detail,
 });
 const readmeV2Groups = [
-  pair("hero", 2000, 1016, 1, "side"),
+  pair("hero", 2000, 1493, 1, "side"),
   pair("phone-timeline", 390, 460, 3),
   pair("phone-details", 390, 900, 3, "sheet"),
   pair("phone-menu", 390, 460, 3, "menu"),
@@ -31,9 +31,9 @@ const readmeV2Groups = [
   pair("ipad-side", 1194, 834, 2, "side"),
 ];
 const heroCapture = {
-  marginX: 48, marginY: 40, gap: 48,
-  desktop: { width: 1336, height: 936, textScale: 2.5, detailWidth: 736 },
-  phone: { width: 490, height: 1200, displayWidth: 520, textScale: 2.35 },
+  marginX: 48, marginY: 48, gap: 48,
+  desktop: { width: 534, height: 558, displayWidth: 1336, deviceScaleFactor: 2.5, textScale: 1, detailWidth: 240 },
+  phone: { width: 208, height: 700, displayWidth: 520, deviceScaleFactor: 2.5, textScale: 1 },
 };
 const phoneGroups = readmeV2Groups.filter(group => group.id.startsWith("phone-"));
 function withPhoneGroups(groups) {
