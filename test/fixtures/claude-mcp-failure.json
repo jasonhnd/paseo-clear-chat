@@ -1,0 +1,53 @@
+{
+  "provenance": "Minimal projected failures derived from Paseo v0.12.0, not a session capture. Failed MCP blocks retain error content and tool_use_id; buildToolOutput returns undefined, then output ?? null is passed to the unknown detail parser. Sources: https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/claude/agent.ts#L5584-L5590 https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/claude/agent.ts#L5643-L5644 https://github.com/getpaseo/paseo/blob/v0.12.0/packages/server/src/server/agent/providers/claude/tool-call-detail-parser.ts#L240-L244",
+  "expected": "MCP request failed: service unavailable\nRetry after checking the service.\n  Full diagnostic retained.  \n",
+  "items": [
+    {
+      "type": "tool_call",
+      "callId": "sample-mcp-failure",
+      "name": "mcp__server__tool",
+      "status": "failed",
+      "detail": {
+        "type": "unknown",
+        "input": {
+          "query": "sample"
+        },
+        "output": null
+      },
+      "error": {
+        "type": "mcp_tool_result",
+        "is_error": true,
+        "content": "MCP request failed: service unavailable\nRetry after checking the service.\n  Full diagnostic retained.  \n",
+        "tool_use_id": "sample-mcp-failure"
+      }
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-mcp-failure",
+      "name": "mcp__server__tool",
+      "status": "failed",
+      "detail": {
+        "type": "unknown",
+        "input": {
+          "query": "sample"
+        },
+        "output": null
+      },
+      "error": {
+        "type": "mcp_tool_result",
+        "is_error": true,
+        "content": [
+          {
+            "type": "text",
+            "text": "MCP request failed: service unavailable"
+          },
+          {
+            "type": "text",
+            "text": "Retry after checking the service.\n  Full diagnostic retained.  \n"
+          }
+        ],
+        "tool_use_id": "sample-mcp-failure"
+      }
+    }
+  ]
+}

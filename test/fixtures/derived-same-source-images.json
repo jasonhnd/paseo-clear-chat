@@ -1,0 +1,26 @@
+{
+  "provenance": "Derived minimal regression from real-assistant-links.json and real-hermes-image-listing.json projected item shapes; detail.output follows docs/STEP-DETAIL-FIELDS.md. Repeated Markdown sources are synthetic, not a captured session.",
+  "items": [
+    {
+      "type": "assistant_message",
+      "text": "![First](https://example.org/chart.png)\n![Second](https://example.org/chart.png)",
+      "messageId": "sample-image-reply"
+    },
+    {
+      "type": "tool_call",
+      "callId": "sample-image-listing",
+      "name": "execute",
+      "detail": {
+        "type": "shell",
+        "command": "terminal: ls -la",
+        "output": "Generated images:\n![First](https://example.org/chart.png)\n![Second](https://example.org/chart.png)"
+      },
+      "metadata": {
+        "kind": "execute",
+        "title": "terminal: ls -la"
+      },
+      "status": "completed",
+      "error": null
+    }
+  ]
+}
