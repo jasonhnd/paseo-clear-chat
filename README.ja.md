@@ -2,7 +2,7 @@
 
 <h1 align="center">Clear Chat</h1>
 
-<p align="center"><b>エージェントとのチャットをひと目で読みやすくする Paseo プラグインです。</b></p>
+<p align="center"><b>エージェントとの会話をひと目で読みやすく：ステップは 1 行にまとまり、ツールごとにカードがあり、押せば詳細が見られます。</b><br><a href="https://paseo.sh">Paseo</a> のプラグインです。デスクトップ、Web、iPhone、iPad で使えます。</p>
 
 <p align="center">
   <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=date"></a>
@@ -12,109 +12,99 @@
 
 <p align="center">
   <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="images/hero-dark.png">
+    <img width="1000" alt="デスクトップのウィンドウとスマートフォンの幅で表示した Clear Chat：終わったステップは 1 行ずつにまとまり、ステップの詳細が会話の横に開いている" src="images/hero-light.png">
+  </picture>
+</p>
+
+<p align="center">
+  <img width="800" alt="25 秒のデモ：エージェントが作業を進め、終わったステップが 1 行にまとまり、ステップをサイドパネルで開き、ウィンドウをスマートフォンの幅まで狭める" src="images/demo.gif">
+</p>
+
+<p align="center"><sub>スクリーンショットとデモはすべてサンプルデータです。</sub></p>
+
+## Clear Chat を選ぶ理由
+
+- **まず結論が見えます。** 終わったステップは 1 行ずつにまとまり、ターンの最後の返信はいつも全文表示です。
+- **どのステップも開けます。** ステップの入力、出力、エラーの全文を、デスクトップではサイドパネル、iPad ではポップオーバー、スマートフォンでは下から出るシートで表示します。[スマートフォンと iPad](#スマートフォンと-ipad) をご覧ください。
+- **ツールごとにカードがあります。** Claude、Codex、Hermes の呼び出しをすべてきちんとしたカードで表示します。Paseo が伝える 12 種類のツールにはそれぞれ専用カードがあり、`skill_view` や `memory` などの Hermes ツールにも専用の表示があります。[機能](#機能)をご覧ください。
+- **あなたの言語で表示します。** Clear Chat 自身の表示文字は Paseo アプリの言語（英語、簡体字中国語、日本語）に合わせます。
+- **好みに合わせて変えられます。** アクセントカラー、フォント、文字サイズ、折りたたみを変えられます。設定はホストに保存され、そのホストにつないだ端末で共有されます。[設定](#設定)をご覧ください。
+- **速さはそのまま。** 私たちのテストでは、221 ステップの会話で最初の画面が約 1.3 秒で表示され、プラグインなしの場合とほぼ同じでした。<sup>1</sup>
+
+<p align="center">
+  <picture>
     <source media="(prefers-color-scheme: dark)" srcset="images/compare-dark.png">
     <img alt="同じ会話：左はプラグインなし、右は Clear Chat あり" src="images/compare-light.png">
   </picture>
 </p>
 
-<p align="center"><sub>左：プラグインなしの同じ会話。右：Clear Chat あり。スクリーンショットはすべてサンプルデータです。</sub></p>
-
-## Clear Chat を選ぶ理由
-
-- **まず結論が見えます。** 終わったステップは 1 行ずつにまとまります（アイコン、要点、状態。エージェントが時間を伝えた場合は時間も）。ターンの最後の返信はいつも全文表示です。
-- **どのエージェントも正しく表示します。** Claude、Codex、Hermes の呼び出しをすべてきちんとしたカードで表示します。Paseo が伝える 12 種類のツールにはそれぞれ専用カードがあり、`skill_view` や `memory` などの Hermes ツールにも専用の表示があります。実際の会話を再生したテストでは、空のカードは 1 枚もありません。
-- **何もなくなりません。** Beautiful Chat の設定はそのまま引き継がれます。失敗した呼び出しには失敗の理由が表示されます。
-- **メンテナンスしています。** 1.0.0 では、元のプラグインで未対応だった Issue と PR を 7 件対応しました。問題は GitHub Issues で受け付け、リリースごとの変更は [CHANGELOG](CHANGELOG.md) にまとめています。
-- **速いです。** 私たちのテストでは、221 ステップの会話で最初の画面が約 1.3 秒で表示されました。プラグインなしの場合（同じく約 1.3 秒）とほぼ同じです。長い会話でもスクロールが引っかかりません。<sup>1</sup>
+<p align="center"><sub>左：プラグインなしの同じ会話。右：Clear Chat あり。</sub></p>
 
 <sub>1. 1 台のマシンでヘッドレスの Google Chrome を 5 回動かした中央値です。環境によって結果は変わります。測り方は [scripts/perf/README.md](scripts/perf/README.md)（英語）にあります。</sub>
 
 ## インストール
 
 ```bash
-paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v0.13.0.1
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.0.2
 ```
 
-Clear Chat には Paseo 0.13.0 以降が必要です。Paseo 0.12 を使っている場合は、`--ref v0.12.0.1` で Clear Chat 0.12.0.1 をインストールしてください。
+Clear Chat には Paseo 0.13.0 以降が必要です。インストール後、**Settings → Plugins → Clear Chat** で色、フォント、折りたたみを選べます。
 
-インストール後、**Settings → Plugins → Clear Chat** で色、フォント、折りたたみを選べます。
+あとで更新するには：
 
-**バージョン番号について。** Clear Chat のバージョンは、対応してテストした Paseo のバージョンに、その Paseo のバージョンで何回目のリリースかを表す番号を 1 つ足したものです。たとえば 0.12.0.1 は Paseo 0.12.0 向けの最初のリリースで、次は 0.12.0.2 です。Paseo の新しいバージョンが出たら、Clear Chat の次のリリースから数え直します。Paseo 0.12.1 向けなら 0.12.1.1、0.13.0 向けなら 0.13.0.1 です。Paseo が新しくなっても、Clear Chat に新しい変更がなければリリースはしません。1.0.0 と 1.0.1 はこのルールの前に出したもので、0.12.0.1 のほうが新しい版です。
+```bash
+paseo plugin update clear-chat
+```
+
+最初にインストールしたリリースではなく、`main` の最新リリースに切り替わります。変更する前に確認が出ます。スクリプトで実行するときは `--yes` を付けてください。特定のリリースに切り替えたり前のリリースに戻したりするには、`--ref` を付けます（例：`paseo plugin update clear-chat --ref v0.13.0.1`）。更新しても設定は消えません。
 
 > [!IMPORTANT]
 > すでに Beautiful Chat を使っていますか？プラグインのインストールや削除を**する前に**、[Beautiful Chat からのアップグレード](#beautiful-chat-からのアップグレード)をお読みください。Paseo ではプラグインを削除すると、その設定も一緒に消えます。
 
-## Beautiful Chat からのアップグレード
-
-1. Beautiful Chat の設定を**バックアップ**します。
-2. Beautiful Chat を入れたまま **Clear Chat をインストール**します。Clear Chat は初回の起動時に設定をコピーします。
-3. 設定が正しいことを**確認**してから、Beautiful Chat を削除します。
-
 <details>
-<summary><b>具体的なコマンド、元に戻す方法、移行のしくみ</b></summary>
+<summary><b>Paseo 0.12 を使っている場合と、バージョン番号について</b></summary>
 
-以下のコマンドは `PASEO_HOME` を使い、未設定のときは `$HOME/.paseo` を使います。daemon のフォルダーを `--home` だけで指定している場合は、先に `PASEO_HOME` をそのパスに設定してください。バックアップや確認に失敗したら、そこで止めてください。
-
-**1. バックアップ**
+Paseo 0.12 では、代わりに Clear Chat 0.12.0.1 をインストールしてください：
 
 ```bash
-legacy_backup="${PASEO_HOME:-$HOME/.paseo}/backups/plugin-settings-beautiful-chat-$(date +%Y%m%d-%H%M%S)"
-mkdir -p "${PASEO_HOME:-$HOME/.paseo}/backups"
-cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_backup"
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.12.0.1
 ```
 
-**2. インストール**
+すでに Clear Chat が入っていると、`install` は `Plugin ID clear-chat is already configured` と表示して止まります。その場合は `update` でバージョンを切り替えてください。設定はそのまま残ります：
 
 ```bash
-paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v0.13.0.1
+paseo plugin update clear-chat --ref v0.12.0.1 --yes
 ```
 
-**3. 確認してから古いプラグインを削除**
-
-`${PASEO_HOME:-$HOME/.paseo}/plugin-settings/clear-chat/presentation.json` ができていて、`$legacy_backup/presentation.json` と同じ内容であることを確認してください。すでにある Clear Chat の設定ファイルが上書きされることはありません。ファイルがない、または内容が違う場合は、Beautiful Chat とバックアップを残したまま、ログで移行のエラーを確認してください。
-
-```bash
-paseo plugin remove beautiful-chat
-```
-
-バックアップは残しておいてください。
-
-**元に戻す**
-
-Clear Chat の今の設定をバックアップしてから削除します。
-
-```bash
-clear_chat_backup="${PASEO_HOME:-$HOME/.paseo}/backups/plugin-settings-clear-chat-$(date +%Y%m%d-%H%M%S)"
-mkdir -p "${PASEO_HOME:-$HOME/.paseo}/backups"
-cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/clear-chat" "$clear_chat_backup"
-paseo plugin remove clear-chat
-```
-
-Beautiful Chat の設定フォルダーがなくなっている場合は、アップグレード時のバックアップから戻します。`YYYYMMDD-HHMMSS` はバックアップの日時に置き換えてください。すでにあるフォルダーが上書きされることはありません。
-
-```bash
-legacy_backup="${PASEO_HOME:-$HOME/.paseo}/backups/plugin-settings-beautiful-chat-YYYYMMDD-HHMMSS"
-test ! -e "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" &&
-  cp -a "$legacy_backup" "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat"
-```
-
-そのあと、Beautiful Chat の最後のバージョンをインストールします。
-
-```bash
-paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref 2bf25e8
-```
-
-Clear Chat で変えた設定は Beautiful Chat には戻りません。バックアップは両方とも残しておいてください。
-
-**移行のしくみ**
-
-- 初回の起動時、Clear Chat の設定ファイルがまだなければ、サーバーが Beautiful Chat の `presentation.json` を Clear Chat の設定フォルダーにコピーします。どちらのファイルも削除・上書きしません。
-- コピーに失敗した場合は、2 つのパスとエラーをログに残し、Clear Chat は初期設定で起動します。次回の起動時にもう一度試します。
-- そのあと設定はバージョン 1 から 2 に更新されます。選んだ内容はそのまま残り、新しい 2 つの折りたたみ設定は初期値から始まります。
-- ブラウザーでは、以前ブラウザーに保存されていた設定を 1 回だけ取り込みます。ホストに保存された設定が常に優先です。
-- 移行は標準のインストール ID を前提にしています。`--id` を変えている場合や、daemon のフォルダーを `--home` だけで指定している場合は、設定を手でコピーしてください。
+Clear Chat のバージョンは、対応してテストした Paseo のバージョンに、その Paseo のバージョンで何回目のリリースかを表す番号を 1 つ足したものです。たとえば 0.13.0.1 は Paseo 0.13.0 向けの最初のリリースで、次は 0.13.0.2 です。Paseo の新しいバージョンが出たら、Clear Chat の次のリリースから数え直します（Paseo 0.13.1 向けなら 0.13.1.1）。Paseo が新しくなっても、Clear Chat に新しい変更がなければリリースはしません。1.0.0 と 1.0.1 はこのルールの前に出したもので、0.12.0.1 のほうが新しい版です。
 
 </details>
+
+## スマートフォンと iPad
+
+Paseo は同じプラグインをデスクトップ、Web、iPhone、iPad で動かします。Clear Chat は端末の名前ではなく使える幅で表示の形を選ぶので、幅の狭いデスクトップのウィンドウはスマートフォンと同じ表示になります。
+
+| | スマートフォン | iPad | デスクトップと Web |
+|---|---|---|---|
+| ステップの詳細 | 下から出るシート | ポップオーバー（幅 744〜1023px）またはサイドパネル（1024px 以上） | サイドパネル。狭いウィンドウではポップオーバーかシート |
+| 行の表示 | タイトル、アイコン、余白を小さくして、1 画面に多くのステップが入ります。ボタンは押しやすい大きさのまま | 標準 | 標準 |
+| ステップのメニュー | ステップを長押し | ステップを長押し | ステップを右クリック |
+| ホバーでプレビュー | – | – | 折りたたまれたステップにポインターを少し置く |
+| キーボード | – | ブラウザーでハードウェアキーボードをつなぐと Tab、矢印キー、Enter、Esc が使えます | Tab、矢印キー、Enter、Esc |
+| 返信の中のパス | クリップボードにコピーし、ホストで開くよう案内 | クリップボードにコピーし、ホストで開くよう案内 | Finder やエクスプローラーなどのファイルマネージャーで表示 |
+
+ウィンドウの大きさを変えたり、iPad を回転したり Split View にしたりしても、表示の形だけが切り替わり、同じステップ、読んでいる位置、開いている内容はそのままです。
+
+<sub>これらのスクリーンショットは、ブラウザーでスマートフォンと iPad の幅にして撮ったもので、サンプルデータを使っています。</sub>
+
+| スマートフォンの幅：会話 | スマートフォンの幅：ステップの詳細 | スマートフォンの幅：ステップのメニュー |
+|---|---|---|
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/phone-timeline-dark.png"><img alt="スマートフォンの幅：終わったステップが 1 行ずつにまとまり、最後の返信が開いている会話" src="docs/images/phone-timeline-light.png"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/phone-details-dark.png"><img alt="スマートフォンの幅：編集ステップのパッチと結果を下から出るシートで表示" src="docs/images/phone-details-light.png"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/phone-menu-dark.png"><img alt="スマートフォンの幅：コマンドのステップを長押しして出たメニュー（コマンドをコピー、結果をコピー）" src="docs/images/phone-menu-light.png"></picture> |
+
+| iPad の幅・縦向き：ポップオーバー | iPad の幅・横向き：サイドパネル |
+|---|---|
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/ipad-popover-dark.png"><img alt="iPad の幅・縦向き：ステップの詳細を会話の上にポップオーバーで表示" src="docs/images/ipad-popover-light.png"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/ipad-side-dark.png"><img alt="iPad の幅・横向き：左に会話、右のサイドパネルにステップの詳細" src="docs/images/ipad-side-light.png"></picture> |
 
 ## 機能
 
@@ -141,17 +131,15 @@ Clear Chat で変えた設定は Beautiful Chat には戻りません。バッ�
 
 ### そのほか
 
-- **ステップの詳細。** 折りたたまれたステップを押すと、そのすべてを表示します。入力と出力の全文、コマンドの終了コード、エージェントが伝えた場合はかかった時間が見られます。入力と出力は別々にコピーでき、失敗したステップではエラーの内容も表示されてコピーできます。1 万行あるような長い出力もなめらかにスクロールします。ウィンドウの幅が 744px 未満なら下から出るシート、744〜1023px ならポップオーバー、1024px 以上ならサイドパネルで表示します。ウィンドウの大きさを変えたり、iPad を回転したり Split View にしたりしても、表示の形だけが切り替わり、同じステップ、読んでいる位置、開いている内容はそのままです。別のステップに切り替えると、詳細は先頭から表示します。読んでいるステップに新しい出力が届いても、読んでいる位置はそのままです。会話の中でその場で開きたいときは、**折りたたんだステップを押したとき**（When a collapsed step is pressed）を **その場で開く**（Expand inline）にしてください。
-- **キーボード操作。** ブラウザーやデスクトップアプリでは、Tab でステップに移り、↑↓ でステップ間を移動、Enter で詳細を開き、Esc で閉じて元の場所に戻ります。入力欄での入力はいつもどおりです。iPad のブラウザーにハードウェアキーボードをつないだときも使えます。iPhone、iPad、Android のネイティブアプリはタッチ操作のみです。プラグインの API では、これらのアプリでハードウェアキーを受け取れないためです。
-- **ホバーでプレビュー。** マウスでは、折りたたまれたステップにポインターを少し置くと、要点と結果のプレビューが出ます。ファイルの読み込みは最大 6 行まで表示します。タッチ画面ではプレビューは出ません。
-- **ステップのメニュー。** ステップを右クリックするか、タッチ画面で長押しすると、**コマンドをコピー**（Copy command）、**パスをコピー**（Copy path）、**結果をコピー**（Copy result）、**ファイルマネージャーで開く**（Open in file manager）のメニューが出ます。使える項目だけが表示され、Write や Edit で書き込んだ内容が結果としてコピーされることはありません。メニューはポインターや指のそばに出て、画面の端では反対側に開きます。
-- **スマートフォンではコンパクトに。** スマートフォンの幅では、タイトル、状態の文字、アイコン、余白を小さくして、1 画面に多くのステップが入るようにします。ボタンは押しやすい大きさのままです。
-- **折りたたみは自由に。** 開いている行を押すと閉じます。閉じている行を押すと詳細を表示し、**その場で開く**（Expand inline）のときは会話の中で開きます。実行中・失敗・対応待ちの呼び出しは最初から開いています。一度開いたり閉じたりした行は、その状態を再読み込みしても覚えています。長いツールの出力、返信の中の長いコードブロック、長いプロンプトは最初の 15 行だけ表示し、**全 N 行を表示**（Show all N lines）で全部見られます。**コピー**（Copy）はいつも全文をコピーします。
+- **ステップの詳細。** 折りたたまれたステップを押すと、入力と出力の全文、コマンドの終了コード、エージェントが伝えた場合はかかった時間が見られます。入力と出力は別々にコピーでき、失敗したステップではエラーの内容も表示されてコピーできます。1 万行あるような長い出力もなめらかにスクロールします。会話の中でその場で開きたいときは、**折りたたんだステップを押したとき**（When a collapsed step is pressed）を **その場で開く**（Expand inline）にしてください。
+- **折りたたみは自由に。** 開いている行を押すと閉じます。実行中・失敗・対応待ちの呼び出しは最初から開いています。一度開いたり閉じたりした行は、その状態を再読み込みしても覚えています。長いツールの出力、返信の中の長いコードブロック、長いプロンプトは最初の 15 行だけ表示し、**全 N 行を表示**（Show all N lines）で全部見られます。**コピー**（Copy）はいつも全文をコピーします。
+- **ステップのメニュー。** **コマンドをコピー**（Copy command）、**パスをコピー**（Copy path）、**結果をコピー**（Copy result）、**ファイルマネージャーで開く**（Open in file manager）。使える項目だけが表示され、Write や Edit で書き込んだ内容が結果としてコピーされることはありません。
 - **まとめの返信。** `wrap_up` ツールで送られた返信は、まとめ・質問・記号付きの選択肢・**ブロック中**（Blocked）の警告を含む返信カードとして表示します。
 - **リンクを押せます。** 返信の中のリンク（そのまま書かれた URL や画像のアドレスも含む）は、デスクトップ、Web、iOS で開けます。`mailto:` リンクはメールアプリで開きます。
-- **会話内の検索。** Ctrl/Cmd+F で検索バーを開くと、ツールのカードの中も検索できます。検索するのは読み込み済みのメッセージだけなので、古いものは先に上にスクロールしてください。
-- **ファイルを開く。** カードのファイル名や返信の中のパスを押すと、ホストのコンピューターの Finder やエクスプローラーなどのファイルマネージャーでそのファイルを表示します。スマートフォン、タブレット、幅の狭い Web ウィンドウでは、返信の中のパスはクリップボードにコピーされ、ホストで開くよう案内が出ます。空白を含むファイル名やパスは、インラインコードにするか Markdown のリンクにしてください。
+- **会話内の検索。** Ctrl/Cmd+F で検索バーを開くと、ツールのカードの中も検索できます。
+- **ファイルを開く。** カードのファイル名や返信の中のパスを押すと、ホストのコンピューターの Finder やエクスプローラーなどのファイルマネージャーでそのファイルを表示します。空白を含むファイル名やパスは、インラインコードにするか Markdown のリンクにしてください。
 - **文字のハイライト。** 返信の中で `==強調したい文字==` と書くとハイライトされます。コードの中の等号はそのまま表示します。
+- **貼り付けた画像。** **プロンプトの吹き出しを強化**（Enhanced prompt bubble）がオンのとき、プロンプトに貼り付けた画像を吹き出しにサムネイルで表示します。Codex と Claude のエージェントに対応しています。押すと大きく表示します。1.5 MB を超える画像は表示しません。
 
 ## 設定
 
@@ -161,24 +149,35 @@ Clear Chat で変えた設定は Beautiful Chat には戻りません。バッ�
 |---|---|
 | アクセントカラー（Accent colour） | Paseo のテーマに合わせるか、ジェード（Jade）・バイオレット（Violet）・アンバー（Amber）・ローズ（Rose）から選ぶか、**カスタム**（Custom）で色見本と HEX 入力欄から好きな色を選びます。カスタムの色は、文字のコントラストが 4.5:1 以上になるよう自動で調整されます。 |
 | インターフェースのフォント（Interface font） | 内蔵の Inter フォントか、システム（System）のフォントを使います。 |
-| 文字サイズ（Text size） | 小（Small、90%）、標準（Default、100%）、大（Large、115%）、特大（XL、130%）。アイコンの大きさは変わりません。 |
 | コードの字形（Code glyphs） | 合字（Ligatures）ありの Iosevka か、そのまま（Literal）の字形を使います。 |
 | コードのフォント（Code font） | 「デフォルト（Iosevka）」（Default (Iosevka)、初期値）、Iosevka、Menlo、Consolas、Fira Code、Cascadia Code から選びます。コードブロック、インラインコード、ターミナルの出力、差分に効きます。 |
+| 文字サイズ（Text size） | 小（Small、90%）、標準（Default、100%）、大（Large、115%）、特大（XL、130%）。アイコンの大きさは変わりません。 |
 | 完了したステップを折りたたむ（Fold finished steps） | 最初はオンです。オフにすると、個別に選んだ呼び出しを除いてすべてのステップを開きます。 |
 | 折りたたんだステップを押したとき（When a collapsed step is pressed） | 詳細を開く（Open details、初期値）は、シート・ポップオーバー・サイドパネルでステップの詳細を表示します。その場で開く（Expand inline）は会話の中で開きます。 |
 | 長い出力を折りたたむ行数（Fold long output after） | 10・15（初期値）・30 行、または折りたたまない（Never）。ツールの出力、返信の中のコードブロック、プロンプトに効きます。行数は元のテキストで数えるので、折り返しの分は数えません。 |
 | すりガラス（Frosted glass） | カードの背景をすりガラス風にするか、単色にします。 |
+| ポインターの光（Pointer glow） | ポインターを追ってカードの上にやわらかい光が出ます。デスクトップと Web のみです。 |
 | プロンプトの吹き出しを強化（Enhanced prompt bubble） | プロンプトに装飾を付けます。オフにすると Paseo の標準の吹き出しを使います。 |
-| アシスタントの Markdown（Assistant markdown） | オフにすると、返信の表示を Paseo に戻します。 |
+| 選択したときの操作（Selection actions） | カードの中で文字を選ぶと、「コピー」と「チャットに追加」がある小さなバーが出ます。デスクトップと Web のみです。 |
+| アシスタントの Markdown（Assistant markdown） | プラグイン独自の見出し、リスト、コードブロックで返信を表示します。オフにすると、返信の表示を Paseo に戻します。 |
+| Markdown のスタイル（Markdown style） | ドキュメント（Document：ゆったりして長い回答向け）、コンパクト（Compact：間隔を詰めて短い返信向け）、ターミナル（Terminal：本文をコードのフォントで表示）。 |
 
 **カスタムのアクセントカラー。** 色見本を押すか、`#RGB` または `#RRGGBB` を入力して **適用**（Apply）を押します。HEX の値が正しくないときは入力欄に残ったままエラーが表示され、保存済みの色は変わりません。プリセットに切り替えても、カスタムの色は覚えています。保存した HEX の値は変わりません。文字が読みにくくなるときだけ、表示する色をライトテーマでは暗く、ダークテーマでは明るく調整します。塗りつぶしのボタンの文字は、黒と白のうちコントラストが高いほうを使います。
 
-**コードのフォント。** プラグイン SDK からは Paseo 自体のコードフォント設定を読めません。**デフォルト（Iosevka）**（Default (Iosevka)）は Iosevka を使い、**コードの字形**（Code glyphs）の選択もそのまま使います。Web とデスクトップでは、ほかのフォントはコンピューターにインストールされている必要があり、ない場合は内蔵の Iosevka で表示します。iOS と iPadOS ではコードは常に Menlo、Android ではシステムの等幅フォントになります。プラグイン SDK では、ネイティブアプリにフォントを追加できないためです。
+設定はホストに保存されるので、同じホストにつないだ端末どうしで共有されます。アクセントカラー、折りたたみ、ステップを押したときの設定はすぐに反映され、表示済みの行にも効きます。そのほかの変更は新しいメッセージから反映され、前のメッセージを更新するには会話を再読み込みしてください。
 
-Clear Chat 自身の表示文字は Paseo アプリの言語（英語、簡体字中国語、日本語）に合わせます。設定はホストに保存されるので、同じホストにつないだ端末どうしで共有されます。アクセントカラー、折りたたみ、ステップを押したときの設定はすぐに反映され、表示済みの行にも効きます。そのほかの変更は新しいメッセージから反映され、前のメッセージを更新するには会話を再読み込みしてください。
+## プラグインにできないこと
 
-> [!NOTE]
-> **iOS と iPadOS では**、**アシスタントの Markdown**（Assistant markdown）または **プロンプトの吹き出しを強化**（Enhanced prompt bubble）がオンのとき、ドラッグで文字を選べません。返信、プロンプト、コードブロックの **コピー**（Copy）ボタンを使ってください。コピーに失敗したときは全文を表示する画面が出るので、そこから手で選んでコピーできます。
+Clear Chat が変えるのは、Paseo での会話の表示のしかただけです。Paseo が決めていて、プラグインには開かれていないこともあります：
+
+- **Hermes のエージェントで貼り付けた画像。** Paseo 0.13 はプラグインがメッセージを受け取る前に貼り付けた画像を取り除きます。Codex と Claude のエージェントでは、Clear Chat がエージェント自身の履歴から画像を探して表示しますが、Hermes のエージェントにはまだ対応していません。Hermes でも画像はそのまま送られています。**プロンプトの吹き出しを強化**（Enhanced prompt bubble）をオフにすると、Paseo の標準の吹き出しで表示されます。
+- **Paseo 自体の Markdown。** Clear Chat は Paseo の Markdown 処理を使えないため、**アシスタントの Markdown**（Assistant markdown）が対応しているのはその一部です。mermaid の図、画像、ホストのファイルパスのリンクを使うには、これをオフにしてください。
+- **ネイティブアプリのハードウェアキー。** キーボード操作はブラウザーとデスクトップアプリで使えます。iPhone、iPad、Android のネイティブアプリはタッチ操作のみです。
+- **ネイティブアプリのフォント。** プラグインは Paseo のコードフォント設定を読めず、ネイティブアプリにフォントを追加することもできません。iOS と iPadOS ではコードは常に Menlo、Android ではシステムの等幅フォントになります。
+- **iOS と iPadOS でのドラッグ選択。** **アシスタントの Markdown**（Assistant markdown）または **プロンプトの吹き出しを強化**（Enhanced prompt bubble）がオンのとき、ドラッグで文字を選べません。返信、プロンプト、コードブロックの **コピー**（Copy）ボタンを使ってください。コピーに失敗したときは全文を表示する画面が出るので、そこから手で選んでコピーできます。
+- **ステップの時間。** ステップにかかった時間は、エージェントが伝えた場合だけ表示します。
+- **会話内の検索。** 検索バーが検索するのは読み込み済みのメッセージだけです。古いものは先に上にスクロールしてください。
+- **削除したあとの設定。** Paseo ではプラグインを削除すると、その設定も一緒に消えます。先にバックアップしてください。
 
 ## トラブルシューティング
 
@@ -186,7 +185,6 @@ Clear Chat 自身の表示文字は Paseo アプリの言語（英語、簡体�
 |---|---|
 | Cafe プラグインからのインストールに失敗する、または Paseo が `@shikijs/core` などの Shiki の依存パッケージが足りないと表示する。 | [インストール](#インストール)にある Paseo CLI のコマンドで、同じリポジトリとリリースの ref を指定してやり直してください。Clear Chat は `npm ci --include=dev` で依存パッケージを入れるので、daemon を動かすホストに Node.js と npm が必要で、ネットワークから npm レジストリにつながる必要があります。チェックアウトを自分で管理している場合は、先にそこで `npm ci --include=dev` を実行してからやり直してください。 |
 | インストールが止まり、`Plugin "clear-chat" requires Paseo >=0.13.0. Your daemon is 0.12.x.`（または `Your app is …`）と表示される。 | daemon のホストと、つないでいるすべてのアプリの Paseo を 0.13.0 以降に更新してください。Paseo 0.12 のまま使う場合は、`--ref v0.12.0.1` で Clear Chat 0.12.0.1 をインストールしてください。 |
-| プロンプトに貼り付けた画像が、プロンプトの吹き出しに表示されない。 | 画像はエージェントにはそのまま送られています。Paseo 0.13 は画像をプラグインに渡さないため、Clear Chat の **プロンプトの吹き出しを強化**（Enhanced prompt bubble）がオンだと表示できません。会話の中で画像を見たい場合は、**Settings → Plugins → Clear Chat** で **プロンプトの吹き出しを強化** をオフにすると、Paseo の標準の吹き出しで表示されます。 |
 | Paseo がプラグインのバージョンを受け付けない、または Clear Chat がプラグインの設定やタイムラインの対応がないと表示する。 | daemon のホストと、つないでいるすべてのアプリの Paseo を更新してから、Clear Chat を再読み込みしてください。Clear Chat に必要な Paseo のバージョンは `paseo-plugin.json` に書いてあります。 |
 | プラグインの登録に失敗し、Clear Chat が起動しない。 | Paseo を更新して Clear Chat を再読み込みしてください。それでも直らない場合は、プラグインの設定をバックアップしてから CLI で入れ直してください。 |
 | Clear Chat がホストの設定を読み込めない。 | ホストにつなぎ直し、**Settings → Plugins → Clear Chat** で **再試行**（Retry）を選んでください。それでも直らない場合は、daemon がプラグインの設定フォルダーにアクセスできるか確認してください。 |
@@ -197,9 +195,83 @@ Clear Chat 自身の表示文字は Paseo アプリの言語（英語、簡体�
 
 Paseo がビルドのコマンドを実行できない、またはプラグインのバンドルを読み込めない場合、Clear Chat は自分でメッセージを表示できません。daemon のホストの Node.js、npm、Paseo のバージョンを確認し、CLI からやり直してください。それでも直らない場合は、プラグイン設定の **問題を報告**（Report a problem）から、復旧用のメッセージと Paseo のバージョンを添えてお知らせください。ログを共有する前に、個人的なパスや会話の内容は消してください。
 
+## Beautiful Chat からのアップグレード
+
+1. Beautiful Chat の設定を**バックアップ**します。
+2. Beautiful Chat を入れたまま **Clear Chat をインストール**します。Clear Chat は初回の起動時に設定をコピーします。
+3. 設定が正しいことを**確認**してから、Beautiful Chat を削除します。
+
+<details>
+<summary><b>具体的なコマンド、元に戻す方法、移行のしくみ</b></summary>
+
+以下のコマンドは `PASEO_HOME` を使い、未設定のときは `$HOME/.paseo` を使います。daemon のフォルダーを `--home` だけで指定している場合は、先に `PASEO_HOME` をそのパスに設定してください。バックアップや確認に失敗したら、そこで止めてください。
+
+**1. バックアップ**
+
+```bash
+legacy_backup="${PASEO_HOME:-$HOME/.paseo}/backups/plugin-settings-beautiful-chat-$(date +%Y%m%d-%H%M%S)"
+mkdir -p "${PASEO_HOME:-$HOME/.paseo}/backups"
+cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_backup"
+```
+
+`beautiful-chat` の設定フォルダーがない場合は、Beautiful Chat の設定を変えたことがないので、この手順は飛ばしてかまいません。
+
+**2. インストール**
+
+```bash
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.0.2
+```
+
+**3. 確認してから古いプラグインを削除**
+
+`${PASEO_HOME:-$HOME/.paseo}/plugin-settings/clear-chat/presentation.json` ができていて、`$legacy_backup/presentation.json` と同じ内容であることを確認してください。すでにある Clear Chat の設定ファイルが上書きされることはありません。ファイルがない、または内容が違う場合は、Beautiful Chat とバックアップを残したまま、ログで移行のエラーを確認してください。
+
+```bash
+paseo plugin remove beautiful-chat
+```
+
+バックアップは残しておいてください。
+
+**元に戻す**
+
+Clear Chat の今の設定をバックアップしてから削除します。Clear Chat を削除すると設定もすべて消えます（`update` では消えません）。`clear-chat` の設定フォルダーがない場合は、`cp` の行は飛ばしてください。
+
+```bash
+clear_chat_backup="${PASEO_HOME:-$HOME/.paseo}/backups/plugin-settings-clear-chat-$(date +%Y%m%d-%H%M%S)"
+mkdir -p "${PASEO_HOME:-$HOME/.paseo}/backups"
+cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/clear-chat" "$clear_chat_backup"
+paseo plugin remove clear-chat
+```
+
+Beautiful Chat の設定フォルダーがなくなっている場合は、アップグレード時のバックアップから戻します。`YYYYMMDD-HHMMSS` はバックアップの日時に置き換えてください。すでにあるフォルダーが上書きされることはありません。
+
+```bash
+legacy_backup="${PASEO_HOME:-$HOME/.paseo}/backups/plugin-settings-beautiful-chat-YYYYMMDD-HHMMSS"
+test ! -e "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" &&
+  cp -a "$legacy_backup" "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat"
+```
+
+そのあと、Beautiful Chat の最後のバージョンをインストールします。
+
+```bash
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref 2bf25e8
+```
+
+Clear Chat で変えた設定は Beautiful Chat には戻りません。バックアップは両方とも残しておいてください。
+
+**移行のしくみ**
+
+- 初回の起動時、Clear Chat の設定ファイルがまだなければ、サーバーが Beautiful Chat の `presentation.json` を Clear Chat の設定フォルダーにコピーします。どちらのファイルも削除・上書きしません。
+- コピーに失敗した場合は、2 つのパスとエラーをログに残し、Clear Chat は初期設定で起動します。次回の起動時にもう一度試します。
+- そのあと設定はバージョン 1 から 2 に更新されます。選んだ内容はそのまま残り、新しい 2 つの折りたたみ設定は初期値から始まります。
+- ブラウザーでは、以前ブラウザーに保存されていた設定を 1 回だけ取り込みます。ホストに保存された設定が常に優先です。
+- 移行は標準のインストール ID を前提にしています。`--id` を変えている場合や、daemon のフォルダーを `--home` だけで指定している場合は、設定を手でコピーしてください。
+
+</details>
+
 ## 問題の報告
 
-不具合やご要望は [GitHub の Issue](https://github.com/jasonhnd/paseo-clear-chat/issues/new/choose) でお知らせください。設定画面のいちばん下にある **問題を報告**（Report a problem）からも開けます。日本語や中国語でも大丈夫です。
+不具合やご要望は [GitHub の Issue](https://github.com/jasonhnd/paseo-clear-chat/issues/new/choose) でお知らせください。設定画面のいちばん下にある **問題を報告**（Report a problem）からも開けます。日本語や中国語でも大丈夫です。リリースごとの変更は [CHANGELOG](CHANGELOG.md) にまとめています。
 
 ## クレジット
 
