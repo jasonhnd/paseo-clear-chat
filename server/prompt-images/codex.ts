@@ -15,6 +15,11 @@ import { readJsonlReadOnly } from "./read-only";
  * Reads `${CODEX_HOME:-~/.codex}` rollout JSONL only. It never creates, copies,
  * locks, or writes files in that store. JSONL goes through `readJsonlReadOnly`.
  * Inline data URLs are limited to the shared 1.5 MiB cap.
+ *
+ * A rollout is used only when both the live and archived trees were fully
+ * scanned and exactly one confirmed file exists between them. Text matches from
+ * concatenated input_text and from a single part are one set. An incomplete
+ * scan, a changed file, or more than one qualifying message returns no image.
  */
 
 /** Bounds memory for one message. The registry still caps thumbnails at three. */
@@ -41,6 +46,14 @@ interface MessageText {
   index: number;
   ids: string[];
   parts: string[];
+  images: FoundImage[];
+}
+
+interface FileStamp {
+  dev: bigint;
+  ino: bigint;
+  size: bigint;
+  mtimeNs: bigint;
 }
 
 function none(): FoundImages {
@@ -68,6 +81,10 @@ function isFsMiss(error: unknown): boolean {
   if (!error || typeof error !== "object" || !("code" in error)) return false;
   const code = String((error as { code?: unknown }).code);
   return code === "ENOENT" || code === "EACCES" || code === "EPERM" || code === "ELOOP" || code === "ENOTDIR";
+}
+
+function isEnoent(error: unknown): boolean {
+  return !!error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === "ENOENT";
 }
 
 function storedIds(payload: Record<string, unknown>): string[] {
@@ -172,9 +189,10 @@ function sameText(left: { ids: string[]; parts: string[] }, right: { ids: string
 }
 
 /**
- * Exact concatenated input_text first. If that misses, a unique input_text part
- * may still be the Paseo text (Codex wraps the prompt with image labels and
- * environment text). No trimming and no other normalisation.
+ * Stored message ids win. Otherwise a message qualifies when its input_text
+ * parts concatenate to the prompt or any one part equals it (Codex wraps the
+ * prompt with image labels and environment text). Both forms are one set,
+ * deduped by message index. No trimming and no other normalisation.
  */
 function selectMessages(messages: MessageText[], context: ResolverContext): MessageText[] {
   const needles = providedIds(context);
@@ -182,9 +200,20 @@ function selectMessages(messages: MessageText[], context: ResolverContext): Mess
     const byId = messages.filter(message => message.ids.some(id => needles.includes(id)));
     if (byId.length > 0) return byId;
   }
-  const exact = messages.filter(message => message.parts.join("") === context.text);
-  if (exact.length > 0) return exact;
-  return messages.filter(message => message.parts.some(part => part === context.text));
+  const seen = new Set<number>();
+  const matched: MessageText[] = [];
+  const add = (message: MessageText) => {
+    if (seen.has(message.index)) return;
+    seen.add(message.index);
+    matched.push(message);
+  };
+  for (const message of messages) {
+    if (message.parts.join("") === context.text) add(message);
+  }
+  for (const message of messages) {
+    if (message.parts.some(part => part === context.text)) add(message);
+  }
+  return matched;
 }
 
 async function resolveHome(path: string): Promise<string | null> {
@@ -197,20 +226,28 @@ async function resolveHome(path: string): Promise<string | null> {
   }
 }
 
-async function containedDirectory(home: string, name: string): Promise<string | null> {
+/** ENOENT means this optional tree is absent. Any other failure means it could not be inspected. */
+async function containedDirectory(home: string, name: string): Promise<string | null | "incomplete"> {
   const path = join(home, name);
+  let info;
   try {
-    const info = await lstat(path);
-    // Symlinks are not followed, including a sessions directory that points outside the store.
-    if (info.isSymbolicLink() || !info.isDirectory()) return null;
+    info = await lstat(path);
+  } catch (error) {
+    if (isEnoent(error)) return null;
+    return "incomplete";
+  }
+  // Symlinks are not followed, including a sessions directory that points outside the store.
+  if (info.isSymbolicLink() || !info.isDirectory()) return null;
+  try {
     const real = await realpath(path);
     return isInside(home, real) ? real : null;
-  } catch {
-    return null;
+  } catch (error) {
+    if (isEnoent(error)) return null;
+    return "incomplete";
   }
 }
 
-async function confirmedFile(root: string, path: string): Promise<string | null> {
+async function confirmedFile(root: string, path: string): Promise<string | null | "incomplete"> {
   try {
     const info = await lstat(path);
     if (!info.isFile() || info.isSymbolicLink()) return null;
@@ -218,43 +255,57 @@ async function confirmedFile(root: string, path: string): Promise<string | null>
     if (!isInside(root, real)) return null;
     const again = await lstat(real);
     return again.isFile() && !again.isSymbolicLink() ? real : null;
-  } catch {
-    return null;
+  } catch (error) {
+    // A vanished file is not a candidate. Any other lstat or realpath failure
+    // means this tree could not be confirmed.
+    if (isEnoent(error)) return null;
+    return "incomplete";
   }
 }
 
-async function rolloutFiles(root: string, threadId: string, signal: AbortSignal): Promise<string[] | "aborted"> {
+type WalkResult = "ok" | "aborted" | "incomplete";
+type RolloutScan = string[] | "aborted" | "incomplete";
+
+async function rolloutFiles(root: string, threadId: string, signal: AbortSignal): Promise<RolloutScan> {
   const suffix = `-${threadId}.jsonl`;
   const found: string[] = [];
-  const walk = async (dir: string, depth: number): Promise<"ok" | "aborted"> => {
+  const walk = async (dir: string, depth: number): Promise<WalkResult> => {
     if (signal.aborted) return "aborted";
-    if (depth > MAX_WALK_DEPTH || found.length > 1) return "ok";
+    // Two files already prove the thread is not unique. An unvisited directory does not.
+    if (found.length > 1) return "ok";
+    if (depth > MAX_WALK_DEPTH) return "incomplete";
     let directory;
     try {
       directory = await opendir(dir);
     } catch {
-      return "ok";
+      return "incomplete";
     }
     try {
       // `read()` does not close the handle. `for await` would, and a second close throws.
       while (true) {
-        const entry = await directory.read();
-        if (!entry) break;
         if (signal.aborted) return "aborted";
+        let entry;
+        try {
+          entry = await directory.read();
+        } catch {
+          return "incomplete";
+        }
+        if (!entry) break;
         if (found.length > 1) return "ok";
         const name = entry.name;
         if (name.includes("/") || name.includes("\\") || name.includes("\0") || entry.isSymbolicLink()) continue;
         const path = join(dir, name);
         if (entry.isDirectory()) {
           let info;
-          try { info = await lstat(path); } catch { continue; }
+          try { info = await lstat(path); } catch { return "incomplete"; }
           if (!info.isDirectory() || info.isSymbolicLink()) continue;
-          if (await walk(path, depth + 1) === "aborted") return "aborted";
+          const nested = await walk(path, depth + 1);
+          if (nested !== "ok") return nested;
           continue;
         }
         if (!entry.isFile() || !name.startsWith("rollout-") || !name.endsWith(suffix)) continue;
         let info;
-        try { info = await lstat(path); } catch { continue; }
+        try { info = await lstat(path); } catch { return "incomplete"; }
         if (!info.isFile() || info.isSymbolicLink()) continue;
         found.push(path);
       }
@@ -263,30 +314,36 @@ async function rolloutFiles(root: string, threadId: string, signal: AbortSignal)
     }
     return "ok";
   };
-  if (await walk(root, 0) === "aborted") return "aborted";
+  const outcome = await walk(root, 0);
+  if (outcome !== "ok") return outcome;
   return found;
 }
 
-type ThreadHit = "none" | "ambiguous" | "aborted" | { path: string };
+type ThreadHit = "none" | "ambiguous" | "aborted" | "incomplete" | { path: string };
 
 async function fileForThread(home: string, threadId: string, signal: AbortSignal): Promise<ThreadHit> {
   if (!THREAD_ID.test(threadId)) return "none";
+  const confirmedPaths: string[] = [];
   for (const name of ["sessions", "archived_sessions"] as const) {
     if (signal.aborted) return "aborted";
     const root = await containedDirectory(home, name);
+    if (root === "incomplete") return "incomplete";
     if (!root) continue;
     const found = await rolloutFiles(root, threadId, signal);
-    if (found === "aborted") return "aborted";
+    if (found === "aborted" || found === "incomplete") return found;
     if (found.length > 1) return "ambiguous";
     const candidate = found[0];
     if (!candidate) continue;
     const confirmed = await confirmedFile(root, candidate);
-    if (confirmed) return { path: confirmed };
+    if (confirmed === "incomplete") return "incomplete";
+    if (confirmed) confirmedPaths.push(confirmed);
   }
-  return "none";
+  if (confirmedPaths.length > 1) return "ambiguous";
+  const path = confirmedPaths[0];
+  return path ? { path } : "none";
 }
 
-async function locateRollout(home: string, context: ResolverContext): Promise<string | null> {
+async function locateRollout(home: string, context: ResolverContext): Promise<string | null | "ambiguous"> {
   const ids: string[] = [];
   for (const value of [context.sessionId, context.nativeHandle]) {
     if (typeof value === "string" && value.length > 0 && !ids.includes(value)) ids.push(value);
@@ -294,7 +351,9 @@ async function locateRollout(home: string, context: ResolverContext): Promise<st
   const paths = new Set<string>();
   for (const id of ids) {
     const hit = await fileForThread(home, id, context.signal);
-    if (hit === "ambiguous" || hit === "aborted") return null;
+    if (hit === "aborted") return null;
+    if (hit === "incomplete") throw new Error("lookup_failed");
+    if (hit === "ambiguous") return "ambiguous";
     if (typeof hit === "object") paths.add(hit.path);
   }
   if (paths.size !== 1) return null;
@@ -302,35 +361,50 @@ async function locateRollout(home: string, context: ResolverContext): Promise<st
   return path ?? null;
 }
 
-async function collectMessages(path: string, signal: AbortSignal): Promise<MessageText[] | null> {
+async function fileStamp(path: string): Promise<FileStamp> {
+  const info = await lstat(path, { bigint: true });
+  return { dev: info.dev, ino: info.ino, size: info.size, mtimeNs: info.mtimeNs };
+}
+
+function sameStamp(left: FileStamp, right: FileStamp): boolean {
+  return left.dev === right.dev && left.ino === right.ino && left.size === right.size && left.mtimeNs === right.mtimeNs;
+}
+
+async function readMessages(path: string, signal: AbortSignal, includeImages: boolean): Promise<MessageText[] | null> {
   const messages: MessageText[] = [];
   let index = 0;
   for await (const entry of readJsonlReadOnly(path)) {
     if (signal.aborted) return null;
-    const parsed = parseUser(entry, false);
+    const parsed = parseUser(entry, includeImages);
     if (!parsed) continue;
-    messages.push({ index, ids: parsed.ids, parts: parsed.parts });
+    messages.push({ index, ids: parsed.ids, parts: parsed.parts, images: parsed.images });
     index += 1;
   }
   return messages;
 }
 
-async function loadMatchedImages(path: string, target: MessageText, signal: AbortSignal): Promise<FoundImage[] | null> {
-  let index = 0;
-  for await (const entry of readJsonlReadOnly(path)) {
-    if (signal.aborted) return null;
-    const parsed = parseUser(entry, false);
-    if (!parsed) continue;
-    if (index !== target.index) {
-      index += 1;
-      continue;
-    }
-    if (!sameText(parsed, target)) return null;
-    const withImages = parseUser(entry, true);
-    if (!withImages || !sameText(withImages, target)) return null;
-    return withImages.images;
+/**
+ * Two reads must describe the same file. The second read selects from every
+ * user message again, so an appended duplicate cannot hide behind the first
+ * ordinal. A changed dev, ino, size, or mtime is not a match.
+ */
+async function readUniqueMatch(path: string, context: ResolverContext): Promise<FoundImages> {
+  const before = await fileStamp(path);
+  const first = await readMessages(path, context.signal, false);
+  if (!first || context.signal.aborted) return none();
+  const second = await readMessages(path, context.signal, true);
+  if (!second || context.signal.aborted) return none();
+  const after = await fileStamp(path);
+  if (!sameStamp(before, after)) throw new Error("lookup_failed");
+  const selected = selectMessages(second, context);
+  if (selected.length !== 1) return { matchedMessages: selected.length, images: [] };
+  const chosen = selected[0];
+  const previous = selectMessages(first, context);
+  const earlier = previous[0];
+  if (!chosen || previous.length !== 1 || !earlier || earlier.index !== chosen.index || !sameText(earlier, chosen)) {
+    return none();
   }
-  return null;
+  return { matchedMessages: 1, images: chosen.images };
 }
 
 export const codexPromptImages = {
@@ -345,16 +419,9 @@ export const codexPromptImages = {
       const home = await resolveHome(configuredHome);
       if (!home || context.signal.aborted) return none();
       const path = await locateRollout(home, context);
+      if (path === "ambiguous") return { matchedMessages: 2, images: [] };
       if (!path || context.signal.aborted) return none();
-      const messages = await collectMessages(path, context.signal);
-      if (!messages) return none();
-      const selected = selectMessages(messages, context);
-      if (selected.length !== 1) return { matchedMessages: selected.length, images: [] };
-      const target = selected[0];
-      if (!target) return none();
-      const images = await loadMatchedImages(path, target, context.signal);
-      if (!images) return none();
-      return { matchedMessages: 1, images };
+      return await readUniqueMatch(path, context);
     } catch (error) {
       if (isFsMiss(error)) return none();
       throw new Error("lookup_failed");
