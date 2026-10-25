@@ -396,6 +396,33 @@ test("readJsonlReadOnly reads a verified descriptor after the path is replaced",
   }
 });
 
+test("readJsonlReadOnly reports malformed and oversized records only when asked", async t => {
+  const h = harness();
+  const root = fixture(t);
+  const path = join(root, "records.jsonl");
+  const file = fs.openSync(path, "w");
+  try {
+    fs.writeSync(file, '{"ok":1}\n\nnot-json\n');
+    const block = Buffer.alloc(1024 * 1024, 0x61);
+    let remaining = h.MAX_JSONL_LINE_BYTES + 8;
+    while (remaining) {
+      const length = Math.min(remaining, block.length);
+      fs.writeSync(file, block, 0, length);
+      remaining -= length;
+    }
+    fs.writeSync(file, '\n{"after":2}\n{"partial":');
+  } finally { fs.closeSync(file); }
+  const skipped = [];
+  const records = [];
+  for await (const record of h.readJsonlReadOnly(path, { onSkipped: event => skipped.push(event.reason) })) records.push(record);
+  assert.deepEqual(records, [{ ok: 1 }, { after: 2 }]);
+  assert.deepEqual(skipped, ["malformed", "oversized", "malformed"]);
+  const plain = [];
+  for await (const record of h.readJsonlReadOnly(path)) plain.push(record);
+  assert.deepEqual(plain, records);
+  assert.equal(fs.readFileSync(path).includes(Buffer.from("not-json")), true);
+});
+
 test("readJsonlReadOnly streams valid records around bad lines without changing the file", async t => {
   const h = harness();
   const root = fixture(t);
