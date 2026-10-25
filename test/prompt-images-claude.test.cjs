@@ -242,6 +242,37 @@ for (const lookup of [{}, { messageId: "queued-message" }, { clientMessageId: "s
   });
 }
 
+test("Claude queued command and the user turn it points at are one message", async t => {
+  const h = harness(t), png = await picture(), jpeg = await picture("image/jpeg");
+  // Same bytes, separate object: identical images from the two lines dedupe.
+  const pngCopy = { type: "image", source: { ...png.block.source } };
+  const lines = [
+    user([text(), png.block], { uuid: "source-message" }),
+    queued([text(), pngCopy, jpeg.block]),
+  ];
+  h.store(lines);
+  for (const lookup of [
+    { messageId: "queued-message" }, { clientMessageId: "queued-message" },
+    { messageId: "source-message" }, { clientMessageId: "source-message" }, {},
+  ]) {
+    assert.deepEqual(await foundBytes(h, lookup), [png.bytes, jpeg.bytes]);
+  }
+  const sibling = await picture("image/png", 3);
+  h.store([...lines, user([text(), sibling.block], { uuid: "sibling" })]);
+  assert.deepEqual(await h.resolver.find(h.context()), { matchedMessages: 2, images: [] });
+  assert.deepEqual(await foundBytes(h, { messageId: "queued-message" }), [png.bytes, jpeg.bytes]);
+  // A discarded or unreadable user turn still blocks; a meta attachment does not hide the turn.
+  h.store([user([text(), png.block], { uuid: "source-message", isSidechain: true }), queued([text(), jpeg.block])]);
+  assert.deepEqual(await h.resolver.find(h.context({ messageId: "source-message" })), { matchedMessages: 1, images: [] });
+  assert.deepEqual((await h.resolver.find(h.context())).images, []);
+  h.store([user({ future: "content" }, { uuid: "source-message" }), queued([text(), png.block])]);
+  assert.deepEqual(await h.resolver.find(h.context({ messageId: "queued-message" })), { matchedMessages: 1, images: [] });
+  assert.deepEqual((await h.resolver.find(h.context())).images, []);
+  h.store([user([text(), png.block], { uuid: "source-message" }), queued([text(), jpeg.block], {}, { isMeta: true })]);
+  assert.deepEqual(await foundBytes(h, { messageId: "source-message" }), [png.bytes]);
+  assert.deepEqual(await foundBytes(h, {}), [png.bytes]);
+});
+
 test("Claude queued commands share message ambiguity and image caps/checks with user messages", async t => {
   const h = harness(t), png = await picture(), sibling = await picture("image/png", 3);
   h.store([queued([text(), png.block]), user([text(), sibling.block])]);
