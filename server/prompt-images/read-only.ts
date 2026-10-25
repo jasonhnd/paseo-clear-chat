@@ -59,6 +59,8 @@ export interface JsonlReadOptions {
   fd?: number;
   /** With `fd`, parse at most this many bytes from offset 0. */
   byteLength?: number;
+  /** Called once per dropped record. Blank lines are not records. */
+  onSkipped?: (event: { reason: "malformed" | "oversized" }) => void;
 }
 
 function readAt(fd: number, buffer: Buffer, position: number, length: number): Promise<number> {
@@ -85,14 +87,24 @@ async function* readDescriptor(fd: number, byteLength?: number): AsyncGenerator<
   }
 }
 
-async function* recordsFromChunks(source: AsyncIterable<Buffer>): AsyncGenerator<unknown> {
+async function* recordsFromChunks(
+  source: AsyncIterable<Buffer>,
+  onSkipped?: (event: { reason: "malformed" | "oversized" }) => void,
+): AsyncGenerator<unknown> {
   let chunks: Buffer[] = [];
   let length = 0;
   let oversized = false;
   const parse = () => {
-    if (oversized || !length) return [];
+    if (!length) return [];
+    if (oversized) {
+      onSkipped?.({ reason: "oversized" });
+      return [];
+    }
     try { return [JSON.parse(Buffer.concat(chunks, length).toString("utf8")) as unknown]; }
-    catch { return []; }
+    catch {
+      onSkipped?.({ reason: "malformed" });
+      return [];
+    }
   };
   for await (const bytes of source) {
     let start = 0;
@@ -113,15 +125,19 @@ async function* recordsFromChunks(source: AsyncIterable<Buffer>): AsyncGenerator
   for (const record of parse()) yield record;
 }
 
-/** Streams bounded records; malformed, partial and oversized lines are skipped. */
+/**
+ * Streams bounded records. Malformed, partial and oversized lines are skipped.
+ * Pass `onSkipped` to learn that a record was dropped; callers that omit it
+ * keep the previous behavior.
+ */
 export async function* readJsonlReadOnly(path: string, options?: JsonlReadOptions): AsyncGenerator<unknown> {
   if (options?.fd !== undefined) {
-    yield* recordsFromChunks(readDescriptor(options.fd, options.byteLength));
+    yield* recordsFromChunks(readDescriptor(options.fd, options.byteLength), options.onSkipped);
     return;
   }
   const stream = createReadStream(path, { flags: "r" });
   try {
-    yield* recordsFromChunks(stream as AsyncIterable<Buffer>);
+    yield* recordsFromChunks(stream as AsyncIterable<Buffer>, options?.onSkipped);
   } finally {
     stream.destroy();
   }

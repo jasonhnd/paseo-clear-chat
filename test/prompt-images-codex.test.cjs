@@ -222,7 +222,6 @@ describe("codex pasted images", { concurrency: false }, () => {
       { timestamp: "2026-01-02T03:04:05.000Z", type: "event_msg", payload: { type: "user_message", message: "Exact text.", image_url: dataUrl(decoy) } },
       userMessage("Unrelated note.", [dataUrl(decoy)]),
       userMessage("Exact text.", [dataUrl(png), dataUrl(jpeg, "image/jpeg")]),
-      "{\"type\":\"response_item\"",
       userMessage("Same words.", [dataUrl(decoy)]),
       userMessage("Same words.", []),
       userMessage("By identifier.", [dataUrl(decoy)], { id: "msg-target" }),
@@ -389,12 +388,8 @@ describe("codex pasted images", { concurrency: false }, () => {
     assert.equal(fs.existsSync(path), false);
   });
 
-  test("malformed lines and malformed records are skipped without dropping a unique valid message", async t => {
+  test("a skipped rollout record returns no image, and a valid record of the wrong shape does not", async t => {
     const h = harness();
-    const { home } = installRich(t, h);
-    const result = await findIn(h, home, { text: "Exact text." });
-    assert.equal(result.matchedMessages, 1);
-    assert.deepEqual(await imageBytes(result), [png, jpeg]);
     const root = fixture(t);
     const brokenHome = join(root, "broken");
     writeRollout(brokenHome, THREAD, [
@@ -404,9 +399,55 @@ describe("codex pasted images", { concurrency: false }, () => {
       response({ type: "message", role: "user", image_url: dataUrl(decoy) }),
       userMessage("Exact text.", [dataUrl(png)]),
     ]);
-    const broken = await findIn(h, brokenHome, { text: "Exact text." });
-    assert.equal(broken.matchedMessages, 1);
-    assert.deepEqual(await imageBytes(broken), [png]);
+    const broken = await askRegistry(h, brokenHome, "Exact text.");
+    assert.deepEqual(broken.images, emptyList("lookup_failed"));
+    assert.equal(broken.image.dataUri, null);
+    assert.equal(broken.image.error, "lookup_failed");
+    const shaped = join(root, "shaped");
+    writeRollout(shaped, THREAD, [
+      response({ type: "message", role: "user", content: { text: "Exact text.", image_url: dataUrl(decoy) } }),
+      response({ type: "message", role: "user", image_url: dataUrl(decoy) }),
+      userMessage("Exact text.", [dataUrl(png)]),
+    ]);
+    const kept = await findIn(h, shaped, { text: "Exact text." });
+    assert.equal(kept.matchedMessages, 1);
+    assert.deepEqual(await imageBytes(kept), [png]);
+  });
+
+  test("a truncated second matching message returns no image", async t => {
+    const h = harness();
+    const root = fixture(t);
+    const home = join(root, "codex-home");
+    const second = JSON.stringify(userMessage("Exact text.", [dataUrl(jpeg, "image/jpeg")]));
+    const truncated = second.slice(0, -12);
+    assert.throws(() => JSON.parse(truncated));
+    writeRollout(home, THREAD, [
+      sessionMeta(THREAD),
+      userMessage("Exact text.", [dataUrl(png)]),
+      truncated,
+    ]);
+    const listed = await askRegistry(h, home, "Exact text.");
+    assert.deepEqual(listed.images, emptyList("lookup_failed"));
+    assert.equal(listed.image.dataUri, null);
+    assert.equal(listed.image.error, "lookup_failed");
+  });
+
+  test("a second matching message larger than the JSONL line cap returns no image", async t => {
+    const h = harness();
+    const root = fixture(t);
+    const home = join(root, "codex-home");
+    const line = JSON.stringify(userMessage("Exact text.", [dataUrl(jpeg, "image/jpeg")], {
+      pad: "A".repeat(h.MAX_JSONL_LINE_BYTES),
+    }));
+    assert.equal(line.includes("\n"), false);
+    assert.ok(Buffer.byteLength(line) > h.MAX_JSONL_LINE_BYTES);
+    assert.equal(line.includes("Exact text."), true);
+    const path = writeRollout(home, THREAD, [sessionMeta(THREAD), userMessage("Exact text.", [dataUrl(png)])]);
+    fs.appendFileSync(path, `${line}\n`);
+    const listed = await askRegistry(h, home, "Exact text.");
+    assert.deepEqual(listed.images, emptyList("lookup_failed"));
+    assert.equal(listed.image.dataUri, null);
+    assert.equal(listed.image.error, "lookup_failed");
   });
 
   test("an unknown record shape returns no images", async t => {
