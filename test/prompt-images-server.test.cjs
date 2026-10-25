@@ -382,7 +382,7 @@ test("readJsonlReadOnly streams valid records around bad lines without changing 
   await assert.rejects(async () => { for await (const _ of h.readJsonlReadOnly(join(root, "missing"))) {} }, /ENOENT/);
 });
 
-test("openSqliteReadOnly uses an escaped file URI and rejects writes without creating sidecars", async t => {
+test("an idle database opens immutable, reads its rows and creates no sidecars during or after the read", async t => {
   const h = harness();
   const root = fixture(t);
   const path = join(root, "records #?.sqlite");
@@ -390,18 +390,28 @@ test("openSqliteReadOnly uses an escaped file URI and rejects writes without cre
   source.exec("CREATE TABLE images (id TEXT); INSERT INTO images VALUES ('one')");
   source.close();
   const before = fs.readFileSync(path);
-  const database = await h.openSqliteReadOnly(path);
-  try {
-    assert.equal(database.prepare("SELECT id FROM images").get().id, "one");
+  const names = ["records #?.sqlite"];
+  const plans = [];
+  const seen = await h.openSqliteReadOnly(path, database => {
+    assert.deepEqual(fs.readdirSync(root), names);
+    assert.equal(database.prepare("PRAGMA query_only").get().query_only, 1);
+    const id = database.prepare("SELECT id FROM images").get().id;
+    assert.deepEqual(fs.readdirSync(root), names);
     assert.throws(() => database.exec("INSERT INTO images VALUES ('two')"), /readonly/);
     assert.throws(() => database.prepare("DELETE FROM images").run(), /readonly/);
     database.exec("PRAGMA query_only = OFF");
     assert.throws(() => database.exec("CREATE TABLE forbidden (id TEXT)"), /readonly/);
-  } finally { database.close(); }
+    assert.deepEqual(fs.readdirSync(root), names);
+    return id;
+  }, { beforeOpen: plan => plans.push(plan) });
+  assert.equal(seen, "one");
+  assert.equal(plans.length, 1);
+  assert.equal(plans[0].immutable, true);
+  assert.match(plans[0].uri, /records%20%23%3F\.sqlite\?mode=ro&immutable=1$/);
   assert.deepEqual(fs.readFileSync(path), before);
-  assert.deepEqual(fs.readdirSync(root), ["records #?.sqlite"]);
+  assert.deepEqual(fs.readdirSync(root), names);
   const missing = join(root, "missing.sqlite");
-  await assert.rejects(h.openSqliteReadOnly(missing), /ENOENT/);
+  await assert.rejects(h.openSqliteReadOnly(missing, () => assert.fail("missing file is not queried")), /ENOENT/);
   assert.equal(fs.existsSync(missing), false);
 });
 
@@ -417,18 +427,69 @@ test("openSqliteReadOnly sees live WAL commits while refusing writes and preserv
     assert.deepEqual(fs.readFileSync(path), mainBeforeCommit);
     const main = fs.readFileSync(path), wal = fs.readFileSync(`${path}-wal`);
     assert.ok(wal.length > 0);
-    const database = await h.openSqliteReadOnly(path);
-    try {
+    const plans = [];
+    const seen = await h.openSqliteReadOnly(path, database => {
       assert.equal(database.prepare("PRAGMA query_only").get().query_only, 1);
       assert.equal(database.prepare("PRAGMA busy_timeout").get().timeout, 250);
-      assert.equal(database.prepare("SELECT id FROM images").get().id, "wal-only");
+      const id = database.prepare("SELECT id FROM images").get().id;
       database.exec("PRAGMA query_only = OFF");
       assert.throws(() => database.exec("INSERT INTO images VALUES ('forbidden')"), /readonly/);
-    } finally { database.close(); }
+      return id;
+    }, { beforeOpen: plan => plans.push(plan) });
+    assert.equal(seen, "wal-only");
+    assert.equal(plans.length, 1);
+    assert.equal(plans[0].immutable, false);
+    assert.match(plans[0].uri, /\?mode=ro$/);
+    assert.doesNotMatch(plans[0].uri, /immutable/);
     assert.deepEqual(fs.readFileSync(path), main);
     assert.deepEqual(fs.readFileSync(`${path}-wal`), wal);
-    assert.ok(fs.readdirSync(root).every(name => ["live.sqlite", "live.sqlite-wal", "live.sqlite-shm"].includes(name)));
+    assert.deepEqual(fs.readdirSync(root).sort(), ["live.sqlite", "live.sqlite-shm", "live.sqlite-wal"]);
   } finally { source.close(); }
+});
+
+test("a sidecar created between the check and the open discards the immutable read and retries the plain path", async t => {
+  const h = harness();
+  const root = fixture(t);
+  const path = join(root, "race.sqlite");
+  const source = new DatabaseSync(path);
+  source.exec("CREATE TABLE images (id TEXT); INSERT INTO images VALUES ('main')");
+  source.close();
+  let writer;
+  t.after(() => writer?.close());
+  const plans = [];
+  const seen = await h.openSqliteReadOnly(path, database => database.prepare("SELECT id FROM images").all().map(row => row.id), {
+    beforeOpen(plan) {
+      plans.push(plan);
+      if (plans.length === 1) {
+        writer = new DatabaseSync(path);
+        writer.exec("PRAGMA journal_mode = WAL; INSERT INTO images VALUES ('wal-only')");
+      }
+    },
+  });
+  assert.deepEqual(plans.map(plan => plan.immutable), [true, false]);
+  assert.match(plans[0].uri, /immutable=1/);
+  assert.match(plans[1].uri, /\?mode=ro$/);
+  assert.doesNotMatch(plans[1].uri, /immutable/);
+  assert.deepEqual(seen, ["main", "wal-only"]);
+});
+
+test("a plain retry that fails returns null instead of a stale image read", async t => {
+  const h = harness();
+  const root = fixture(t);
+  const path = join(root, "retry.sqlite");
+  const source = new DatabaseSync(path);
+  source.exec("CREATE TABLE images (id TEXT); INSERT INTO images VALUES ('main')");
+  source.close();
+  const plans = [];
+  const seen = await h.openSqliteReadOnly(path, () => "stale", {
+    beforeOpen(plan) {
+      plans.push(plan.immutable);
+      if (plan.immutable) fs.writeFileSync(`${path}-wal`, Buffer.alloc(0));
+      else throw new Error("plain open failed");
+    },
+  });
+  assert.equal(seen, null);
+  assert.deepEqual(plans, [true, false]);
 });
 
 test("both RPCs require exactly one matched message, including text fallback when IDs were supplied", async () => {

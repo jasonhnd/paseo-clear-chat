@@ -1,4 +1,4 @@
-import { constants, createReadStream, realpath } from "node:fs";
+import { constants, createReadStream, existsSync, realpath } from "node:fs";
 import { open, stat } from "node:fs/promises";
 import { promisify } from "node:util";
 import { extname, isAbsolute, relative, resolve, sep } from "node:path";
@@ -89,22 +89,93 @@ export async function* readJsonlReadOnly(path: string): AsyncGenerator<unknown> 
   }
 }
 
-/**
- * Reads live databases, including committed WAL transactions. Callers must close
- * the handle in finally immediately after querying. Open failures propagate;
- * there is no fallback to a stale main-file snapshot. Import lazily so hosts
- * lacking node:sqlite fail only the lookup, not startup.
- */
-export async function openSqliteReadOnly(path: string) {
-  const uri = pathToFileURL(await nativeRealpath(path));
-  uri.search = "?mode=ro";
+type SqliteDatabase = import("node:sqlite").DatabaseSync;
+
+function sqliteSidecar(path: string): boolean {
+  return existsSync(`${path}-wal`) || existsSync(`${path}-shm`);
+}
+
+/** Opens one read-only connection. The caller closes it. */
+async function openSqliteDatabase(
+  path: string,
+  immutable: boolean,
+  beforeOpen?: (plan: { immutable: boolean; uri: string }) => void,
+) {
+  const uri = pathToFileURL(path);
+  uri.search = immutable ? "?mode=ro&immutable=1" : "?mode=ro";
+  beforeOpen?.({ immutable, uri: uri.href });
   const { DatabaseSync } = await import("node:sqlite");
   const database = new DatabaseSync(uri.href, { readOnly: true });
   try {
-    database.exec("PRAGMA query_only = ON; PRAGMA busy_timeout = 250");
+    // Idle files use immutable mode, which has no writer to wait for.
+    database.exec(immutable ? "PRAGMA query_only = ON" : "PRAGMA query_only = ON; PRAGMA busy_timeout = 250");
     return database;
   } catch (error) {
     database.close();
     throw error;
+  }
+}
+
+async function querySqlitePlain<T>(
+  path: string,
+  query: (database: SqliteDatabase) => T,
+  beforeOpen?: (plan: { immutable: boolean; uri: string }) => void,
+): Promise<T> {
+  const database = await openSqliteDatabase(path, false, beforeOpen);
+  try {
+    return query(database);
+  } finally {
+    database.close();
+  }
+}
+
+/**
+ * Reads one query, then closes the database.
+ *
+ * When neither `<db>-wal` nor `<db>-shm` exists, nothing is writing, so the
+ * file opens as `file:<realpath>?mode=ro&immutable=1` with `{ readOnly: true }`
+ * and `query_only`. That creates no sidecar files. When either sidecar exists,
+ * the plain `mode=ro` path is used, with `query_only` and a 250 ms busy
+ * timeout. The plain read-only path may update reader marks in the existing
+ * `-shm` (SQLite's coordination file), but it never changes database content.
+ *
+ * A writer can create a sidecar after the check and before the immutable open.
+ * The sidecars are checked again after that query. If one has appeared, the
+ * result is discarded and the query runs once more on the plain path. If that
+ * retry also fails, this returns null and the caller reports no images. Open
+ * failures propagate when no sidecar raced in. `node:sqlite` is imported
+ * lazily so hosts that lack it fail only the lookup, not startup.
+ *
+ * `hooks.beforeOpen` runs after the sidecar check and before the file is
+ * opened, so a test can create a sidecar in that window.
+ */
+export async function openSqliteReadOnly<T>(
+  path: string,
+  query: (database: SqliteDatabase) => T,
+  hooks?: { beforeOpen?: (plan: { immutable: boolean; uri: string }) => void },
+): Promise<T | null> {
+  const real = await nativeRealpath(path);
+  if (sqliteSidecar(real)) return querySqlitePlain(real, query, hooks?.beforeOpen);
+  let outcome: { ok: true; result: T } | { ok: false; error: unknown };
+  try {
+    const database = await openSqliteDatabase(real, true, hooks?.beforeOpen);
+    try {
+      outcome = { ok: true, result: query(database) };
+    } catch (error) {
+      outcome = { ok: false, error };
+    } finally {
+      database.close();
+    }
+  } catch (error) {
+    outcome = { ok: false, error };
+  }
+  if (!sqliteSidecar(real)) {
+    if (outcome.ok) return outcome.result;
+    throw outcome.error;
+  }
+  try {
+    return await querySqlitePlain(real, query, hooks?.beforeOpen);
+  } catch {
+    return null;
   }
 }
