@@ -24,7 +24,7 @@ import { readJsonlReadOnly } from "./read-only";
  * must stay inside the session root, and its device and inode must match the
  * confirmed file. Messages and images come from one read of that descriptor,
  * bounded by the size at open. A second open must report the same device,
- * inode, size, and mtime. Any mismatch returns no image. A JSONL record the
+ * inode, size, mtime, and ctime. Any mismatch returns no image. A JSONL record the
  * reader skipped is an incomplete scan and also returns no image. Text matches
  * from concatenated input_text and from a single part are one set. An
  * incomplete scan, a changed file, or more than one qualifying message
@@ -64,6 +64,7 @@ interface FileStamp {
   ino: bigint;
   size: bigint;
   mtimeNs: bigint;
+  ctimeNs: bigint;
 }
 
 function none(): FoundImages {
@@ -382,7 +383,8 @@ async function locateRollout(home: string, context: ResolverContext): Promise<Co
 }
 
 function sameStamp(left: FileStamp, right: FileStamp): boolean {
-  return left.dev === right.dev && left.ino === right.ino && left.size === right.size && left.mtimeNs === right.mtimeNs;
+  return left.dev === right.dev && left.ino === right.ino && left.size === right.size
+    && left.mtimeNs === right.mtimeNs && left.ctimeNs === right.ctimeNs;
 }
 
 /**
@@ -399,7 +401,7 @@ async function descriptorStamp(file: FileHandle, ref: ConfirmedRollout): Promise
     throw new Error("lookup_failed");
   }
   if (info.dev !== ref.dev || info.ino !== ref.ino) throw new Error("lookup_failed");
-  return { dev: info.dev, ino: info.ino, size: info.size, mtimeNs: info.mtimeNs };
+  return { dev: info.dev, ino: info.ino, size: info.size, mtimeNs: info.mtimeNs, ctimeNs: info.ctimeNs };
 }
 
 async function openRollout(ref: ConfirmedRollout): Promise<{ file: FileHandle; stamp: FileStamp }> {
@@ -435,7 +437,7 @@ async function readMessages(ref: ConfirmedRollout, file: FileHandle, byteLength:
 /**
  * One descriptor supplies every message and image. Its fstat before and after
  * that read, and a second open of the same path, must agree on device, inode,
- * size, and mtime. A swapped path fails the second open even if the first
+ * size, mtime, and ctime. A swapped path fails the second open even if the first
  * descriptor still holds the original file.
  */
 async function readUniqueMatch(ref: ConfirmedRollout, context: ResolverContext): Promise<FoundImages> {
