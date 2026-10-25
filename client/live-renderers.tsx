@@ -336,7 +336,7 @@ export function LiveTodoRenderer({ item, theme }: PluginTimelineItemProps<LiveTo
   usePointerGlow(preferences.pointerGlow);
   const data = item.data;
 
-  const taskListData: TaskListData = useMemo(() => buildChecklist({ items: data.items }, {}, "todo"), [data]);
+  const taskListData: TaskListData = useMemo(() => buildChecklist({ items: data.items }, {}, "todo"), [data, t]);
 
   return (
     <View {...hostFontEscape} testID="tool-card-todo">

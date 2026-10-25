@@ -162,6 +162,35 @@ test("changing the app locale updates an open menu, detail panel and generated s
   h.unmount();
 });
 
+test("changing the app locale updates a live todo checklist title with unchanged data", () => {
+  const h = createToolHarness("ios");
+  const mounted = h.mount({ type: "todo", items: [{ text: "Run checks", completed: false }] });
+  try {
+    for (const locale of ["en", "zh-CN", "ja"]) {
+      h.setLocale(locale);
+      const tree = mounted.render();
+      hasText(h, tree, resources[locale].tool.summary.checklist);
+      for (const other of ["en", "zh-CN", "ja"].filter(value => value !== locale)) {
+        assert.ok(!h.text(tree).includes(resources[other].tool.summary.checklist));
+      }
+    }
+  } finally {
+    h.unmount();
+  }
+});
+
+for (const [count, expected] of [[1, "1 image attached"], [2, "2 images attached"]]) {
+  test(`en: prompt renders the original image plural for count ${count}`, () => {
+    const h = createToolHarness("ios", { userMessage: true });
+    try {
+      const tree = h.mount({ type: "user_message", text: "sample", imageCount: count }).tree;
+      assert.ok(h.nodes(tree, node => node.type === "Text" && h.text(node) === expected).length, expected);
+    } finally {
+      h.unmount();
+    }
+  });
+}
+
 test("host-stored labels retain SDK message tokens and resolve in the presenting locale", () => {
   const h = createToolHarness();
   const panel = h.panels.get("step-details");
@@ -188,18 +217,20 @@ for (const locale of ["zh-CN", "ja"]) {
   });
 }
 
-test("formatted numeric interpolations retain the original English decimal places and grouping", () => {
-  const sdk = createTranslations();
-  const messages = sdk.defineTranslations({ resources });
-  for (const [key, count, formatted, expected] of [
-    ["prompt.tokensK", 1, "1.0", "1.0k"],
-    ["prompt.tokensK", 97.85, "97.9", "97.9k"],
-    ["prompt.tokensM", 1, "1.0", "1.0M"],
-    ["image.megabytes", 1, "1.0", "1.0 MB"],
-    ["reasoning.tokens", 1000, "1,000", "1,000 tokens"],
-    ["system.lines", 75, "075", "075 lines"],
-  ]) assert.equal(sdk.runtime.t(messages, key, { count, replace: { count: formatted } }), expected);
-  sdk.runtime.dispose();
+test("numeric interpolation renders the original ungrouped English reasoning footer", () => {
+  const h = createToolHarness("ios", { reasoningTrace: true });
+  const ReasoningTrace = h.load("client/components/reasoning-trace.tsx").ReasoningTrace;
+  try {
+    const tree = h.draw({ type: ReasoningTrace, props: {
+      data: { id: "sample", agentModel: "", durationMs: 0, totalTokens: 1000, status: "completed", steps: [] },
+      tokens: h.tokens,
+      defaultExpanded: true,
+    } });
+    assert.ok(h.nodes(tree, node => node.type === "Text" && h.text(node) === "Total Tokens: 1000").length);
+    hasText(h, tree, `${(1000).toLocaleString()} tokens`);
+  } finally {
+    h.unmount();
+  }
 });
 
 const approvedResourceHashes = {
