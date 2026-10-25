@@ -160,6 +160,7 @@ function createToolHarness(platform = "ios", options = {}) {
     delete stubs["client/components/syntax-highlight"];
     stubs["client/highlight"] = { useHighlightedLines: () => null };
   }
+  if (options.promptAnchor) delete stubs["client/components/prompt-anchor"];
   if (options.userMessage) delete stubs["client/components/user-message"];
   if ((options.syntax || options.userMessage) && !options.copyFeedback) {
     stubs["client/components/copy-feedback"] = {

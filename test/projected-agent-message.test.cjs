@@ -101,7 +101,7 @@ test("delivery recognition requires both the reserved call ID and exact tool nam
   assert.equal(host.requests.length, 0);
 });
 
-test("new deliveries arriving in the same running revision refresh missing provenance", async t => {
+test("new deliveries wait for settling and share one provenance read", async t => {
   const first = structuredClone(entries);
   const host = source(first);
   host.agent.status = "running";
@@ -115,8 +115,14 @@ test("new deliveries arriving in the same running revision refresh missing prove
   first.push({ item: next });
   const second = h.mount(projected(next), false);
   await settle();
+  assert.equal(summary(h, second.render()), "Message received");
+  assert.equal(host.requests.length, 0, "missing senders never refetch while running");
+  host.agent.status = "idle";
+  host.agent.updatedAt = "2026-01-01T12:01:00Z";
+  second.render();
+  await settle();
   assert.equal(summary(h, second.render()), "Agent finished");
-  assert.equal(host.requests.length, 2);
+  assert.equal(host.requests.length, 1);
 });
 
 test("late lookup results cannot cross hosts sharing the same delivery ID", async t => {
@@ -184,4 +190,42 @@ test("sender snapshot updates supply names and never reuse the recipient title",
   assert.equal(summary(h, mounted.render()), "Message from Sample coordinator");
   agents["sample-coordinator"].title = "sample-coordinator";
   assert.equal(summary(h, mounted.render()), "Message received");
+});
+
+test("sender and reply renderers share a cursor and missing deliveries cannot start another full read", async t => {
+  const timing = require("./fixtures/real-claude-turn-timing.json");
+  const host = source();
+  const next = { ...delivery, callId: "paseo-agent-message:sample-incremental",
+    agentMessage: { event: "finished", sender: { id: "sample-worker", title: "Sample worker" }, text: "Sample task complete." } };
+  const pages = [[...timing, ...entries], [{ item: next }], []];
+  host.paseo.agents.ref = () => ({ timeline: { async refetch(options) {
+    host.requests.push(options);
+    return { entries: pages.shift(), agent: host.agent, endCursor: { epoch: "sample-epoch", seq: host.requests.length * 20 },
+      epoch: "sample-epoch", error: null, hasNewer: false, hasOlder: false };
+  } } });
+  const h = createToolHarness("web", { ...host, replyFooter: true });
+  t.after(() => h.unmount());
+  const final = timing.at(-1);
+  const reply = h.mount(final.item, false, { timestamp: new Date(final.timestamp) });
+  await settle();
+  assert.match(h.text(reply.render()), /Worked for 21s/);
+  const sender = h.mount(projected(), false);
+  await settle();
+  assert.ok(h.text(sender.render()).includes("Message received"));
+  const pending = h.mount(projected(next), false);
+  await settle();
+  assert.equal(summary(h, pending.render()), "Message received");
+  assert.equal(host.requests.length, 1, "all consumers share the settled read even for a missing call ID");
+  host.agent.status = "running";
+  pending.render(); await settle();
+  assert.equal(host.requests.length, 1);
+  host.agent.status = "idle";
+  host.agent.updatedAt = "2026-01-01T12:02:00Z";
+  pending.render(); await settle();
+  assert.equal(summary(h, pending.render()), "Agent finished · Sample worker");
+  assert.deepEqual(host.requests[1], { direction: "after", cursor: { epoch: "sample-epoch", seq: 20 }, limit: 0, projection: "canonical" });
+  const oldSender = h.mount(projected(), true);
+  await settle();
+  assert.ok(h.text(oldSender.render()).includes("Sender: sample-coordinator"), "earlier provenance survives a delta");
+  assert.equal(host.requests.length, 2);
 });
