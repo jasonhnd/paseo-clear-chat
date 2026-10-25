@@ -55,7 +55,9 @@ export function loadCanonicalTimeline(paseo: Paseo, hostId: string, agentId: str
     if (page.agent?.status === "running" || page.agent?.activeTurn) return state.value;
     const timing = reset ? createReplyTiming() : state.timing;
     const messages = new Map(reset ? [] : state.value.messages);
-    timing.append(page.entries);
+    // After pages re-send whole projected rows when a later lifecycle event changes.
+    // Only newly positioned rows extend display-ordered reply timing.
+    timing.append(reset ? page.entries : page.entries.filter(entry => entry.seqStart > cursor!.seq));
     for (const { item } of page.entries) {
       if (item.type !== "tool_call" || !isAgentMessageCall(item)) continue;
       const message = parseAgentDelivery(item.agentMessage);
