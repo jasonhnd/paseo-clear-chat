@@ -90,18 +90,13 @@ function messageId(value: unknown): string | null {
   return /^[a-f0-9]{32}$/.test(id) ? id : null;
 }
 
-/** Python `bool` for a JSON `model_only` flag: only JSON-falsy values stay on screen. */
-function modelOnlyFlag(flag: unknown): boolean {
-  if (flag == null || flag === false || flag === 0 || flag === "") return false;
-  if (typeof flag === "number") return !Number.isNaN(flag);
-  return true;
-}
-
 /**
  * Display visibility of one `display_metadata` value.
  * NULL stays visible. A missing column never reaches here.
- * Invalid JSON is uncertain (`hermes_state_messages._decode_display_metadata` cannot prove the row is real).
- * `model_only` is the hidden merged carrier (`_is_model_only_row`, `micro_compaction._merge_adjacent_user_turns`).
+ * Only the JSON literal `true` hides a merged carrier (`_is_model_only_row`).
+ * Literal `false`, or a JSON object with no `model_only` key, stays visible.
+ * Any other value is uncertain and is not hidden: empty list or dict, strings,
+ * numbers, null, non-objects, and invalid JSON.
  */
 function rowDisplay(raw: unknown): "visible" | "hidden" | "uncertain" {
   if (raw == null) return "visible";
@@ -112,16 +107,13 @@ function rowDisplay(raw: unknown): "visible" | "hidden" | "uncertain" {
   } catch {
     return "uncertain";
   }
-  // Pre-guard rows store one extra JSON string layer.
-  if (typeof parsed === "string") {
-    try {
-      parsed = JSON.parse(parsed);
-    } catch {
-      return "visible";
-    }
-  }
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return "visible";
-  return modelOnlyFlag((parsed as Record<string, unknown>).model_only) ? "hidden" : "visible";
+  const entry = record(parsed);
+  if (!entry) return "uncertain";
+  if (!Object.hasOwn(entry, "model_only")) return "visible";
+  const flag = entry.model_only;
+  if (flag === true) return "hidden";
+  if (flag === false) return "visible";
+  return "uncertain";
 }
 
 function successNote(description: string, path: string): string {
@@ -340,86 +332,137 @@ function plainText(content: string): boolean {
   return PLAIN_BLOCKED.every(marker => !content.includes(marker));
 }
 
-const IMAGE_PART_TYPES = new Set(["image_url", "image", "input_image"]);
-const RESOURCE_PART_TYPES = new Set(["resource", "resource_link", "embedded_resource"]);
+const IMG_LEAF = /^img_[a-f0-9]{12}\.(?:png|jpg|jpeg|webp|gif)$/;
+const API_LEAF = /^api_([a-f0-9]{32})\.(?:png|jpg|jpeg|webp|gif)$/;
+const NATIVE_REL = /^[a-f0-9]{64}\/[A-Za-z0-9._-]+$/;
+const SUCCESS_CLOSER = " ~]";
+const IMAGE_URL = "image_url: ";
+const HINT_INTRO = "[Image attached at: ";
 
-function mimeIsImage(value: unknown): boolean {
-  const entry = record(value);
-  if (!entry) return false;
-  for (const key of ["mimeType", "mime_type", "mime", "mediaType", "media_type"]) {
-    const mime = entry[key];
-    if (typeof mime !== "string") continue;
-    const main = mime.split(";", 1)[0]?.trim().toLowerCase() ?? "";
-    if (main.startsWith("image/")) return true;
+function isPathChar(char: string): boolean {
+  return /^[A-Za-z0-9._/-]$/.test(char);
+}
+
+function cacheRoots(home: string): { image: string; native: string } {
+  return {
+    image: join(home, "cache", "images"),
+    native: join(home, "cache", "documents", "native-inputs"),
+  };
+}
+
+/**
+ * A stored image path is accepted only when every character after the cache root
+ * is `[A-Za-z0-9._/-]` and the leaf is a known Hermes cache name:
+ * `img_<12 hex>.<ext>`, `api_<32 hex>.<ext>`, or `native-inputs/<64 hex>/<leaf>`.
+ * The leaf is one segment. Spaces, brackets, tildes, newlines and other characters are not names.
+ */
+function acceptedCachePath(path: string, home: string): boolean {
+  if (!isAbsolute(path) || path.includes("\\") || normalize(path) !== path) return false;
+  const { image, native } = cacheRoots(home);
+  if (path.startsWith(`${image}${sep}`)) {
+    const relative = path.slice(image.length + 1);
+    return /^[A-Za-z0-9._/-]+$/.test(relative) && (IMG_LEAF.test(relative) || API_LEAF.test(relative));
+  }
+  if (path.startsWith(`${native}${sep}`)) {
+    const relative = path.slice(native.length + 1);
+    return /^[A-Za-z0-9._/-]+$/.test(relative) && NATIVE_REL.test(relative);
   }
   return false;
 }
 
-/** image_url, image, input_image, or a resource whose mime is image/*. */
-function isImageLikePart(part: unknown): boolean {
-  const entry = record(part);
-  if (!entry) return false;
-  const type = entry.type;
-  if (typeof type === "string" && IMAGE_PART_TYPES.has(type)) return true;
-  const nested = entry.resource;
-  if (typeof type === "string" && RESOURCE_PART_TYPES.has(type)) return mimeIsImage(entry) || mimeIsImage(nested);
-  return mimeIsImage(nested);
+function cacheLocation(path: string, home: string): { root: string; digest?: string } | null {
+  if (!acceptedCachePath(path, home)) return null;
+  const { image, native } = cacheRoots(home);
+  if (path.startsWith(`${native}${sep}`)) {
+    return { root: native, digest: path.slice(native.length + 1, native.length + 1 + 64) };
+  }
+  const api = API_LEAF.exec(path.slice(image.length + 1));
+  return api ? { root: image, digest: api[1] } : { root: image };
 }
 
-function textOf(part: unknown): string | null {
-  if (typeof part === "string") return part;
-  const entry = record(part);
-  if (!entry || entry.type !== "text") return null;
-  if (typeof entry.text === "string") return entry.text;
-  if (typeof entry.content === "string") return entry.content;
-  return null;
+/** Longest cache path of whitelist characters starting at `start`, or null. */
+function readCachePath(content: string, start: number, home: string): { path: string; end: number } | null {
+  const { image, native } = cacheRoots(home);
+  const root = [`${image}${sep}`, `${native}${sep}`].find(candidate => content.startsWith(candidate, start));
+  if (!root) return null;
+  let end = start + root.length;
+  while (end < content.length && isPathChar(content[end] ?? "")) end++;
+  const path = content.slice(start, end);
+  return acceptedCachePath(path, home) ? { path, end } : null;
 }
 
-function textCaption(parts: readonly unknown[]): string | null {
-  const joined = parts.flatMap(part => {
-    const text = textOf(part);
-    return text === null ? [] : [text];
-  }).join("\n").trim();
-  return joined ? joined : null;
+function hasImageSignal(content: string): boolean {
+  return content.includes("[The user sent an image") || content.includes("[If you need a closer look") ||
+    content.includes("[Image attached") || content.includes("[screenshot") ||
+    content.includes("image_url") || content.includes("vision_analyze");
+}
+
+function closerIndexes(content: string): number[] {
+  const found: number[] = [];
+  let from = 0;
+  while (from < content.length) {
+    const at = content.indexOf(SUCCESS_CLOSER, from);
+    if (at < 0) break;
+    found.push(at);
+    from = at + SUCCESS_CLOSER.length;
+  }
+  return found;
 }
 
 /**
- * `_decode_content` on display (`_row_to_message_dict`). Image-like parts stay unresolved.
- * Text-only parts use their joined text as ordinary caption text.
+ * Every image-note path must be one accepted cache path glued to its closer.
+ * A whitelist path cannot contain ` ~]`, so a closer that does not end an accepted
+ * path means the stored name was split. That row is uncertain.
  */
-function classifyEncoded(content: string): ClassifiedMessage | null {
-  if (!content.startsWith(JSON_PREFIX)) return null;
-  let decoded: unknown;
-  try {
-    decoded = JSON.parse(content.slice(JSON_PREFIX.length));
-  } catch {
-    return { kind: "uncertain", text: null };
+function pathsAccepted(content: string, home: string): boolean {
+  if (!hasImageSignal(content)) return true;
+  const consumed: number[] = [];
+  let cursor = 0;
+  while (cursor < content.length) {
+    const imageAt = content.indexOf(IMAGE_URL, cursor);
+    const hintAt = content.indexOf(HINT_INTRO, cursor);
+    const hint = hintAt >= 0 && (imageAt < 0 || hintAt < imageAt);
+    const at = hint ? hintAt : imageAt;
+    if (at < 0) break;
+    const pathStart = at + (hint ? HINT_INTRO.length : IMAGE_URL.length);
+    const read = readCachePath(content, pathStart, home);
+    if (!read) return false;
+    if (hint) {
+      if (!content.startsWith("]", read.end)) return false;
+      cursor = read.end + 1;
+      continue;
+    }
+    const success = at >= 5 && content.startsWith("with ", at - 5);
+    const failure = at >= 6 && content.startsWith("using ", at - 6);
+    if (success) {
+      if (!content.startsWith(SUCCESS_CLOSER, read.end)) return false;
+      consumed.push(read.end);
+      cursor = read.end + SUCCESS_CLOSER.length;
+      continue;
+    }
+    if (failure) {
+      if (!content.startsWith("]", read.end)) return false;
+      cursor = read.end + 1;
+      continue;
+    }
+    return false;
   }
-  if (typeof decoded === "string") {
-    return plainText(decoded)
-      ? { kind: "plain", text: decoded.trim() }
-      : { kind: "uncertain", text: unparsedImageCaption(decoded) };
-  }
-  const parts = Array.isArray(decoded) ? decoded : decoded !== null && typeof decoded === "object" ? [decoded] : null;
-  if (!parts) return { kind: "uncertain", text: null };
-  if (parts.some(isImageLikePart)) return { kind: "uncertain", text: textCaption(parts) };
-  if (parts.length > 0 && parts.every(part => textOf(part) !== null)) {
-    return { kind: "plain", text: parts.map(part => textOf(part) ?? "").join("\n").trim() };
-  }
-  return { kind: "uncertain", text: textCaption(parts) };
+  const closers = closerIndexes(content);
+  return closers.length === consumed.length && closers.every((index, offset) => index === consumed[offset]);
 }
 
 /**
- * An image row is fully parsed only when the upstream success note, failure-free
- * native markers/hints and caption joiner rebuild the stored string byte for byte.
- * Plain text contains none of the image sentinels. Anything else, including a
- * `\0json:` row with an image-like part, is uncertain and blocks text fallback.
+ * An image row is a byte-for-byte upstream success note or native hint whose
+ * every path is an accepted cache name. `\0json:` is always uncertain.
+ * A note whose path is not accepted is uncertain and keeps no caption.
+ * Other image-shaped rows stay uncertain, and may still carry a recovered caption.
  */
-function classifyMessage(content: string): ClassifiedMessage {
-  const encoded = classifyEncoded(content);
-  if (encoded) return encoded;
+function classifyMessage(content: string, home: string): ClassifiedMessage {
+  if (content.startsWith(JSON_PREFIX)) return { kind: "uncertain", text: null };
+  if (!pathsAccepted(content, home)) return { kind: "uncertain", text: null };
   const parsed = annotations(content);
-  if (parsed && parsed.paths.length > 0 && !IMAGE_NOTE.test(parsed.text)) {
+  if (parsed && parsed.paths.length > 0 && !IMAGE_NOTE.test(parsed.text) &&
+      parsed.paths.every(path => acceptedCachePath(path, home))) {
     return { kind: "image", text: parsed.text, paths: parsed.paths };
   }
   if (plainText(content)) return { kind: "plain", text: content.trim() };
@@ -497,7 +540,7 @@ export function createHermesPromptImageResolver(options: { userHome?: string; pa
               if (displayUncertain) idUncertain = true;
             }
             if (typeof row.content !== "string") continue;
-            const kind = classifyMessage(row.content);
+            const kind = classifyMessage(row.content, home);
             // A note that did not parse completely poisons text fallback for every caption.
             if (kind.kind === "uncertain") sessionUncertain = true;
             const caption = kind.text;
@@ -529,28 +572,14 @@ export function createHermesPromptImageResolver(options: { userHome?: string; pa
         return empty(uniqueImage ? 2 : matchedMessages);
       }
       if (matchedMessages !== 1 || typeof content !== "string" || uncertain) return empty(matchedMessages);
-      const parsed = annotations(content);
-      if (!parsed) return empty(1);
+      const parsed = classifyMessage(content, home);
+      if (parsed.kind !== "image") return empty(1);
       const images: FoundImages["images"] = [];
-      const nativeRoot = join(home, "cache", "documents", "native-inputs");
-      const imageRoot = join(home, "cache", "images");
       for (const [index, path] of parsed.paths.entries()) {
         if (context.signal.aborted) break;
-        if (normalize(path) !== path || path.includes("\\")) continue;
-        let root: string | null = null;
-        let digest: string | undefined;
-        if (path.startsWith(`${nativeRoot}${sep}`)) {
-          // capture_native_media preserves the original basename under the byte digest.
-          const native = path.slice(nativeRoot.length + 1).match(/^([a-f0-9]{64})\/[^/\\\x00]+\.(?:png|jpe?g|gif|webp)$/i);
-          if (native) { root = nativeRoot; digest = native[1]; }
-        }
-        if (path.startsWith(`${imageRoot}${sep}`)) {
-          const leaf = path.slice(imageRoot.length + 1);
-          if (/^img_[a-f0-9]{12}\.(?:png|jpe?g|gif|webp)$/i.test(leaf)) root = imageRoot;
-          const api = leaf.match(/^api_([a-f0-9]{32})\.(?:png|jpg|gif|webp)$/);
-          if (api) { root = imageRoot; digest = api[1]; }
-        }
-        if (!root) continue;
+        const located = cacheLocation(path, home);
+        if (!located) continue;
+        const { root, digest } = located;
         const validDigest = (bytes: Buffer) => !digest || createHash("sha256").update(bytes).digest("hex").startsWith(digest);
         const bytes = await readLocalImageReadOnly(path, [root]);
         if (!bytes || !validDigest(bytes)) continue;
