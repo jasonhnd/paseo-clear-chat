@@ -1,0 +1,15 @@
+{
+  "type": "tool_call",
+  "callId": "sample-install-output",
+  "name": "execute",
+  "detail": {
+    "type": "shell",
+    "command": "npm ci --include=dev",
+    "output": {
+      "stdout": "npm diagnostic from stdout",
+      "stderr": " \t\r\n "
+    }
+  },
+  "status": "failed",
+  "error": null
+}
