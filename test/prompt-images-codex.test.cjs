@@ -11,7 +11,7 @@ const THREAD = "00000000-0000-4000-8000-0000000000c3";
 const OTHER_THREAD = "00000000-0000-4000-8000-0000000000c4";
 const ABSENT_THREAD = "00000000-0000-4000-8000-0000000000ff";
 
-function harness() {
+function harness(overrides = {}) {
   const cache = new Map();
   const logs = [];
   function load(relativePath) {
@@ -23,7 +23,11 @@ function harness() {
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
     }).outputText;
     const realRequire = createRequire(filename);
-    const localRequire = id => id.startsWith(".") ? load(resolve(dirname(filename), `${id}.ts`)) : realRequire(id);
+    const localRequire = id => {
+      if (id.startsWith(".")) return load(resolve(dirname(filename), `${id}.ts`));
+      if (Object.prototype.hasOwnProperty.call(overrides, id)) return overrides[id];
+      return realRequire(id);
+    };
     runInThisContext(`(function(require,module,exports,console){${compiled}\n})`, { filename })(
       localRequire, mod, mod.exports, { debug: (...args) => logs.push(args) },
     );
@@ -101,6 +105,46 @@ async function imageBytes(result) {
   const bytes = [];
   for (const image of result.images) bytes.push(await image.readBytes());
   return bytes;
+}
+
+function agentHost(sessionId = THREAD) {
+  const snapshot = {
+    provider: "codex",
+    cwd: "/tmp/synthetic-workspace",
+    persistence: { provider: "codex", sessionId, nativeHandle: null },
+  };
+  return {
+    paseo: { agents: { ref(id) {
+      assert.equal(id, "agent-synthetic");
+      return { refresh: async () => ({ agent: snapshot }), current: () => snapshot };
+    } } },
+  };
+}
+
+async function askRegistry(h, home, text, extra = {}) {
+  const handlers = h.createPromptImageHandlers();
+  const input = {
+    agentId: "agent-synthetic",
+    messageId: extra.messageId ?? null,
+    clientMessageId: extra.clientMessageId ?? null,
+    text,
+  };
+  const host = agentHost(extra.sessionId ?? THREAD);
+  const previous = process.env.CODEX_HOME;
+  process.env.CODEX_HOME = home;
+  try {
+    return {
+      images: await handlers.images(input, host),
+      image: await handlers.image({ ...input, id: extra.id ?? "0" }, host),
+    };
+  } finally {
+    if (previous === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = previous;
+  }
+}
+
+function emptyList(reason) {
+  return { images: [], total: 0, reason };
 }
 
 function pngHeader(width = 4, height = 2) {
@@ -452,7 +496,7 @@ describe("codex pasted images", { concurrency: false }, () => {
     assert.ok(bytes.length <= h.MAX_INLINE_IMAGE_BYTES);
   });
 
-  test("archived rollouts are used only when the live tree has no unique match", async t => {
+  test("a rollout is used only when it is unique across the live and archived trees", async t => {
     const h = harness();
     const root = fixture(t);
     const home = join(root, "codex-home");
@@ -460,11 +504,113 @@ describe("codex pasted images", { concurrency: false }, () => {
     const archived = await findIn(h, home, { text: "Exact text." });
     assert.equal(archived.matchedMessages, 1);
     assert.deepEqual(await imageBytes(archived), [png]);
+    // Same thread and prompt, different image. Live must not win before archived is considered.
     writeRollout(home, THREAD, [sessionMeta(THREAD), userMessage("Exact text.", [dataUrl(jpeg, "image/jpeg")])]);
-    const live = await findIn(h, home, { text: "Exact text." });
-    assert.equal(live.matchedMessages, 1);
-    assert.deepEqual(live.images.map(image => image.mime), ["image/jpeg"]);
-    assert.deepEqual(await imageBytes(live), [jpeg]);
+    const conflict = await findIn(h, home, { text: "Exact text." });
+    assert.equal(conflict.matchedMessages, 2);
+    assert.deepEqual(conflict.images, []);
+    const listed = await askRegistry(h, home, "Exact text.");
+    assert.deepEqual(listed.images, emptyList("ambiguous"));
+    assert.equal(listed.image.dataUri, null);
+    assert.equal(listed.image.error, "ambiguous");
+  });
+
+  test("concatenated text and a separate input_text part count as two messages", async t => {
+    const h = harness();
+    const root = fixture(t);
+    const home = join(root, "codex-home");
+    writeRollout(home, THREAD, [
+      sessionMeta(THREAD),
+      response({ type: "message", role: "user", content: [
+        { type: "input_text", text: "Exact " },
+        { type: "input_text", text: "text." },
+        { type: "input_image", image_url: dataUrl(png) },
+      ] }),
+      response({ type: "message", role: "user", content: [
+        { type: "input_text", text: "Exact text." },
+        { type: "input_text", text: " tail" },
+        { type: "input_image", image_url: dataUrl(jpeg, "image/jpeg") },
+      ] }),
+    ]);
+    // One message matches by concatenation, the other by a single part. A message that matches both forms is still one.
+    writeRollout(home, OTHER_THREAD, [sessionMeta(OTHER_THREAD), userMessage("Exact text.", [dataUrl(gif, "image/gif")])]);
+    const conflict = await findIn(h, home, { text: "Exact text." });
+    assert.equal(conflict.matchedMessages, 2);
+    assert.deepEqual(conflict.images, []);
+    const listed = await askRegistry(h, home, "Exact text.");
+    assert.deepEqual(listed.images, emptyList("ambiguous"));
+    assert.equal(listed.image.dataUri, null);
+    assert.equal(listed.image.error, "ambiguous");
+    const unique = await findIn(h, home, { sessionId: OTHER_THREAD, text: "Exact text." });
+    assert.equal(unique.matchedMessages, 1);
+    assert.deepEqual(await imageBytes(unique), [gif]);
+  });
+
+  test("an EIO while opening a sibling directory returns no image", async t => {
+    const fsp = require("node:fs/promises");
+    const wrapped = Object.create(fsp);
+    Object.defineProperty(wrapped, "opendir", {
+      value: async (path, options) => {
+        if (String(path).endsWith("/sibling-eio")) throw Object.assign(new Error("injected EIO"), { code: "EIO" });
+        return fsp.opendir(path, options);
+      },
+    });
+    const h = harness({ "node:fs/promises": wrapped });
+    const root = fixture(t);
+    const home = join(root, "codex-home");
+    writeRollout(home, THREAD, [sessionMeta(THREAD), userMessage("Exact text.", [dataUrl(png)])]);
+    fs.mkdirSync(join(home, "sessions", "sibling-eio"));
+    const listed = await askRegistry(h, home, "Exact text.");
+    assert.deepEqual(listed.images, emptyList("lookup_failed"));
+    assert.equal(listed.image.dataUri, null);
+    assert.equal(listed.image.error, "lookup_failed");
+  });
+
+  test("a second matching rollout beyond the walk depth returns no image", async t => {
+    const h = harness();
+    const root = fixture(t);
+    const home = join(root, "codex-home");
+    writeRollout(home, THREAD, [sessionMeta(THREAD), userMessage("Exact text.", [dataUrl(png)])]);
+    // Walk depth starts at 0 on sessions and stops after 6. The parent of this file is not opened.
+    const deep = join(home, "sessions", "l0", "l1", "l2", "l3", "l4", "l5", "l6");
+    fs.mkdirSync(deep, { recursive: true });
+    const records = [sessionMeta(THREAD), userMessage("Exact text.", [dataUrl(jpeg, "image/jpeg")])];
+    fs.writeFileSync(join(deep, `rollout-2026-01-02T04-05-06-${THREAD}.jsonl`), `${records.map(record => JSON.stringify(record)).join("\n")}\n`);
+    const listed = await askRegistry(h, home, "Exact text.");
+    assert.deepEqual(listed.images, emptyList("lookup_failed"));
+    assert.equal(listed.image.dataUri, null);
+    assert.equal(listed.image.error, "lookup_failed");
+  });
+
+  test("a same-text message appended between the rollout reads returns no image", async t => {
+    const root = fixture(t);
+    const home = join(root, "codex-home");
+    const rollout = writeRollout(home, THREAD, [sessionMeta(THREAD), userMessage("Exact text.", [dataUrl(png)])]);
+    const extra = `${JSON.stringify(userMessage("Exact text.", [dataUrl(jpeg, "image/jpeg")]))}\n`;
+    const nodeFs = require("node:fs");
+    let reads = 0;
+    const wrapped = Object.create(nodeFs);
+    Object.defineProperty(wrapped, "createReadStream", {
+      value(...args) {
+        reads += 1;
+        if (reads === 2) nodeFs.appendFileSync(rollout, extra);
+        return nodeFs.createReadStream(...args);
+      },
+    });
+    const h = harness({ "node:fs": wrapped });
+    const handlers = h.createPromptImageHandlers();
+    const input = { agentId: "agent-synthetic", messageId: null, clientMessageId: null, text: "Exact text." };
+    const previous = process.env.CODEX_HOME;
+    process.env.CODEX_HOME = home;
+    try {
+      const listed = await handlers.images(input, agentHost());
+      assert.equal(reads, 2);
+      assert.deepEqual(listed, emptyList("lookup_failed"));
+      assert.equal(nodeFs.readFileSync(rollout, "utf8").split("\n").filter(Boolean).length, 3);
+    } finally {
+      if (previous === undefined) delete process.env.CODEX_HOME;
+      else process.env.CODEX_HOME = previous;
+    }
   });
 
   test("nativeHandle is used when sessionId misses, and two different files are not mixed", async t => {
