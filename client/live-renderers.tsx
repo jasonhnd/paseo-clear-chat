@@ -457,6 +457,8 @@ export interface LiveUserMessagePayload {
   imageCount?: number;
   /** The host's own id for this message, when the provider gave one. */
   messageId?: string;
+  /** The composer's id for this message, when the host gave one. */
+  clientMessageId?: string;
 }
 
 /**
@@ -532,6 +534,9 @@ export function LiveUserMessageRenderer({
           text={item.data.text}
           images={item.data.images}
           imageCount={item.data.imageCount}
+          messageId={item.data.messageId}
+          clientMessageId={item.data.clientMessageId}
+          agentId={agentId}
           timestamp={timestamp}
           tokens={tokens}
           usage={observedLive ? usage : null}
