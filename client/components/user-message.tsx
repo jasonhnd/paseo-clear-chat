@@ -1,7 +1,7 @@
 import { useRpc, useTranslation } from "@getpaseo/plugin/client";
 import { messages } from "../messages";
 import { translate as t } from "../translation";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, Pressable, StyleSheet, Image, Modal, Platform, useWindowDimensions } from "react-native";
 import { CopyFallbackDialog, copyTouchTarget, useCopyText } from "./copy-feedback";
 import { Glyph } from "./glyph";
@@ -81,8 +81,13 @@ type PastedCache = PastedList | { failed: true };
 
 const pastedCache = new Map<string, PastedCache>();
 const pastedInflight = new Map<string, Promise<PastedCache>>();
-/** Text-only lookups are not a message identity. Ask once, and do not paint that result on a later row. */
+/**
+ * Text-only lookups are not a message identity. A finished lookup is not
+ * painted on a later row, and that row does not ask again. An in-flight
+ * text-only lookup is not shared: each row asks on its own.
+ */
 const pastedAsked = new Set<string>();
+let pastedRowSeq = 0;
 const fullImageCache = new Map<string, string | null>();
 const EMPTY_THUMBS: ReadonlySet<string> = new Set();
 
@@ -232,6 +237,10 @@ export function UserMessage({
   const activeViewerId = viewerKey === cacheKey ? viewerId : null;
   const activeFullUri = viewerKey === cacheKey ? fullUri : null;
   const hiddenThumbs = failedKey === cacheKey ? failedThumbs : EMPTY_THUMBS;
+  // Rows without a message id must not share an in-flight lookup. The token
+  // is per mounted row, so a second row with the same text asks on its own.
+  const pastedRowId = useRef("");
+  if (!pastedRowId.current) pastedRowId.current = `${++pastedRowSeq}`;
 
   useEffect(() => {
     if (!agentId || !cacheKey) return;
@@ -242,15 +251,17 @@ export function UserMessage({
         setPasted({ key: cacheKey, value: cached });
         return;
       }
-    } else if (pastedAsked.has(cacheKey) && !pastedInflight.has(cacheKey)) {
-      // The server was already asked for this text. A later row must not
-      // inherit that result, because the key has no message id.
+    } else if (pastedAsked.has(cacheKey)) {
+      // This text was already looked up. The result belongs to the row that
+      // asked, so a later row stays blank and does not ask again.
       return;
     }
+    // A real id shares one lookup. Without one, the flight key is this row
+    // only: another row cannot join the promise or show its images.
+    const flightKey = share ? cacheKey : `${cacheKey}\0${pastedRowId.current}`;
     let cancelled = false;
-    let pendingLookup = pastedInflight.get(cacheKey);
+    let pendingLookup = pastedInflight.get(flightKey);
     if (!pendingLookup) {
-      if (!share) pastedAsked.add(cacheKey);
       pendingLookup = Promise.resolve()
         .then(() => loadImages({
           agentId,
@@ -262,10 +273,11 @@ export function UserMessage({
         .catch(() => ({ failed: true }) satisfies PastedCache)
         .then((value) => {
           if (share) pastedCache.set(cacheKey, value);
-          pastedInflight.delete(cacheKey);
+          else pastedAsked.add(cacheKey);
+          pastedInflight.delete(flightKey);
           return value;
         });
-      pastedInflight.set(cacheKey, pendingLookup);
+      pastedInflight.set(flightKey, pendingLookup);
     }
     pendingLookup.then((value) => {
       if (!cancelled) setPasted({ key: cacheKey, value });

@@ -289,6 +289,62 @@ test("identical prompts without ids ask once and neither shows thumbnails", asyn
   assert.equal(calls.length, 1, "a text-only key is asked once");
 });
 
+test("two rows without ids do not share a pending pasted-image lookup", async () => {
+  const releases = [];
+  const { h, calls } = harness(820, () => new Promise((resolve) => {
+    releases.push(resolve);
+  }));
+  const fields = { text: "Twin prompt", messageId: undefined, clientMessageId: undefined };
+  const Component = h.renderers.get("omp-user-message").Component;
+  const row = {
+    agentId: "demo-agent",
+    host: { id: "demo-host" },
+    theme: { colors: {} },
+    timestamp: new Date("2026-01-01T12:00:00Z"),
+    item: { kind: "omp-user-message", data: { ...fields } },
+  };
+  const drawBoth = () => h.draw({
+    type: function PromptPair() {
+      return [
+        { type: Component, props: row },
+        { type: Component, props: row },
+      ];
+    },
+    props: {},
+  });
+  const imageUri = five[0].thumbDataUri;
+  const uris = (tree) => h.nodes(tree, (node) => node.type === "Image").map((node) => node.props.source?.uri);
+  drawBoth();
+  await settle();
+  assert.equal(calls.length, 2, "each mounted row asks on its own while the lookup is pending");
+  assert.equal(calls[0].messageId, null);
+  assert.equal(calls[0].clientMessageId, null);
+  assert.equal(calls[1].messageId, null);
+  assert.equal(calls[1].clientMessageId, null);
+  assert.equal(calls[0].text, "Twin prompt");
+  assert.equal(calls[1].text, "Twin prompt");
+  releases[0]({ images: [five[0]], total: 1, reason: null });
+  await settle();
+  const [leftPending, rightPending] = drawBoth();
+  assert.deepEqual(uris(leftPending), [imageUri]);
+  assert.equal(thumbs(h, leftPending).length, 1);
+  assert.deepEqual(uris(rightPending), []);
+  assert.equal(thumbs(h, rightPending).length, 0);
+  assert.equal(JSON.stringify(rightPending).includes("img-0"), false);
+  releases[1]({ images: [], total: 0, reason: null });
+  await settle();
+  const [leftDone, rightDone] = drawBoth();
+  assert.deepEqual(uris(leftDone), [imageUri], "the first row keeps only its own image");
+  assert.equal(thumbs(h, leftDone).length, 1);
+  assert.deepEqual(uris(rightDone), [], "the second row keeps only its empty result");
+  assert.equal(thumbs(h, rightDone).length, 0);
+  assert.equal(JSON.stringify(rightDone).includes("img-0"), false);
+  assert.equal(JSON.stringify(leftDone).includes("img-0"), true);
+  assert.doesNotMatch(h.text(rightDone), /Pasted image|\+\d/);
+  assert.match(h.text(rightDone), /Twin prompt/);
+  assert.match(h.text(leftDone), /Twin prompt/);
+});
+
 test("the transformer forwards message ids and the renderer supplies agentId", () => {
   const h = createToolHarness("ios", { userMessage: true });
   const transformed = h.transformers.get("user_message").transform({
