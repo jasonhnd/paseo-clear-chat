@@ -31,8 +31,8 @@ const readmeV2Groups = [
   pair("ipad-side", 1194, 834, 2, "side"),
 ];
 const heroCapture = {
-  marginX: 48, marginY: 40, gap: 24,
-  desktop: { width: 1360, height: 936, textScale: 2.5, detailWidth: 760 },
+  marginX: 48, marginY: 40, gap: 48,
+  desktop: { width: 1336, height: 936, textScale: 2.5, detailWidth: 736 },
   phone: { width: 490, height: 1200, displayWidth: 520, textScale: 2.35 },
 };
 const phoneGroups = readmeV2Groups.filter(group => group.id.startsWith("phone-"));
