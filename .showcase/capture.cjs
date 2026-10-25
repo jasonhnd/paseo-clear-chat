@@ -120,7 +120,8 @@ async function capture() {
       }
     }
     writeFileSync(join(temp, "capture-report.json"), JSON.stringify(report, null, 2) + "\n");
-    console.log(`Captured ${report.length} images with Chromium.`);
+    const browserName = process.env.CHROME_PATH ? process.env.CHROME_PATH : "Chrome channel";
+    console.log(`Captured ${report.length} images with ${browserName}.`);
   } finally {
     await browser?.close();
     await new Promise(resolve => server.close(resolve));
