@@ -4,7 +4,7 @@ import type { PluginAgentPanelProps, PluginClientContext } from "@getpaseo/plugi
 import type { ToolCalloutData } from "../../shared/contracts";
 import type { ImageFile } from "../image-file";
 import { useEnhancerPreferences } from "../preferences";
-import { stepDetailPresentation } from "../breakpoints";
+import { TABLET_MIN, stepDetailPresentation } from "../breakpoints";
 import { buildThemeTokens } from "./theme-tokens";
 import { StepDetailPanel } from "./step-detail-panel";
 import { createStepDetailState, type StepDetailState } from "./step-detail-state";
@@ -34,6 +34,11 @@ function clear(hostId: string, agentId: string) {
 export function hostStepDetailState(hostId: string, agentId: string, detailKey: string) {
   const selected = selections.get(selectionKey(hostId, agentId));
   return selected?.key === detailKey ? selected.viewState : undefined;
+}
+
+/** Transfer the selection to the compact timeline without discarding its state. */
+export function reclaimHostStepDetail(hostId: string, agentId: string, detailKey: string) {
+  if (selections.get(selectionKey(hostId, agentId))?.key === detailKey) clear(hostId, agentId);
 }
 
 /** Explorer hosting reserves space beside chat; no timeline or host DOM is resized. */
@@ -89,6 +94,10 @@ export function StepDetailHostPanel({ host, params: { agentId }, theme }: Plugin
   useEffect(() => {
     if (preferences.collapsedStepAction === "inline") clear(host.id, agentId);
   }, [preferences.collapsedStepAction, host.id, agentId]);
+  // Compact navigation gives the session to its replacement timeline row.
+  // Explorer's viewport subscription can run before the host removes its root;
+  // a Modal escapes that hidden root, so it must never own the phone sheet.
+  if (width < TABLET_MIN) return null;
   if (!selection) {
     return <Text style={{ color: tokens.foregroundMuted, fontFamily: tokens.fontUi, fontSize: tokens.fs(13), padding: 16 }}>Select a collapsed step to see its details. Use the panel tab's close control to return this space to chat.</Text>;
   }

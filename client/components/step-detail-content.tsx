@@ -1,5 +1,6 @@
-import React, { useContext, useEffect, useMemo, useRef } from "react";
+import React, { useCallback, useContext, useEffect, useMemo, useRef } from "react";
 import { FlatList, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import type { CellRendererProps } from "react-native";
 import type { ToolCalloutData } from "../../shared/contracts";
 import type { ImageFile } from "../image-file";
 import { readOutputLines } from "../read-output";
@@ -48,8 +49,10 @@ export function StepDetailContent({ step, tokens, onRevealPath, imageFile }: {
 }) {
   const readingState = useContext(StepDetailStateContext);
   const list = useRef<FlatList<DetailRow>>(null);
-  // Restore after mounting or resizing; virtual cell measurements keep the current position.
+  // Restore relative to the visible cell: preceding input can wrap differently in a new root.
   const restoreTarget = useRef(readingState?.scrollOffset || undefined);
+  const cells = useRef(new Map<string, { y: number; height: number }>());
+  const restoreAnchor = useRef(readingState?.scrollAnchor);
   const restoreFrame = useRef<number | undefined>(undefined);
   const active = useRef(true);
   const layout = useRef({ width: 0, height: 0, contentHeight: 0 });
@@ -67,11 +70,20 @@ export function StepDetailContent({ step, tokens, onRevealPath, imageFile }: {
     const apply = () => {
       restoreFrame.current = undefined;
       if (!active.current || restoreTarget.current === undefined || !list.current) return;
-      const target = restoreTarget.current;
+      const anchor = restoreAnchor.current;
+      const cell = anchor && cells.current.get(anchor.key);
+      // Wait for the destination cell, rather than accepting an early raw-offset scroll.
+      const target = anchor && cell ? cell.y + anchor.offset : restoreTarget.current;
       const native = list.current.getNativeScrollRef?.() as unknown as ScrollNode | null;
       const node = native?.getScrollableNode?.() ?? native;
-      if (node?.clientHeight !== 0) list.current.scrollToOffset({ offset: target, animated: false });
-      if (typeof node?.scrollTop === "number" && Math.abs(node.scrollTop - target) < 1) restoreTarget.current = undefined;
+      if ((!anchor || cell) && node?.clientHeight !== 0) {
+        restoreTarget.current = target;
+        list.current.scrollToOffset({ offset: target, animated: false });
+      }
+      if ((!anchor || cell) && typeof node?.scrollTop === "number" && Math.abs(node.scrollTop - target) < 1) {
+        if (readingState) readingState.scrollOffset = target;
+        restoreTarget.current = undefined;
+      }
       if (restoreTarget.current !== undefined && --remainingFrames > 0 && typeof globalThis.requestAnimationFrame === "function") {
         restoreFrame.current = globalThis.requestAnimationFrame(apply);
       } else restoreTarget.current = undefined;
@@ -80,6 +92,15 @@ export function StepDetailContent({ step, tokens, onRevealPath, imageFile }: {
     if (typeof globalThis.requestAnimationFrame === "function") restoreFrame.current = globalThis.requestAnimationFrame(apply);
     else apply();
   };
+  // Keep the cell component identity stable while callbacks read the latest restoration state.
+  const measured = useRef((key: string, value: { y: number; height: number }) => {});
+  measured.current = (key, value) => { cells.current.set(key, value); restoreScroll(); };
+  const Cell = useCallback(({ item, onLayout, children, style, onFocusCapture }: CellRendererProps<DetailRow>) => (
+    <View style={style} {...{ onFocusCapture }} testID={`step-detail-cell-${item.key}`} onLayout={event => {
+      onLayout?.(event);
+      measured.current(item.key, event.nativeEvent.layout);
+    }}>{children}</View>
+  ), []);
   const rows = useMemo(() => {
     const result: DetailRow[] = [];
     const sections: Array<[Section, string | undefined]> = [["input", step.input]];
@@ -106,6 +127,7 @@ export function StepDetailContent({ step, tokens, onRevealPath, imageFile }: {
       style={styles.body}
       contentContainerStyle={styles.content}
       data={rows}
+      CellRendererComponent={Cell}
       keyExtractor={row => row.key}
       initialNumToRender={8}
       maxToRenderPerBatch={step.tool === "read" ? 32 : 4}
@@ -115,7 +137,13 @@ export function StepDetailContent({ step, tokens, onRevealPath, imageFile }: {
       contentOffset={{ x: 0, y: readingState?.scrollOffset ?? 0 }}
       onLayout={event => {
         const { width, height } = event.nativeEvent.layout;
-        if (restoreTarget.current === undefined && layout.current.width && (width !== layout.current.width || height !== layout.current.height)) restoreTarget.current = readingState?.scrollOffset || undefined;
+        if (layout.current.width && (width !== layout.current.width || height !== layout.current.height)) {
+          if (restoreTarget.current === undefined) {
+            restoreTarget.current = readingState?.scrollOffset || undefined;
+            restoreAnchor.current = readingState?.scrollAnchor;
+          }
+          if (width !== layout.current.width) cells.current.clear();
+        }
         Object.assign(layout.current, { width, height });
         restoreScroll();
       }}
@@ -123,10 +151,18 @@ export function StepDetailContent({ step, tokens, onRevealPath, imageFile }: {
       onScroll={event => {
         if (event.nativeEvent.layoutMeasurement?.height === 0 || event.nativeEvent.layoutMeasurement?.width === 0) return;
         const offset = event.nativeEvent.contentOffset.y;
-        const target = restoreTarget.current;
-        if (active.current && readingState && (target === undefined || Math.abs(offset - target) < 1)) {
+        const anchor = restoreAnchor.current;
+        const cell = anchor && cells.current.get(anchor.key);
+        const target = restoreTarget.current === undefined ? undefined
+          : anchor && cell ? cell.y + anchor.offset : restoreTarget.current;
+        if (active.current && readingState && (target === undefined || ((!anchor || cell) && Math.abs(offset - target) < 1))) {
           readingState.scrollOffset = offset;
           restoreTarget.current = undefined;
+          let first: { key: string; y: number } | undefined;
+          for (const [key, cell] of cells.current) {
+            if (cell.y <= offset && cell.y + cell.height > offset && (!first || cell.y > first.y)) first = { key, y: cell.y };
+          }
+          readingState.scrollAnchor = first ? { key: first.key, offset: offset - first.y } : undefined;
         }
       }}
       keyboardShouldPersistTaps="handled"

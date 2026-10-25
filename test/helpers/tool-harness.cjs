@@ -16,6 +16,8 @@ function createToolHarness(platform = "ios", options = {}) {
   let panelMounted = true;
   const reveals = [], links = [], copies = [], toasts = [], imageReads = [];
   let frame;
+  const pendingEffects = [];
+  const flushEffects = () => { while (pendingEffects.length) pendingEffects.shift()(); };
   const jsx = (type, props) => ({ type, props: props ?? {} });
   const passthrough = props => props.children ?? null;
   const noop = () => {};
@@ -59,9 +61,9 @@ function createToolHarness(platform = "ios", options = {}) {
       const index = frame.cursor++;
       const previous = frame.values[index];
       if (!previous || deps?.some((value, i) => value !== previous[i])) {
-        owner.effects.get(index)?.();
-        frame.values[index] = deps;
-        owner.effects.set(index, fn());
+        owner.values[index] = deps;
+        const apply = () => { owner.effects.get(index)?.(); owner.effects.set(index, fn()); };
+        if (options.deferEffects) pendingEffects.push(apply); else apply();
       }
     },
   };
@@ -72,7 +74,9 @@ function createToolHarness(platform = "ios", options = {}) {
   const native = {
     View: "View", Text: "Text", Pressable: "Pressable", Image: "Image", ScrollView: "ScrollView",
     FlatList: props => jsx("Native.FlatList", { ...props, children: [props.ListHeaderComponent,
-      props.data.slice(0, props.initialNumToRender ?? 10).map((item, index) => props.renderItem({ item, index })),
+      props.data.slice(0, props.initialNumToRender ?? 10).map((item, index) => props.CellRendererComponent
+        ? jsx(props.CellRendererComponent, { item, index, children: props.renderItem({ item, index }) })
+        : props.renderItem({ item, index })),
       props.ListFooterComponent] }),
     SafeAreaView: "SafeAreaView",
     Modal: props => props.visible ? jsx("Native.Modal", props) : null,
@@ -264,14 +268,16 @@ function createToolHarness(platform = "ios", options = {}) {
     if (typeof tree !== "object") return String(tree);
     return text(tree.props?.children);
   }
-  function unmount() {
-    for (const owner of frames.values()) {
+  function unmountRoot(prefix = "") {
+    for (const [key, owner] of frames) {
+      if (!key.startsWith(prefix)) continue;
       for (const effect of owner.effects.values()) effect?.();
+      frames.delete(key);
     }
-    frames.clear();
   }
+  const unmount = () => unmountRoot();
   return {
-    load, nodes, text, reveals, links, copies, toasts, imageReads, transformers, renderers, panels, panelOpens, dimensions, get preferences() { return getPreferences(); }, tokens, draw, expansionHost, unmount, dispose,
+    load, nodes, text, reveals, links, copies, toasts, imageReads, transformers, renderers, panels, panelOpens, dimensions, get preferences() { return getPreferences(); }, tokens, draw, expansionHost, unmount, dispose, flushEffects,
     setPanelMounted(value) { panelMounted = value; },
     mount(item, expand = true, identity = {}) {
       unmount(); reveals.length = links.length = copies.length = imageReads.length = 0;
@@ -284,6 +290,7 @@ function createToolHarness(platform = "ios", options = {}) {
         const props = { agentId: "demo-agent", host: { id: "demo-host" }, item: { ...pluginItem, data: nextData }, theme: { colors: options.themeColors ?? {} }, timestamp: timestamps.get(item), ...identity };
         const row = draw(jsx(renderer.Component, props));
         const panel = panels.get(activePanel?.id);
+        if (!panelMounted) unmountRoot("panel");
         return panel && panelMounted ? [row, draw(jsx(panel.Component, { ...props, ...activePanel, params: { agentId: activePanel.agentId } }), "panel")] : row;
       };
       let tree = render();
@@ -292,7 +299,7 @@ function createToolHarness(platform = "ios", options = {}) {
         button?.props.onPress();
         tree = render();
       }
-      return { tree, render, data };
+      return { tree, render, data, replaceRow() { unmountRoot("root"); if (!panelMounted) unmountRoot("panel"); return render(); } };
     },
   };
 }
