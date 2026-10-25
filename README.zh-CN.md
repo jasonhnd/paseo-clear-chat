@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=date"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <a href="https://paseo.sh"><img alt="Paseo 0.12.0+" src="https://img.shields.io/badge/Paseo-%3E%3D0.12.0-5b5bd6"></a>
+  <a href="https://paseo.sh"><img alt="Paseo 0.13.0+" src="https://img.shields.io/badge/Paseo-%3E%3D0.13.0-5b5bd6"></a>
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
 
 - **先看到结论。** 做完的步骤各收成紧凑的一行：图标、要点、状态，智能体报告了耗时就也显示耗时。结束这一轮的回复始终完整展开。
 - **每个 Agent 都画得对。** Claude、Codex、Hermes 的调用都有像样的卡片。Paseo 报告的 12 种工具类型各有专门的卡片，`skill_view`、`memory` 等 Hermes 工具也有专门的显示。用真实对话回放测试，没有一张空卡片。
-- **什么都不丢。** Beautiful Chat 的设置原样搬过来；粘贴的图片会显示张数；调用失败时会显示失败原因。
+- **什么都不丢。** Beautiful Chat 的设置原样搬过来；调用失败时会显示失败原因。
 - **有人维护。** 1.0.0 处理了原插件里 7 条没解决的问题和修改请求。问题请提到 GitHub Issues，每个版本的变化都记在 [CHANGELOG](CHANGELOG.md) 里。
 - **快。** 在我们的测试里，一段 221 步的对话约 1.3 秒显示出第一屏，跟不装插件时差不多（都是约 1.3 秒）。长对话滚动起来也不卡顿。<sup>1</sup>
 
@@ -32,15 +32,17 @@
 ## 安装
 
 ```bash
-paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v0.12.0.1
+paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v0.13.0.1
 ```
+
+Clear Chat 需要 Paseo 0.13.0 或更新的版本。还在用 Paseo 0.12 的，请改用 `--ref v0.12.0.1` 安装 Clear Chat 0.12.0.1。
 
 装好后打开 **Settings → Plugins → Clear Chat**，可以选颜色、字体和折叠方式。
 
 **版本号怎么看。** Clear Chat 的版本号＝这一版对应、测过的 Paseo 版本，再加一位：在这个 Paseo 版本上是第几次发布。例如 0.12.0.1 是对应 Paseo 0.12.0 的第一个版本，下一个是 0.12.0.2。Paseo 出了新版本以后，Clear Chat 的下一次发布重新从 1 数：对应 Paseo 0.12.1 就叫 0.12.1.1，对应 0.13.0 就叫 0.13.0.1。Paseo 出新版本时，Clear Chat 没有新东西就不跟着发。1.0.0 和 1.0.1 是定这个规则之前发的，0.12.0.1 比它们都新。
 
 > [!IMPORTANT]
-> 已经在用 Beautiful Chat？安装或卸载任何插件**之前**，请先看[从 Beautiful Chat 升级](#从-beautiful-chat-升级)。在 Paseo 0.12 里卸载插件，会连它的设置一起删掉。
+> 已经在用 Beautiful Chat？安装或卸载任何插件**之前**，请先看[从 Beautiful Chat 升级](#从-beautiful-chat-升级)。在 Paseo 里卸载插件，会连它的设置一起删掉。
 
 ## 从 Beautiful Chat 升级
 
@@ -64,7 +66,7 @@ cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_back
 **2. 安装**
 
 ```bash
-paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v0.12.0.1
+paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref v0.13.0.1
 ```
 
 **3. 确认后卸载旧插件**
@@ -134,7 +136,7 @@ paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref 
 | | |
 |---|---|
 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/reasoning-dark.png"><img alt="推理过程" src="docs/images/reasoning-light.png"></picture><br>**推理过程。** 可以收起的步骤，带每步耗时和 token 总数。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/tasks-dark.png"><img alt="清单" src="docs/images/tasks-light.png"></picture><br>**清单。** 阶段、每项任务的状态，以及任务被卡住的原因。 |
-| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/approval-dark.png"><img alt="批准" src="docs/images/approval-light.png"></picture><br>**批准。** 风险等级、具体命令和目标。已经处理过的批准留成一行简短的状态。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/user-dark.png"><img alt="提问气泡" src="docs/images/user-light.png"></picture><br>**提问气泡。** 复制按钮、token 用量和粘贴的图片，例如「3 images attached」。 |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/approval-dark.png"><img alt="批准" src="docs/images/approval-light.png"></picture><br>**批准。** 风险等级、具体命令和目标。已经处理过的批准留成一行简短的状态。 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/user-dark.png"><img alt="提问气泡" src="docs/images/user-light.png"></picture><br>**提问气泡。** 复制按钮和 token 用量。 |
 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/syntax-dark.png"><img alt="代码" src="docs/images/syntax-light.png"></picture><br>**代码。** 识别语言、行号、改动颜色，复制时复制完整代码。 | |
 
 ### 还有这些
@@ -173,7 +175,7 @@ paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref 
 
 **代码字体。** 插件 SDK 读不到 Paseo 自己的代码字体设置。**Default (Iosevka)** 使用 Iosevka，并沿用你在 **Code glyphs** 里的选择。在网页和桌面上，其他字体要先装在电脑上；没装的话改用内置的 Iosevka。在 iOS 和 iPadOS 上，代码一律用 Menlo；在 Android 上用系统的等宽字体，因为插件 SDK 不能让插件往原生应用里加字体。
 
-设置保存在主机上，连到同一台主机的设备都共用。强调色、折叠和点击步骤相关的设置马上生效，已经显示的行也会跟着变；其他改动对新消息生效，要更新之前的消息请重新加载对话。
+Clear Chat 自己的界面文字跟随 Paseo 应用的语言：英文、简体中文或日文。设置保存在主机上，连到同一台主机的设备都共用。强调色、折叠和点击步骤相关的设置马上生效，已经显示的行也会跟着变；其他改动对新消息生效，要更新之前的消息请重新加载对话。
 
 > [!NOTE]
 > **在 iOS 和 iPadOS 上**，开着 **Assistant markdown** 或 **Enhanced prompt bubble** 时，不能拖动选择文字。请用回复、提问或代码块上的 **Copy** 按钮。复制失败时，会弹出一个显示全文的窗口，可以手动选择复制。
@@ -183,6 +185,8 @@ paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref 
 | 问题 | 怎么办 |
 |---|---|
 | 用 Cafe 插件安装失败，或 Paseo 提示缺少 `@shikijs/core` 等 Shiki 依赖。 | 用[安装](#安装)里的 Paseo CLI 命令重试，仓库和版本标签保持不变。Clear Chat 用 `npm ci --include=dev` 安装依赖，所以运行 daemon 的主机上要有 Node.js 和 npm，网络也要能连到 npm 仓库。如果代码目录是你自己管理的，请先在那里运行 `npm ci --include=dev` 再重试。 |
+| 安装停下，提示 `Plugin "clear-chat" requires Paseo >=0.13.0. Your daemon is 0.12.x.`（或 `Your app is …`）。 | 把运行 daemon 的主机和所有连着的应用都升到 Paseo 0.13.0 或更新。想继续用 Paseo 0.12 的，请用 `--ref v0.12.0.1` 安装 Clear Chat 0.12.0.1。 |
+| 提问里粘贴的图片，在提问气泡里看不到。 | 图片照常发给了 Agent。Paseo 0.13 不把图片交给插件，所以 Clear Chat 的 **Enhanced prompt bubble** 显示不了。想在对话里看到图片，可以在 **Settings → Plugins → Clear Chat** 里关掉 **Enhanced prompt bubble**，改用 Paseo 自带的气泡。 |
 | Paseo 拒绝这个插件版本，或 Clear Chat 提示缺少插件设置或时间线支持。 | 把运行 daemon 的主机和所有连着的应用都更新到新版 Paseo，再重新加载 Clear Chat。Clear Chat 需要的 Paseo 版本写在 `paseo-plugin.json` 里。 |
 | 插件注册失败，Clear Chat 启动不了。 | 更新 Paseo，再重新加载 Clear Chat。还不行的话，先备份插件设置，再用 CLI 重新安装。 |
 | Clear Chat 读不到主机上的设置。 | 重新连接主机，在 **Settings → Plugins → Clear Chat** 里点 **Retry**。还不行的话，检查 daemon 能不能访问插件设置文件夹。 |

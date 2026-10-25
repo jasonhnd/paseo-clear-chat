@@ -4,6 +4,33 @@ All notable changes to Clear Chat are listed here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and each version is the Paseo version it is built and tested for plus one number that counts Clear Chat's releases for that Paseo version, for example 0.12.0.1 for the first release for Paseo 0.12.0. Releases 1.0.0 and 1.0.1 came out before this rule.
 
+## [0.13.0.1] - 2026-10-25
+
+Needs Paseo 0.13.0 or later. If you still use Paseo 0.12, install Clear Chat 0.12.0.1.
+
+### Added
+
+- Clear Chat's own interface text follows the Paseo app language, in English, Simplified Chinese and Japanese.
+
+### Changed
+
+- Clear Chat now needs Paseo 0.13.0 or later.
+- The plugin's short description in Settings → Plugins now says what Clear Chat does. It replaces the description inherited from the original project.
+- With **Enhanced prompt bubble** on, images pasted into a prompt no longer show in the prompt bubble, because Paseo 0.13 does not pass them to plugins. The images are still sent to the agent. Turn the setting off to see them in Paseo's own bubble.
+
+### Fixed
+
+- When installation fails, the message now includes the last lines of npm's own error output. Long npm output no longer causes a false "could not start" error, and an empty error stream falls back to npm's normal output.
+- An image that is referenced more than once now shows every time.
+- MCP tool errors are now also recognised when Paseo reports them in its structured MCP result format, so they show once in the conversation, with the full text in the details and in Copy.
+- A file name on its own inside quotes, such as "README.md", is no longer turned into a path link.
+- Step details no longer open twice when you narrow the window from desktop to phone width.
+- Step details keep your reading position when the window is resized or rotated.
+
+### Security
+
+- Updated dependencies. No dependencies with critical known vulnerabilities remain.
+
 ## [0.12.0.1] - 2026-10-23
 
 The first release numbered after the Paseo version. It needs Paseo 0.12.0 or later.
@@ -72,6 +99,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.13.0.1]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.13.0.1
 [0.12.0.1]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.12.0.1
 [1.0.1]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v1.0.1
 [1.0.0]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v1.0.0
