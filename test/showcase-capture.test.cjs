@@ -22,12 +22,12 @@ test("capture planning follows published references and routes both themes to th
 
 test("all README languages publish the same theme pairs and every retained screenshot is referenced", () => {
   const expected = files(createCapturePlan(readme("README.md")));
-  assert.equal(expected.length, 36);
+  assert.equal(expected.length, 40);
   for (const file of ["README.md", "README.zh-CN.md", "README.ja.md"]) {
     const content = readme(file);
     assert.deepEqual(files(createCapturePlan(content)), expected);
     const pictures = [...content.matchAll(/<picture>([\s\S]*?)<\/picture>/g)];
-    assert.equal(pictures.filter(match => match[1].includes("docs/images/")).length, 17);
+    assert.equal(pictures.filter(match => match[1].includes("docs/images/")).length, 19);
     for (const [, picture] of pictures) {
       const dark = picture.match(/<source media="\(prefers-color-scheme: dark\)" srcset="([^"]+-dark\.png)">/);
       const light = picture.match(/<img[^>]+src="([^"]+-light\.png)">/);

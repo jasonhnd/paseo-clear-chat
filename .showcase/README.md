@@ -51,6 +51,14 @@ SHOWCASE_OUTPUT_ROOT="$KANBAN_TMP/showcase-output" npm run capture --prefix .sho
 
 Remove the trial images and `capture-report.json` after verification.
 
+## iPad step details
+
+`node .showcase/capture-ipad.cjs` writes the four README iPad screenshots. It uses
+the same synthetic cart conversation as the hero comparison, opens the
+`cart.ts · +3 −1` step, and hides the harness close control. Portrait frames are
+834×1194 CSS pixels and landscape frames are 1194×834, both at 2x. The browser
+is the Playwright-bundled Chromium, or `CHROME_PATH` when that points at Chrome.
+
 ## Reply link replay
 
 With the same dependencies and authorized `KANBAN_TMP`, run:

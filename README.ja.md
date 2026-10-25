@@ -142,6 +142,21 @@ Clear Chat で変えた設定は Beautiful Chat には戻りません。バッ�
 ### そのほか
 
 - **ステップの詳細。** 折りたたまれたステップを押すと、そのすべてを表示します。入力と出力の全文、コマンドの終了コード、エージェントが伝えた場合はかかった時間が見られます。入力と出力は別々にコピーでき、失敗したステップではエラーの内容も表示されてコピーできます。1 万行あるような長い出力もなめらかにスクロールします。ウィンドウの幅が 744px 未満なら下から出るシート、744〜1023px ならポップオーバー、1024px 以上ならサイドパネルで表示します。ウィンドウの大きさを変えたり、iPad を回転したり Split View にしたりしても、表示の形だけが切り替わり、同じステップ、読んでいる位置、開いている内容はそのままです。別のステップに切り替えると、詳細は先頭から表示します。読んでいるステップに新しい出力が届いても、読んでいる位置はそのままです。会話の中でその場で開きたいときは、**折りたたんだステップを押したとき**（When a collapsed step is pressed）を **その場で開く**（Expand inline）にしてください。
+
+<p>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/ipad-popover-dark.png">
+    <img alt="On an iPad-sized window, the cart.ts edit opens in a floating sheet over the demo conversation" src="docs/images/ipad-popover-light.png">
+  </picture>
+</p>
+
+<p>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/ipad-side-dark.png">
+    <img alt="On a wide iPad window, the demo conversation stays on the left and the cart.ts edit opens in the side panel" src="docs/images/ipad-side-light.png">
+  </picture>
+</p>
+
 - **キーボード操作。** ブラウザーやデスクトップアプリでは、Tab でステップに移り、↑↓ でステップ間を移動、Enter で詳細を開き、Esc で閉じて元の場所に戻ります。入力欄での入力はいつもどおりです。iPad のブラウザーにハードウェアキーボードをつないだときも使えます。iPhone、iPad、Android のネイティブアプリはタッチ操作のみです。プラグインの API では、これらのアプリでハードウェアキーを受け取れないためです。
 - **ホバーでプレビュー。** マウスでは、折りたたまれたステップにポインターを少し置くと、要点と結果のプレビューが出ます。ファイルの読み込みは最大 6 行まで表示します。タッチ画面ではプレビューは出ません。
 - **ステップのメニュー。** ステップを右クリックするか、タッチ画面で長押しすると、**コマンドをコピー**（Copy command）、**パスをコピー**（Copy path）、**結果をコピー**（Copy result）、**ファイルマネージャーで開く**（Open in file manager）のメニューが出ます。使える項目だけが表示され、Write や Edit で書き込んだ内容が結果としてコピーされることはありません。メニューはポインターや指のそばに出て、画面の端では反対側に開きます。

@@ -142,6 +142,21 @@ Search, fetch and web search, plans and checklists, plain text, skills and any o
 ### Also included
 
 - **Step details.** Click a collapsed step to see everything about it: the full input and output, the exit code of a shell command, and how long it took when the agent reports it. Input and output have separate copy buttons, and a failed step shows its error text, which you can copy too. Very long output, even 10,000 lines, scrolls smoothly. Details open in a bottom sheet in windows narrower than 744px, a popover from 744 to 1023px, and a side panel from 1024px. When you resize the window, rotate an iPad or use Split View, the details move to the matching layout and keep the same step, your reading position and what you had open. When you switch to another step, its details start at the top. New output for the step you are reading keeps your place. To open steps inside the conversation instead, set **When a collapsed step is pressed** to **Expand inline**.
+
+<p>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/ipad-popover-dark.png">
+    <img alt="On an iPad-sized window, the cart.ts edit opens in a floating sheet over the demo conversation" src="docs/images/ipad-popover-light.png">
+  </picture>
+</p>
+
+<p>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/ipad-side-dark.png">
+    <img alt="On a wide iPad window, the demo conversation stays on the left and the cart.ts edit opens in the side panel" src="docs/images/ipad-side-light.png">
+  </picture>
+</p>
+
 - **Keyboard.** In a browser or the desktop app, press Tab to reach a step, Up and Down to move between steps, Enter to open its details and Escape to close them and return to where you were. Typing in text fields works as usual. This also works in an iPad browser with a hardware keyboard. The native iPhone, iPad and Android apps keep touch controls only, because the plugin API does not give plugins hardware keys there.
 - **Hover preview.** With a mouse, rest the pointer on a collapsed step for a moment to see a preview of its summary and result. File reads show up to 6 lines. Touch screens do not show previews.
 - **Step menu.** Right-click a step, or long-press it on a touch screen, for **Copy command**, **Copy path**, **Copy result** and **Open in file manager**. Each item appears only when it applies; the text written by Write and Edit is not copied as a result. The menu opens next to your pointer or finger and flips to the other side near a screen edge.
