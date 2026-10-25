@@ -4,7 +4,7 @@
 const { build } = require("esbuild");
 const { chromium } = require("playwright-core");
 const { createServer } = require("node:http");
-const { readFileSync, writeFileSync, copyFileSync, mkdirSync, rmSync, statSync, realpathSync } = require("node:fs");
+const { readFileSync, writeFileSync, copyFileSync, mkdirSync, rmSync, statSync, realpathSync, mkdtempSync } = require("node:fs");
 const { resolve, join, dirname } = require("node:path");
 const { tmpdir } = require("node:os");
 const { execFileSync } = require("node:child_process");
@@ -14,7 +14,7 @@ const root = resolve(__dirname, "..");
 // iPad layouts are captured by capture-ipad.cjs at their own viewport and scale.
 const groups = createCapturePlan(readFileSync(join(root, "README.md"), "utf8")).filter(group => !group.id.startsWith("ipad-"));
 const selected = process.env.SHOWCASE_CAPTURE_ONLY;
-const plan = selected ? groups.filter(group => group.id === selected) : groups;
+const plan = selected === "demo" ? [demoCapture] : selected ? groups.filter(group => group.id === selected) : groups;
 if (!plan.length) throw new Error(`Unknown screenshot group: ${selected}`);
 const standardPlan = plan.filter(group => group.deviceScaleFactor !== 3);
 const phonePlan = plan.filter(group => group.deviceScaleFactor === 3);

@@ -1,5 +1,6 @@
 /** Offline captures of real plugin components, backed only by fixtures.ts. */
 import React from "react";
+import { Demo } from "./demo";
 import { createRoot } from "react-dom/client";
 import { View } from "react-native";
 import { PluginTranslationProvider, PluginTranslationRuntime } from "./shims/plugin-client";
