@@ -3,11 +3,12 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, us
 /** Transient reading state follows one selected step between its presentation roots. */
 export interface StepDetailState {
   scrollOffset: number;
+  scrollAnchor?: { key: string; offset: number };
   snap: "half" | "full";
   values: Map<string, unknown>;
 }
 
-export const createStepDetailState = (): StepDetailState => ({ scrollOffset: 0, snap: "half", values: new Map() });
+export const createStepDetailState = (): StepDetailState => ({ scrollOffset: 0, scrollAnchor: undefined, snap: "half", values: new Map() });
 export const StepDetailStateContext = createContext<StepDetailState | null>(null);
 
 interface DetailSession {

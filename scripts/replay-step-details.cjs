@@ -28,7 +28,7 @@ const inputsOnly = process.argv.includes("--inputs-only");
 // Preserve the sanitized real shell shape, with deterministic long output for scrolling.
 const longSamples = ["A", "B"].map(label => ({
   ...sample, callId: `sample-step-${label}`,
-  detail: { ...sample.detail, command: `printf 'Step ${label} start'`,
+  detail: { ...sample.detail, command: `printf 'Step ${label} start ${"sample ".repeat(18)}'`,
     output: [`Step ${label} start`, ...Array.from({ length: 160 }, (_, index) => `Step ${label} output line ${index + 1}`)].join("\n") },
 }));
 const readSample = JSON.parse(readFileSync(join(root, "test/fixtures/real-hermes-session.json"), "utf8"))
@@ -131,7 +131,7 @@ async function replay() {
         const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
         let visibleCodeLine, node;
         while (!visibleCodeLine && (node = walker.nextNode())) {
-          for (const match of node.textContent.matchAll(/export const sample\d+/g)) {
+          for (const match of node.textContent.matchAll(/(?:export const sample\d+|Step A output line \d+)/g)) {
             const range = document.createRange();
             range.setStart(node, match.index);
             range.setEnd(node, match.index + match[0].length);
@@ -165,12 +165,13 @@ async function replay() {
       return detailScroll();
     }
     if (process.argv.includes("--resize-only")) {
-      for (const widths of [[1440, 820, 390], [1440, 390], [1180, 820, 390], [820, 390], [390]]) {
+      for (const widths of [[1440, 820, 390, 1440], [1440, 390, 820], [1180, 820, 390, 1440], [820, 390, 820], [390, 1440], [390, 820]]) {
         await page.setViewportSize({ width: widths[0], height: 900 });
         await page.goto(`${origin}/host-remount`, { waitUntil: "networkidle" });
         await row.click();
         await waitOpen();
-        const reading = await startReading(200);
+        const reading = await startReading(400);
+        assert.ok(reading.visibleCodeLine, "Reading setup must identify a visible output line");
         for (const width of widths) {
           await page.setViewportSize({ width, height: 900 });
           await page.waitForFunction(expected => document.querySelector('[data-testid="step-detail-panel"]')?.getAttribute("data-presentation") === expected,
@@ -179,8 +180,10 @@ async function replay() {
           const visible = panel.filter({ visible: true });
           assert.equal(await visible.count(), 1, `${widths.join(" -> ")} at ${width}: one visible panel`);
           assert.equal(await panel.count(), 1, "No hidden detail owner may retain a modal");
-          await waitReading(reading.top);
-          report.push({ widths, width, panel: await panel.boundingBox(), scrollTop: (await detailScroll()).top });
+          await page.waitForTimeout(250);
+          const returned = await detailScroll();
+          assert.equal(returned.visibleCodeLine, reading.visibleCodeLine, `First output line at ${width}: ${JSON.stringify({ reading, returned })}`);
+          report.push({ widths, width, panel: await panel.boundingBox(), scrollTop: returned.top, firstVisibleLine: returned.visibleCodeLine });
         }
       }
       assert.deepEqual(errors, []);

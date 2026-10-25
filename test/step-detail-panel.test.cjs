@@ -277,39 +277,71 @@ test("820px popovers cap their height to the safe viewport with room for margins
 });
 
 for (const platform of ["web", "ios", "android"]) {
-  for (const widths of [[1440, 820, 390], [1440, 390], [1180, 820, 390], [820, 390], [390]]) {
-    test(`${platform}: one detail owner through ${widths.join(" -> ")} with separate host roots`, async () => {
-      const h = createToolHarness(platform, { dimensions: { width: widths[0], height: 900 } });
-      const identity = { compact: widths[0] < 744, platform };
-      const mounted = h.mount(call, true, { layout: identity });
-      const check = tree => {
-        const panels = h.nodes(tree, node => node.props.testID === "step-detail-panel");
-        assert.equal(panels.length, 1, "Exactly one panel, including portals outside hidden Explorer");
-        assert.equal(panels[0].props.dataSet.presentation, h.dimensions.width < 744 ? "sheet" : h.dimensions.width < 1024 ? "popover" : "side");
-        assert.equal(find(h, tree, "step-detail-scroll").props.contentOffset.y, 400);
-      };
-      find(h, mounted.tree, "step-detail-scroll").props.onScroll({ nativeEvent: { contentOffset: { y: 400 } } });
-      check(mounted.render());
-      for (const width of widths.slice(1)) {
-        h.dimensions.width = width;
-        if (width < 744) {
-          // Viewport subscribers can render before the host removes Explorer.
-          // Rebuild the compact row independently of the existing panel root.
-          // The host passes compact to the replacement timeline row.
-          identity.compact = true;
-        }
-        check(width < 744 ? mounted.replaceRow() : mounted.render());
-        if (width < 744) {
-          h.setPanelMounted(false);
-          check(mounted.render());
+  for (const timing of ["overlapping roots", "single commit", "later tick"]) {
+    for (const widths of [[1440, 820, 390, 1440], [1440, 390, 820], [1180, 820, 390, 1440], [820, 390, 820], [390, 1440], [390, 820]]) {
+      test(`${platform}: one detail owner through ${widths.join(" -> ")} with ${timing}`, async () => {
+        const h = createToolHarness(platform, { deferEffects: true, dimensions: { width: widths[0], height: 900 } });
+        const identity = { compact: widths[0] < 744, platform };
+        const mounted = h.mount(call, false, { layout: identity });
+        const settle = () => {
+          h.flushEffects();
+          mounted.render();
+          h.flushEffects();
+          return mounted.render();
+        };
+        settle();
+        row(h, mounted.render()).props.onPress();
+        let offset = 400;
+        const outputTop = width => width < 744 ? 280 : 244;
+        const firstLine = (offset, width) => Math.ceil((offset - outputTop(width)) / 18);
+        const expectedLine = firstLine(offset, widths[0]);
+        const measure = tree => {
+          const scroll = find(h, tree, "step-detail-scroll");
+          assert.ok(scroll);
+          scroll.props.ref.current = { scrollToOffset: value => {
+            offset = value.offset;
+            scroll.props.onScroll({ nativeEvent: { contentOffset: { y: offset } } });
+          } };
+          scroll.props.onLayout({ nativeEvent: { layout: { width: h.dimensions.width, height: 340 } } });
+          for (const cell of h.nodes(tree, node => node.props.testID?.startsWith("step-detail-cell-"))) {
+            const y = cell.props.testID === "step-detail-cell-output-0" ? outputTop(h.dimensions.width) : 8;
+            cell.props.onLayout({ nativeEvent: { layout: { x: 0, y, width: h.dimensions.width, height: 2000 } } });
+          }
+          scroll.props.onContentSizeChange(h.dimensions.width, 5000);
+          return scroll;
+        };
+        measure(settle()).props.onScroll({ nativeEvent: { contentOffset: { y: offset } } });
+        const check = tree => {
+          const panels = h.nodes(tree, node => node.props.testID === "step-detail-panel");
+          assert.equal(panels.length, 1, "Exactly one panel, including portals outside hidden Explorer");
+          const presentation = h.load("client/breakpoints.ts").stepDetailPresentation(h.dimensions.width);
+          assert.equal(panels[0].props.dataSet.presentation, presentation);
+          assert.equal(identity.compact, presentation === "sheet", "Drive the viewport signal used by reclaim, and assert the host layout agrees");
+          measure(tree);
+          assert.equal(firstLine(offset, h.dimensions.width), expectedLine, "The same first output line remains visible");
+        };
+        check(settle());
+        for (const width of widths.slice(1)) {
+          const wasCompact = identity.compact;
+          h.dimensions.width = width;
+          identity.compact = width < 744;
+          if (timing === "single commit" || !identity.compact) h.setPanelMounted(!identity.compact);
+          if (wasCompact !== identity.compact) mounted.replaceRow(); else mounted.render();
+          check(settle());
+          if (identity.compact && timing !== "single commit") {
+            // Let queued cleanup and a separate host root run after the row's commit.
+            if (timing === "later tick") await tick();
+            h.setPanelMounted(false);
+            check(settle());
+          }
           await tick();
-          check(mounted.render());
+          check(settle());
         }
-      }
-      find(h, mounted.render(), "step-detail-close").props.onPress();
-      assert.equal(find(h, mounted.render(), "step-detail-panel"), undefined);
-      h.unmount();
-      await tick();
-    });
+        find(h, mounted.render(), "step-detail-close").props.onPress();
+        assert.equal(find(h, settle(), "step-detail-panel"), undefined);
+        h.unmount();
+        await tick();
+      });
+    }
   }
 }
