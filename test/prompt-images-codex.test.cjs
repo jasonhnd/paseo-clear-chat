@@ -510,6 +510,32 @@ describe("codex pasted images", { concurrency: false }, () => {
     assert.deepEqual(Buffer.from(full.image.dataUri.split(",")[1], "base64"), png);
   });
 
+  test("an oversized image past the payload cap is counted and reported too large", async t => {
+    const h = harness();
+    const root = fixture(t);
+    const home = join(root, "codex-home");
+    const prefix = png.toString("base64");
+    const encodedLength = (Math.floor(h.MAX_INLINE_IMAGE_BYTES / 3) + 1) * 4;
+    const over = prefix + "A".repeat(encodedLength - prefix.length);
+    const images = Array.from({ length: 32 }, () => dataUrl(png));
+    images.push(`data:image/png;base64,${over}`);
+    writeRollout(home, THREAD, [sessionMeta(THREAD), userMessage("Many pictures.", images)]);
+    const result = await findIn(h, home, { text: "Many pictures." });
+    assert.equal(result.matchedMessages, 1);
+    assert.equal(result.images.length, 33);
+    assert.deepEqual(await result.images[0].readBytes(), png);
+    const pastCap = await result.images[32].readBytes();
+    assert.ok(pastCap.length > h.MAX_INLINE_IMAGE_BYTES);
+    const listed = await askRegistry(h, home, "Many pictures.", { id: "32" });
+    assert.equal(listed.images.total, 33);
+    assert.equal(listed.image.dataUri, null);
+    assert.equal(listed.image.error, "image_too_large");
+    const kept = await askRegistry(h, home, "Many pictures.", { id: "0" });
+    assert.equal(kept.images.total, 33);
+    assert.equal(kept.image.error, null);
+    assert.deepEqual(Buffer.from(kept.image.dataUri.split(",")[1], "base64"), png);
+  });
+
   test("a rollout is used only when it is unique across the live and archived trees", async t => {
     const h = harness();
     const root = fixture(t);
@@ -596,35 +622,109 @@ describe("codex pasted images", { concurrency: false }, () => {
     assert.equal(listed.image.error, "lookup_failed");
   });
 
-  test("a same-text message appended between the rollout reads returns no image", async t => {
-    const root = fixture(t);
-    const home = join(root, "codex-home");
-    const rollout = writeRollout(home, THREAD, [sessionMeta(THREAD), userMessage("Exact text.", [dataUrl(png)])]);
-    const extra = `${JSON.stringify(userMessage("Exact text.", [dataUrl(jpeg, "image/jpeg")]))}\n`;
-    const nodeFs = require("node:fs");
-    let reads = 0;
-    const wrapped = Object.create(nodeFs);
-    Object.defineProperty(wrapped, "createReadStream", {
-      value(...args) {
-        reads += 1;
-        if (reads === 2) nodeFs.appendFileSync(rollout, extra);
-        return nodeFs.createReadStream(...args);
+  function rolloutOpener(real, onRolloutOpen) {
+    const fsp = require("node:fs/promises");
+    const wrapped = Object.create(fsp);
+    Object.defineProperty(wrapped, "open", {
+      value: async (file, flags, mode) => {
+        if (String(file) === real) await onRolloutOpen(flags);
+        return fsp.open(file, flags, mode);
       },
     });
-    const h = harness({ "node:fs": wrapped });
+    return harness({ "node:fs/promises": wrapped });
+  }
+
+  async function listedImages(h, home, text) {
     const handlers = h.createPromptImageHandlers();
-    const input = { agentId: "agent-synthetic", messageId: null, clientMessageId: null, text: "Exact text." };
+    const input = { agentId: "agent-synthetic", messageId: null, clientMessageId: null, text };
     const previous = process.env.CODEX_HOME;
     process.env.CODEX_HOME = home;
     try {
-      const listed = await handlers.images(input, agentHost());
-      assert.equal(reads, 2);
-      assert.deepEqual(listed, emptyList("lookup_failed"));
-      assert.equal(nodeFs.readFileSync(rollout, "utf8").split("\n").filter(Boolean).length, 3);
+      return await handlers.images(input, agentHost());
     } finally {
       if (previous === undefined) delete process.env.CODEX_HOME;
       else process.env.CODEX_HOME = previous;
     }
+  }
+
+  test("a same-text message appended before the rollout is opened again returns no image", async t => {
+    const root = fixture(t);
+    const home = join(root, "codex-home");
+    const rollout = writeRollout(home, THREAD, [sessionMeta(THREAD), userMessage("Exact text.", [dataUrl(png)])]);
+    const real = fs.realpathSync(rollout);
+    const extra = `${JSON.stringify(userMessage("Exact text.", [dataUrl(jpeg, "image/jpeg")]))}\n`;
+    let opens = 0;
+    const h = rolloutOpener(real, () => {
+      opens += 1;
+      // The second descriptor must observe the append. A path stamp taken after
+      // the file is restored would hide it.
+      if (opens === 2) fs.appendFileSync(real, extra);
+    });
+    const listed = await listedImages(h, home, "Exact text.");
+    assert.equal(opens, 2);
+    assert.deepEqual(listed, emptyList("lookup_failed"));
+    assert.equal(fs.readFileSync(real, "utf8").split("\n").filter(Boolean).length, 3);
+  });
+
+  test("a rollout replaced by a symlink before it is opened returns no image", async t => {
+    const root = fixture(t);
+    const home = join(root, "codex-home");
+    const outside = writeRollout(join(root, "outside"), THREAD, [
+      sessionMeta(THREAD), userMessage("Exact text.", [dataUrl(jpeg, "image/jpeg")]),
+    ]);
+    const rollout = writeRollout(home, THREAD, [sessionMeta(THREAD), userMessage("Exact text.", [dataUrl(png)])]);
+    const real = fs.realpathSync(rollout);
+    const outsideBytes = fs.readFileSync(outside);
+    let opens = 0;
+    const h = rolloutOpener(real, flags => {
+      opens += 1;
+      assert.equal(flags & fs.constants.O_NOFOLLOW, fs.constants.O_NOFOLLOW);
+      if (opens !== 1) return;
+      fs.renameSync(real, `${real}.aside`);
+      fs.symlinkSync(outside, real);
+    });
+    const listed = await listedImages(h, home, "Exact text.");
+    assert.equal(opens, 1);
+    assert.deepEqual(listed, emptyList("no_match"));
+    assert.equal(JSON.stringify(listed).includes(jpeg.toString("base64")), false);
+    assert.deepEqual(fs.readFileSync(outside), outsideBytes);
+  });
+
+  test("a rollout swapped for another file between the two opens returns no image", async t => {
+    const root = fixture(t);
+    const home = join(root, "codex-home");
+    const rollout = writeRollout(home, THREAD, [sessionMeta(THREAD), userMessage("Exact text.", [dataUrl(png)])]);
+    const real = fs.realpathSync(rollout);
+    const original = fs.readFileSync(real);
+    const replacement = `${JSON.stringify(sessionMeta(THREAD))}\n${JSON.stringify(userMessage("Exact text.", [dataUrl(jpeg, "image/jpeg")]))}\n`;
+    const fsp = require("node:fs/promises");
+    const wrapped = Object.create(fsp);
+    let opens = 0;
+    Object.defineProperty(wrapped, "open", {
+      value: async (file, flags, mode) => {
+        if (String(file) !== real) return fsp.open(file, flags, mode);
+        opens += 1;
+        assert.equal(flags & fs.constants.O_NOFOLLOW, fs.constants.O_NOFOLLOW);
+        if (opens === 2) {
+          fs.renameSync(real, `${real}.aside`);
+          fs.writeFileSync(real, replacement);
+        }
+        const opened = await fsp.open(file, flags, mode);
+        // The path is back to the original before the descriptor is checked. The
+        // open file is still the replacement, so the two descriptors must not match.
+        if (opens === 2) {
+          fs.renameSync(real, `${real}.replacement`);
+          fs.renameSync(`${real}.aside`, real);
+        }
+        return opened;
+      },
+    });
+    const h = harness({ "node:fs/promises": wrapped });
+    const listed = await listedImages(h, home, "Exact text.");
+    assert.equal(opens, 2);
+    assert.deepEqual(listed, emptyList("lookup_failed"));
+    assert.equal(JSON.stringify(listed).includes(jpeg.toString("base64")), false);
+    assert.deepEqual(fs.readFileSync(real), original);
   });
 
   test("nativeHandle is used when sessionId misses, and two different files are not mixed", async t => {
