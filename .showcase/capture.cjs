@@ -1,6 +1,6 @@
 "use strict";
 
-// One offline build, one synthetic turn, fresh Chromium profiles for each scale.
+// One offline build, one synthetic conversation, fresh Chromium profiles for each scale.
 const assert = require("node:assert/strict");
 const { build } = require("esbuild");
 const { chromium } = require("playwright-core");
@@ -71,6 +71,11 @@ async function verifyCapture(page, detail) {
   if (detail && detail !== "menu") {
     assert.equal(await page.getByTestId("step-detail-panel").getAttribute("data-presentation"), detail);
     assert.ok((await page.getByTestId("step-detail-panel").innerText()).includes("Free shipping"));
+    assert.ok((await page.getByTestId("step-detail-input").innerText()).startsWith("*** Begin Patch\n*** Update File: src/cart.ts"));
+    assert.equal(await page.getByTestId("step-detail-output").innerText(), "Success. Updated the following files:\nM src/cart.ts");
+    const output = await page.getByTestId("step-detail-output").boundingBox();
+    const scroll = await page.getByTestId("step-detail-scroll").boundingBox();
+    assert.ok(output.y >= scroll.y && output.y + output.height <= scroll.y + scroll.height, "The complete success result must be in view");
   }
   if (detail === "sheet") {
     // Inspect actual text line rectangles, rather than just element bounding boxes.
@@ -107,8 +112,8 @@ function heroHtml(dark) {
   return `<!doctype html><html lang="en"><style>
   html,body{margin:0}#frame{width:2000px;height:1376px;position:relative;background:${dark ? "linear-gradient(155deg,#232733,#12141b)" : "linear-gradient(155deg,#f4f7fb,#d5e0ee)"}}
   img{display:block;position:absolute;box-shadow:0 20px 46px ${dark ? "#0009" : "#18202d38"}}
-  #desktop{left:235px;top:88px;width:1440px;height:900px;border-radius:18px}
-  #phone{left:1375px;top:468px;width:390px;height:820px;border-radius:28px}
+  #desktop{left:32px;top:96px;width:1480px;height:1184px;border-radius:18px}
+  #phone{left:1544px;bottom:96px;width:432px;height:auto;border-radius:28px}
   </style><div id="frame"><img id="desktop" src="/raw/desktop.png" alt=""><img id="phone" src="/raw/phone.png" alt=""></div></html>`;
 }
 
@@ -144,14 +149,16 @@ async function capture() {
         args: ["--disable-background-networking", "--disable-component-update", "--no-first-run"],
       });
       const page = browser.pages()[0] || await browser.newPage();
+      // Freeze only Date, leaving animation and the responsive handoff clock live.
+      await page.clock.setFixedTime(new Date("2026-10-22T14:09:37Z"));
       page.setDefaultTimeout(10000);
       const errors = [];
       page.on("pageerror", error => errors.push(error.message));
       await page.route("**/*", route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
       return { page, errors };
     };
-    const navigate = async (page, theme) => {
-      await page.goto(`${origin}/?theme=${theme}`, { waitUntil: "networkidle" });
+    const navigate = async (page, theme, textScale = 1) => {
+      await page.goto(`${origin}/?theme=${theme}&textScale=${textScale}`, { waitUntil: "networkidle" });
       await page.getByTestId("demo-step-5").waitFor();
       await page.addStyleTag({ content: freeze });
       await settle(page);
@@ -164,20 +171,24 @@ async function capture() {
       await settle(page);
     };
     for (const group of plan) {
-      let { page, errors } = await newPage(group.id, group.id === "hero" ? { width: 1440, height: 900 } : group.viewport, group.deviceScaleFactor, group.id.startsWith("phone-"));
+      let { page, errors } = await newPage(group.id, group.id === "hero" ? { width: 1480, height: 1184 } : group.viewport, group.deviceScaleFactor, group.id.startsWith("phone-"));
       for (const theme of ["light", "dark"]) {
         if (group.id === "hero") {
-          await page.setViewportSize({ width: 1440, height: 900 });
-          await navigate(page, theme); await openEdit(page);
+          await page.setViewportSize({ width: 1480, height: 1184 });
+          await navigate(page, theme, 2); await openEdit(page);
           await verifyCapture(page, "side");
           raw.set("desktop.png", await page.screenshot({ animations: "disabled" }));
-          await page.setViewportSize({ width: 390, height: 820 });
-          await navigate(page, theme); await openEdit(page);
-          await verifyCapture(page, "sheet");
-          raw.set("phone.png", await page.screenshot({ animations: "disabled" }));
+          await page.setViewportSize({ width: 390, height: 936 });
+          await navigate(page, theme, 1.7);
+          await verifyCapture(page);
+          assert.equal(await page.getByTestId("step-detail-panel").count(), 0, "The hero phone must show the compact timeline without a scrim");
+          const reply = await page.getByTestId("demo-reply").boundingBox();
+          // Frame the compact first turn at a paragraph boundary, before the follow-up.
+          raw.set("phone.png", await page.screenshot({ animations: "disabled", clip: { x: 0, y: 0, width: 390, height: Math.ceil(reply.y + reply.height + 3) } }));
           // The modal's history restoration must never navigate the composition page.
           await page.close();
           page = await browser.newPage();
+          await page.clock.setFixedTime(new Date("2026-10-22T14:09:37Z"));
           page.on("pageerror", error => errors.push(error.message));
           await page.route("**/*", route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
           await page.setViewportSize(group.viewport);
@@ -185,10 +196,20 @@ async function capture() {
           await page.locator("#frame").waitFor();
           assert.equal(await page.locator("#frame img").count(), 2);
           await page.evaluate(() => Promise.all([...document.images].map(image => image.decode())));
+          const bounds = await page.locator("#frame img").evaluateAll(images => images.map(image => {
+            const { left, right, bottom } = image.getBoundingClientRect(); return { left, right, bottom };
+          }));
+          assert.ok(bounds[1].left >= bounds[0].right, "Hero devices must sit side by side");
+          assert.ok(Math.abs(bounds[0].bottom - bounds[1].bottom) < 1, "Hero device bottoms must align");
         } else {
           await navigate(page, theme);
           if (group.detail === "menu") await longPressRow(page);
           else if (group.detail) await openEdit(page);
+          if (group.detail === "sheet") {
+            // Include the success result; use the panel's own scroll surface.
+            await page.getByTestId("step-detail-scroll").evaluate(node => { node.scrollTop = node.scrollHeight; });
+            await settle(page);
+          }
           const fonts = await verifyCapture(page, group.detail);
           report.push({ file: group[theme], fonts });
         }
