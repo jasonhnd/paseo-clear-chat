@@ -13,6 +13,7 @@
   ],
   "translations": {
     "zh-CN": {
+      "name": "Clear Chat",
       "description": "让 Agent 对话一眼看懂：步骤收成一行，每种工具都有卡片，点开看详情。"
     }
   }
