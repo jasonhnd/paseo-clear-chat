@@ -107,7 +107,7 @@ async function openSqliteDatabase(
   const { DatabaseSync } = await import("node:sqlite");
   const database = new DatabaseSync(uri.href, { readOnly: true });
   try {
-    // Idle files use immutable mode, which has no writer to wait for.
+    // Only the plain path can coordinate with a writer and wait for locks.
     database.exec(immutable ? "PRAGMA query_only = ON" : "PRAGMA query_only = ON; PRAGMA busy_timeout = 250");
     return database;
   } catch (error) {
@@ -145,22 +145,29 @@ async function querySqlitePlain<T>(
  * Hot journals and lock errors on the plain path return null without recovery.
  *
  * A writer can create a sidecar after the check and before the immutable open.
- * The sidecars are checked again after that query. If one has appeared, the
- * result is discarded and the query runs once more on the plain path. If that
- * retry also fails, this returns null and the caller reports no images. Open
- * failures propagate when no sidecar raced in. `node:sqlite` is imported
+ * The sidecars and main file identity, size and mtime are checked after that
+ * query. A change also catches a writer that checkpoints and removes its
+ * sidecars before the check. The result is discarded and the query runs once
+ * more on the plain path if either check detects a change. If that retry also
+ * fails, this returns null and the caller reports no images. Open failures
+ * propagate only when both checks stay unchanged. `node:sqlite` is imported
  * lazily so hosts that lack it fail only the lookup, not startup.
  *
  * `hooks.beforeOpen` runs after the sidecar check and before the file is
- * opened, so a test can create a sidecar in that window.
+ * opened, so a test can create a sidecar in that window. `afterImmutableQuery`
+ * runs after closing the immutable connection, before sampling the file again.
  */
 export async function openSqliteReadOnly<T>(
   path: string,
   query: (database: SqliteDatabase) => T,
-  hooks?: { beforeOpen?: (plan: { immutable: boolean; uri: string }) => void },
+  hooks?: {
+    beforeOpen?: (plan: { immutable: boolean; uri: string }) => void;
+    afterImmutableQuery?: () => void;
+  },
 ): Promise<T | null> {
   const real = await nativeRealpath(path);
   if (sqliteSidecar(real)) return querySqlitePlain(real, query, hooks?.beforeOpen);
+  const before = await stat(real, { bigint: true });
   let outcome: { ok: true; result: T } | { ok: false; error: unknown };
   try {
     const database = await openSqliteDatabase(real, true, hooks?.beforeOpen);
@@ -171,10 +178,19 @@ export async function openSqliteReadOnly<T>(
     } finally {
       database.close();
     }
+    hooks?.afterImmutableQuery?.();
   } catch (error) {
     outcome = { ok: false, error };
   }
-  if (!sqliteSidecar(real)) {
+  let unchanged = false;
+  try {
+    const after = await stat(real, { bigint: true });
+    unchanged = before.dev === after.dev && before.ino === after.ino &&
+      before.size === after.size && before.mtimeNs === after.mtimeNs;
+  } catch {
+    // A missing or unreadable main file also invalidates the immutable result.
+  }
+  if (unchanged && !sqliteSidecar(real)) {
     if (outcome.ok) return outcome.result;
     throw outcome.error;
   }
