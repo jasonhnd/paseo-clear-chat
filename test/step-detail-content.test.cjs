@@ -296,3 +296,41 @@ test("captured Hermes reads display and copy file content without the read envel
     h.unmount();
   }
 });
+
+for (const platform of ["web", "ios", "android"]) {
+  for (const targetWidth of [820, 1440]) {
+    test(`${platform}: sheet reflow to ${targetWidth} preserves the first visible output line`, () => {
+      const h = harness(platform);
+      const { StepDetailStateContext, createStepDetailState } = h.load("client/components/step-detail-state.ts");
+      const state = createStepDetailState();
+      const Content = h.load("client/components/step-detail-content.tsx").StepDetailContent;
+      const step = h.load("client/tool-call-data.ts").buildLiveToolCallData(shell);
+      const render = () => h.draw({ type: StepDetailStateContext.Provider, props: { value: state,
+        children: { type: Content, props: { step, tokens: h.tokens } } } });
+      const measure = (tree, width, outputTop, restores) => {
+        const scroll = byId(h, tree, "step-detail-scroll");
+        scroll.props.ref.current = { scrollToOffset: value => restores.push(value.offset) };
+        scroll.props.onLayout({ nativeEvent: { layout: { width, height: 340 } } });
+        // The input loses two wrapped lines when the phone sheet widens.
+        for (const cell of h.nodes(tree, node => node.props.testID?.startsWith("step-detail-cell-"))) {
+          const y = cell.props.testID === "step-detail-cell-output-0" ? outputTop : 8;
+          cell.props.onLayout?.({ nativeEvent: { layout: { x: 0, y, width, height: 2000 } } });
+        }
+        scroll.props.onContentSizeChange(width, 5000);
+        return scroll;
+      };
+      const scroll = measure(render(), 390, 280, []);
+      scroll.props.onScroll({ nativeEvent: { contentOffset: { y: 400 } } });
+      h.unmount();
+      const restores = [];
+      const returned = measure(render(), targetWidth, 244, restores);
+      const firstLine = (offset, outputTop) => Math.ceil((offset - outputTop) / 18);
+      assert.equal(firstLine(restores.at(-1), 244), firstLine(400, 280));
+      assert.equal(restores.at(-1), 364);
+      returned.props.onScroll({ nativeEvent: { contentOffset: { y: 364 } } });
+      returned.props.onScroll({ nativeEvent: { contentOffset: { y: 500 } } });
+      assert.equal(state.scrollOffset, 500, "Ordinary scrolling updates the anchor after restoration");
+      h.unmount();
+    });
+  }
+}

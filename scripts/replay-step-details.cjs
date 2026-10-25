@@ -28,7 +28,7 @@ const inputsOnly = process.argv.includes("--inputs-only");
 // Preserve the sanitized real shell shape, with deterministic long output for scrolling.
 const longSamples = ["A", "B"].map(label => ({
   ...sample, callId: `sample-step-${label}`,
-  detail: { ...sample.detail, command: `printf 'Step ${label} start'`,
+  detail: { ...sample.detail, command: `printf 'Step ${label} start ${"sample ".repeat(18)}'`,
     output: [`Step ${label} start`, ...Array.from({ length: 160 }, (_, index) => `Step ${label} output line ${index + 1}`)].join("\n") },
 }));
 const readSample = JSON.parse(readFileSync(join(root, "test/fixtures/real-hermes-session.json"), "utf8"))
@@ -73,7 +73,7 @@ async function replay() {
   const server = createServer((request, response) => {
     response.setHeader("Content-Type", request.url === "/preview.js" ? "text/javascript; charset=utf-8" : "text/html; charset=utf-8");
     const fieldIndex = /^\/fields\/(\d+)$/.exec(request.url)?.[1];
-    response.end(request.url === "/preview.js" ? bundle.outputFiles[0].contents : html(fieldIndex !== undefined ? [fieldSamples[Number(fieldIndex)]] : request.url === "/layout" ? layoutSamples : ["/switching", "/keyboard", "/rotation"].includes(request.url) ? longSamples : request.url === "/large-output" ? [largeSample] : [sample]));
+    response.end(request.url === "/preview.js" ? bundle.outputFiles[0].contents : html(fieldIndex !== undefined ? [fieldSamples[Number(fieldIndex)]] : request.url === "/layout" ? layoutSamples : ["/switching", "/keyboard", "/rotation"].includes(request.url) ? longSamples : request.url === "/host-remount" ? [longSamples[0]] : request.url === "/large-output" ? [largeSample] : [sample]));
   });
   let browser;
   const report = [];
@@ -83,7 +83,7 @@ async function replay() {
     const origin = `http://127.0.0.1:${server.address().port}`;
     const port = await debugPort();
     browser = await chromium.launchPersistentContext(join(work, "profile"), {
-      channel: "chrome", headless: true, viewport: { width: 1440, height: 844 }, hasTouch: !inputsOnly,
+      channel: "chrome", executablePath: process.env.CHROME_PATH, headless: true, viewport: { width: 1440, height: 844 }, hasTouch: !inputsOnly,
       reducedMotion: "reduce", args: [`--remote-debugging-port=${port}`, "--disable-background-networking", "--no-first-run"],
     });
     browser.setDefaultTimeout(15000);
@@ -131,7 +131,7 @@ async function replay() {
         const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
         let visibleCodeLine, node;
         while (!visibleCodeLine && (node = walker.nextNode())) {
-          for (const match of node.textContent.matchAll(/export const sample\d+/g)) {
+          for (const match of node.textContent.matchAll(/(?:export const sample\d+|Step A output line \d+)/g)) {
             const range = document.createRange();
             range.setStart(node, match.index);
             range.setEnd(node, match.index + match[0].length);
@@ -163,6 +163,32 @@ async function replay() {
         throw error;
       }
       return detailScroll();
+    }
+    if (process.argv.includes("--resize-only")) {
+      for (const widths of [[1440, 820, 390, 1440], [1440, 390, 820], [1180, 820, 390, 1440], [820, 390, 820], [390, 1440], [390, 820]]) {
+        await page.setViewportSize({ width: widths[0], height: 900 });
+        await page.goto(`${origin}/host-remount`, { waitUntil: "networkidle" });
+        await row.click();
+        await waitOpen();
+        const reading = await startReading(400);
+        assert.ok(reading.visibleCodeLine, "Reading setup must identify a visible output line");
+        for (const width of widths) {
+          await page.setViewportSize({ width, height: 900 });
+          await page.waitForFunction(expected => document.querySelector('[data-testid="step-detail-panel"]')?.getAttribute("data-presentation") === expected,
+            width < 744 ? "sheet" : width < 1024 ? "popover" : "side");
+          await waitOpen();
+          const visible = panel.filter({ visible: true });
+          assert.equal(await visible.count(), 1, `${widths.join(" -> ")} at ${width}: one visible panel`);
+          assert.equal(await panel.count(), 1, "No hidden detail owner may retain a modal");
+          await page.waitForTimeout(250);
+          const returned = await detailScroll();
+          assert.equal(returned.visibleCodeLine, reading.visibleCodeLine, `First output line at ${width}: ${JSON.stringify({ reading, returned })}`);
+          report.push({ widths, width, panel: await panel.boundingBox(), scrollTop: returned.top, firstVisibleLine: returned.visibleCodeLine });
+        }
+      }
+      assert.deepEqual(errors, []);
+      console.log(JSON.stringify(report, null, 2));
+      return;
     }
     if (inputsOnly) {
       // Keep metrics, navigation and real inputs on one session. Disconnecting
@@ -381,8 +407,10 @@ async function replay() {
         }, presentation);
         await waitOpen();
         assert.ok((await panel.textContent()).includes("Step A start"), "Rotation must keep the selected step");
-        const position = await waitReading(reading.top);
-        assert.equal(position.top, reading.top, `Rotation to ${width}px must preserve the reader's detail scroll position`);
+        await page.waitForTimeout(250);
+        const position = await detailScroll();
+        assert.equal(position.visibleCodeLine, reading.visibleCodeLine, `Rotation to ${width}px must preserve the first visible output line`);
+        assert.equal(await panel.count(), 1, "Rotation must keep a single detail panel");
         assert.equal(await page.getByTestId("step-detail-backdrop").count(), presentation === "side" ? 0 : 1, "Only modal presentations have a backdrop");
         const box = await panel.boundingBox();
         assert.ok(box.x >= 0 && box.x + box.width <= width + 1);
@@ -508,14 +536,18 @@ async function replay() {
               assert.equal(await panel.locator("img").count(), 0, "Hidden images must stay hidden through resize");
             } else {
               await panel.getByTestId("step-detail-output").first().waitFor();
-              const position = await waitReading(reading.top);
+              await page.waitForTimeout(250);
+              const position = await detailScroll();
               // Reflow of this long file header can shift the first visible code line by up to three lines.
               if (index === 1) {
                 assert.ok(position.top > 0 && position.visibleCodeLine, "Expanded code must retain a scrolled reading region");
                 assert.ok(Math.abs(Number(position.visibleCodeLine.match(/\d+$/)[0]) - Number(codeAnchor.match(/\d+$/)[0])) <= 3,
                   "Resize must keep the same code reading region after header wrapping");
               }
-              else assert.equal(position.top, reading.top, "Expanded output must keep its reading position");
+              else {
+                assert.equal(position.visibleCodeLine, reading.visibleCodeLine, "Expanded output must keep the first visible output line");
+                assert.equal(await panel.count(), 1, "Resize must keep a single detail panel");
+              }
             }
             if (resized === 600 && index === 0) {
               if (!expandedSheet) {
