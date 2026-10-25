@@ -6,8 +6,8 @@ import { readImageHeader } from "./image-header";
 import { openSqliteReadOnly, readLocalImageReadOnly } from "./read-only";
 import type { FoundImages, PromptImageResolver, ResolverContext } from "./registry";
 
-const MAX_IMAGES_PER_MESSAGE = 16;
-const BLOCK_START = "[The user sent an image~ Here's what I can see: ";
+const BLOCK_START = "[The user sent an image~ Here's what I can see:\n";
+const PATH_START = "]\n[If you need a closer look, use vision_analyze with image_url: ";
 const BLOCK_END = " ~]";
 const empty = (matchedMessages = 0): FoundImages => ({ matchedMessages, images: [] });
 
@@ -34,21 +34,41 @@ function messageId(value: unknown): string | null {
   return /^[a-f0-9]{32}$/.test(id) ? id : null;
 }
 
-/** Annotations must form a leading sequence; an incomplete/changed block fails closed. */
+/** Gateway descriptions precede the caption; native hints follow it. */
 function annotations(content: string): { text: string; paths: string[] } | null {
   let rest = content.trimStart();
   const paths: string[] = [];
   while (rest.startsWith("[The user sent an image")) {
     if (!rest.startsWith(BLOCK_START)) return null;
-    const end = rest.indexOf(BLOCK_END, BLOCK_START.length);
+    const pathStart = rest.indexOf(PATH_START, BLOCK_START.length);
+    if (pathStart === -1) return null;
+    const description = rest.slice(BLOCK_START.length, pathStart);
+    if (/\[(?:The user sent an image|If you need a closer look|Image attached)/.test(description)) return null;
+    const end = rest.indexOf(BLOCK_END, pathStart + PATH_START.length);
     if (end === -1) return null;
-    const body = rest.slice(BLOCK_START.length, end);
-    if (body.includes("[The user sent an image")) return null;
-    const path = body.match(/(?:^|\s)(\/\S+)$/)?.[1];
-    if (!path) return null;
+    const path = rest.slice(pathStart + PATH_START.length, end);
+    if (!/^\/[^\r\n\[\]\x00]+$/.test(path)) return null;
     paths.push(path);
     rest = rest.slice(end + BLOCK_END.length).trimStart();
   }
+  if (!paths.length && rest.includes("[Image attached")) {
+    const lines = rest.trimEnd().split("\n");
+    let markers = 0;
+    while (/^\[screenshot(?: detail=(?:low|high|auto))?\]$/.test(lines.at(-1) ?? "")) {
+      markers++;
+      lines.pop();
+    }
+    while (lines.at(-1)?.startsWith("[Image attached")) {
+      const hint = lines.pop()!.match(/^\[Image attached at: (\/[^\r\n\[\]\x00]+)\]$/);
+      if (!hint) return null;
+      paths.unshift(hint[1]!);
+    }
+    if (!paths.length || (markers && markers !== paths.length)) return null;
+    // build_native_content_parts separates the caption and hint list by a blank line.
+    if (lines.length && lines.pop() !== "") return null;
+    rest = lines.join("\n");
+  }
+  if (/\[(?:The user sent an image|If you need a closer look|Image attached|screenshot)/.test(rest)) return null;
   return { text: rest.trim(), paths };
 }
 
@@ -128,7 +148,7 @@ export function createHermesPromptImageResolver(options: { userHome?: string; pa
       const nativeRoot = join(home, "cache", "documents", "native-inputs");
       const imageRoot = join(home, "cache", "images");
       for (const [index, path] of parsed.paths.entries()) {
-        if (images.length === MAX_IMAGES_PER_MESSAGE || context.signal.aborted) break;
+        if (context.signal.aborted) break;
         let root: string | null = null;
         if (path.startsWith(`${nativeRoot}${sep}`) && /^[a-f0-9]{64}\/img_[a-f0-9]{12}\.png$/i.test(path.slice(nativeRoot.length + 1))) root = nativeRoot;
         if (path.startsWith(`${imageRoot}${sep}`) && /^img_[a-f0-9]{12}\.(jpg|png)$/i.test(path.slice(imageRoot.length + 1))) root = imageRoot;

@@ -31,8 +31,14 @@ function harness(overrides = {}) {
 const ID = "0123456789abcdef0123456789abcdef";
 const UID = "fedcba9876543210fedcba9876543210";
 const dashed = id => id.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, "$1-$2-$3-$4-$5").toUpperCase();
-const block = path => `[The user sent an image~ Here's what I can see: A synthetic blue square. ${path} ~]`;
-const annotated = (paths, text = "Synthetic question") => `${paths.map(block).join("\n")}\n${text}`;
+// Hermes d05095663342: gateway/run_inbound.py::_enrich_message_with_vision.
+const block = path => `[The user sent an image~ Here's what I can see:\nA synthetic blue square.]\n[If you need a closer look, use vision_analyze with image_url: ${path} ~]`;
+const annotated = (paths, text = "Synthetic question") => paths.map(block).join("\n\n") + (text ? `\n\n${text}` : "");
+// agent/image_routing.py::build_native_content_parts, projected by
+// agent/session_persistence.py::_durable_content (as consumed by image_replay.py).
+const nativeAnnotated = (paths, text = "Synthetic question", durable = true) =>
+  `${text.trim() || "What do you see in this image?"}\n\n${paths.map(path => `[Image attached at: ${path}]`).join("\n")}` +
+  (durable ? "\n[screenshot]".repeat(paths.length) : "");
 const empty = matchedMessages => ({ matchedMessages, images: [] });
 
 async function fixture(t, relativeHome = ".hermes") {
@@ -111,6 +117,62 @@ test("Hermes compares full content and trimmed stripped text without altering in
     assert.equal(result.images.length, 1);
   }
   assert.deepEqual(await f.find({ text: "Synthetic question next line" }), empty(0));
+});
+
+for (const count of [1, 3]) {
+  for (const durable of [false, true]) {
+    test(`Hermes reads ${count} native hints in ${durable ? "persisted" : "combined"} content as one message`, async t => {
+      const f = await fixture(t), paths = Array.from({ length: count }, () => f.image());
+      const content = nativeAnnotated(paths, "Synthetic question", durable);
+      f.add(content);
+      for (const text of ["Synthetic question", content]) {
+        const found = await f.find({ text });
+        assert.equal(found.matchedMessages, 1);
+        assert.equal(found.images.length, count);
+      }
+    });
+  }
+}
+
+test("Hermes native image-only prompts use the exact default caption and detail markers", async t => {
+  const f = await fixture(t);
+  const content = nativeAnnotated([f.image()], "").replace("[screenshot]", "[screenshot detail=low]");
+  f.add(content, { platformId: ID });
+  assert.equal((await f.find({ text: "What do you see in this image?" })).images.length, 1);
+  assert.equal((await f.find({ messageId: ID, text: "" })).images.length, 1);
+});
+
+test("Hermes rejects the exact vision failure notes even beside a successful image", async t => {
+  const f = await fixture(t), path = f.image();
+  const failures = [
+    `[The user sent an image but I couldn't quite see it this time (>_<) You can try looking at it yourself with vision_analyze using image_url: ${path}]`,
+    `[The user sent an image but something went wrong when I tried to look at it~ You can try examining it yourself with vision_analyze using image_url: ${path}]`,
+  ];
+  for (const failure of failures) {
+    for (const notes of [[failure], [block(path), failure], [failure, block(path)]]) {
+      f.writer.exec("DELETE FROM messages");
+      f.add(`${notes.join("\n\n")}\n\nSynthetic question`, { platformId: ID });
+      assert.deepEqual(await f.find({ messageId: ID }), empty(1));
+    }
+  }
+});
+
+test("Hermes rejects ambiguous or incomplete image annotations", async t => {
+  const f = await fixture(t), path = f.image();
+  for (const content of [
+    block(path).replace(`image_url: ${path}`, "image_url: "),
+    block(path).replace(`image_url: ${path}`, `image_url: ${path}\nimage_url: ${path}`),
+    block(path).replace(`image_url: ${path}`, `image_url: ${path} ${path}`),
+    block(path).replace(" ~]", "]"),
+    block(path).replace("see:\n", "see: "),
+    nativeAnnotated([path]).replace("[screenshot]", "[screenshot]\n[screenshot]"),
+    nativeAnnotated([path]).replace(`[Image attached at: ${path}]`, `[Image attached at: ${path}\n${path}]`),
+    nativeAnnotated([path]).replace(`[Image attached at: ${path}]`, "[Image attached: https://example.test/image.png]"),
+  ]) {
+    f.writer.exec("DELETE FROM messages");
+    f.add(content, { platformId: ID });
+    assert.deepEqual(await f.find({ messageId: ID }), empty(1));
+  }
 });
 
 for (const field of ["platformId", "uid"]) {
@@ -223,17 +285,17 @@ test("Hermes malformed records and annotation format changes return no images", 
   assert.deepEqual(await f.find(), empty(0));
 });
 
-test("Hermes caps valid images per message independently of the registry thumbnail cap", async t => {
+test("Hermes counts every valid image while the registry limits thumbnails", async t => {
   const f = await fixture(t);
   f.add(annotated(Array.from({ length: 18 }, () => f.image())));
-  assert.equal((await f.find()).images.length, 16);
+  assert.equal((await f.find()).images.length, 18);
   const handlers = f.h.createPromptImageHandlers({ resolvers: [f.resolver] });
   const snapshot = { provider: "custom-provider", command: ["hermes", "acp"], env: { HERMES_HOME: f.home },
     cwd: f.root, persistence: { provider: "custom-provider", sessionId: "session-one" } };
   const context = { paseo: { agents: { ref: () => ({ refresh: async () => ({ agent: snapshot }) }) } } };
   const input = { agentId: "fake-agent", text: "Synthetic question" };
   const result = await handlers.images(input, context);
-  assert.equal(result.total, 16);
+  assert.equal(result.total, 18);
   assert.equal(result.images.length, 3);
   const full = await handlers.image({ ...input, id: result.images[0].id }, context);
   assert.deepEqual(Buffer.from(full.dataUri.split(",")[1], "base64"), f.png);
