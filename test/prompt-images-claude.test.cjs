@@ -63,7 +63,7 @@ function harness(t, overrides = {}) {
   return { root, dir, store, context, resolver, registry, helpers, environment, logs, reads };
 }
 
-async function picture(mime = "image/png") {
+async function picture(mime = "image/png", width = 2) {
   // The server reads headers only; synthetic fixtures need no image decoder.
   let bytes;
   if (mime === "image/jpeg") {
@@ -71,7 +71,7 @@ async function picture(mime = "image/png") {
   } else {
     bytes = Buffer.alloc(24);
     bytes.set([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]);
-    bytes.writeUInt32BE(2, 16);
+    bytes.writeUInt32BE(width, 16);
     bytes.writeUInt32BE(1, 20);
   }
   return { bytes, block: { type: "image", source: { type: "base64", media_type: mime, data: bytes.toString("base64") } } };
@@ -151,7 +151,7 @@ test("Claude no match cannot return an image from another message or session", a
   h.store([user([text(), png.block], { sessionId: OTHER_SESSION })], { session: OTHER_SESSION });
   assert.deepEqual(await h.resolver.find(h.context()), empty);
   h.store([user([text(), png.block], { sessionId: OTHER_SESSION })]);
-  assert.deepEqual(await h.resolver.find(h.context({ messageId: "synthetic-message" })), empty);
+  assert.deepEqual(await h.resolver.find(h.context({ messageId: "synthetic-message" })), { matchedMessages: 1, images: [] });
 });
 
 test("Claude missing persistence session never uses nativeHandle as a fallback", async t => {
@@ -181,13 +181,13 @@ test("Claude fallback scans project directories only for the exact session filen
   assert.deepEqual(await h.resolver.find(h.context()), { matchedMessages: 2, images: [] });
 });
 
-test("Claude ignores malformed lines, tool results, sidechains and metadata", async t => {
+test("Claude reserves rejected user IDs while ignoring malformed and non-user lines", async t => {
   const h = harness(t), png = await picture();
   h.store(["{malformed", null, [], { type: "assistant", message: { role: "user", content: [text(), png.block] } },
     user([{ type: "tool_result", content: [text(), png.block] }]),
     user([text(), png.block, { type: "tool_result", content: "synthetic result" }]),
     user([text(), png.block], { isSidechain: true }), user([text(), png.block], { isMeta: true })]);
-  assert.deepEqual(await h.resolver.find(h.context({ messageId: "synthetic-message" })), empty);
+  assert.deepEqual(await h.resolver.find(h.context({ messageId: "synthetic-message" })), { matchedMessages: 4, images: [] });
   h.store(["bad JSON", user([text(), png.block]), '{"partial":']);
   assert.equal((await h.resolver.find(h.context())).images.length, 1);
 });
@@ -199,10 +199,62 @@ test("Claude unknown or malformed message content fails closed", async t => {
     user([text(), png.block], { uuid: 42 }), user([text(), png.block], { promptId: {} }),
     { type: "user", uuid: "synthetic-message", message: { role: "assistant", content: [text(), png.block] } }]) {
     h.store([line]);
-    assert.deepEqual(await h.resolver.find(h.context()), empty);
+    assert.deepEqual((await h.resolver.find(h.context())).images, []);
     assert.deepEqual((await h.resolver.find(h.context({ messageId: "synthetic-message" }))).images, []);
   }
 });
+
+for (const inputId of ["messageId", "clientMessageId"]) {
+  for (const storedId of ["uuid", "promptId"]) {
+    for (const reason of ["isSidechain", "isMeta", "sessionId", "uuid", "promptId", "tool_result", "role"]) {
+      // A malformed ID needs the other readable ID to identify the rejected line.
+      if (reason === storedId) continue;
+      test(`Claude rejected ${reason} reserves ${storedId} for ${inputId} instead of selecting a same-text sibling`, async t => {
+        const h = harness(t), bad = await picture(), sibling = await picture("image/png", 3);
+        const extra = { uuid: "bad-message", [storedId]: "requested-id" };
+        let content = [text(), bad.block];
+        if (reason === "isSidechain" || reason === "isMeta") extra[reason] = true;
+        if (reason === "sessionId") extra.sessionId = OTHER_SESSION;
+        if (reason === "uuid") extra.uuid = 42;
+        if (reason === "promptId") extra.promptId = {};
+        if (reason === "tool_result") content.push({ type: "tool_result", content: "synthetic result" });
+        if (reason === "role") extra.message = { role: "assistant", content };
+        h.store([user(content, extra), user([text(), sibling.block], { uuid: "sibling" })]);
+        assert.deepEqual(await h.resolver.find(h.context({ [inputId]: "requested-id" })), { matchedMessages: 1, images: [] });
+      });
+    }
+  }
+}
+
+for (const reason of ["object", "unknown block", "malformed text", "null block", "empty", "number", "missing"]) {
+  test(`Claude unreadable ${reason} blocks text fallback to a same-text sibling with a different PNG`, async t => {
+    const h = harness(t), bad = await picture(), sibling = await picture("image/png", 3);
+    const contents = {
+      object: { text: TEXT, images: [bad.block] },
+      "unknown block": [text(), bad.block, { type: "future_block" }],
+      "malformed text": [text(), bad.block, { type: "text", text: 123 }],
+      "null block": [text(), bad.block, null], empty: [], number: 42, missing: undefined,
+    };
+    h.store([user(contents[reason], { uuid: "unreadable" }), user([text(), sibling.block], { uuid: "sibling" })]);
+    for (const ids of [{}, { messageId: "paseo-only-id" }]) {
+      assert.deepEqual(await h.resolver.find(h.context(ids)), { matchedMessages: 1, images: [] });
+    }
+    // An exact readable ID still selects its own message independently of text.
+    assert.equal((await h.resolver.find(h.context({ messageId: "sibling" }))).images.length, 1);
+  });
+}
+
+for (const flag of ["isSidechain", "isMeta"]) {
+  test(`Claude same-text ${flag} blocks text fallback with a different PNG`, async t => {
+    const h = harness(t), bad = await picture(), sibling = await picture("image/png", 3);
+    h.store([user([text(), bad.block], { uuid: "rejected", [flag]: true }),
+      user([text(), sibling.block], { uuid: "sibling" })]);
+    for (const ids of [{}, { messageId: "paseo-only-id" }]) {
+      assert.deepEqual(await h.resolver.find(h.context(ids)), { matchedMessages: 2, images: [] });
+    }
+    assert.equal((await h.resolver.find(h.context({ messageId: "sibling" }))).images.length, 1);
+  });
+}
 
 test("Claude unknown content with a matching ID blocks text fallback to another message", async t => {
   const h = harness(t), png = await picture();
