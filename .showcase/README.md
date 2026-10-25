@@ -42,6 +42,12 @@ only those groups. Feature images are `docs/images/<group>-light.png` and
 `docs/images/<group>-dark.png`. Comparison images are `images/compare-light.png`
 and `images/compare-dark.png`.
 
+Phone shots (`phone-timeline`, `phone-details`, `phone-menu`) are extra groups.
+`SHOWCASE_CAPTURE_ONLY` selects one of them. Each is a browser viewport 390 CSS
+pixels wide at device scale 3 (1170 image pixels), not a device profile. The
+page route is `/?theme=light&shot=<id>` (or `dark`). Timeline height follows
+the conversation. Details and the long-press menu use a fixed viewport height.
+
 To verify the full output without replacing published images, redirect both
 image directories into the task's temporary directory:
 
@@ -156,3 +162,6 @@ unless a different file is named.
 | [`docs/images/user-light.png`](../docs/images/user-light.png) | [`docs/images/user-dark.png`](../docs/images/user-dark.png) | `PROMPT`, `sample-image.svg` |
 | [`docs/images/syntax-light.png`](../docs/images/syntax-light.png) | [`docs/images/syntax-dark.png`](../docs/images/syntax-dark.png) | `CODE`, `DIFF` |
 | [`docs/images/settings-light.png`](../docs/images/settings-light.png) | [`docs/images/settings-dark.png`](../docs/images/settings-dark.png) | Real `ClearChatSettingsPage`, default preferences, fictional host label |
+| [`docs/images/phone-timeline-light.png`](../docs/images/phone-timeline-light.png) | [`docs/images/phone-timeline-dark.png`](../docs/images/phone-timeline-dark.png) | `PROMPT`, folded `CALLS.search/read/edit/bash`, `REPLY` at 390px |
+| [`docs/images/phone-details-light.png`](../docs/images/phone-details-light.png) | [`docs/images/phone-details-dark.png`](../docs/images/phone-details-dark.png) | `PHONE_EDIT` diff in the bottom sheet |
+| [`docs/images/phone-menu-light.png`](../docs/images/phone-menu-light.png) | [`docs/images/phone-menu-dark.png`](../docs/images/phone-menu-dark.png) | `PHONE_MENU_STEP` long-press menu: Copy command, Copy path, Copy result |

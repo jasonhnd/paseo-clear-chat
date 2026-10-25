@@ -19,4 +19,39 @@ function createCapturePlan(readme) {
   return [...groups.values()];
 }
 
-module.exports = { createCapturePlan };
+// Phone README shots are browser widths. They stay out of the published README
+// inventory until a later card links them, and they never replace an id the
+// README already names.
+const phoneGroups = [
+  {
+    id: "phone-timeline",
+    light: "docs/images/phone-timeline-light.png",
+    dark: "docs/images/phone-timeline-dark.png",
+    viewport: { width: 390, height: 640 },
+    deviceScaleFactor: 3,
+    fit: "content",
+  },
+  {
+    id: "phone-details",
+    light: "docs/images/phone-details-light.png",
+    dark: "docs/images/phone-details-dark.png",
+    viewport: { width: 390, height: 900 },
+    deviceScaleFactor: 3,
+    fit: "viewport",
+  },
+  {
+    id: "phone-menu",
+    light: "docs/images/phone-menu-light.png",
+    dark: "docs/images/phone-menu-dark.png",
+    viewport: { width: 390, height: 700 },
+    deviceScaleFactor: 3,
+    fit: "content",
+  },
+];
+
+function withPhoneGroups(groups) {
+  const seen = new Set(groups.map(group => group.id));
+  return [...groups, ...phoneGroups.filter(group => !seen.has(group.id))];
+}
+
+module.exports = { createCapturePlan, withPhoneGroups, phoneGroups };

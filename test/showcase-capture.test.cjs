@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const { readFileSync, readdirSync } = require("node:fs");
 const { resolve } = require("node:path");
 const { test } = require("node:test");
-const { createCapturePlan } = require("../.showcase/capture-plan.cjs");
+const { createCapturePlan, withPhoneGroups } = require("../.showcase/capture-plan.cjs");
 
 const root = resolve(__dirname, "..");
 const readme = file => readFileSync(resolve(root, file), "utf8");
@@ -37,5 +37,22 @@ test("all README languages publish the same theme pairs and every retained scree
   }
   const actual = ["images", "docs/images"].flatMap(directory =>
     readdirSync(resolve(root, directory)).map(file => `${directory}/${file}`)).sort();
-  assert.deepEqual(actual, expected);
+  // Phone shots are captured before the README cards link them.
+  assert.deepEqual(actual, files(withPhoneGroups(createCapturePlan(readme("README.md")))));
+});
+
+test("phone groups extend the capture plan without changing published screenshots", () => {
+  const published = createCapturePlan(readme("README.md"));
+  const plan = withPhoneGroups(published);
+  assert.deepEqual(plan.slice(0, published.length).map(({ id, light, dark }) => ({ id, light, dark })), published);
+  const phone = plan.slice(published.length);
+  assert.deepEqual(phone.map(group => group.id), ["phone-timeline", "phone-details", "phone-menu"]);
+  for (const group of phone) {
+    assert.equal(group.deviceScaleFactor, 3);
+    assert.equal(group.viewport.width, 390);
+    assert.equal(group.light, `docs/images/${group.id}-light.png`);
+    assert.equal(group.dark, `docs/images/${group.id}-dark.png`);
+  }
+  const linked = createCapturePlan(`${readme("README.md")}<img src="docs/images/phone-timeline-light.png"><img src="docs/images/phone-timeline-dark.png">`);
+  assert.equal(withPhoneGroups(linked).filter(group => group.id === "phone-timeline").length, 1);
 });
