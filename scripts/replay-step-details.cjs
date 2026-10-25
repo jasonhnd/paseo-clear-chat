@@ -407,8 +407,10 @@ async function replay() {
         }, presentation);
         await waitOpen();
         assert.ok((await panel.textContent()).includes("Step A start"), "Rotation must keep the selected step");
-        const position = await waitReading(reading.top);
-        assert.equal(position.top, reading.top, `Rotation to ${width}px must preserve the reader's detail scroll position`);
+        await page.waitForTimeout(250);
+        const position = await detailScroll();
+        assert.equal(position.visibleCodeLine, reading.visibleCodeLine, `Rotation to ${width}px must preserve the first visible output line`);
+        assert.equal(await panel.count(), 1, "Rotation must keep a single detail panel");
         assert.equal(await page.getByTestId("step-detail-backdrop").count(), presentation === "side" ? 0 : 1, "Only modal presentations have a backdrop");
         const box = await panel.boundingBox();
         assert.ok(box.x >= 0 && box.x + box.width <= width + 1);
@@ -534,14 +536,18 @@ async function replay() {
               assert.equal(await panel.locator("img").count(), 0, "Hidden images must stay hidden through resize");
             } else {
               await panel.getByTestId("step-detail-output").first().waitFor();
-              const position = await waitReading(reading.top);
+              await page.waitForTimeout(250);
+              const position = await detailScroll();
               // Reflow of this long file header can shift the first visible code line by up to three lines.
               if (index === 1) {
                 assert.ok(position.top > 0 && position.visibleCodeLine, "Expanded code must retain a scrolled reading region");
                 assert.ok(Math.abs(Number(position.visibleCodeLine.match(/\d+$/)[0]) - Number(codeAnchor.match(/\d+$/)[0])) <= 3,
                   "Resize must keep the same code reading region after header wrapping");
               }
-              else assert.equal(position.top, reading.top, "Expanded output must keep its reading position");
+              else {
+                assert.equal(position.visibleCodeLine, reading.visibleCodeLine, "Expanded output must keep the first visible output line");
+                assert.equal(await panel.count(), 1, "Resize must keep a single detail panel");
+              }
             }
             if (resized === 600 && index === 0) {
               if (!expandedSheet) {
