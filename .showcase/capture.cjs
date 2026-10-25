@@ -7,7 +7,7 @@ const { chromium } = require("playwright-core");
 const { createServer } = require("node:http");
 const { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, readdirSync } = require("node:fs");
 const { resolve, join, dirname } = require("node:path");
-const { readmeV2Groups, demoCapture } = require("./capture-plan.cjs");
+const { readmeV2Groups, demoCapture, heroCapture } = require("./capture-plan.cjs");
 const { captureDemo } = require("./capture-demo.cjs");
 
 const root = resolve(__dirname, "..");
@@ -108,12 +108,51 @@ async function longPressRow(page) {
   assert.ok(menuText.includes("Copy command") && menuText.includes("Copy result"));
 }
 
+async function verifyHero(page, device) {
+  const spec = heroCapture[device];
+  const displayScale = (device === "phone" ? spec.displayWidth / spec.width : 1) * 800 / 2000;
+  const metrics = await page.evaluate(displayScale => {
+    const canvas = document.createElement("canvas").getContext("2d");
+    const measure = selector => [...document.querySelectorAll(selector)].map(node => {
+      const style = getComputedStyle(node);
+      canvas.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+      const inkHeight = Math.max(...node.textContent.split("\n").map(line => {
+        const text = canvas.measureText(line);
+        return text.actualBoundingBoxAscent + text.actualBoundingBoxDescent;
+      }));
+      return { fontSizeAt800: parseFloat(style.fontSize) * displayScale, inkHeightAt800: inkHeight * displayScale };
+    });
+    const code = [...document.querySelectorAll("[style]")].filter(node =>
+      !node.children.length && node.textContent.trim() && getComputedStyle(node).fontFamily.includes("Iosevka"));
+    const reply = document.querySelector('[data-testid="demo-reply"]').getBoundingClientRect();
+    const output = document.querySelector('[data-testid="step-detail-output"]')?.getBoundingClientRect();
+    return {
+      steps: measure('[data-testid="tool-summary-text"]'),
+      code: measure('[data-testid="step-detail-input"], [data-testid="step-detail-output"]'),
+      codeFamilies: [...new Set(code.map(node => getComputedStyle(node).fontFamily))],
+      hasLigatureCharacters: code.some(node => /[≥≤≠⇒⇐]/.test(node.textContent)),
+      replyBottom: reply.bottom, outputBottom: output?.bottom,
+    };
+  }, displayScale);
+  assert.ok(metrics.steps.every(text => text.fontSizeAt800 >= 11 && text.fontSizeAt800 <= 12.1), "Hero steps must read as 11–12 px at README width");
+  assert.ok(metrics.code.every(text => text.fontSizeAt800 >= 11 && text.fontSizeAt800 <= 12.1), "Hero code must read as 11–12 px at README width");
+  assert.ok(metrics.codeFamilies.length && metrics.codeFamilies.every(family => family === '"OMP Iosevka"'), "Every hero code run must use the literal font cut");
+  assert.equal(metrics.hasLigatureCharacters, false);
+  if (device === "desktop") {
+    assert.ok(metrics.replyBottom <= spec.height && spec.height - metrics.replyBottom < 16, "Crop the desktop just after the completed turn");
+    assert.ok(spec.height - metrics.outputBottom < 128, "Trim empty space below the real success result");
+  }
+  return metrics;
+}
+
 function heroHtml(dark) {
+  const { marginX, marginY, gap, desktop, phone } = heroCapture;
+  const { viewport } = readmeV2Groups.find(group => group.id === "hero");
   return `<!doctype html><html lang="en"><style>
-  html,body{margin:0}#frame{width:2000px;height:1376px;position:relative;background:${dark ? "linear-gradient(155deg,#232733,#12141b)" : "linear-gradient(155deg,#f4f7fb,#d5e0ee)"}}
+  html,body{margin:0}#frame{width:${viewport.width}px;height:${viewport.height}px;position:relative;background:${dark ? "linear-gradient(155deg,#232733,#12141b)" : "linear-gradient(155deg,#f4f7fb,#d5e0ee)"}}
   img{display:block;position:absolute;box-shadow:0 20px 46px ${dark ? "#0009" : "#18202d38"}}
-  #desktop{left:32px;top:96px;width:1480px;height:1184px;border-radius:18px}
-  #phone{left:1544px;bottom:96px;width:432px;height:auto;border-radius:28px}
+  #desktop{left:${marginX}px;top:${marginY}px;width:${desktop.width}px;height:auto;border-radius:18px}
+  #phone{left:${marginX + desktop.width + gap}px;top:${marginY}px;width:${phone.displayWidth}px;height:auto;border-radius:28px}
   </style><div id="frame"><img id="desktop" src="/raw/desktop.png" alt=""><img id="phone" src="/raw/phone.png" alt=""></div></html>`;
 }
 
@@ -157,8 +196,8 @@ async function capture() {
       await page.route("**/*", route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
       return { page, errors };
     };
-    const navigate = async (page, theme, textScale = 1) => {
-      await page.goto(`${origin}/?theme=${theme}&textScale=${textScale}`, { waitUntil: "networkidle" });
+    const navigate = async (page, theme, textScale = 1, hero = false) => {
+      await page.goto(`${origin}/?theme=${theme}&textScale=${textScale}${hero ? `&hero&detailWidth=${heroCapture.desktop.detailWidth}` : ""}`, { waitUntil: "networkidle" });
       await page.getByTestId("demo-step-5").waitFor();
       await page.addStyleTag({ content: freeze });
       await settle(page);
@@ -171,20 +210,23 @@ async function capture() {
       await settle(page);
     };
     for (const group of plan) {
-      let { page, errors } = await newPage(group.id, group.id === "hero" ? { width: 1480, height: 1184 } : group.viewport, group.deviceScaleFactor, group.id.startsWith("phone-"));
+      let { page, errors } = await newPage(group.id, group.id === "hero" ? heroCapture.desktop : group.viewport, group.deviceScaleFactor, group.id.startsWith("phone-"));
       for (const theme of ["light", "dark"]) {
         if (group.id === "hero") {
-          await page.setViewportSize({ width: 1480, height: 1184 });
-          await navigate(page, theme, 2); await openEdit(page);
-          await verifyCapture(page, "side");
+          await page.setViewportSize(heroCapture.desktop);
+          await navigate(page, theme, heroCapture.desktop.textScale, true); await openEdit(page);
+          const desktopFonts = await verifyCapture(page, "side");
+          const desktopText = await verifyHero(page, "desktop");
           raw.set("desktop.png", await page.screenshot({ animations: "disabled" }));
-          await page.setViewportSize({ width: 390, height: 936 });
-          await navigate(page, theme, 1.7);
-          await verifyCapture(page);
+          await page.setViewportSize(heroCapture.phone);
+          await navigate(page, theme, heroCapture.phone.textScale, true);
+          const phoneFonts = await verifyCapture(page);
+          const phoneText = await verifyHero(page, "phone");
+          report.push({ file: group[theme], desktop: { fonts: desktopFonts, text: desktopText }, phone: { fonts: phoneFonts, text: phoneText } });
           assert.equal(await page.getByTestId("step-detail-panel").count(), 0, "The hero phone must show the compact timeline without a scrim");
           const reply = await page.getByTestId("demo-reply").boundingBox();
           // Frame the compact first turn at a paragraph boundary, before the follow-up.
-          raw.set("phone.png", await page.screenshot({ animations: "disabled", clip: { x: 0, y: 0, width: 390, height: Math.ceil(reply.y + reply.height + 3) } }));
+          raw.set("phone.png", await page.screenshot({ animations: "disabled", clip: { x: 0, y: 0, width: heroCapture.phone.width, height: Math.ceil(reply.y + reply.height + 3) } }));
           // The modal's history restoration must never navigate the composition page.
           await page.close();
           page = await browser.newPage();
@@ -197,10 +239,12 @@ async function capture() {
           assert.equal(await page.locator("#frame img").count(), 2);
           await page.evaluate(() => Promise.all([...document.images].map(image => image.decode())));
           const bounds = await page.locator("#frame img").evaluateAll(images => images.map(image => {
-            const { left, right, bottom } = image.getBoundingClientRect(); return { left, right, bottom };
+            const { left, right, top, bottom } = image.getBoundingClientRect(); return { left, right, top, bottom };
           }));
           assert.ok(bounds[1].left >= bounds[0].right, "Hero devices must sit side by side");
-          assert.ok(Math.abs(bounds[0].bottom - bounds[1].bottom) < 1, "Hero device bottoms must align");
+          assert.equal(bounds[0].top, bounds[1].top, "Hero tops must align");
+          assert.ok(bounds[0].left >= 40 && group.viewport.width - bounds[1].right >= 40, "Hero outer margins must be at least 40 pixels");
+          assert.ok(bounds.every(box => box.top >= heroCapture.marginY && box.bottom <= group.viewport.height - heroCapture.marginY), "Hero content must fit the trimmed canvas");
         } else {
           await navigate(page, theme);
           if (group.detail === "menu") await longPressRow(page);
