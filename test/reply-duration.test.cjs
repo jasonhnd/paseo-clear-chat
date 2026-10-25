@@ -64,12 +64,13 @@ for (const platform of ["web", "ios", "android"]) {
     const mounted = h.mount(final.item, false, { timestamp: new Date(final.timestamp) });
     await settle();
     assert.doesNotMatch(h.text(mounted.render()), /Worked for /);
+    assert.equal(source.requests.length, 0, "running never refetches");
     source.agent.status = "idle";
     source.agent.updatedAt = "2026-01-01T12:01:00Z";
     mounted.render();
     await settle();
     assert.match(h.text(mounted.render()), /Worked for 21s/);
-    assert.equal(source.requests.length, 2, "one shared read at each lifecycle revision");
+    assert.equal(source.requests.length, 1, "only the settled lifecycle revision reads history");
     h.unmount();
   });
 }
