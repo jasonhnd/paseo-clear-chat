@@ -68,6 +68,13 @@ async function picture(mime = "image/png", width = 2) {
   let bytes;
   if (mime === "image/jpeg") {
     bytes = Buffer.from([0xff, 0xd8, 0xff, 0xc0, 0x00, 0x0b, 0x08, 0x00, 0x01, 0x00, 0x02, 0x01, 0x01, 0x11, 0x00]);
+  } else if (mime === "image/webp") {
+    bytes = Buffer.alloc(30);
+    bytes.write("RIFF", 0);
+    bytes.writeUInt32LE(22, 4);
+    bytes.write("WEBPVP8X", 8);
+    bytes.writeUInt32LE(10, 16);
+    bytes.writeUIntLE(width - 1, 24, 3);
   } else {
     bytes = Buffer.alloc(24);
     bytes.set([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]);
@@ -80,6 +87,22 @@ async function picture(mime = "image/png", width = 2) {
 const user = (content, extra = {}) => ({ type: "user", uuid: "synthetic-message", sessionId: SESSION,
   message: { role: "user", content }, ...extra });
 const text = (value = TEXT) => ({ type: "text", text: value });
+// Confirmed in the installed Claude Code: queued commands store the content
+// blocks on attachment.prompt and use source_uuid for the resulting user turn.
+const queued = (prompt, extra = {}, attachmentExtra = {}) => ({
+  type: "attachment", uuid: "queued-message", sessionId: SESSION,
+  attachment: { type: "queued_command", prompt, source_uuid: "source-message", ...attachmentExtra }, ...extra,
+});
+
+function rpc(h) {
+  const handlers = h.registry.createPromptImageHandlers();
+  const snapshot = { provider: "claude", cwd: CWD, persistence: { provider: "claude", sessionId: SESSION } };
+  const ctx = { paseo: {
+    config: { get: async () => ({ config: { providers: { claude: { env: { CLAUDE_CONFIG_DIR: h.dir } } } } }) },
+    agents: { ref: () => ({ refresh: async () => ({ agent: snapshot }) }) },
+  } };
+  return { handlers, ctx, input: { agentId: "synthetic-agent", text: TEXT } };
+}
 
 test("Claude exact text match returns only that session's PNG/JPEG bytes and leaves the store unchanged", async t => {
   const h = harness(t), png = await picture(), jpeg = await picture("image/jpeg");
@@ -179,6 +202,133 @@ test("Claude fallback scans project directories only for the exact session filen
   assert.equal((await h.resolver.find(h.context({ cwd: "/" + "a".repeat(300) }))).images.length, 1);
   h.store([user([text(), png.block])], { project: "another-copy" });
   assert.deepEqual(await h.resolver.find(h.context()), { matchedMessages: 2, images: [] });
+});
+
+test("Claude checks other project copies even when the encoded-cwd transcript exists", async t => {
+  const h = harness(t), first = await picture(), second = await picture("image/png", 3);
+  h.store([user([text(), first.block], { uuid: "chosen-id" })]);
+  h.store([user([text("different text"), second.block], { uuid: "other-id" })], { project: "other-copy" });
+  assert.deepEqual(await h.resolver.find(h.context()), { matchedMessages: 2, images: [] });
+  assert.deepEqual(await h.resolver.find(h.context({ messageId: "chosen-id" })), { matchedMessages: 2, images: [] });
+});
+
+test("Claude a non-file at the encoded path does not skip other projects", async t => {
+  const h = harness(t), png = await picture();
+  const path = h.store([]);
+  fs.unlinkSync(path);
+  fs.mkdirSync(path);
+  h.store([user([text(), png.block])], { project: "other-project" });
+  const found = await h.resolver.find(h.context());
+  assert.equal(found.images.length, 1);
+  assert.deepEqual(await found.images[0].readBytes(), png.bytes);
+});
+
+for (const lookup of [{}, { messageId: "queued-message" }, { clientMessageId: "source-message" }]) {
+  test(`Claude queued-command attachment images match ${JSON.stringify(lookup)} as one message`, async t => {
+    const h = harness(t), png = await picture(), jpeg = await picture("image/jpeg");
+    const path = h.store([queued([text(), png.block, jpeg.block])]);
+    const before = fs.readFileSync(path);
+    const found = await h.resolver.find(h.context(lookup));
+    assert.equal(found.matchedMessages, 1);
+    assert.equal(found.images.length, 2);
+    assert.deepEqual(await found.images[0].readBytes(), png.bytes);
+    assert.deepEqual(await found.images[1].readBytes(), jpeg.bytes);
+    assert.deepEqual(fs.readFileSync(path), before);
+  });
+}
+
+test("Claude queued commands share message ambiguity and image caps/checks with user messages", async t => {
+  const h = harness(t), png = await picture(), sibling = await picture("image/png", 3);
+  h.store([queued([text(), png.block]), user([text(), sibling.block])]);
+  assert.deepEqual(await h.resolver.find(h.context()), { matchedMessages: 2, images: [] });
+  const invalid = { ...png.block, source: { ...png.block.source, media_type: "image/jpeg" } };
+  h.store([queued([text(), invalid, ...Array(25).fill(png.block)])]);
+  const found = await h.resolver.find(h.context({ messageId: "source-message" }));
+  assert.equal(found.matchedMessages, 1);
+  assert.equal(found.images.length, 20);
+  assert.equal(new Set(found.images.map(image => image.id)).size, 20);
+  assert.deepEqual(await found.images[0].readBytes(), png.bytes);
+});
+
+test("Claude rejected or unreadable queued commands cannot select a same-text sibling", async t => {
+  const h = harness(t), bad = await picture(), sibling = await picture("image/png", 3);
+  for (const line of [queued([text(), bad.block], { isSidechain: true }),
+    queued([text(), bad.block], { isMeta: true }), queued([text(), bad.block], {}, { isMeta: true }),
+    queued([text(), bad.block], { sessionId: OTHER_SESSION }), queued([text(), bad.block], { uuid: 42 }),
+    queued([text(), bad.block, { type: "future_block" }])]) {
+    h.store([line, user([text(), sibling.block], { uuid: "sibling" })]);
+    assert.deepEqual(await h.resolver.find(h.context({ messageId: "source-message" })), { matchedMessages: 1, images: [] });
+    assert.deepEqual((await h.resolver.find(h.context())).images, []);
+  }
+  h.store([queued(TEXT), user([text(), sibling.block])]);
+  assert.deepEqual(await h.resolver.find(h.context()), { matchedMessages: 2, images: [] });
+});
+
+test("Claude accepts WebP headers with matching MIME", async t => {
+  const h = harness(t), webp = await picture("image/webp");
+  h.store([user([text(), webp.block])]);
+  const found = await h.resolver.find(h.context());
+  assert.equal(found.images.length, 1);
+  assert.equal(found.images[0].mime, "image/webp");
+  assert.deepEqual(await found.images[0].readBytes(), webp.bytes);
+});
+
+for (const change of ["uuid", "dev", "ino", "size", "mtime"]) {
+  test(`Claude prompt.image rejects a listed ID after transcript ${change} changes`, async t => {
+    let originalFingerprint;
+    const h = harness(t, { async lstat(path, options) {
+      const entry = await require("node:fs/promises").lstat(path, options);
+      if (!options?.bigint || !originalFingerprint) return entry;
+      // Isolate each identity field so another changed field cannot hide a
+      // missing check. Descriptor validation still uses real filesystem stats.
+      const field = { dev: "dev", ino: "ino", size: "size", mtime: "mtimeNs" }[change];
+      return { ...originalFingerprint,
+        ...(field ? { [field]: change === "dev" ? entry.dev + 1n : entry[field] } : {}),
+        isFile: () => true,
+      };
+    } });
+    const png = await picture(), replacement = await picture("image/png", 3);
+    const path = h.store([user([text(), png.block])]);
+    const { handlers, ctx, input } = rpc(h);
+    const listed = await handlers.images(input, ctx);
+    assert.equal(listed.images.length, 1);
+    assert.equal((await handlers.image({ ...input, id: listed.images[0].id }, ctx)).error, null);
+    const before = fs.statSync(path);
+    originalFingerprint = await require("node:fs/promises").lstat(path, { bigint: true });
+    if (change === "uuid") {
+      // Keep the file fingerprint identical to isolate the message UUID check.
+      fs.writeFileSync(path, JSON.stringify(user([text(), replacement.block], { uuid: "different-message" })) + "\n");
+    } else if (change === "ino") {
+      fs.renameSync(path, join(h.root, "original.jsonl"));
+      h.store([user([text(), replacement.block])]);
+    } else if (change === "size") fs.appendFileSync(path, "\n");
+    else if (change === "mtime") fs.utimesSync(path, before.atime, new Date(before.mtimeMs + 1000));
+    const full = await handlers.image({ ...input, id: listed.images[0].id }, ctx);
+    assert.equal(full.error, "not_found");
+    assert.equal(full.dataUri, null);
+    assert.deepEqual(h.logs, [["[clear-chat] prompt.image: not_found"]]);
+  });
+}
+
+test("Claude discards images when the transcript changes during the scan", async t => {
+  const h = harness(t, { async open(path, flags) {
+    const file = await require("node:fs/promises").open(path, flags);
+    const create = file.createReadStream.bind(file);
+    file.createReadStream = options => {
+      const stream = create(options);
+      stream.once("end", () => fs.appendFileSync(path, "\n"));
+      return stream;
+    };
+    return file;
+  } });
+  h.store([user([text(), (await picture()).block])]);
+  assert.deepEqual(await h.resolver.find(h.context()), empty);
+});
+
+test("Claude requires a readable UUID to bind listed images to a message", async t => {
+  const h = harness(t);
+  h.store([user([text(), (await picture()).block], { uuid: undefined, promptId: "requested-id" })]);
+  assert.deepEqual(await h.resolver.find(h.context({ messageId: "requested-id" })), { matchedMessages: 1, images: [] });
 });
 
 test("Claude reserves rejected user IDs while ignoring malformed and non-user lines", async t => {
