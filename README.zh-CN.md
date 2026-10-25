@@ -142,6 +142,21 @@ paseo plugin install git:https://github.com/jasonhnd/paseo-clear-chat.git --ref 
 ### 还有这些
 
 - **步骤详情。** 点一个收起的步骤，就能看它的全部内容：完整的输入和输出、命令行的退出码，智能体报告了耗时就也显示耗时。输入和输出可以分开复制；失败的步骤会显示报错内容，也能复制。很长的输出（哪怕 1 万行）也能顺畅滚动。窗口窄于 744px 时详情从底部弹出，744 到 1023px 是浮出的小窗，1024px 以上是侧边面板。调整窗口大小、旋转 iPad 或分屏时，详情会换成对应的样式，还是同一个步骤，读到的位置和展开的内容都不变。换到另一个步骤时，详情从头显示；你正在看的步骤有新输出进来时，停在你读到的位置不动。想在对话里直接展开，把 **点按收起的步骤时**（When a collapsed step is pressed）设成 **原地展开**（Expand inline）。
+
+<p>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/ipad-popover-dark.png">
+    <img alt="On an iPad-sized window, the cart.ts edit opens in a floating sheet over the demo conversation" src="docs/images/ipad-popover-light.png">
+  </picture>
+</p>
+
+<p>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/ipad-side-dark.png">
+    <img alt="On a wide iPad window, the demo conversation stays on the left and the cart.ts edit opens in the side panel" src="docs/images/ipad-side-light.png">
+  </picture>
+</p>
+
 - **键盘操作。** 在浏览器或桌面应用里，按 Tab 移到步骤上，↑↓ 在步骤之间移动，Enter 打开详情，Esc 关闭并回到原来的位置。在输入框里打字不受影响。在 iPad 浏览器里接实体键盘也能用。iPhone、iPad 和 Android 的原生应用只能用触屏操作，因为插件接口在这些应用里拿不到实体按键。
 - **悬停预览。** 用鼠标时，指针在收起的步骤上停一下，会弹出它的要点和结果预览。读文件类最多显示 6 行。触屏上不弹预览。
 - **步骤菜单。** 在步骤上点右键，或在触屏上长按，会弹出 **复制命令**（Copy command）、**复制路径**（Copy path）、**复制结果**（Copy result）、**在文件管理器中打开**（Open in file manager）。只显示用得上的几项；Write 和 Edit 写入的内容不会被当成结果复制。菜单出现在指针或手指旁边，靠近屏幕边缘时会翻到另一侧。
