@@ -124,8 +124,10 @@ function magicMatches(bytes: Buffer, mime: string): boolean {
 /**
  * Accepts an inline data URL only. Encoded length is checked before any decode
  * of the payload; a 24-character prefix is enough to read the magic bytes.
+ * An image over the inline cap is kept so it can be counted, and its payload
+ * is not returned.
  */
-function acceptDataUrl(value: unknown): { mime: string; base64: string } | null {
+function acceptDataUrl(value: unknown): { mime: string; base64: string | null } | null {
   if (typeof value !== "string") return null;
   const comma = value.indexOf(",");
   if (!value.startsWith("data:") || comma < 0) return null;
@@ -136,9 +138,10 @@ function acceptDataUrl(value: unknown): { mime: string; base64: string } | null 
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(base64) || base64.length % 4 !== 0) return null;
   const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
   const decodedLength = (base64.length / 4) * 3 - padding;
-  if (!Number.isSafeInteger(decodedLength) || decodedLength <= 0 || decodedLength > MAX_INLINE_IMAGE_BYTES) return null;
+  if (!Number.isSafeInteger(decodedLength) || decodedLength <= 0) return null;
   const header = Buffer.from(base64.slice(0, 24), "base64");
   if (!magicMatches(header, mime)) return null;
+  if (decodedLength > MAX_INLINE_IMAGE_BYTES) return { mime, base64: null };
   return { mime, base64 };
 }
 
@@ -168,6 +171,8 @@ function parseUser(entry: unknown, includeImages: boolean): { ids: string[]; par
       id,
       mime,
       readBytes: async () => {
+        // Over the cap: tell the registry without decoding or returning the payload.
+        if (base64 === null) return Buffer.alloc(MAX_INLINE_IMAGE_BYTES + 1);
         const bytes = Buffer.from(base64, "base64");
         if (bytes.length > MAX_INLINE_IMAGE_BYTES || !magicMatches(bytes, mime)) throw new Error("invalid_image");
         return bytes;
