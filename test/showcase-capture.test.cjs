@@ -14,6 +14,7 @@ test("capture planning follows published references and routes both themes to th
   assert.deepEqual(plan, [
     { id: "compare", light: "images/compare-light.png", dark: "images/compare-dark.png" },
     { id: "tool-read", dark: "docs/images/tool-read-dark.png", light: "docs/images/tool-read-light.png" },
+    { id: "hero", light: "images/hero-light.png", dark: "images/hero-dark.png" },
   ]);
   assert.throws(() => createCapturePlan("No screenshots"), /no screenshot references/);
   assert.throws(() => createCapturePlan('<img src="docs/images/tool-read-light.png">'), /Missing screenshot theme/);
