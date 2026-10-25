@@ -12,6 +12,9 @@ const BLOCK_START = "[The user sent an image~ Here's what I can see:\n";
 const PATH_START = "]\n[If you need a closer look, use vision_analyze with image_url: ";
 const BLOCK_END = " ~]";
 const MAX_CONFIG_BYTES = 64 * 1024;
+const IMAGE_NOTE = /\[(?:The user sent an image|If you need a closer look|Image attached|screenshot)/;
+const SCREENSHOT_LINE = /^\[screenshot(?: detail=(?:low|high|auto))?\]$/;
+const SCREENSHOT_ROW = /(?:^|\n)\[screenshot(?: detail=(?:low|high|auto))?\](?:\n|$)/;
 const empty = (matchedMessages = 0): FoundImages => ({ matchedMessages, images: [] });
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -61,7 +64,62 @@ function messageId(value: unknown): string | null {
   return /^[a-f0-9]{32}$/.test(id) ? id : null;
 }
 
-/** Gateway descriptions precede the caption; native hints follow it. */
+/**
+ * Durable native rows pair each `[screenshot]` with an `[Image attached …]` hint in order,
+ * the same way `agent/image_replay.py::_split_rebuilt_row` does. API callers put the marker
+ * before the caption; turn-time hints stay a blank line above the hint list.
+ */
+function nativeImage(content: string): { text: string; paths: string[] } | null {
+  if (!content.includes("[Image attached") && !SCREENSHOT_ROW.test(content)) return null;
+  const lines = content.trimEnd().split("\n");
+  const markerAt: number[] = [];
+  const hintAt: number[] = [];
+  const paths: string[] = [];
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index] ?? "";
+    if (SCREENSHOT_LINE.test(line)) {
+      markerAt.push(index);
+      continue;
+    }
+    if (!line.startsWith("[Image attached")) continue;
+    const path = /^\[Image attached at: (\/[^\r\n\[\]\x00]+)\]$/.exec(line)?.[1];
+    if (!path) return null;
+    hintAt.push(index);
+    paths.push(path);
+  }
+  if (!paths.length || (markerAt.length && markerAt.length !== paths.length)) return null;
+  const first = hintAt[0];
+  // build_native_content_parts separates the caption and hint list by a blank line.
+  if (first === undefined || (first > 0 && lines[first - 1] !== "")) return null;
+  const drop = new Set([...markerAt, ...hintAt]);
+  const text = lines.filter((_, index) => !drop.has(index)).join("\n");
+  if (IMAGE_NOTE.test(text)) return null;
+  return { text: text.trim(), paths };
+}
+
+/**
+ * Caption of an image-bearing row whose notes did not parse. Vision failure notes and a
+ * marker/hint row with disagreeing counts still occupy the caption, and contribute no paths.
+ */
+function unparsedImageCaption(content: string): string | null {
+  const lines = content.trim().split("\n");
+  let image = false;
+  const kept: string[] = [];
+  for (const line of lines) {
+    if (line.startsWith("[The user sent an image") || line.startsWith("[If you need a closer look") ||
+        line.startsWith("[Image attached") || SCREENSHOT_LINE.test(line)) {
+      image = true;
+      continue;
+    }
+    kept.push(line);
+  }
+  if (!image) return null;
+  const text = kept.join("\n").trim();
+  if (IMAGE_NOTE.test(text)) return null;
+  return text;
+}
+
+/** Gateway descriptions precede the caption; native hints follow it, unless the image was stored first. */
 function annotations(content: string): { text: string; paths: string[] } | null {
   let rest = content.trimStart();
   const paths: string[] = [];
@@ -78,24 +136,13 @@ function annotations(content: string): { text: string; paths: string[] } | null 
     paths.push(path);
     rest = rest.slice(end + BLOCK_END.length).trimStart();
   }
-  if (!paths.length && rest.includes("[Image attached")) {
-    const lines = rest.trimEnd().split("\n");
-    let markers = 0;
-    while (/^\[screenshot(?: detail=(?:low|high|auto))?\]$/.test(lines.at(-1) ?? "")) {
-      markers++;
-      lines.pop();
-    }
-    while (lines.at(-1)?.startsWith("[Image attached")) {
-      const hint = lines.pop()!.match(/^\[Image attached at: (\/[^\r\n\[\]\x00]+)\]$/);
-      if (!hint) return null;
-      paths.unshift(hint[1]!);
-    }
-    if (!paths.length || (markers && markers !== paths.length)) return null;
-    // build_native_content_parts separates the caption and hint list by a blank line.
-    if (lines.length && lines.pop() !== "") return null;
-    rest = lines.join("\n");
+  if (!paths.length) {
+    const native = nativeImage(rest);
+    if (native) return native;
+    // An image note we could not read must not fall through as ordinary text.
+    if (rest.includes("[Image attached") || SCREENSHOT_ROW.test(rest) || rest.startsWith("[The user sent an image")) return null;
   }
-  if (/\[(?:The user sent an image|If you need a closer look|Image attached|screenshot)/.test(rest)) return null;
+  if (IMAGE_NOTE.test(rest)) return null;
   return { text: rest.trim(), paths };
 }
 
@@ -149,6 +196,7 @@ export function createHermesPromptImageResolver(options: { userHome?: string; pa
           let idContent: unknown, textContent: unknown;
           if (!database.prepare("SELECT id FROM sessions WHERE id = ?").get(context.sessionId)) return null;
           const rows = database.prepare("SELECT content, platform_message_id, message_uid FROM messages WHERE session_id = ? AND role = 'user'");
+          const prompt = context.text.trim();
           for (const row of rows.iterate(context.sessionId)) {
             if (context.signal.aborted) return null;
             if ([messageId(row.platform_message_id), messageId(row.message_uid)].some(id => id !== null && ids.has(id))) {
@@ -157,7 +205,9 @@ export function createHermesPromptImageResolver(options: { userHome?: string; pa
             }
             if (typeof row.content !== "string") continue;
             const stripped = annotations(row.content);
-            if (context.text.trim() === row.content.trim() || (stripped && context.text.trim() === stripped.text)) {
+            // Unparsed image notes still occupy the caption, so another row cannot lend its image.
+            const caption = stripped ? stripped.text : unparsedImageCaption(row.content);
+            if (prompt === row.content.trim() || (caption !== null && prompt === caption)) {
               textMatches++;
               textContent = row.content;
             }

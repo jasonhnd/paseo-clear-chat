@@ -165,6 +165,47 @@ test("Hermes rejects the exact vision failure notes even beside a successful ima
   }
 });
 
+test("Hermes counts a vision failure note so the same caption on a later row stays ambiguous", async t => {
+  const f = await fixture(t), path = f.image();
+  // gateway/run_inbound.py::_enrich_message_with_vision failure branches, then "\\n\\n" + user text.
+  const failures = [
+    `[The user sent an image but I couldn't quite see it this time (>_<) You can try looking at it yourself with vision_analyze using image_url: ${path}]`,
+    `[The user sent an image but something went wrong when I tried to look at it~ You can try examining it yourself with vision_analyze using image_url: ${path}]`,
+  ];
+  for (const failure of failures) {
+    f.writer.exec("DELETE FROM messages");
+    f.add(`${failure}\n\nSynthetic question`);
+    assert.deepEqual(await f.find(), empty(1));
+    f.add(annotated([f.image("jpg", f.jpg)]));
+    assert.deepEqual(await f.find(), empty(2));
+  }
+});
+
+test("Hermes counts an unparsed image row so the same caption on a later row stays ambiguous", async t => {
+  const f = await fixture(t), path = f.image();
+  // Two markers and one hint: image_replay refuses the row, and it still occupies the caption.
+  f.add(`[screenshot]\n[screenshot]\nSynthetic question\n\n[Image attached at: ${path}]`);
+  assert.deepEqual(await f.find(), empty(1));
+  f.add(annotated([f.image("jpg", f.jpg)]));
+  assert.deepEqual(await f.find(), empty(2));
+});
+
+test("Hermes reads an image-first durable row as its own images and will not lend them to another row", async t => {
+  const f = await fixture(t);
+  const first = f.image(), second = f.image("jpg", f.jpg);
+  // session_persistence._durable_content of an API part list that puts both images before the text
+  // (image_replay._split_rebuilt_row, "image-first"): markers, caption, blank line, hints.
+  const content = `[screenshot]\n[screenshot]\nSynthetic question\n\n[Image attached at: ${first}]\n[Image attached at: ${second}]`;
+  f.add(content);
+  const alone = await f.find();
+  assert.equal(alone.matchedMessages, 1);
+  assert.deepEqual(alone.images.map(image => image.mime), ["image/png", "image/jpeg"]);
+  assert.deepEqual(await alone.images[0].readBytes(), f.png);
+  assert.deepEqual(await alone.images[1].readBytes(), f.jpg);
+  f.add(annotated([f.image()]));
+  assert.deepEqual(await f.find(), empty(2));
+});
+
 test("Hermes rejects ambiguous or incomplete image annotations", async t => {
   const f = await fixture(t), path = f.image();
   for (const content of [
