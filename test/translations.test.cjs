@@ -234,15 +234,17 @@ test("numeric interpolation renders the original ungrouped English reasoning foo
 });
 
 const approvedResourceHashes = {
-  "en": "b3d8b25f7e0bd81f61ad8ddffb7f706e47006d63754d4d650c5e65d18e3bb375",
-  "zh-CN": "0f53fcb97d502045930a378ead9ac9f2a35e7c452f96068bb6cc038541e04776",
-  "ja": "40411dcb1d8a01e5ca1960014f129f4f23313782f54dd0f5edced2060042bfbe",
+  "en": "274ebec6bbd83950e090c4d03dc5456857eb6d6d28e6db69aa5bde5adcf3a981",
+  "zh-CN": "7bed82c643ebdad6e8e837c677e6d60016fc7b58ab6b402e137d45c68485c0f6",
+  "ja": "3e220c93b4616f64821bad511687e1fcd1edc96d79f6485aaf6e99cbcb6a1db6",
 };
 
 for (const locale of ["en", "zh-CN", "ja"]) {
-  test(`${locale}: only the five approved inline section keys are added to the original resource bytes`, () => {
+  test(`${locale}: preserves the prior baseline after removing the 5 inline-section keys and the 3 prompt-image keys`, () => {
     const text = readFileSync(resolve(__dirname, `../client/locales/${locale}.json`), "utf8");
-    const original = text.replace(/    "sectionInline": \{\n(?:      ".*\n){5}    \},\n/, "");
+    const original = text
+      .replace(/    "imageThumbA11y": ".*",\n    "moreImages": ".*",\n    "closeImage": ".*",\n/, "")
+      .replace(/    "sectionInline": \{\n(?:      ".*\n){5}    \},\n/, "");
     assert.notEqual(original, text);
     assert.equal(createHash("sha256").update(original).digest("hex"), approvedResourceHashes[locale]);
     assert.deepEqual(resources[locale].detail.sectionInline, Object.fromEntries(Object.entries(resources[locale].detail.section).map(([key, title]) => [key, locale === "en" ? key : title])));
