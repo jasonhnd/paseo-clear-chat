@@ -332,6 +332,8 @@ test("server startup still registers settings with defaults and RPCs after migra
   assert.equal(registered, true);
   assert.ok(methods.includes("file.reveal"));
   assert.ok(methods.includes("file.image"));
+  assert.ok(methods.includes("prompt.images"));
+  assert.ok(methods.includes("prompt.image"));
   assert.equal(typeof cleanup, "function");
   assert.equal(fs.readFileSync(old, "utf8"), oldRaw);
   assert.equal(fs.existsSync(h.path(PLUGIN_ID)), false);
