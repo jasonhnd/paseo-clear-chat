@@ -318,6 +318,49 @@ test("Hermes ignores an inactive row and returns only the displayed row with the
   assert.deepEqual(await archived.images[0].readBytes(), f.png);
 });
 
+test("Hermes returns the archived original when a model-only carrier shares its uid", async t => {
+  const f = await fixture(t);
+  f.writer.exec("ALTER TABLE messages ADD COLUMN display_metadata TEXT");
+  const original = f.image();
+  // micro_compaction._merge_adjacent_user_turns keeps the first uid and stamps model_only.
+  // The source row stays archived (active=0, compacted=1) for display.
+  f.add(annotated([original]), { uid: ID, active: 0, compacted: 1 });
+  f.add(annotated([f.image("jpg", f.jpg)]), { uid: ID, active: 1, compacted: 0 });
+  f.writer.prepare("UPDATE messages SET display_metadata = ? WHERE active = 1")
+    .run(JSON.stringify({ model_only: true }));
+  const byUid = await f.find({ messageId: ID, text: "not the caption" });
+  assert.equal(byUid.matchedMessages, 1);
+  assert.equal(byUid.images.length, 1);
+  assert.deepEqual(await byUid.images[0].readBytes(), f.png);
+  const byCaption = await f.find();
+  assert.equal(byCaption.matchedMessages, 1);
+  assert.deepEqual(await byCaption.images[0].readBytes(), f.png);
+});
+
+test("Hermes treats invalid display metadata as uncertain only when that row would match", async t => {
+  const f = await fixture(t);
+  f.writer.exec("ALTER TABLE messages ADD COLUMN display_metadata TEXT");
+  const insert = (content, uid, metadata) => f.writer.prepare(
+    "INSERT INTO messages (session_id, role, content, platform_message_id, message_uid, timestamp, active, compacted, display_metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  ).run("session-one", "user", content, null, uid, 1, 1, 0, metadata);
+  insert(annotated([f.image()]), null, null);
+  insert("Unrelated", null, "{");
+  const clear = await f.find();
+  assert.equal(clear.matchedMessages, 1);
+  assert.deepEqual(await clear.images[0].readBytes(), f.png);
+  insert(annotated([f.image("jpg", f.jpg)]), null, "not-json");
+  assert.deepEqual(await f.find(), empty(2));
+  f.writer.exec("DELETE FROM messages");
+  insert(annotated([f.image()]), ID, "{");
+  assert.deepEqual(await f.find(), empty(1));
+  assert.deepEqual(await f.find({ messageId: ID, text: "other" }), empty(1));
+  insert(annotated([f.image("jpg", f.jpg)]), UID, null);
+  assert.deepEqual(await f.find(), empty(2));
+  const byUid = await f.find({ messageId: UID, text: "other" });
+  assert.equal(byUid.matchedMessages, 1);
+  assert.deepEqual(await byUid.images[0].readBytes(), f.jpg);
+});
+
 test("Hermes returns no images when the display columns are absent", async t => {
   const f = await fixture(t);
   f.writer.exec(`DROP TABLE messages;

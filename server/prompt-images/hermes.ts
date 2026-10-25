@@ -70,6 +70,40 @@ function messageId(value: unknown): string | null {
   return /^[a-f0-9]{32}$/.test(id) ? id : null;
 }
 
+/** Python `bool` for a JSON `model_only` flag: only JSON-falsy values stay on screen. */
+function modelOnlyFlag(flag: unknown): boolean {
+  if (flag == null || flag === false || flag === 0 || flag === "") return false;
+  if (typeof flag === "number") return !Number.isNaN(flag);
+  return true;
+}
+
+/**
+ * Display visibility of one `display_metadata` value.
+ * NULL stays visible. A missing column never reaches here.
+ * Invalid JSON is uncertain (`hermes_state_messages._decode_display_metadata` cannot prove the row is real).
+ * `model_only` is the hidden merged carrier (`_is_model_only_row`, `micro_compaction._merge_adjacent_user_turns`).
+ */
+function rowDisplay(raw: unknown): "visible" | "hidden" | "uncertain" {
+  if (raw == null) return "visible";
+  if (typeof raw !== "string") return "uncertain";
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return "uncertain";
+  }
+  // Pre-guard rows store one extra JSON string layer.
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return "visible";
+    }
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return "visible";
+  return modelOnlyFlag((parsed as Record<string, unknown>).model_only) ? "hidden" : "visible";
+}
+
 /**
  * Durable native rows pair each `[screenshot]` with an `[Image attached …]` hint in order,
  * the same way `agent/image_replay.py::_split_rebuilt_row` does. API callers put the marker
@@ -258,25 +292,31 @@ export function createHermesPromptImageResolver(options: { userHome?: string; pa
       const home = homes.get(context) ?? await resolveHome(context);
       if (!home || context.signal.aborted) return empty();
       const ids = new Set([messageId(context.messageId), messageId(context.clientMessageId)].filter(id => id !== null));
-      let match: { matchedMessages: number; content: unknown } | null;
+      let match: { matchedMessages: number; content: unknown; uncertain: boolean } | null;
       try {
         match = await openSqliteReadOnly(join(home, "state.db"), database => {
           // Keep the scan synchronous and retry-local so the helper can validate
           // an immutable read and discard it before retrying on the plain path.
           let idMatches = 0, textMatches = 0;
           let idContent: unknown, textContent: unknown;
+          let idUncertain = false, textUncertain = false;
           if (!database.prepare("SELECT id FROM sessions WHERE id = ?").get(context.sessionId)) return null;
-          // hermes_state_messages.py shows active=1 or compacted=1. A schema without those
-          // columns is not a transcript this reader understands.
+          // hermes_state_messages.py shows active=1 or compacted=1 and skips model_only carriers.
+          // A schema without active or compacted is not a transcript this reader understands.
           const names = new Set(database.prepare("PRAGMA table_info(messages)").all().map(column => column.name));
           if (!names.has("active") || !names.has("compacted")) return null;
-          const rows = database.prepare("SELECT content, platform_message_id, message_uid FROM messages WHERE session_id = ? AND role = 'user' AND (active = 1 OR compacted = 1)");
+          const hasDisplayMetadata = names.has("display_metadata");
+          const rows = database.prepare(`SELECT content, platform_message_id, message_uid${hasDisplayMetadata ? ", display_metadata" : ""} FROM messages WHERE session_id = ? AND role = 'user' AND (active = 1 OR compacted = 1)`);
           const prompt = context.text.trim();
           for (const row of rows.iterate(context.sessionId)) {
             if (context.signal.aborted) return null;
+            const visibility = hasDisplayMetadata ? rowDisplay(row.display_metadata) : "visible";
+            if (visibility === "hidden") continue;
+            const uncertain = visibility === "uncertain";
             if ([messageId(row.platform_message_id), messageId(row.message_uid)].some(id => id !== null && ids.has(id))) {
               idMatches++;
               idContent = row.content;
+              if (uncertain) idUncertain = true;
             }
             if (typeof row.content !== "string") continue;
             const stripped = annotations(row.content);
@@ -285,15 +325,20 @@ export function createHermesPromptImageResolver(options: { userHome?: string; pa
             if (prompt === row.content.trim() || (caption !== null && prompt === caption)) {
               textMatches++;
               textContent = row.content;
+              if (uncertain) textUncertain = true;
             }
           }
-          return { matchedMessages: idMatches || textMatches, content: idMatches ? idContent : textContent };
+          return {
+            matchedMessages: idMatches || textMatches,
+            content: idMatches ? idContent : textContent,
+            uncertain: idMatches ? idUncertain : textUncertain,
+          };
         });
       } catch { return empty(); }
       await setImmediate();
       if (!match) return empty();
-      const { matchedMessages, content } = match;
-      if (matchedMessages !== 1 || typeof content !== "string" || context.signal.aborted) return empty(matchedMessages);
+      const { matchedMessages, content, uncertain } = match;
+      if (matchedMessages !== 1 || typeof content !== "string" || uncertain || context.signal.aborted) return empty(matchedMessages);
       const parsed = annotations(content);
       if (!parsed) return empty(1);
       const images: FoundImages["images"] = [];
