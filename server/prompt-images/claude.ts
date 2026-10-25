@@ -21,6 +21,8 @@ interface UserMessage {
   ids: string[];
   text: string | null;
   images: Record<string, unknown>[];
+  /** Tool-result lines reserve their own uuid but are not unknown content. */
+  toolResult: boolean;
 }
 
 function userMessage(value: unknown, sessionId: string): UserMessage | null {
@@ -33,16 +35,21 @@ function userMessage(value: unknown, sessionId: string): UserMessage | null {
   const rawIds = [line.uuid, line.promptId, ...(attachment ? [attachment.source_uuid] : [])];
   const ids = rawIds.filter((id): id is string => typeof id === "string" && id.length > 0);
   const uuid = typeof line.uuid === "string" && line.uuid.length > 0 ? line.uuid : null;
-  const unreadable: UserMessage = { uuid, ids, text: null, images: [] };
+  const unreadable: UserMessage = { uuid, ids, text: null, images: [], toolResult: false };
   const message = record(line.message);
   if (!attachment && (!message || message.role !== "user")) return unreadable;
   const rejected = line.isSidechain === true || line.isMeta === true || attachment?.isMeta === true ||
     (line.sessionId !== undefined && line.sessionId !== sessionId) ||
     rawIds.some(id => id !== undefined && typeof id !== "string");
   const content = attachment ? attachment.prompt : message!.content;
-  if (typeof content === "string") return { uuid, ids, text: content, images: [] };
+  if (typeof content === "string") return { uuid, ids, text: content, images: [], toolResult: false };
   if (!Array.isArray(content) || !content.length) return unreadable;
-  if (content.some(value => record(value)?.type === "tool_result")) return unreadable;
+  // Claude copies the turn promptId onto every tool_result line. That copy is
+  // not another message. Reserve only this line's uuid: a lookup of the uuid
+  // still selects nothing, and the prompt id still selects the user turn.
+  if (content.some(value => record(value)?.type === "tool_result")) {
+    return { uuid, ids: uuid ? [uuid] : [], text: null, images: [], toolResult: true };
+  }
   const texts: string[] = [];
   const images: Record<string, unknown>[] = [];
   for (const value of content) {
@@ -53,7 +60,7 @@ function userMessage(value: unknown, sessionId: string): UserMessage | null {
     // message when the requested message has an unreadable content format.
     else return unreadable;
   }
-  return { uuid, ids, text: texts.join("\n"), images: rejected ? [] : images };
+  return { uuid, ids, text: texts.join("\n"), images: rejected ? [] : images, toolResult: false };
 }
 
 function image(block: Record<string, unknown>, id: string): FoundImage | null {
@@ -122,7 +129,9 @@ async function find(context: ResolverContext): Promise<FoundImages> {
         context.signal.throwIfAborted();
         const message = userMessage(value, context.sessionId);
         if (!message) continue;
-        if (message.text === null) unreadableText = true;
+        // Tool results are a known non-prompt shape. They must not make every
+        // session that used a tool fail closed on text fallback.
+        if (message.text === null && !message.toolResult) unreadableText = true;
         if (message.ids.some(id => requestedIds.includes(id))) {
           idCount++;
           idMessage = idCount === 1 ? message : null;
