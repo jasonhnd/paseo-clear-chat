@@ -1,4 +1,5 @@
-import { lstat, opendir, realpath } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, open, opendir, realpath, type FileHandle } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, sep } from "node:path";
 import type { FoundImage, FoundImages, ResolverContext } from "./registry";
@@ -13,17 +14,24 @@ import { readJsonlReadOnly } from "./read-only";
  * `no_match` or `ambiguous`.
  *
  * Reads `${CODEX_HOME:-~/.codex}` rollout JSONL only. It never creates, copies,
- * locks, or writes files in that store. JSONL goes through `readJsonlReadOnly`.
- * Inline data URLs are limited to the shared 1.5 MiB cap.
+ * locks, or writes files in that store. JSONL goes through `readJsonlReadOnly`
+ * on a descriptor this module already opened. Inline data URLs are limited to
+ * the shared 1.5 MiB cap.
  *
  * A rollout is used only when both the live and archived trees were fully
- * scanned and exactly one confirmed file exists between them. Text matches from
+ * scanned and exactly one confirmed file exists between them. That file is
+ * opened with O_NOFOLLOW. The descriptor must be a regular file, its real path
+ * must stay inside the session root, and its device and inode must match the
+ * confirmed file. Messages and images come from one read of that descriptor,
+ * bounded by the size at open. A second open must report the same device,
+ * inode, size, and mtime. Any mismatch returns no image. Text matches from
  * concatenated input_text and from a single part are one set. An incomplete
  * scan, a changed file, or more than one qualifying message returns no image.
  */
 
-/** Bounds memory for one message. The registry still caps thumbnails at three. */
+/** Payloads kept for one message. Further accepted images are counted without their bytes. */
 const MAX_IMAGES_PER_MESSAGE = 32;
+const ROLLOUT_OPEN_FLAGS = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 const MAX_WALK_DEPTH = 6;
 const THREAD_ID = /^[A-Za-z0-9_-]{1,128}$/;
 const ID_FIELDS = ["id", "message_id", "messageId", "client_message_id", "clientMessageId"] as const;
@@ -145,6 +153,16 @@ function acceptDataUrl(value: unknown): { mime: string; base64: string | null } 
   return { mime, base64 };
 }
 
+function imageBytes(mime: string, base64: string | null): FoundImage["readBytes"] {
+  return async () => {
+    // Over the inline cap: tell the registry without decoding or returning the payload.
+    if (base64 === null) return Buffer.alloc(MAX_INLINE_IMAGE_BYTES + 1);
+    const bytes = Buffer.from(base64, "base64");
+    if (bytes.length > MAX_INLINE_IMAGE_BYTES || !magicMatches(bytes, mime)) throw new Error("invalid_image");
+    return bytes;
+  };
+}
+
 function parseUser(entry: unknown, includeImages: boolean): { ids: string[]; parts: string[]; images: FoundImage[] } | null {
   const line = asRecord(entry);
   if (!line || line.type !== "response_item") return null;
@@ -153,6 +171,7 @@ function parseUser(entry: unknown, includeImages: boolean): { ids: string[]; par
   const parts: string[] = [];
   const images: FoundImage[] = [];
   let imageOrdinal = 0;
+  let retained = 0;
   for (const item of payload.content) {
     const part = asRecord(item);
     if (!part || typeof part.type !== "string" || IGNORED_CONTENT_TYPES.has(part.type)) continue;
@@ -163,34 +182,21 @@ function parseUser(entry: unknown, includeImages: boolean): { ids: string[]; par
     if (part.type !== "input_image") continue;
     const id = String(imageOrdinal);
     imageOrdinal += 1;
-    if (!includeImages || images.length >= MAX_IMAGES_PER_MESSAGE) continue;
+    if (!includeImages) continue;
     const accepted = acceptDataUrl(part.image_url);
     if (!accepted) continue;
-    const { mime, base64 } = accepted;
-    images.push({
-      id,
-      mime,
-      readBytes: async () => {
-        // Over the cap: tell the registry without decoding or returning the payload.
-        if (base64 === null) return Buffer.alloc(MAX_INLINE_IMAGE_BYTES + 1);
-        const bytes = Buffer.from(base64, "base64");
-        if (bytes.length > MAX_INLINE_IMAGE_BYTES || !magicMatches(bytes, mime)) throw new Error("invalid_image");
-        return bytes;
-      },
-    });
+    // The registry total is the array length, so every accepted image is counted.
+    // Only the first payloads are kept. An oversized image has no payload and is
+    // still returned so a later fetch reports image_too_large.
+    if (accepted.base64 !== null && retained >= MAX_IMAGES_PER_MESSAGE) {
+      images.push({ id, mime: accepted.mime, readBytes: async () => { throw new Error("invalid_image"); } });
+      continue;
+    }
+    if (accepted.base64 !== null) retained += 1;
+    const base64 = accepted.base64;
+    images.push({ id, mime: accepted.mime, readBytes: imageBytes(accepted.mime, base64) });
   }
   return { ids: storedIds(payload), parts, images };
-}
-
-function sameText(left: { ids: string[]; parts: string[] }, right: { ids: string[]; parts: string[] }): boolean {
-  if (left.ids.length !== right.ids.length || left.parts.length !== right.parts.length) return false;
-  for (let index = 0; index < left.ids.length; index += 1) {
-    if (left.ids[index] !== right.ids[index]) return false;
-  }
-  for (let index = 0; index < left.parts.length; index += 1) {
-    if (left.parts[index] !== right.parts[index]) return false;
-  }
-  return true;
 }
 
 /**
@@ -252,14 +258,22 @@ async function containedDirectory(home: string, name: string): Promise<string | 
   }
 }
 
-async function confirmedFile(root: string, path: string): Promise<string | null | "incomplete"> {
+interface ConfirmedRollout {
+  path: string;
+  root: string;
+  dev: bigint;
+  ino: bigint;
+}
+
+async function confirmedFile(root: string, path: string): Promise<Omit<ConfirmedRollout, "root"> | null | "incomplete"> {
   try {
     const info = await lstat(path);
     if (!info.isFile() || info.isSymbolicLink()) return null;
     const real = await realpath(path);
     if (!isInside(root, real)) return null;
-    const again = await lstat(real);
-    return again.isFile() && !again.isSymbolicLink() ? real : null;
+    const again = await lstat(real, { bigint: true });
+    if (!again.isFile() || again.isSymbolicLink()) return null;
+    return { path: real, dev: again.dev, ino: again.ino };
   } catch (error) {
     // A vanished file is not a candidate. Any other lstat or realpath failure
     // means this tree could not be confirmed.
@@ -324,11 +338,11 @@ async function rolloutFiles(root: string, threadId: string, signal: AbortSignal)
   return found;
 }
 
-type ThreadHit = "none" | "ambiguous" | "aborted" | "incomplete" | { path: string };
+type ThreadHit = "none" | "ambiguous" | "aborted" | "incomplete" | ConfirmedRollout;
 
 async function fileForThread(home: string, threadId: string, signal: AbortSignal): Promise<ThreadHit> {
   if (!THREAD_ID.test(threadId)) return "none";
-  const confirmedPaths: string[] = [];
+  const confirmedPaths: ConfirmedRollout[] = [];
   for (const name of ["sessions", "archived_sessions"] as const) {
     if (signal.aborted) return "aborted";
     const root = await containedDirectory(home, name);
@@ -341,46 +355,67 @@ async function fileForThread(home: string, threadId: string, signal: AbortSignal
     if (!candidate) continue;
     const confirmed = await confirmedFile(root, candidate);
     if (confirmed === "incomplete") return "incomplete";
-    if (confirmed) confirmedPaths.push(confirmed);
+    if (confirmed) confirmedPaths.push({ ...confirmed, root });
   }
   if (confirmedPaths.length > 1) return "ambiguous";
-  const path = confirmedPaths[0];
-  return path ? { path } : "none";
+  return confirmedPaths[0] ?? "none";
 }
 
-async function locateRollout(home: string, context: ResolverContext): Promise<string | null | "ambiguous"> {
+async function locateRollout(home: string, context: ResolverContext): Promise<ConfirmedRollout | null | "ambiguous"> {
   const ids: string[] = [];
   for (const value of [context.sessionId, context.nativeHandle]) {
     if (typeof value === "string" && value.length > 0 && !ids.includes(value)) ids.push(value);
   }
-  const paths = new Set<string>();
+  const matches = new Map<string, ConfirmedRollout>();
   for (const id of ids) {
     const hit = await fileForThread(home, id, context.signal);
     if (hit === "aborted") return null;
     if (hit === "incomplete") throw new Error("lookup_failed");
     if (hit === "ambiguous") return "ambiguous";
-    if (typeof hit === "object") paths.add(hit.path);
+    if (typeof hit === "object") matches.set(hit.path, hit);
   }
-  if (paths.size !== 1) return null;
-  const [path] = paths;
-  return path ?? null;
-}
-
-async function fileStamp(path: string): Promise<FileStamp> {
-  const info = await lstat(path, { bigint: true });
-  return { dev: info.dev, ino: info.ino, size: info.size, mtimeNs: info.mtimeNs };
+  if (matches.size !== 1) return null;
+  const [match] = matches.values();
+  return match ?? null;
 }
 
 function sameStamp(left: FileStamp, right: FileStamp): boolean {
   return left.dev === right.dev && left.ino === right.ino && left.size === right.size && left.mtimeNs === right.mtimeNs;
 }
 
-async function readMessages(path: string, signal: AbortSignal, includeImages: boolean): Promise<MessageText[] | null> {
+/**
+ * The open descriptor is the file we read. realpath/dev/ino must still name
+ * that same regular file inside the session root and the confirmed rollout.
+ */
+async function descriptorStamp(file: FileHandle, ref: ConfirmedRollout): Promise<FileStamp> {
+  const info = await file.stat({ bigint: true });
+  if (!info.isFile()) throw new Error("lookup_failed");
+  const real = await realpath(ref.path);
+  if (!isInside(ref.root, real)) throw new Error("lookup_failed");
+  const linked = await lstat(real, { bigint: true });
+  if (!linked.isFile() || linked.isSymbolicLink() || linked.dev !== info.dev || linked.ino !== info.ino) {
+    throw new Error("lookup_failed");
+  }
+  if (info.dev !== ref.dev || info.ino !== ref.ino) throw new Error("lookup_failed");
+  return { dev: info.dev, ino: info.ino, size: info.size, mtimeNs: info.mtimeNs };
+}
+
+async function openRollout(ref: ConfirmedRollout): Promise<{ file: FileHandle; stamp: FileStamp }> {
+  const file = await open(ref.path, ROLLOUT_OPEN_FLAGS);
+  try {
+    return { file, stamp: await descriptorStamp(file, ref) };
+  } catch (error) {
+    await file.close();
+    throw error;
+  }
+}
+
+async function readMessages(ref: ConfirmedRollout, file: FileHandle, byteLength: number, signal: AbortSignal): Promise<MessageText[] | null> {
   const messages: MessageText[] = [];
   let index = 0;
-  for await (const entry of readJsonlReadOnly(path)) {
+  for await (const entry of readJsonlReadOnly(ref.path, { fd: file.fd, byteLength })) {
     if (signal.aborted) return null;
-    const parsed = parseUser(entry, includeImages);
+    const parsed = parseUser(entry, true);
     if (!parsed) continue;
     messages.push({ index, ids: parsed.ids, parts: parsed.parts, images: parsed.images });
     index += 1;
@@ -389,27 +424,35 @@ async function readMessages(path: string, signal: AbortSignal, includeImages: bo
 }
 
 /**
- * Two reads must describe the same file. The second read selects from every
- * user message again, so an appended duplicate cannot hide behind the first
- * ordinal. A changed dev, ino, size, or mtime is not a match.
+ * One descriptor supplies every message and image. Its fstat before and after
+ * that read, and a second open of the same path, must agree on device, inode,
+ * size, and mtime. A swapped path fails the second open even if the first
+ * descriptor still holds the original file.
  */
-async function readUniqueMatch(path: string, context: ResolverContext): Promise<FoundImages> {
-  const before = await fileStamp(path);
-  const first = await readMessages(path, context.signal, false);
-  if (!first || context.signal.aborted) return none();
-  const second = await readMessages(path, context.signal, true);
-  if (!second || context.signal.aborted) return none();
-  const after = await fileStamp(path);
-  if (!sameStamp(before, after)) throw new Error("lookup_failed");
-  const selected = selectMessages(second, context);
-  if (selected.length !== 1) return { matchedMessages: selected.length, images: [] };
-  const chosen = selected[0];
-  const previous = selectMessages(first, context);
-  const earlier = previous[0];
-  if (!chosen || previous.length !== 1 || !earlier || earlier.index !== chosen.index || !sameText(earlier, chosen)) {
-    return none();
+async function readUniqueMatch(ref: ConfirmedRollout, context: ResolverContext): Promise<FoundImages> {
+  const opened = await openRollout(ref);
+  try {
+    if (opened.stamp.size > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("lookup_failed");
+    const messages = await readMessages(ref, opened.file, Number(opened.stamp.size), context.signal);
+    if (!messages || context.signal.aborted) return none();
+    const after = await descriptorStamp(opened.file, ref);
+    if (!sameStamp(opened.stamp, after)) throw new Error("lookup_failed");
+    const again = await openRollout(ref);
+    let matches = false;
+    try {
+      matches = sameStamp(opened.stamp, again.stamp);
+    } finally {
+      await again.file.close();
+    }
+    if (!matches) throw new Error("lookup_failed");
+    const selected = selectMessages(messages, context);
+    if (selected.length !== 1) return { matchedMessages: selected.length, images: [] };
+    const chosen = selected[0];
+    if (!chosen) return none();
+    return { matchedMessages: 1, images: chosen.images };
+  } finally {
+    await opened.file.close();
   }
-  return { matchedMessages: 1, images: chosen.images };
 }
 
 export const codexPromptImages = {
@@ -423,10 +466,10 @@ export const codexPromptImages = {
     try {
       const home = await resolveHome(configuredHome);
       if (!home || context.signal.aborted) return none();
-      const path = await locateRollout(home, context);
-      if (path === "ambiguous") return { matchedMessages: 2, images: [] };
-      if (!path || context.signal.aborted) return none();
-      return await readUniqueMatch(path, context);
+      const rollout = await locateRollout(home, context);
+      if (rollout === "ambiguous") return { matchedMessages: 2, images: [] };
+      if (!rollout || context.signal.aborted) return none();
+      return await readUniqueMatch(rollout, context);
     } catch (error) {
       if (isFsMiss(error)) return none();
       throw new Error("lookup_failed");

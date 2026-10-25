@@ -373,6 +373,29 @@ test("readLocalImageReadOnly rejects traversal, symlink escapes, prefix siblings
   assert.equal(await h.readLocalImageReadOnly(join(allowed, "valid.png"), []), null);
 });
 
+test("readJsonlReadOnly reads a verified descriptor after the path is replaced", async t => {
+  const h = harness();
+  const root = fixture(t);
+  const path = join(root, "records.jsonl");
+  const outside = join(root, "outside.jsonl");
+  const original = '{"one":1}\n';
+  fs.writeFileSync(path, original);
+  fs.writeFileSync(outside, '{"evil":true}\n');
+  const file = await fs.promises.open(path, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  try {
+    fs.renameSync(path, `${path}.aside`);
+    fs.symlinkSync(outside, path);
+    const records = [];
+    for await (const record of h.readJsonlReadOnly(path, { fd: file.fd, byteLength: Buffer.byteLength(original) })) {
+      records.push(record);
+    }
+    assert.deepEqual(records, [{ one: 1 }]);
+    assert.equal(fs.readlinkSync(path), outside);
+  } finally {
+    await file.close();
+  }
+});
+
 test("readJsonlReadOnly streams valid records around bad lines without changing the file", async t => {
   const h = harness();
   const root = fixture(t);

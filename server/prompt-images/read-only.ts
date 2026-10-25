@@ -1,4 +1,4 @@
-import { constants, createReadStream, existsSync, realpath } from "node:fs";
+import { constants, createReadStream, existsSync, read, realpath } from "node:fs";
 import { open, stat } from "node:fs/promises";
 import { promisify } from "node:util";
 import { extname, isAbsolute, relative, resolve, sep } from "node:path";
@@ -54,9 +54,38 @@ export async function readLocalImageReadOnly(candidate: string, allowedRoots: re
   }
 }
 
-/** Streams bounded records; malformed, partial and oversized lines are skipped. */
-export async function* readJsonlReadOnly(path: string): AsyncGenerator<unknown> {
-  const stream = createReadStream(path, { flags: "r" });
+/** Read an already-open descriptor. `path` is not opened and this does not close `fd`. */
+export interface JsonlReadOptions {
+  fd?: number;
+  /** With `fd`, parse at most this many bytes from offset 0. */
+  byteLength?: number;
+}
+
+function readAt(fd: number, buffer: Buffer, position: number, length: number): Promise<number> {
+  return new Promise((resolve, reject) => {
+    read(fd, buffer, 0, length, position, (error, bytesRead) => {
+      if (error) reject(error);
+      else resolve(bytesRead);
+    });
+  });
+}
+
+/** Positional reads leave the caller's descriptor open and do not follow a replaced path. */
+async function* readDescriptor(fd: number, byteLength?: number): AsyncGenerator<Buffer> {
+  const scratch = Buffer.alloc(64 * 1024);
+  let position = 0;
+  const limit = byteLength ?? Number.POSITIVE_INFINITY;
+  while (position < limit) {
+    const length = Math.min(scratch.length, limit - position);
+    const bytesRead = await readAt(fd, scratch, position, length);
+    if (bytesRead === 0) return;
+    position += bytesRead;
+    // The parser keeps slices until the newline, so the scratch buffer cannot be reused.
+    yield Buffer.from(scratch.subarray(0, bytesRead));
+  }
+}
+
+async function* recordsFromChunks(source: AsyncIterable<Buffer>): AsyncGenerator<unknown> {
   let chunks: Buffer[] = [];
   let length = 0;
   let oversized = false;
@@ -65,25 +94,34 @@ export async function* readJsonlReadOnly(path: string): AsyncGenerator<unknown> 
     try { return [JSON.parse(Buffer.concat(chunks, length).toString("utf8")) as unknown]; }
     catch { return []; }
   };
-  try {
-    for await (const chunk of stream) {
-      const bytes = chunk as Buffer;
-      let start = 0;
-      while (start < bytes.length) {
-        const newline = bytes.indexOf(10, start);
-        const end = newline === -1 ? bytes.length : newline;
-        if (!oversized) {
-          length += end - start;
-          if (length > MAX_JSONL_LINE_BYTES) { oversized = true; chunks = []; }
-          else chunks.push(bytes.subarray(start, end));
-        }
-        if (newline === -1) break;
-        for (const record of parse()) yield record;
-        chunks = []; length = 0; oversized = false;
-        start = newline + 1;
+  for await (const bytes of source) {
+    let start = 0;
+    while (start < bytes.length) {
+      const newline = bytes.indexOf(10, start);
+      const end = newline === -1 ? bytes.length : newline;
+      if (!oversized) {
+        length += end - start;
+        if (length > MAX_JSONL_LINE_BYTES) { oversized = true; chunks = []; }
+        else chunks.push(bytes.subarray(start, end));
       }
+      if (newline === -1) break;
+      for (const record of parse()) yield record;
+      chunks = []; length = 0; oversized = false;
+      start = newline + 1;
     }
-    for (const record of parse()) yield record;
+  }
+  for (const record of parse()) yield record;
+}
+
+/** Streams bounded records; malformed, partial and oversized lines are skipped. */
+export async function* readJsonlReadOnly(path: string, options?: JsonlReadOptions): AsyncGenerator<unknown> {
+  if (options?.fd !== undefined) {
+    yield* recordsFromChunks(readDescriptor(options.fd, options.byteLength));
+    return;
+  }
+  const stream = createReadStream(path, { flags: "r" });
+  try {
+    yield* recordsFromChunks(stream as AsyncIterable<Buffer>);
   } finally {
     stream.destroy();
   }
