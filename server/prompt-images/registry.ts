@@ -1,6 +1,7 @@
 import type { RpcInput, RpcOutput } from "@getpaseo/plugin";
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
 import type { promptImageRpc, promptImagesRpc } from "../../shared/prompt-images-rpc";
+import { codexPromptImages } from "./codex";
 import { readLocalImageReadOnly } from "./read-only";
 import { readImageHeader } from "./image-header";
 
@@ -46,8 +47,10 @@ export interface PromptImageResolver {
   find(context: ResolverContext): Promise<FoundImages>;
 }
 
-/** Provider adapters are added separately; production lookups currently find none. */
-export const promptImageResolvers: readonly PromptImageResolver[] = [];
+/** Codex rollout lookup is registered here. Other providers are added separately. */
+export const promptImageResolvers: readonly PromptImageResolver[] = [
+  codexPromptImages,
+];
 
 const MAX_THUMBNAILS = 3;
 const MAX_PIXELS = 24_000_000;
