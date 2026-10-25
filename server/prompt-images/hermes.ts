@@ -20,8 +20,16 @@ const MAX_CONFIG_BYTES = 64 * 1024;
 const IMAGE_NOTE = /\[(?:The user sent an image|If you need a closer look|Image attached|screenshot)/;
 const SCREENSHOT_LINE = /^\[screenshot(?: detail=(?:low|high|auto))?\]$/;
 const SCREENSHOT_ROW = /(?:^|\n)\[screenshot(?: detail=(?:low|high|auto))?\](?:\n|$)/;
-const PATH_PATTERN = /^\/[^\r\n\[\]\x00]+$/;
+// Original basenames are kept (`session_ingress_media.py` capture), including `Holiday [2026].png`.
+// `]` still closes a failure note, so that delimiter cannot admit a bracketed filename.
+const PATH_PATTERN = /^\/[^\r\n\x00]+$/;
+const FAILURE_PATH_PATTERN = /^\/[^\r\n\[\]\x00]+$/;
 const empty = (matchedMessages = 0): FoundImages => ({ matchedMessages, images: [] });
+
+type ClassifiedMessage =
+  | { kind: "plain"; text: string }
+  | { kind: "image"; text: string; paths: string[] }
+  | { kind: "uncertain"; text: string | null };
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -122,7 +130,7 @@ function nativeImage(content: string): { text: string; paths: string[] } | null 
       continue;
     }
     if (!line.startsWith("[Image attached")) continue;
-    const path = /^\[Image attached at: (\/[^\r\n\[\]\x00]+)\]$/.exec(line)?.[1];
+    const path = /^\[Image attached at: (\/[^\r\n\x00]+)\]$/.exec(line)?.[1];
     if (!path) return null;
     hintAt.push(index);
     paths.push(path);
@@ -156,7 +164,7 @@ function failureBlockLength(content: string, at: number): number {
     const end = content.indexOf("]", at + prefix.length);
     if (end === -1) continue;
     const path = content.slice(at + prefix.length, end);
-    if (!PATH_PATTERN.test(path)) continue;
+    if (!FAILURE_PATH_PATTERN.test(path)) continue;
     return end + 1 - at;
   }
   return 0;
@@ -180,9 +188,9 @@ function earliestFailure(content: string, from: number): number {
 }
 
 /**
- * Caption of an image-bearing row whose notes did not parse. Complete success and failure
- * blocks (either failure format, either order) and image-first markers/hints are removed
- * first, so the row still occupies the caption. A failure note contributes no paths.
+ * Best-effort caption of a row that looks like an image note but did not parse.
+ * The count may include it. The row stays uncertain either way, so text fallback
+ * cannot treat another row as the only match. A failure note contributes no paths.
  */
 function unparsedImageCaption(content: string): string | null {
   let image = false;
@@ -251,6 +259,20 @@ function annotations(content: string): { text: string; paths: string[] } | null 
   return { text: rest.trim(), paths };
 }
 
+/**
+ * Plain text has no Hermes image note. An image row is one whose notes all parsed and
+ * whose paths were accepted. Any other note, marker or hint is uncertain: its caption
+ * is not trusted, and one such row blocks text fallback for the whole session.
+ */
+function classifyMessage(content: string): ClassifiedMessage {
+  if (!IMAGE_NOTE.test(content)) return { kind: "plain", text: content.trim() };
+  const parsed = annotations(content);
+  if (parsed && parsed.paths.length > 0 && !IMAGE_NOTE.test(parsed.text)) {
+    return { kind: "image", text: parsed.text, paths: parsed.paths };
+  }
+  return { kind: "uncertain", text: unparsedImageCaption(content) };
+}
+
 /** Injectable base directories keep all tests synthetic, including provider config. */
 export function createHermesPromptImageResolver(options: { userHome?: string; paseoHome?: string } = {}): PromptImageResolver {
   // The matcher and finder share the resolved home for this lookup, even if config changes.
@@ -292,14 +314,17 @@ export function createHermesPromptImageResolver(options: { userHome?: string; pa
       const home = homes.get(context) ?? await resolveHome(context);
       if (!home || context.signal.aborted) return empty();
       const ids = new Set([messageId(context.messageId), messageId(context.clientMessageId)].filter(id => id !== null));
-      let match: { matchedMessages: number; content: unknown; uncertain: boolean } | null;
+      let match: {
+        matchedMessages: number; content: unknown; uncertain: boolean; byId: boolean;
+        sessionUncertain: boolean; parsedMatches: number; plainMatches: number;
+      } | null;
       try {
         match = await openSqliteReadOnly(join(home, "state.db"), database => {
           // Keep the scan synchronous and retry-local so the helper can validate
           // an immutable read and discard it before retrying on the plain path.
-          let idMatches = 0, textMatches = 0;
+          let idMatches = 0, textMatches = 0, parsedMatches = 0, plainMatches = 0;
           let idContent: unknown, textContent: unknown;
-          let idUncertain = false, textUncertain = false;
+          let idUncertain = false, textUncertain = false, sessionUncertain = false;
           if (!database.prepare("SELECT id FROM sessions WHERE id = ?").get(context.sessionId)) return null;
           // hermes_state_messages.py shows active=1 or compacted=1 and skips model_only carriers.
           // A schema without active or compacted is not a transcript this reader understands.
@@ -312,33 +337,45 @@ export function createHermesPromptImageResolver(options: { userHome?: string; pa
             if (context.signal.aborted) return null;
             const visibility = hasDisplayMetadata ? rowDisplay(row.display_metadata) : "visible";
             if (visibility === "hidden") continue;
-            const uncertain = visibility === "uncertain";
+            const displayUncertain = visibility === "uncertain";
             if ([messageId(row.platform_message_id), messageId(row.message_uid)].some(id => id !== null && ids.has(id))) {
               idMatches++;
               idContent = row.content;
-              if (uncertain) idUncertain = true;
+              if (displayUncertain) idUncertain = true;
             }
             if (typeof row.content !== "string") continue;
-            const stripped = annotations(row.content);
-            // Unparsed notes, including a success block beside a failure, still occupy the caption.
-            const caption = stripped ? stripped.text : unparsedImageCaption(row.content);
+            const kind = classifyMessage(row.content);
+            // A note that did not parse completely poisons text fallback for every caption.
+            if (kind.kind === "uncertain") sessionUncertain = true;
+            const caption = kind.text;
             if (prompt === row.content.trim() || (caption !== null && prompt === caption)) {
               textMatches++;
               textContent = row.content;
-              if (uncertain) textUncertain = true;
+              if (displayUncertain) textUncertain = true;
+              if (kind.kind === "image") parsedMatches++;
+              if (kind.kind === "plain") plainMatches++;
             }
           }
           return {
             matchedMessages: idMatches || textMatches,
             content: idMatches ? idContent : textContent,
             uncertain: idMatches ? idUncertain : textUncertain,
+            byId: idMatches > 0,
+            sessionUncertain, parsedMatches, plainMatches,
           };
         });
       } catch { return empty(); }
       await setImmediate();
       if (!match) return empty();
-      const { matchedMessages, content, uncertain } = match;
-      if (matchedMessages !== 1 || typeof content !== "string" || uncertain || context.signal.aborted) return empty(matchedMessages);
+      const { matchedMessages, content, uncertain, byId, sessionUncertain, parsedMatches, plainMatches } = match;
+      if (context.signal.aborted) return empty(matchedMessages);
+      // Id hits stay row-local. Text fallback needs one clean image caption, no identical
+      // plain-text row, and no uncertain image row anywhere in the scanned session.
+      if (!byId && sessionUncertain) {
+        const uniqueImage = parsedMatches === 1 && plainMatches === 0 && matchedMessages === 1;
+        return empty(uniqueImage ? 2 : matchedMessages);
+      }
+      if (matchedMessages !== 1 || typeof content !== "string" || uncertain) return empty(matchedMessages);
       const parsed = annotations(content);
       if (!parsed) return empty(1);
       const images: FoundImages["images"] = [];

@@ -226,6 +226,90 @@ test("Hermes reads an image-first durable row as its own images and will not len
   assert.deepEqual(await f.find(), empty(2));
 });
 
+test("Hermes reads a bracketed cache filename as that row's image and not a same-caption sibling", async t => {
+  const f = await fixture(t);
+  const bracket = f.retainedImage("Holiday [2026].png");
+  f.add(annotated([bracket]), { platformId: ID });
+  const byText = await f.find();
+  assert.equal(byText.matchedMessages, 1);
+  assert.equal(byText.images.length, 1);
+  assert.deepEqual(await byText.images[0].readBytes(), f.png);
+  const byId = await f.find({ messageId: ID, text: "other" });
+  assert.equal(byId.images.length, 1);
+  assert.deepEqual(await byId.images[0].readBytes(), f.png);
+  f.writer.exec("DELETE FROM messages");
+  f.add(nativeAnnotated([bracket]), { platformId: ID });
+  assert.deepEqual(await (await f.find({ messageId: ID, text: "other" })).images[0].readBytes(), f.png);
+  const sibling = f.image("jpg", f.jpg);
+  for (const bracketFirst of [true, false]) {
+    f.writer.exec("DELETE FROM messages");
+    const rows = [annotated([bracket]), annotated([sibling])];
+    if (!bracketFirst) rows.reverse();
+    for (const content of rows) f.add(content);
+    assert.deepEqual(await f.find(), empty(2));
+  }
+  f.writer.exec("DELETE FROM messages");
+  f.add(annotated([bracket]), { platformId: ID });
+  f.add(annotated([sibling]));
+  assert.deepEqual(await (await f.find({ messageId: ID, text: "other" })).images[0].readBytes(), f.png);
+});
+
+test("Hermes returns no image when a bracketed filename sits beside either vision failure", async t => {
+  const f = await fixture(t);
+  const bracket = f.retainedImage("Holiday [2026].png");
+  const failed = f.image();
+  const failures = [
+    `[The user sent an image but I couldn't quite see it this time (>_<) You can try looking at it yourself with vision_analyze using image_url: ${failed}]`,
+    `[The user sent an image but something went wrong when I tried to look at it~ You can try examining it yourself with vision_analyze using image_url: ${failed}]`,
+  ];
+  for (const failure of failures) {
+    for (const notes of [[block(bracket), failure], [failure, block(bracket)]]) {
+      f.writer.exec("DELETE FROM messages");
+      f.add(`${notes.join("\n\n")}\n\nSynthetic question`, { platformId: ID });
+      assert.deepEqual(await f.find(), empty(1));
+      assert.deepEqual(await f.find({ messageId: ID, text: "other" }), empty(1));
+    }
+  }
+});
+
+test("Hermes blocks text fallback when any image row in the session is uncertain", async t => {
+  const f = await fixture(t);
+  const good = f.image("jpg", f.jpg);
+  const path = f.image();
+  // Different captions, so a same-caption collision is not what blocks the lookup.
+  const uncertain = [
+    `[screenshot]\nDifferent caption`,
+    `[The user sent an image~ Changed prefix ${path} ~]\nDifferent caption`,
+    `[Image attached at: not a path]\nDifferent caption`,
+    `[The user sent an image but I couldn't quite see it this time (>_<) You can try looking at it yourself with vision_analyze using image_url: ${path}]\n\nDifferent caption`,
+    `[If you need a closer look, use vision_analyze with image_url: ${path} ~]\nDifferent caption`,
+  ];
+  for (const content of uncertain) {
+    f.writer.exec("DELETE FROM messages");
+    f.add(annotated([good]), { platformId: ID });
+    f.add(content);
+    assert.deepEqual(await f.find(), empty(2), content);
+    const byId = await f.find({ messageId: ID, text: "not the caption" });
+    assert.equal(byId.matchedMessages, 1);
+    assert.equal(byId.images.length, 1);
+    assert.deepEqual(await byId.images[0].readBytes(), f.jpg);
+  }
+  f.writer.exec("DELETE FROM messages");
+  f.add(`[screenshot]\nSynthetic question`, { platformId: UID });
+  f.add(annotated([f.image()]));
+  assert.deepEqual(await f.find({ messageId: UID, text: "other" }), empty(1));
+  f.writer.exec("DELETE FROM messages");
+  f.add(annotated([good]), { platformId: ID });
+  f.add(uncertain[0]);
+  const handlers = f.h.createPromptImageHandlers({ resolvers: [f.resolver] });
+  const snapshot = { provider: "custom-provider", command: ["hermes", "acp"], env: { HERMES_HOME: f.home },
+    cwd: f.root, persistence: { provider: "custom-provider", sessionId: "session-one" } };
+  const context = { paseo: { agents: { ref: () => ({ refresh: async () => ({ agent: snapshot }) }) } } };
+  const blocked = await handlers.images({ agentId: "fake-agent", text: "Synthetic question" }, context);
+  assert.equal(blocked.reason, "ambiguous");
+  assert.deepEqual(blocked.images, []);
+});
+
 test("Hermes rejects ambiguous or incomplete image annotations", async t => {
   const f = await fixture(t), path = f.image();
   for (const content of [
