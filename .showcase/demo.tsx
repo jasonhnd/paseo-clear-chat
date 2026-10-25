@@ -6,6 +6,7 @@ import type { ExtendedThemeTokens } from "../client/components/theme-tokens";
 import { ToolCallout } from "../client/components/tool-callouts";
 import { StepDetailPanel } from "../client/components/step-detail-panel";
 import { createStepDetailState } from "../client/components/step-detail-state";
+import type { StepDetailPresentation } from "../client/breakpoints";
 import { stepDetailPresentation } from "../client/breakpoints";
 import { MarkdownView } from "../client/components/markdown/markdown-view";
 import { Glyph } from "../client/components/glyph";
@@ -24,9 +25,9 @@ function HostPrompt({ text, at, tokens, marginTop = 0 }: { text: string; at: str
   </div>;
 }
 
-export function Demo({ tokens, animate = false, detailWidth }: { tokens: ExtendedThemeTokens; animate?: boolean; detailWidth?: number }) {
+export function Demo({ tokens, animate = false, detailWidth, detailPresentation }: { tokens: ExtendedThemeTokens; animate?: boolean; detailWidth?: number; detailPresentation?: StepDetailPresentation }) {
   const { width } = useWindowDimensions();
-  const compact = width < 744;
+  const compact = !detailPresentation && width < 744;
   const [phase, setPhase] = React.useState(animate ? -1 : DEMO_STEPS.length);
   const [selected, setSelected] = React.useState<ToolCalloutData | null>(null);
   const [viewState, setViewState] = React.useState(createStepDetailState);
@@ -35,7 +36,8 @@ export function Demo({ tokens, animate = false, detailWidth }: { tokens: Extende
     window.addEventListener("demo-phase", advance);
     return () => window.removeEventListener("demo-phase", advance);
   }, []);
-  const presentation = stepDetailPresentation(width);
+  // The capture host can reserve a side panel independently of its chat width.
+  const presentation = detailPresentation ?? stepDetailPresentation(width);
   const openStep = (step: ToolCalloutData) => {
     if (selected?.id !== step.id) setViewState(createStepDetailState());
     setSelected(step);
