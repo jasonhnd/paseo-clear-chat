@@ -1,4 +1,4 @@
-import { constants, createReadStream, existsSync, read, realpath } from "node:fs";
+import { constants, existsSync, read, realpath, type ReadStream } from "node:fs";
 import { open, stat } from "node:fs/promises";
 import { promisify } from "node:util";
 import { extname, isAbsolute, relative, resolve, sep } from "node:path";
@@ -57,6 +57,9 @@ export async function readLocalImageReadOnly(candidate: string, allowedRoots: re
 /** Read an already-open descriptor. `path` is not opened and this does not close `fd`. */
 export interface JsonlReadOptions {
   fd?: number;
+  /** Validate path-based reads against these roots. */
+  allowedRoots?: readonly string[];
+  signal?: AbortSignal;
   /** With `fd`, parse at most this many bytes from offset 0. */
   byteLength?: number;
   /** Called once per dropped record. Blank lines are not records. */
@@ -131,15 +134,30 @@ async function* recordsFromChunks(
  * keep the previous behavior.
  */
 export async function* readJsonlReadOnly(path: string, options?: JsonlReadOptions): AsyncGenerator<unknown> {
+  options?.signal?.throwIfAborted();
   if (options?.fd !== undefined) {
     yield* recordsFromChunks(readDescriptor(options.fd, options.byteLength), options.onSkipped);
     return;
   }
-  const stream = createReadStream(path, { flags: "r" });
+  if (path.split(/[\\/]/).includes("..")) throw new Error("invalid_store");
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  let stream: ReadStream | undefined;
   try {
+    const entry = await file.stat();
+    if (!entry.isFile()) throw new Error("invalid_store");
+    if (options?.allowedRoots) {
+      const roots = await Promise.all(options.allowedRoots.map(root => nativeRealpath(root)));
+      const target = await nativeRealpath(path);
+      const current = await stat(target);
+      if (!insideRoot(target, roots) || current.dev !== entry.dev || current.ino !== entry.ino) {
+        throw new Error("invalid_store");
+      }
+    }
+    stream = file.createReadStream({ autoClose: false, signal: options?.signal });
     yield* recordsFromChunks(stream as AsyncIterable<Buffer>, options?.onSkipped);
   } finally {
-    stream.destroy();
+    stream?.destroy();
+    await file.close();
   }
 }
 

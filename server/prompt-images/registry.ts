@@ -4,6 +4,7 @@ import type { promptImageRpc, promptImagesRpc } from "../../shared/prompt-images
 import { codexPromptImages } from "./codex";
 import { readLocalImageReadOnly } from "./read-only";
 import { readImageHeader } from "./image-header";
+import { claudePromptImageResolver } from "./claude";
 
 type LookupInput = RpcInput<typeof promptImagesRpc>;
 type ImagesResult = RpcOutput<typeof promptImagesRpc>;
@@ -21,6 +22,8 @@ export interface ResolverContext extends LookupInput {
   cwd: string;
   sessionId: string | null;
   nativeHandle: string | null;
+  /** Only resolver-specific storage variables, never the full provider env. */
+  providerEnv?: Readonly<Record<string, string>>;
   /** Resolvers should stop streaming/scanning when the lookup expires. */
   signal: AbortSignal;
 }
@@ -41,15 +44,14 @@ export function localFileImage(id: string, mime: string, path: string, allowedRo
 }
 
 export interface PromptImageResolver {
-  /** Paseo 0.13 snapshots expose the provider ID, not its configured command. */
-  matches(provider: string): boolean;
+  matches(provider: string, command?: readonly string[]): boolean;
   /** Prefer matching IDs; otherwise count every message matching the text. */
   find(context: ResolverContext): Promise<FoundImages>;
 }
 
-/** Codex rollout lookup is registered here. Other providers are added separately. */
 export const promptImageResolvers: readonly PromptImageResolver[] = [
   codexPromptImages,
+  claudePromptImageResolver,
 ];
 
 const MAX_THUMBNAILS = 3;
@@ -141,7 +143,22 @@ export function createPromptImageHandlers(options: {
     const agent = refreshed?.agent ?? ref.current();
     if (!agent) throw new LookupError("agent_not_found");
     const provider = agent.provider;
-    const resolver = resolvers.find(candidate => candidate.matches(provider));
+    // Snapshots omit provider launch settings. Read them through the SDK and
+    // retain only command and storage overrides; never copy keys or metadata.
+    const config = context.paseo.config ? (await context.paseo.config.get()).config : undefined;
+    check();
+    const launch = config?.providers?.[provider];
+    const command = Array.isArray(launch?.command) && launch.command.every(arg => typeof arg === "string")
+      ? launch.command as string[] : undefined;
+    const providerEnv: Record<string, string> = {};
+    const env = launch?.env;
+    if (env && typeof env === "object") {
+      for (const key of ["CLAUDE_CONFIG_DIR", "CLAUDE_SECURESTORAGE_CONFIG_DIR"] as const) {
+        const value = (env as Record<string, unknown>)[key];
+        if (typeof value === "string") providerEnv[key] = value;
+      }
+    }
+    const resolver = resolvers.find(candidate => candidate.matches(provider, command));
     if (!resolver) throw new LookupError("unknown_provider");
     const persistence = agent.persistence;
     if (persistence && persistence.provider !== provider) throw new LookupError("provider_mismatch");
@@ -150,6 +167,7 @@ export function createPromptImageHandlers(options: {
       agentId: input.agentId, messageId: input.messageId, clientMessageId: input.clientMessageId, text: input.text,
       provider, cwd: agent.cwd, sessionId: persistence?.sessionId ?? null,
       nativeHandle: persistence?.nativeHandle ?? null, signal,
+      ...(config ? { providerEnv } : {}),
     });
     check();
     if (found.matchedMessages === 0) throw new LookupError("no_match");
