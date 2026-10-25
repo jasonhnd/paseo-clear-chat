@@ -6,7 +6,6 @@ const { DatabaseSync } = require("node:sqlite");
 const test = require("node:test");
 const { runInThisContext } = require("node:vm");
 const ts = require("typescript");
-const { Image, Frame, GIF } = require("imagescript");
 
 // Load the real server TypeScript, while collecting its daemon debug output.
 function harness(overrides = {}) {
@@ -55,7 +54,51 @@ const context = (snapshot = { provider: "sample", cwd: ".", persistence: { provi
     return { refresh: async () => ({ agent: snapshot }), current: () => snapshot };
   } } },
 });
-const png = (width = 4, height = 2) => new Image(width, height).fill(0x4488ccff).encode().then(Buffer.from);
+function png(width = 4, height = 2) {
+  const bytes = Buffer.alloc(24);
+  bytes.set([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82]);
+  bytes.writeUInt32BE(width, 16);
+  bytes.writeUInt32BE(height, 20);
+  return bytes;
+}
+function jpeg(width = 4, height = 2) {
+  const bytes = Buffer.from([0xff, 0xd8, 0xff, 0xc0, 0x00, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x11, 0x00]);
+  bytes.writeUInt16BE(height, 7);
+  bytes.writeUInt16BE(width, 9);
+  return bytes;
+}
+function gif(width = 4, height = 2) {
+  const bytes = Buffer.alloc(23);
+  bytes.set([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]);
+  bytes.writeUInt16LE(width, 6);
+  bytes.writeUInt16LE(height, 8);
+  bytes[13] = 0x2c;
+  bytes.writeUInt16LE(width, 18);
+  bytes.writeUInt16LE(height, 20);
+  return bytes;
+}
+function webp(width = 4, height = 2) {
+  const bytes = Buffer.alloc(30);
+  bytes.write("RIFF", 0, "latin1");
+  bytes.writeUInt32LE(22, 4);
+  bytes.write("WEBP", 8, "latin1");
+  bytes.write("VP8X", 12, "latin1");
+  bytes.writeUInt32LE(10, 16);
+  bytes.writeUIntLE(Math.max(0, width - 1), 24, 3);
+  bytes.writeUIntLE(Math.max(0, height - 1), 27, 3);
+  return bytes;
+}
+function webpLossless(width = 8, height = 3) {
+  const bytes = Buffer.alloc(25);
+  bytes.write("RIFF", 0, "latin1");
+  bytes.writeUInt32LE(17, 4);
+  bytes.write("WEBP", 8, "latin1");
+  bytes.write("VP8L", 12, "latin1");
+  bytes.writeUInt32LE(5, 16);
+  bytes[20] = 0x2f;
+  bytes.writeUInt32LE((width - 1) | ((height - 1) << 14), 21);
+  return bytes;
+}
 
 test("prompt RPC contracts keep their exact names, optional nullable IDs and nullable output fields", () => {
   const h = harness();
@@ -183,65 +226,75 @@ test("thumbnail count is capped at three while total includes all found images",
   assert.deepEqual(h.logs, []);
 });
 
-test("thumbnail dimensions preserve aspect ratio, stay within 512px and never upscale", async () => {
+test("small originals are inlined with their header dimensions, mime and bytes", async () => {
   const h = harness();
-  for (const [width, height, expected] of [[1024, 256, [512, 128]], [256, 1024, [128, 512]], [4, 2, [4, 2]]]) {
-    const bytes = await png(width, height);
-    const handlers = h.createPromptImageHandlers({ resolvers: [resolver(async () => [picture("sample", bytes)])] });
-    const result = await handlers.images(input, context());
-    assert.equal(result.images.length, 1);
-    const image = result.images[0];
-    assert.deepEqual([image.width, image.height], expected);
-    assert.equal(image.mime, "image/png");
-    const decoded = await Image.decode(Buffer.from(image.thumbDataUri.split(",")[1], "base64"));
-    assert.deepEqual([decoded.width, decoded.height], expected);
-  }
-});
-
-test("JPEG and animated GIF thumbnails are PNGs while full images retain their original bytes", async () => {
-  const h = harness();
-  const source = new Image(4, 2).fill(0x4488ccff);
-  const gif = new GIF([Frame.from(source, 100), Frame.from(source.clone(), 100)]);
-  for (const [mime, bytes] of [
-    ["image/jpeg", Buffer.from(await source.encodeJPEG())],
-    ["image/gif", Buffer.from(await gif.encode())],
+  const lossyWebp = Buffer.from("UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA", "base64");
+  for (const [mime, bytes, width, height] of [
+    ["image/png", png(1024, 256), 1024, 256],
+    ["image/jpeg", jpeg(256, 1024), 256, 1024],
+    ["image/gif", gif(4, 2), 4, 2],
+    ["image/webp", webp(8, 3), 8, 3],
+    ["image/webp", webpLossless(8, 3), 8, 3],
+    ["image/webp", lossyWebp, 1, 1],
   ]) {
     const handlers = h.createPromptImageHandlers({ resolvers: [resolver(async () => [picture("sample", bytes, mime)])] });
     const result = await handlers.images(input, context());
-    assert.equal(result.images[0].mime, "image/png");
-    assert.match(result.images[0].thumbDataUri, /^data:image\/png;base64,/);
+    assert.equal(result.reason, null, mime);
+    assert.equal(result.images.length, 1, mime);
+    const image = result.images[0];
+    assert.equal(image.mime, mime);
+    assert.deepEqual([image.width, image.height], [width, height]);
+    assert.match(image.thumbDataUri, new RegExp(`^data:${mime};base64,`));
+    assert.deepEqual(Buffer.from(image.thumbDataUri.split(",")[1], "base64"), bytes);
     const full = await handlers.image({ ...input, id: "sample" }, context());
     assert.equal(full.error, null);
     assert.equal(full.mime, mime);
+    assert.equal(full.bytes, bytes.length);
+    assert.deepEqual([full.width, full.height], [width, height]);
     assert.deepEqual(Buffer.from(full.dataUri.split(",")[1], "base64"), bytes);
   }
 });
 
-test("oversized images are skipped but retained in total, and later thumbnails fill the cap", async () => {
+test("images over the inline cap are skipped with no error while later images fill the cap and total still counts them", async () => {
   const h = harness();
-  const bytes = await png();
-  const oversized = Buffer.alloc(h.MAX_IMAGE_BYTES + 1);
-  const handlers = h.createPromptImageHandlers({ resolvers: [resolver(async () => [
-    picture("too-large", oversized), picture("one", bytes), picture("two", bytes), picture("three", bytes),
-  ])] });
+  const bytes = png();
+  const oversized = Buffer.alloc(h.MAX_INLINE_IMAGE_BYTES + 1);
+  const found = [
+    picture("too-large", oversized), picture("one", bytes), picture("two", bytes), picture("three", bytes), picture("four", bytes),
+  ];
+  found[4].readBytes = () => assert.fail("must not read beyond the thumbnail cap");
+  const handlers = h.createPromptImageHandlers({ resolvers: [resolver(async () => found)] });
   const result = await handlers.images(input, context());
-  assert.equal(result.total, 4);
+  assert.equal(result.total, 5);
   assert.deepEqual(result.images.map(image => image.id), ["one", "two", "three"]);
-  assert.equal(result.reason, "image_too_large");
+  assert.equal(result.reason, null);
+  assert.deepEqual(h.logs, []);
   assert.deepEqual(await handlers.image({ ...input, id: "too-large" }, context()), emptyFull("image_too_large"));
-  assert.equal(h.logs.length, 2);
+  assert.deepEqual(h.logs, [["[clear-chat] prompt.image: image_too_large"]]);
 });
 
-test("the raw size cap includes its boundary; full image IDs are resolved within the message", async () => {
+test("the inline cap includes its boundary and one extra byte is refused; full image IDs stay within the message", async () => {
   const h = harness();
-  const bytes = await png(1024, 256);
-  const atCap = Buffer.concat([bytes, Buffer.alloc(h.MAX_IMAGE_BYTES - bytes.length)]);
-  const handlers = h.createPromptImageHandlers({ resolvers: [resolver(async ctx => ctx.messageId === input.messageId ? [picture("one", atCap)] : [])] });
+  assert.equal(h.MAX_INLINE_IMAGE_BYTES, 1_572_864);
+  const atCap = Buffer.concat([png(1024, 256), Buffer.alloc(h.MAX_INLINE_IMAGE_BYTES - 24)]);
+  const over = Buffer.concat([atCap, Buffer.from([1])]);
+  assert.equal(atCap.length, h.MAX_INLINE_IMAGE_BYTES);
+  assert.equal(over.length, h.MAX_INLINE_IMAGE_BYTES + 1);
+  const handlers = h.createPromptImageHandlers({ resolvers: [resolver(async ctx => ctx.messageId === input.messageId ? [picture("one", atCap), picture("over", over)] : [])] });
+  const listed = await handlers.images(input, context());
+  assert.equal(listed.total, 2);
+  assert.deepEqual(listed.images.map(image => image.id), ["one"]);
+  assert.equal(listed.reason, null);
+  assert.equal(listed.images[0].mime, "image/png");
+  assert.deepEqual([listed.images[0].width, listed.images[0].height], [1024, 256]);
+  assert.equal(Buffer.from(listed.images[0].thumbDataUri.split(",")[1], "base64").length, h.MAX_INLINE_IMAGE_BYTES);
   const result = await handlers.image({ ...input, id: "one" }, context());
   h.promptImageRpc.output.parse(result);
   assert.equal(result.error, null);
-  assert.equal(result.bytes, h.MAX_IMAGE_BYTES);
+  assert.equal(result.bytes, h.MAX_INLINE_IMAGE_BYTES);
   assert.deepEqual([result.width, result.height], [1024, 256]);
+  assert.deepEqual(Buffer.from(result.dataUri.split(",")[1], "base64"), atCap);
+  assert.deepEqual(await handlers.image({ ...input, id: "over" }, context()), emptyFull("image_too_large"));
   assert.deepEqual(await handlers.image({ ...input, messageId: "other", id: "one" }, context()), emptyFull("not_found"));
   assert.deepEqual(await handlers.image({ ...input, id: "../secret.png" }, context()), emptyFull("not_found"));
 });
@@ -395,72 +448,77 @@ test("both RPCs require exactly one matched message, including text fallback whe
   assert.deepEqual(await handlers.images(input, context()), empty(null));
 });
 
-test("corrupt decodes and pixel-limit failures preserve earlier thumbnails and total, and later images fill the cap", async () => {
+test("headers above 24 megapixels are refused and an exact 24 megapixel header is inlined", async () => {
   const h = harness();
-  const bytes = await png();
-  const tooManyPixels = Buffer.from(bytes);
-  tooManyPixels.writeUInt32BE(6000, 16);
-  tooManyPixels.writeUInt32BE(4001, 20);
-  const corrupt = bytes.subarray(0, 24); // Valid header, broken PNG payload.
-  const candidates = [picture("one", bytes), picture("corrupt", corrupt), picture("pixels", tooManyPixels),
-    picture("two", bytes), picture("three", bytes)];
-  const handlers = h.createPromptImageHandlers({ resolvers: [resolver(async () => candidates)] });
-  const result = await handlers.images(input, context());
-  assert.equal(result.total, 5);
-  assert.equal(result.reason, "image_too_large");
-  assert.deepEqual(result.images.map(image => image.id), ["one", "two", "three"]);
-  assert.deepEqual(await handlers.image({ ...input, id: "pixels" }, context()), emptyFull("image_too_large"));
-  const decodeOnly = h.createPromptImageHandlers({ resolvers: [resolver(async () => candidates.slice(0, 2))] });
-  const retained = await decodeOnly.images(input, context());
-  assert.equal(retained.total, 2);
-  assert.equal(retained.reason, "invalid_image");
-  assert.deepEqual(retained.images.map(image => image.id), ["one"]);
+  assert.equal(6000 * 4000, 24_000_000);
+  for (const [mime, exact, over] of [
+    ["image/png", png(6000, 4000), png(6000, 4001)],
+    ["image/jpeg", jpeg(6000, 4000), jpeg(6000, 4001)],
+    ["image/gif", gif(6000, 4000), gif(6000, 4001)],
+    ["image/webp", webp(6000, 4000), webp(6000, 4001)],
+  ]) {
+    const allowed = h.createPromptImageHandlers({ resolvers: [resolver(async () => [picture("exact", exact, mime)])] });
+    const shown = await allowed.images(input, context());
+    assert.equal(shown.reason, null, mime);
+    assert.deepEqual([shown.images[0].width, shown.images[0].height], [6000, 4000], mime);
+    const refused = h.createPromptImageHandlers({ resolvers: [resolver(async () => [
+      picture("one", png()), picture("over", over, mime), picture("two", png()),
+    ])] });
+    const result = await refused.images(input, context());
+    assert.equal(result.total, 3, mime);
+    assert.equal(result.reason, "image_too_large", mime);
+    assert.deepEqual(result.images.map(image => image.id), ["one", "two"], mime);
+    assert.deepEqual(await refused.image({ ...input, id: "over" }, context()), emptyFull("image_too_large"));
+  }
 });
 
-test("unsupported formats, invalid dimensions and oversized PNG/JPEG/GIF headers are refused before decode", async () => {
-  let decodeCalls = 0;
-  const h = harness({ imagescript: { Image, decode: () => { decodeCalls++; throw new Error("unexpected decode"); } } });
-  const hugePng = Buffer.from(await png());
-  hugePng.writeUInt32BE(6000, 16); hugePng.writeUInt32BE(4001, 20);
-  const hugeJpeg = Buffer.from([0xff, 0xd8, 0xff, 0xc0, 0, 8, 8, 0x0f, 0xa1, 0x17, 0x70, 0]);
-  const hugeGif = Buffer.from([71, 73, 70, 56, 57, 97, 0x70, 0x17, 0xa1, 0x0f, 0, 0, 0,
-    0x2c, 0, 0, 0, 0, 0x70, 0x17, 0xa1, 0x0f, 0]);
-  const zeroPng = Buffer.from(await png()); zeroPng.writeUInt32BE(0, 16);
+test("a valid header with a truncated payload is inlined, and an invalid image keeps earlier results", async () => {
+  const h = harness();
+  const bytes = png();
+  const truncated = bytes.subarray(0, 24);
+  const handlers = h.createPromptImageHandlers({ resolvers: [resolver(async () => [
+    picture("one", bytes), picture("truncated", truncated), picture("bad", Buffer.from("nope")),
+  ])] });
+  const result = await handlers.images(input, context());
+  assert.equal(result.total, 3);
+  assert.equal(result.reason, "invalid_image");
+  assert.deepEqual(result.images.map(image => image.id), ["one", "truncated"]);
+  assert.deepEqual(Buffer.from(result.images[1].thumbDataUri.split(",")[1], "base64"), truncated);
+});
+
+test("unsupported formats and invalid dimensions are refused from the header", async () => {
+  const h = harness();
+  const zeroPng = png(); zeroPng.writeUInt32BE(0, 16);
+  const hugeGif = gif(6000, 4001);
   const badFrameGif = Buffer.from(hugeGif); badFrameGif.writeUInt16LE(65535, 18);
+  const truncatedWebp = Buffer.concat([Buffer.from("RIFF"), Buffer.alloc(4), Buffer.from("WEBP")]);
   for (const [mime, bytes, reason] of [
-    ["image/png", hugePng, "image_too_large"], ["image/jpeg", hugeJpeg, "image_too_large"],
-    ["image/gif", hugeGif, "image_too_large"], ["image/png", zeroPng, "invalid_image"],
+    ["image/png", zeroPng, "invalid_image"],
     ["image/gif", badFrameGif, "invalid_image"],
-    ["image/webp", Buffer.from("UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA", "base64"), "invalid_image"],
+    ["image/webp", truncatedWebp, "invalid_image"],
     ["image/tiff", Buffer.from([73, 73, 42, 0, 0, 0, 0, 0]), "invalid_image"],
+    ["image/png", Buffer.from("invalid"), "invalid_image"],
   ]) {
     const handlers = h.createPromptImageHandlers({ resolvers: [resolver(async () => [picture("one", bytes, mime)])] });
-    assert.deepEqual(await handlers.images(input, context()), { images: [], total: 1, reason });
+    assert.deepEqual(await handlers.images(input, context()), { images: [], total: 1, reason }, mime);
     assert.deepEqual(await handlers.image({ ...input, id: "one" }, context()), emptyFull(reason));
   }
-  assert.equal(decodeCalls, 0);
 });
 
-test("ImageScript 1.3.1 decodes and resizes PNG and JPEG to readable thumbnails on the host Node runtime", async () => {
-  assert.equal(require("imagescript/package.json").version, "1.3.1");
+test("lookups run with no imagescript dependency", async () => {
+  const pkg = require("../package.json");
+  assert.equal(pkg.dependencies.imagescript, undefined);
+  assert.equal(pkg.devDependencies.imagescript, undefined);
+  assert.throws(() => require.resolve("imagescript"), /Cannot find module 'imagescript'/);
+  const source = fs.readFileSync(resolve(__dirname, "../server/prompt-images/registry.ts"), "utf8");
+  assert.doesNotMatch(source, /imagescript/);
   const h = harness();
-  for (const [width, height, expected] of [[1024, 256, [512, 128]], [256, 1024, [128, 512]], [4, 2, [4, 2]]]) {
-    const source = new Image(width, height).fill(0x4488ccff);
-    for (const [mime, bytes] of [["image/png", Buffer.from(await source.encode())], ["image/jpeg", Buffer.from(await source.encodeJPEG(90))]]) {
-      const handlers = h.createPromptImageHandlers({ resolvers: [resolver(async () => [picture("one", bytes, mime)])] });
-      const result = await handlers.images(input, context());
-      assert.equal(result.reason, null);
-      const thumbnail = await Image.decode(Buffer.from(result.images[0].thumbDataUri.split(",")[1], "base64"));
-      assert.deepEqual([thumbnail.width, thumbnail.height], expected);
-      for (const [channel, expectedValue] of [[0, 0x44], [1, 0x88], [2, 0xcc], [3, 0xff]]) {
-        assert.ok(Math.abs(thumbnail.bitmap[channel] - expectedValue) <= 3, `${mime} channel ${channel}`);
-      }
-      const full = await handlers.image({ ...input, id: "one" }, context());
-      assert.equal(full.error, null);
-      assert.deepEqual([full.width, full.height], [width, height]);
-      assert.deepEqual(Buffer.from(full.dataUri.split(",")[1], "base64"), bytes);
-    }
-  }
+  const handlers = h.createPromptImageHandlers({ resolvers: [resolver(async () => [picture("one", png())])] });
+  const result = await handlers.images(input, context());
+  assert.equal(result.reason, null);
+  assert.equal(result.images.length, 1);
+  assert.equal(result.images[0].mime, "image/png");
+  assert.deepEqual(Buffer.from(result.images[0].thumbDataUri.split(",")[1], "base64"), png());
 });
 
 test("local file candidates use the descriptor reader for thumbnails and originals", async t => {

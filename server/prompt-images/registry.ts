@@ -1,7 +1,7 @@
 import type { RpcInput, RpcOutput } from "@getpaseo/plugin";
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
 import type { promptImageRpc, promptImagesRpc } from "../../shared/prompt-images-rpc";
-import { MAX_IMAGE_BYTES, readLocalImageReadOnly } from "./read-only";
+import { readLocalImageReadOnly } from "./read-only";
 import { readImageHeader } from "./image-header";
 
 type LookupInput = RpcInput<typeof promptImagesRpc>;
@@ -50,8 +50,13 @@ export interface PromptImageResolver {
 export const promptImageResolvers: readonly PromptImageResolver[] = [];
 
 const MAX_THUMBNAILS = 3;
-const THUMBNAIL_EDGE = 512;
 const MAX_PIXELS = 24_000_000;
+
+/**
+ * Originals at or below this size are returned as-is. A later card will
+ * restore server-side thumbnails with a pure-JS decoder.
+ */
+export const MAX_INLINE_IMAGE_BYTES = 1_572_864;
 
 type Reason = "unknown_provider" | "agent_not_found" | "provider_mismatch" | "not_found" |
   "timeout" | "lookup_failed" | "image_too_large" | "invalid_image" | "ambiguous" | "no_match";
@@ -68,29 +73,19 @@ function dataUri(bytes: Uint8Array, mime: string): string {
   return `data:${mime};base64,${Buffer.from(bytes).toString("base64")}`;
 }
 
-/** Header checks precede importing or invoking the bundled WASM codecs. */
-async function decodeImage(bytes: Buffer, mime: string) {
+/** Header width and height only. Bytes are never decoded or resized. */
+function headerImage(bytes: Buffer, mime: string) {
   const header = readImageHeader(bytes);
   if (!header || header.mime !== mime || header.width < 1 || header.height < 1) throw new LookupError("invalid_image");
   if (header.width * header.height > MAX_PIXELS) throw new LookupError("image_too_large");
-  // ImageScript is used under its MIT license option.
-  const { decode, Image } = await import("imagescript");
-  try {
-    // 1.3.1 takes a boolean for first-frame-only decoding, with no maxPixels option.
-    const decoded = await decode(bytes, true);
-    const image = decoded instanceof Image ? decoded : decoded[0];
-    if (!image || image.width !== header.width || image.height !== header.height) throw new LookupError("invalid_image");
-    return image;
-  } catch (error) {
-    if (error instanceof LookupError) throw error;
-    throw new LookupError("invalid_image");
-  }
+  return header;
 }
 
 /**
- * prompt.images returns up to three PNG thumbnails; total precedes all caps.
- * Dimensions describe each thumbnail. prompt.image returns original bytes and
- * dimensions, scoped by the same message and opaque image ID. Failures use only
+ * prompt.images returns up to three originals at or below the inline cap.
+ * Width and height come from the header. An image over that cap is omitted,
+ * with no error, while total still counts it. prompt.image returns the same
+ * original bytes under the same cap. Pixel-limit and type failures use only
  * fixed reason/error codes; no local paths or provider errors cross the RPC.
  */
 export function createPromptImageHandlers(options: {
@@ -169,15 +164,18 @@ export function createPromptImageHandlers(options: {
           check();
           const bytes = await candidate.readBytes();
           check();
-          if (bytes.length > MAX_IMAGE_BYTES) { reason = "image_too_large"; continue; }
+          // Over the inline cap: leave it out of the list and report no error.
+          if (bytes.length > MAX_INLINE_IMAGE_BYTES) continue;
           try {
-            const image = await decodeImage(bytes, candidate.mime);
+            const header = headerImage(bytes, candidate.mime);
             check();
-            const scale = Math.min(1, THUMBNAIL_EDGE / Math.max(image.width, image.height));
-            image.resize(Math.max(1, Math.round(image.width * scale)), Math.max(1, Math.round(image.height * scale)));
-            const thumbnail = await image.encode();
-            check();
-            images.push({ id: candidate.id, thumbDataUri: dataUri(thumbnail, "image/png"), mime: "image/png", width: image.width, height: image.height });
+            images.push({
+              id: candidate.id,
+              thumbDataUri: dataUri(bytes, header.mime),
+              mime: header.mime,
+              width: header.width,
+              height: header.height,
+            });
           } catch (error) {
             check();
             reason = error instanceof LookupError ? error.reason : "invalid_image";
@@ -193,10 +191,10 @@ export function createPromptImageHandlers(options: {
         if (!candidate) throw new LookupError("not_found");
         const bytes = await candidate.readBytes();
         check();
-        if (bytes.length > MAX_IMAGE_BYTES) throw new LookupError("image_too_large");
-        const image = await decodeImage(bytes, candidate.mime);
+        if (bytes.length > MAX_INLINE_IMAGE_BYTES) throw new LookupError("image_too_large");
+        const header = headerImage(bytes, candidate.mime);
         check();
-        return { dataUri: dataUri(bytes, candidate.mime), mime: candidate.mime, width: image.width, height: image.height, bytes: bytes.length, error: null };
+        return { dataUri: dataUri(bytes, header.mime), mime: header.mime, width: header.width, height: header.height, bytes: bytes.length, error: null };
       }, emptyImage, result => result.error);
     },
   };

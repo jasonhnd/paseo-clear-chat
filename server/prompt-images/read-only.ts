@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import { extname, isAbsolute, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
+/** Hard stop for reading a file into memory. Inline responses use a lower cap. */
 export const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 export const MAX_JSONL_LINE_BYTES = 4 * MAX_IMAGE_BYTES + 64 * 1024;
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
