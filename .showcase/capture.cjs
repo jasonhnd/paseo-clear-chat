@@ -1,413 +1,213 @@
 "use strict";
 
-// Build, serve, capture and clean up in one process. Never uses a live host.
+// One offline build, one synthetic turn, fresh Chromium profiles for each scale.
+const assert = require("node:assert/strict");
 const { build } = require("esbuild");
 const { chromium } = require("playwright-core");
 const { createServer } = require("node:http");
-const { readFileSync, writeFileSync, copyFileSync, mkdirSync, rmSync, statSync, realpathSync, mkdtempSync } = require("node:fs");
+const { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, readdirSync } = require("node:fs");
 const { resolve, join, dirname } = require("node:path");
-const { tmpdir } = require("node:os");
-const { execFileSync } = require("node:child_process");
-const { createCapturePlan, withPhoneGroups } = require("./capture-plan.cjs");
+const { readmeV2Groups, demoCapture } = require("./capture-plan.cjs");
+const { captureDemo } = require("./capture-demo.cjs");
 
 const root = resolve(__dirname, "..");
-// iPad layouts are captured by capture-ipad.cjs at their own viewport and scale.
-const groups = createCapturePlan(readFileSync(join(root, "README.md"), "utf8")).filter(group => !group.id.startsWith("ipad-"));
+const work = join(__dirname, ".capture-temp");
 const selected = process.env.SHOWCASE_CAPTURE_ONLY;
-const plan = selected === "demo" ? [demoCapture] : selected ? groups.filter(group => group.id === selected) : groups;
-if (!plan.length) throw new Error(`Unknown screenshot group: ${selected}`);
-const standardPlan = plan.filter(group => group.deviceScaleFactor !== 3);
-const phonePlan = plan.filter(group => group.deviceScaleFactor === 3);
-const output = resolve(process.env.SHOWCASE_OUTPUT_ROOT || root);
-const temp = process.env.KANBAN_TMP;
-if (!temp || realpathSync(temp) !== resolve(temp)) {
-  throw new Error("KANBAN_TMP must be an existing, absolute task directory.");
-}
-// Chrome and image tools inherit this value; no system temporary directory.
-process.env.TMPDIR = temp;
-process.env.TMP = temp;
-process.env.TEMP = temp;
-process.env.MAGICK_TEMPORARY_PATH = temp;
-if (tmpdir() !== temp) throw new Error("Temporary directory was not redirected.");
-const work = join(temp, "capture");
+const plan = readmeV2Groups.filter(group => !selected || group.id === selected || group.id.startsWith(`${selected}-`));
+if (selected && selected !== "demo" && !plan.length) throw new Error(`Unknown capture: ${selected}`);
+rmSync(work, { recursive: true, force: true });
 mkdirSync(work, { recursive: true });
-for (const group of plan) mkdirSync(dirname(join(output, group.light)), { recursive: true });
+process.env.TMPDIR = work;
+process.env.TMP = work;
+process.env.TEMP = work;
+const cache = join(process.env.HOME, ".cache/ms-playwright");
+const bundled = existsSync(chromium.executablePath()) ? chromium.executablePath() :
+  readdirSync(cache).filter(name => name.startsWith("chromium-")).map(name => join(cache, name, "chrome-linux64/chrome")).find(existsSync);
+const chrome = process.env.CHROME_PATH || bundled;
+assert.ok(chrome && !/edge/i.test(chrome), "Use Google Chrome or Playwright Chromium only");
+assert.ok(chrome === bundled || /(?:google\/chrome|google-chrome|chrome-for-testing)/.test(chrome), "CHROME_PATH must be Google Chrome");
+const freeze = "*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}";
 
-// Cover geometry. Desktop content is 1440×900. The phone view is a 390px-wide
-// browser viewport, placed over the desktop's lower right. The frame is 2000px wide.
-const HERO_DESKTOP = { width: 1440, height: 900 };
-// Tall enough for a half sheet to show the edit diff, and short enough that the
-// phone sits on the desktop's lower right without covering that diff.
-const HERO_PHONE = { width: 390, height: 820 };
-const HERO_PAD_X = 235;
-const HERO_PAD_Y = 88;
-const HERO_OVERLAP_X = 300;
-const HERO_DROP_Y = 300;
-const HERO_PHONE_X = HERO_PAD_X + HERO_DESKTOP.width - HERO_OVERLAP_X;
-const HERO_PHONE_Y = HERO_PAD_Y + HERO_DESKTOP.height - HERO_PHONE.height + HERO_DROP_Y;
-const HERO_FRAME = {
-  width: HERO_PHONE_X + HERO_PHONE.width + HERO_PAD_X,
-  height: HERO_PHONE_Y + HERO_PHONE.height + HERO_PAD_Y,
-};
-
-function pngSize(file) {
-  const bytes = Buffer.isBuffer(file) ? file : readFileSync(file);
-  if (bytes.readUInt32BE(0) !== 0x89504e47) throw new Error("Capture is not a PNG.");
-  return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+async function settle(page) {
+  await page.evaluate(async () => {
+    await Promise.all(['400 12px "OMP Inter"', '600 12px "OMP Inter"', '400 12px "OMP Iosevka"', '400 12px "OMP Iosevka Code"'].map(face => document.fonts.load(face)));
+    await document.fonts.ready;
+    await new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)));
+  });
 }
 
-function heroComposeHtml(dark) {
-  const backdrop = dark
-    ? "linear-gradient(155deg, #232733 0%, #12141b 100%)"
-    : "linear-gradient(155deg, #f4f7fb 0%, #d5e0ee 100%)";
-  const shadow = dark
-    ? "0 0 0 1px rgba(255,255,255,0.08), 0 22px 50px rgba(0,0,0,0.55)"
-    : "0 0 0 1px rgba(24,32,45,0.12), 0 20px 46px rgba(24,32,45,0.22)";
-  const phoneShadow = dark
-    ? "0 0 0 1px rgba(255,255,255,0.12), 0 28px 60px rgba(0,0,0,0.62)"
-    : "0 0 0 1px rgba(24,32,45,0.16), 0 26px 54px rgba(24,32,45,0.30)";
-  return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>Clear Chat</title>
-<style>
-  html, body { margin: 0; background: ${dark ? "#12141b" : "#d5e0ee"}; }
-  #frame { width: ${HERO_FRAME.width}px; height: ${HERO_FRAME.height}px; position: relative; background: ${backdrop}; }
-  .win { position: absolute; overflow: hidden; line-height: 0; }
-  .win img { display: block; width: 100%; height: 100%; }
-  #desk { left: ${HERO_PAD_X}px; top: ${HERO_PAD_Y}px; width: ${HERO_DESKTOP.width}px; height: ${HERO_DESKTOP.height}px; border-radius: 18px; box-shadow: ${shadow}; }
-  #phone { left: ${HERO_PHONE_X}px; top: ${HERO_PHONE_Y}px; width: ${HERO_PHONE.width}px; height: ${HERO_PHONE.height}px; border-radius: 28px; box-shadow: ${phoneShadow}; }
-</style></head>
-<body><div id="frame">
-  <div class="win" id="desk"><img alt="" src="/raw/desktop.png"></div>
-  <div class="win" id="phone"><img alt="" src="/raw/phone.png"></div>
-</div></body></html>`;
-}
-
-if (HERO_FRAME.width !== 2000) throw new Error(`Hero frame is ${HERO_FRAME.width}px wide, expected 2000.`);
-
-function launchOptions(viewport) {
-  return {
-    ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : { channel: "chrome" }),
-    headless: true, viewport, deviceScaleFactor: 1, reducedMotion: "reduce", timezoneId: "UTC", locale: "en-US",
-    args: ["--disable-background-networking", "--disable-component-update", "--no-first-run"],
-  };
-}
-
-async function captureHero(port, rawShots, report) {
-  const group = plan.find(item => item.id === "hero");
-  const context = await chromium.launchPersistentContext(join(work, "hero-profile"), launchOptions(HERO_DESKTOP));
-  const freeze = "*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; } html, body { overflow: hidden !important; }";
-  try {
-    const page = await context.newPage();
-    const errors = [];
-    page.on("pageerror", error => errors.push(error.message));
-    await page.route("**/*", route => {
-      const url = new URL(route.request().url());
-      return url.hostname === "127.0.0.1" ? route.continue() : route.abort();
-    });
-    for (const theme of ["light", "dark"]) {
-      await page.setViewportSize(HERO_DESKTOP);
-      await page.goto(`http://127.0.0.1:${port}/?theme=${theme}&shot=hero-desktop`, { waitUntil: "networkidle" });
-      await page.waitForFunction(() => document.querySelector("#shot-hero-desktop") || window.__err?.length);
-      if (errors.length) throw new Error(errors.join("\n"));
-      await page.evaluate(async () => { await document.fonts.ready; });
-      await page.addStyleTag({ content: freeze });
-      const desk = page.locator("#shot-hero-desktop");
-      const deskText = await desk.innerText();
-      for (const label of ["cart.ts", "Free shipping", "npm test", "shippingLabel"]) {
-        if (!deskText.includes(label)) throw new Error(`Hero desktop is missing ${label}`);
+async function verifyFonts(page, frameUrl) {
+  const session = await page.context().newCDPSession(page);
+  await session.send("DOM.enable");
+  await session.send("CSS.enable");
+  const { root } = await session.send("DOM.getDocument", { depth: -1, pierce: true });
+  const findFrame = node => node.documentURL === frameUrl ? node :
+    [node.contentDocument, ...(node.children || [])].filter(Boolean).map(findFrame).find(Boolean);
+  const document = frameUrl ? findFrame(root) : root;
+  assert.ok(document, "The capture document must be available for font inspection");
+  const report = [];
+  for (const [selector, expected] of [
+    ['[data-testid="tool-summary-text"]', /Inter/],
+    ['[data-testid="step-detail-input"], [data-testid="step-detail-output"], [data-testid="step-detail-stdout"]', /Iosevka/],
+  ]) {
+    const { nodeIds } = await session.send("DOM.querySelectorAll", { nodeId: document.nodeId, selector });
+    for (const nodeId of nodeIds) {
+      const { fonts } = await session.send("CSS.getPlatformFontsForNode", { nodeId });
+      for (const font of fonts.filter(font => font.glyphCount)) {
+        assert.ok(expected.test(font.familyName) && font.isCustomFont, `Unexpected rendered font: ${JSON.stringify(font)}`);
+        report.push({ family: font.familyName, glyphs: font.glyphCount });
       }
-      const deskPath = join(work, `hero-desktop-${theme}.png`);
-      await desk.screenshot({ path: deskPath, animations: "disabled" });
-      const deskSize = pngSize(deskPath);
-      if (deskSize.width !== HERO_DESKTOP.width || deskSize.height !== HERO_DESKTOP.height) {
-        throw new Error(`Hero desktop is ${deskSize.width}x${deskSize.height}`);
-      }
-
-      await page.setViewportSize(HERO_PHONE);
-      await page.goto(`http://127.0.0.1:${port}/?theme=${theme}&shot=hero-phone`, { waitUntil: "networkidle" });
-      await page.waitForFunction(() => document.querySelector('[data-presentation="sheet"]') || window.__err?.length);
-      if (errors.length) throw new Error(errors.join("\n"));
-      await page.evaluate(async () => { await document.fonts.ready; });
-      await page.addStyleTag({ content: freeze });
-      await page.waitForFunction(() => {
-        const panel = document.querySelector('[data-presentation="sheet"]');
-        if (!panel) return false;
-        const rect = panel.getBoundingClientRect();
-        return rect.height > 300 && rect.top > 100 && rect.bottom <= window.innerHeight + 1;
-      });
-      const phoneText = await page.locator('[data-presentation="sheet"]').innerText();
-      for (const label of ["cart.ts", "Free shipping", "Updated src/cart.ts."]) {
-        if (!phoneText.includes(label)) throw new Error(`Hero phone sheet is missing ${label}`);
-      }
-      const conversation = await page.locator("#shot-hero-phone").innerText();
-      if (!conversation.includes("npm test")) throw new Error("Hero phone conversation is missing folded steps");
-      const phonePath = join(work, `hero-phone-${theme}.png`);
-      await page.screenshot({ path: phonePath, animations: "disabled" });
-      const phoneSize = pngSize(phonePath);
-      if (phoneSize.width !== HERO_PHONE.width || phoneSize.height !== HERO_PHONE.height) {
-        throw new Error(`Hero phone is ${phoneSize.width}x${phoneSize.height}`);
-      }
-      rawShots.set("desktop.png", readFileSync(deskPath));
-      rawShots.set("phone.png", readFileSync(phonePath));
-
-      await page.setViewportSize(HERO_FRAME);
-      await page.goto(`http://127.0.0.1:${port}/compose?theme=${theme}`, { waitUntil: "networkidle" });
-      await page.locator("#frame img").nth(1).waitFor();
-      await page.evaluate(async () => {
-        await Promise.all([...document.images].map(image => image.decode().catch(() => {})));
-      });
-      const composedPath = join(work, `hero-${theme}.png`);
-      await page.locator("#frame").screenshot({ path: composedPath, animations: "disabled" });
-      const composed = pngSize(composedPath);
-      if (composed.width !== 2000) throw new Error(`Hero export is ${composed.width}px wide`);
-      const destination = join(output, group[theme]);
-      copyFileSync(composedPath, destination);
-      if (statSync(destination).size > 500000) {
-        execFileSync("magick", [composedPath, "-strip", "-colors", "256", "-define", "png:compression-level=9", destination]);
-      }
-      const bytes = statSync(destination).size;
-      if (bytes > 500000) throw new Error(`hero-${theme}.png exceeds 500 KB (${bytes} bytes)`);
-      report.push({ file: group[theme], fixture: "hero", bytes, text: deskText });
-      console.log(`${group[theme]}: ${bytes} bytes (${composed.width}x${composed.height})`);
     }
-  } finally {
-    await context.close();
   }
+  assert.ok(report.length, "Rendered embedded font evidence is required");
+  await session.detach();
+  return report;
+}
+
+async function verifyCapture(page, detail) {
+  const text = await page.locator("body").innerText();
+  for (const label of ["Check the shipping rule", "Search: shippingLabel", "cart.ts:1-5", "cart.ts · +3 −1", "$ npm test", "$ git diff --stat", "Ready to review"]) assert.ok(text.includes(label), `Missing ${label}`);
+  assert.ok(!/Close host panel|Use inline expansion|Hydrate workspace|Update first step/.test(text), "Harness controls must never appear");
+  if (detail && detail !== "menu") {
+    assert.equal(await page.getByTestId("step-detail-panel").getAttribute("data-presentation"), detail);
+    assert.ok((await page.getByTestId("step-detail-panel").innerText()).includes("Free shipping"));
+  }
+  if (detail === "sheet") {
+    // Inspect actual text line rectangles, rather than just element bounding boxes.
+    const cut = await page.evaluate(() => {
+      const edge = document.querySelector('[data-testid="step-detail-panel"]').getBoundingClientRect().top;
+      const walker = document.createTreeWalker(document.querySelector('[data-testid="demo-transcript"]'), NodeFilter.SHOW_TEXT);
+      const cut = [];
+      while (walker.nextNode()) {
+        if (!walker.currentNode.textContent.trim()) continue;
+        const range = document.createRange(); range.selectNodeContents(walker.currentNode);
+        for (const rect of range.getClientRects()) if (rect.top < edge && rect.bottom > edge) cut.push({ text: walker.currentNode.textContent, top: rect.top, bottom: rect.bottom, edge });
+      }
+      return cut;
+    });
+    assert.deepEqual(cut, [], "The sheet edge must fall between text lines");
+  }
+  return verifyFonts(page);
+}
+
+async function longPressRow(page) {
+  const box = await page.getByRole("button", { name: "View details: $ npm test" }).boundingBox();
+  assert.ok(box, "The test step must be visible");
+  const session = await page.context().newCDPSession(page);
+  await session.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: box.x + 32, y: box.y + box.height / 2, radiusX: 1, radiusY: 1, force: 1, id: 1 }] });
+  await page.waitForTimeout(800);
+  await session.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await session.detach();
+  await page.getByTestId("tool-step-menu").waitFor();
+  const menuText = await page.getByTestId("tool-step-menu").innerText();
+  assert.ok(menuText.includes("Copy command") && menuText.includes("Copy result"));
+}
+
+function heroHtml(dark) {
+  return `<!doctype html><html lang="en"><style>
+  html,body{margin:0}#frame{width:2000px;height:1376px;position:relative;background:${dark ? "linear-gradient(155deg,#232733,#12141b)" : "linear-gradient(155deg,#f4f7fb,#d5e0ee)"}}
+  img{display:block;position:absolute;box-shadow:0 20px 46px ${dark ? "#0009" : "#18202d38"}}
+  #desktop{left:235px;top:88px;width:1440px;height:900px;border-radius:18px}
+  #phone{left:1375px;top:468px;width:390px;height:820px;border-radius:28px}
+  </style><div id="frame"><img id="desktop" src="/raw/desktop.png" alt=""><img id="phone" src="/raw/phone.png" alt=""></div></html>`;
 }
 
 async function capture() {
   const bundle = await build({
-    absWorkingDir: root, entryPoints: [join(__dirname, "showcase.tsx")], bundle: true, write: false,
+    absWorkingDir: root, entryPoints: [join(__dirname, "readme-capture.tsx")], bundle: true, write: false,
     jsx: "automatic", platform: "browser", logLevel: "warning", define: { global: "globalThis" },
     alias: {
-      react: dirname(require.resolve("react/package.json")),
-      "react-dom/client": require.resolve("react-dom/client"),
+      react: dirname(require.resolve("react/package.json")), "react-dom/client": require.resolve("react-dom/client"),
       "react-native": require.resolve("react-native-web"),
       "@getpaseo/plugin/client/ui": join(__dirname, "shims/plugin-react-native.tsx"),
       "@getpaseo/plugin/client": join(__dirname, "shims/plugin-client.tsx"),
-    },
-    nodePaths: [join(__dirname, "node_modules")],
+    }, nodePaths: [join(__dirname, "node_modules")],
   });
-  const html = readFileSync(join(__dirname, "index.html"));
-  const rawShots = new Map();
+  const raw = new Map();
   const server = createServer((request, response) => {
-    const url = new URL(request.url ?? "/", "http://127.0.0.1");
-    if (url.pathname === "/showcase.js") {
-      response.setHeader("Content-Type", "text/javascript");
-      response.end(bundle.outputFiles[0].contents);
-    } else if (url.pathname === "/") {
-      response.setHeader("Content-Type", "text/html");
-      response.end(html);
-    } else if (url.pathname === "/compose") {
-      response.setHeader("Content-Type", "text/html");
-      response.end(heroComposeHtml(url.searchParams.get("theme") === "dark"));
-    } else if (url.pathname.startsWith("/raw/")) {
-      const file = rawShots.get(url.pathname.slice("/raw/".length));
-      if (!file) { response.writeHead(404); response.end(); return; }
-      response.setHeader("Content-Type", "image/png");
-      response.end(file);
-    } else { response.writeHead(404); response.end(); }
+    const url = new URL(request.url, "http://localhost");
+    if (url.pathname === "/showcase.js") { response.setHeader("Content-Type", "text/javascript"); response.end(bundle.outputFiles[0].contents); }
+    else if (url.pathname === "/compose") { response.setHeader("Content-Type", "text/html"); response.end(heroHtml(url.searchParams.get("theme") === "dark")); }
+    else if (url.pathname.startsWith("/raw/")) { response.setHeader("Content-Type", "image/png"); response.end(raw.get(url.pathname.slice(5))); }
+    else { response.setHeader("Content-Type", "text/html"); response.end(readFileSync(join(__dirname, "index.html"))); }
   });
   let browser;
   const report = [];
   try {
-    let port = 0;
-    for (let attempt = 0; attempt < 8; attempt++) {
-      await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
-      port = server.address().port;
-      if (port !== 9333) break;
-      await new Promise(resolve => server.close(resolve));
-      port = 0;
-    }
-    if (!port || port === 9333) throw new Error("Could not bind a capture port other than 9333.");
-    const elementPlan = standardPlan.filter(group => group.id !== "hero");
-    if (elementPlan.length) browser = await chromium.launchPersistentContext(join(work, "chrome-profile"), {
-      ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : { channel: "chrome" }), headless: true, viewport: { width: 1600, height: 1000 },
-      deviceScaleFactor: 1.5, reducedMotion: "reduce", timezoneId: "UTC", locale: "en-US",
-      args: ["--disable-background-networking", "--disable-component-update", "--no-first-run"],
-    });
-    const page = browser ? await browser.newPage() : null;
-    const errors = [];
-    page?.on("pageerror", error => errors.push(error.message));
-    // Rasterize the authored SVG fixture in Chrome, entirely in memory.
-    if (page) {
-      const image = await page.evaluate(async svg => {
-        const bitmap = new Image();
-        bitmap.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
-        await bitmap.decode();
-        const canvas = document.createElement("canvas");
-        canvas.width = bitmap.width; canvas.height = bitmap.height;
-        canvas.getContext("2d").drawImage(bitmap, 0, 0);
-        return canvas.toDataURL("image/png");
-      }, readFileSync(join(__dirname, "sample-image.svg"), "utf8"));
-      await page.addInitScript(image => { window.__showcaseImage = image; }, image);
-      // Refuse all external traffic, including accidental URLs in demo content.
-      await page.route("**/*", route => {
-        const url = new URL(route.request().url());
-        return url.hostname === "127.0.0.1" ? route.continue() : route.abort();
+    // A fixed allowed port avoids ever using the owner's prohibited debugger port.
+    await new Promise((done, reject) => { server.once("error", reject); server.listen(4318, "127.0.0.1", done); });
+    const origin = "http://127.0.0.1:4318";
+    const newPage = async (name, viewport, scale = 1, hasTouch = false) => {
+      browser = await chromium.launchPersistentContext(join(work, `${name}-profile`), {
+        executablePath: chrome, headless: process.env.INSTABOX_HEADLESS === "1", viewport, deviceScaleFactor: scale, hasTouch,
+        reducedMotion: "reduce", timezoneId: "UTC", locale: "en-US",
+        args: ["--disable-background-networking", "--disable-component-update", "--no-first-run"],
       });
+      const page = browser.pages()[0] || await browser.newPage();
+      page.setDefaultTimeout(10000);
+      const errors = [];
+      page.on("pageerror", error => errors.push(error.message));
+      await page.route("**/*", route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
+      return { page, errors };
+    };
+    const navigate = async (page, theme) => {
+      await page.goto(`${origin}/?theme=${theme}`, { waitUntil: "networkidle" });
+      await page.getByTestId("demo-step-5").waitFor();
+      await page.addStyleTag({ content: freeze });
+      await settle(page);
+      const background = await page.getByTestId("demo").evaluate(node => getComputedStyle(node).backgroundColor);
+      assert.equal(background, theme === "dark" ? "rgb(15, 15, 17)" : "rgb(248, 250, 252)");
+    };
+    const openEdit = async page => {
+      await page.getByRole("button", { name: "View details: cart.ts · +3 −1" }).click();
+      await page.mouse.move(2, 2);
+      await settle(page);
+    };
+    for (const group of plan) {
+      let { page, errors } = await newPage(group.id, group.id === "hero" ? { width: 1440, height: 900 } : group.viewport, group.deviceScaleFactor, group.id.startsWith("phone-"));
       for (const theme of ["light", "dark"]) {
-        await page.goto(`http://127.0.0.1:${port}/?theme=${theme}`, { waitUntil: "networkidle" });
-        await page.waitForFunction(() => document.querySelector("#shot-settings") || window.__err?.length);
-        if (errors.length) throw new Error(errors.join("\n"));
-        await page.locator("#shot-settings").waitFor();
-        await page.evaluate(async () => {
-          await document.fonts.ready;
-          await Promise.all([...document.images].map(image => image.decode().catch(() => {})));
-        });
-        // Freeze decorative animations after component effects and fonts settle.
-        await page.addStyleTag({ content: "*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; } pre { white-space: pre-wrap; overflow-wrap: anywhere; font-family: Iosevka, monospace; font-size: 12px; line-height: 20px; }" });
-        if (errors.length) throw new Error(errors.join("\n"));
-        for (const group of elementPlan) {
-          const { id } = group;
-          const shot = page.locator(`#shot-${id}`);
-          await shot.waitFor();
-          const text = await shot.innerText();
-          if (id === "settings") {
-            for (const label of [
-            "Accent colour", "Interface font", "Code glyphs", "Code font", "Text size",
-            "Fold finished steps", "When a collapsed step is pressed", "Fold long output after",
-            "Frosted glass", "Pointer glow", "Enhanced prompt bubble", "Selection actions",
-            "Assistant markdown", "Markdown style", "Report a problem",
-          ]) {
-              if (!text.includes(label)) throw new Error(`Settings capture is missing ${label}`);
-            }
-          }
-          const name = `${id}-${theme}.png`;
-          const raw = join(work, name);
-          await shot.screenshot({ path: raw, animations: "disabled" });
-          const destination = join(output, group[theme]);
-          copyFileSync(raw, destination);
-          // Palette compression keeps large comparison/whole-turn images readable.
-          if (statSync(destination).size > 500000) {
-            execFileSync("magick", [raw, "-strip", "-colors", "256", "-define", "png:compression-level=9", destination]);
-          }
-          const bytes = statSync(destination).size;
-          if (bytes > 500000) throw new Error(`${name} exceeds 500 KB (${bytes} bytes)`);
-          report.push({ file: group[theme], fixture: id, bytes, text });
-          console.log(`${group[theme]}: ${bytes} bytes`);
-          rmSync(raw);
+        if (group.id === "hero") {
+          await page.setViewportSize({ width: 1440, height: 900 });
+          await navigate(page, theme); await openEdit(page);
+          await verifyCapture(page, "side");
+          raw.set("desktop.png", await page.screenshot({ animations: "disabled" }));
+          await page.setViewportSize({ width: 390, height: 820 });
+          await navigate(page, theme); await openEdit(page);
+          await verifyCapture(page, "sheet");
+          raw.set("phone.png", await page.screenshot({ animations: "disabled" }));
+          // The modal's history restoration must never navigate the composition page.
+          await page.close();
+          page = await browser.newPage();
+          page.on("pageerror", error => errors.push(error.message));
+          await page.route("**/*", route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
+          await page.setViewportSize(group.viewport);
+          await page.goto(`${origin}/compose?theme=${theme}`, { waitUntil: "networkidle" });
+          await page.locator("#frame").waitFor();
+          assert.equal(await page.locator("#frame img").count(), 2);
+          await page.evaluate(() => Promise.all([...document.images].map(image => image.decode())));
+        } else {
+          await navigate(page, theme);
+          if (group.detail === "menu") await longPressRow(page);
+          else if (group.detail) await openEdit(page);
+          const fonts = await verifyCapture(page, group.detail);
+          report.push({ file: group[theme], fonts });
         }
+        assert.deepEqual(errors, []);
+        await page.screenshot({ path: join(root, group[theme]), animations: "disabled" });
+        console.log(`Captured ${group[theme]}`);
       }
-      await browser.close();
-      browser = undefined;
+      await browser.close(); browser = undefined;
     }
-    if (plan.some(group => group.id === "hero")) await captureHero(port, rawShots, report);
-    if (phonePlan.length) await capturePhone(server, report);
-    writeFileSync(join(temp, "capture-report.json"), JSON.stringify(report, null, 2) + "\n");
-    const browserName = process.env.CHROME_PATH ? process.env.CHROME_PATH : "Chrome channel";
-    console.log(`Captured ${report.length} images with ${browserName}.`);
+    if (!selected || selected === "demo") {
+      const { page, errors } = await newPage("demo", { width: 1200, height: 800 });
+      await captureDemo({ page, origin, work, root, errors, plan: demoCapture, settle, verifyFonts });
+      await browser.close(); browser = undefined;
+    }
+    writeFileSync(join(work, "capture-report.json"), JSON.stringify(report, null, 2) + "\n");
   } finally {
     await browser?.close();
-    await new Promise(resolve => server.close(resolve));
-    rmSync(work, { recursive: true, force: true });
+    await new Promise(done => server.close(done));
+    // Keep frames locally until the contact sheets have been reviewed.
   }
 }
-
-function launchOptions(viewport, deviceScaleFactor) {
-  return {
-    ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : { channel: "chrome" }),
-    headless: true, viewport, deviceScaleFactor, hasTouch: true,
-    reducedMotion: "reduce", timezoneId: "UTC", locale: "en-US",
-    args: ["--disable-background-networking", "--disable-component-update", "--no-first-run"],
-  };
-}
-
-async function longPressRow(page) {
-  const row = page.locator('[data-testid="tool-summary-row"]').filter({ hasText: "$ npm test" });
-  await row.waitFor();
-  const box = await row.boundingBox();
-  if (!box) throw new Error("The phone menu row is not visible.");
-  const x = Math.round(box.x + 32);
-  const y = Math.round(box.y + box.height / 2);
-  const session = await page.context().newCDPSession(page);
-  await session.send("Input.dispatchTouchEvent", {
-    type: "touchStart",
-    touchPoints: [{ x, y, radiusX: 1, radiusY: 1, force: 1, id: 1 }],
-  });
-  await page.waitForTimeout(800);
-  await session.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-  await session.detach();
-}
-
-function expectText(id, text) {
-  const required = {
-    "phone-timeline": ["Search: shippingLabel", "cart.ts:1-5", "cart.ts", "$ npm test", "Ready to review"],
-    "phone-details": ["cart.ts", "Free shipping", 'return "Shipping calculated at checkout"'],
-    "phone-menu": ["Copy command", "Copy path", "Copy result"],
-  };
-  for (const label of required[id] ?? []) {
-    if (!text.includes(label)) throw new Error(`${id} capture is missing ${label}`);
-  }
-  if (id === "phone-menu" && text.includes("Open in file manager")) {
-    throw new Error("Phone menu includes Open in file manager.");
-  }
-}
-
-async function capturePhone(server, report) {
-  const browser = await chromium.launchPersistentContext(join(work, "chrome-profile-phone"), launchOptions(phonePlan[0].viewport, 3));
-  try {
-    const page = browser.pages()[0] ?? await browser.newPage();
-    const errors = [];
-    page.on("pageerror", error => errors.push(error.message));
-    await page.route("**/*", route => {
-      const url = new URL(route.request().url());
-      return url.hostname === "127.0.0.1" ? route.continue() : route.abort();
-    });
-    const port = server.address().port;
-    for (const theme of ["light", "dark"]) {
-      for (const group of phonePlan) {
-        await page.setViewportSize(group.viewport);
-        await page.goto(`http://127.0.0.1:${port}/?theme=${theme}&shot=${group.id}`, { waitUntil: "networkidle" });
-        const shot = page.locator(`#shot-${group.id}`);
-        await shot.waitFor();
-        if (errors.length) throw new Error(errors.join("\n"));
-        await page.evaluate(async () => { await document.fonts.ready; });
-        await page.addStyleTag({ content: "html, body { margin: 0; overflow: hidden; } *, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; } pre { white-space: pre-wrap; overflow-wrap: anywhere; font-family: Iosevka, monospace; font-size: 12px; line-height: 20px; }" });
-        if (group.fit === "content") {
-          const height = await shot.evaluate(node => Math.ceil(node.getBoundingClientRect().height));
-          await page.setViewportSize({ width: group.viewport.width, height });
-        }
-        if (group.id === "phone-menu") {
-          await longPressRow(page);
-          await page.waitForFunction(() => {
-            const menu = document.querySelector('[data-testid="tool-step-menu"]');
-            return Boolean(menu && getComputedStyle(menu).opacity !== "0" && menu.textContent?.includes("Copy result"));
-          });
-        }
-        if (group.id === "phone-details") {
-          await page.waitForFunction(() => document.body.innerText.includes("Free shipping"));
-        }
-        const box = await shot.evaluate(node => {
-          const rect = node.getBoundingClientRect();
-          return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-        });
-        if (Math.round(box.width) !== 390 || Math.round(box.x) !== 0 || Math.round(box.y) !== 0) {
-          throw new Error(`${group.id} shot is ${box.width}px at ${box.x},${box.y}`);
-        }
-        const text = await page.locator("body").innerText();
-        expectText(group.id, text);
-        const name = `${group.id}-${theme}.png`;
-        const raw = join(work, name);
-        await page.screenshot({ path: raw, animations: "disabled" });
-        const destination = join(output, group[theme]);
-        copyFileSync(raw, destination);
-        if (statSync(destination).size > 500000) {
-          execFileSync("magick", [raw, "-strip", "-colors", "256", "-define", "png:compression-level=9", destination]);
-        }
-        const bytes = statSync(destination).size;
-        if (bytes > 500000) throw new Error(`${name} exceeds 500 KB (${bytes} bytes)`);
-        const png = readFileSync(destination);
-        const pixelsWide = png.readUInt32BE(16);
-        if (pixelsWide !== group.viewport.width * 3) throw new Error(`${name} is ${pixelsWide}px wide`);
-        report.push({ file: group[theme], fixture: group.id, bytes, text });
-        console.log(`${group[theme]}: ${bytes} bytes, ${pixelsWide}x${png.readUInt32BE(20)}`);
-        rmSync(raw);
-      }
-    }
-  } finally {
-    await browser.close();
-  }
-}
-
 capture().catch(error => { console.error(error); process.exitCode = 1; });

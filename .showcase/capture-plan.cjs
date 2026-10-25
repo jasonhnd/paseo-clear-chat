@@ -1,20 +1,12 @@
 "use strict";
 
-// README v2 cover. Not referenced by the README body yet, so it is appended
-// after the published pairs. Both themes live beside the comparison images.
-const EXTRA_GROUPS = [
-  { id: "hero", light: "images/hero-light.png", dark: "images/hero-dark.png" },
-];
-
-// The README is the inventory of published screenshots.
+// Published documentation and the upcoming README use separate inventories.
 function createCapturePlan(readme) {
   const groups = new Map();
   for (const match of readme.matchAll(/\b(?:src|srcset)="((?:docs\/)?images\/([a-z0-9-]+)-(light|dark)\.png)"/g)) {
     const [, file, id, theme] = match;
     const directory = id === "compare" || id === "hero" ? "images" : "docs/images";
-    if (file !== `${directory}/${id}-${theme}.png`) {
-      throw new Error(`Unexpected screenshot location: ${file}`);
-    }
+    if (file !== `${directory}/${id}-${theme}.png`) throw new Error(`Unexpected screenshot location: ${file}`);
     if (!groups.has(id)) groups.set(id, { id });
     groups.get(id)[theme] = file;
   }
@@ -22,46 +14,25 @@ function createCapturePlan(readme) {
   for (const group of groups.values()) {
     if (!group.light || !group.dark) throw new Error(`Missing screenshot theme for ${group.id}`);
   }
-  const planned = [...groups.values()];
-  for (const extra of EXTRA_GROUPS) {
-    if (!planned.some(group => group.id === extra.id)) planned.push({ ...extra });
-  }
-  return planned;
+  return [...groups.values()];
 }
 
-// Phone README shots are browser widths. They stay out of the published README
-// inventory until a later card links them, and they never replace an id the
-// README already names.
-const phoneGroups = [
-  {
-    id: "phone-timeline",
-    light: "docs/images/phone-timeline-light.png",
-    dark: "docs/images/phone-timeline-dark.png",
-    viewport: { width: 390, height: 640 },
-    deviceScaleFactor: 3,
-    fit: "content",
-  },
-  {
-    id: "phone-details",
-    light: "docs/images/phone-details-light.png",
-    dark: "docs/images/phone-details-dark.png",
-    viewport: { width: 390, height: 900 },
-    deviceScaleFactor: 3,
-    fit: "viewport",
-  },
-  {
-    id: "phone-menu",
-    light: "docs/images/phone-menu-light.png",
-    dark: "docs/images/phone-menu-dark.png",
-    viewport: { width: 390, height: 700 },
-    deviceScaleFactor: 3,
-    fit: "content",
-  },
+const pair = (id, width, height, deviceScaleFactor, detail) => ({
+  id, light: `${id === "hero" ? "images" : "docs/images"}/${id}-light.png`,
+  dark: `${id === "hero" ? "images" : "docs/images"}/${id}-dark.png`,
+  viewport: { width, height }, deviceScaleFactor, detail,
+});
+const readmeV2Groups = [
+  pair("hero", 2000, 1376, 1, "side"),
+  pair("phone-timeline", 390, 460, 3),
+  pair("phone-details", 390, 900, 3, "sheet"),
+  pair("phone-menu", 390, 460, 3, "menu"),
+  pair("ipad-popover", 834, 1194, 2, "popover"),
+  pair("ipad-side", 1194, 834, 2, "side"),
 ];
-
+const phoneGroups = readmeV2Groups.filter(group => group.id.startsWith("phone-"));
 function withPhoneGroups(groups) {
-  const seen = new Set(groups.map(group => group.id));
-  return [...groups, ...phoneGroups.filter(group => !seen.has(group.id))];
+  return [...groups, ...phoneGroups.filter(phone => !groups.some(group => group.id === phone.id))];
 }
-
-module.exports = { createCapturePlan, withPhoneGroups, phoneGroups };
+const demoCapture = { id: "demo", light: "images/demo.gif", width: 1200, height: 800, fps: 12, seconds: 26 };
+module.exports = { createCapturePlan, readmeV2Groups, withPhoneGroups, phoneGroups, demoCapture };
