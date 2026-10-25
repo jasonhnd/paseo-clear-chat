@@ -10,7 +10,7 @@ const { createExpansionHost } = require("./expansion-host.cjs");
 function createToolHarness(platform = "ios", options = {}) {
   const root = resolve(__dirname, "../..");
   const cache = new Map(), frames = new Map(), transformers = options.timelineHost?.transformers ?? new Map(), renderers = options.timelineHost?.renderers ?? new Map(), panels = new Map();
-  const panelOpens = [];
+  const panelOpens = [], settingsScreens = new Map();
   const dimensions = { width: options.width ?? 1440, height: options.height ?? 900, scale: 1, fontScale: 1, ...options.dimensions };
   let activePanel;
   let panelMounted = true;
@@ -65,6 +65,7 @@ function createToolHarness(platform = "ios", options = {}) {
       }
     },
   };
+  const translations = require("./translations.cjs").createTranslations(react, options);
   class Value {
     constructor(value) { this.value = value; }
     interpolate() { return this.value; }
@@ -136,6 +137,7 @@ function createToolHarness(platform = "ios", options = {}) {
       ] }),
     },
   };
+  if (options.hubCallout) delete stubs["client/components/hub-callout"];
   if (options.realSelection) delete stubs["client/components/selection"];
   if (options.settingsPage) delete stubs["client/settings-page"];
   if (options.themeTokens) delete stubs["client/components/theme-tokens"];
@@ -162,18 +164,21 @@ function createToolHarness(platform = "ios", options = {}) {
   function load(path) {
     let filename = resolve(root, path);
     if (!existsSync(filename)) filename += existsSync(filename + ".ts") ? ".ts" : ".tsx";
+    if (filename.endsWith(".json")) return options.localeResources?.[filename.split("/").pop().replace(/\.json$/, "")] ?? JSON.parse(readFileSync(filename, "utf8"));
     const key = relative(root, filename).replace(/\.tsx?$/, "");
     if (key in stubs) return stubs[key];
     if (cache.has(filename)) return cache.get(filename).exports;
     const mod = { exports: {} }; cache.set(filename, mod);
     const source = ts.transpileModule(readFileSync(filename, "utf8"), {
-      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX },
+      compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX },
     }).outputText;
     const localRequire = id => {
       if (id === "react") return react;
       if (id === "react/jsx-runtime") return { jsx, jsxs: jsx, Fragment: "Fragment" };
       if (id === "react-native") return native;
       if (id === "@getpaseo/plugin/client") return {
+        defineTranslations: translations.defineTranslations,
+        useTranslation: translations.useTranslation,
         useRpc: contract => {
           if (contract.name === "file.image") {
             if (!rpcFunctions.has(contract.name)) rpcFunctions.set(contract.name, async value => {
@@ -217,8 +222,9 @@ function createToolHarness(platform = "ios", options = {}) {
     return mod.exports;
   }
   const dispose = load("index.client.tsx").default({
+    i18n: translations.runtime,
     rpc: options.presentationHost?.rpc ?? noop,
-    addSettingsScreen: cleanup,
+    addSettingsScreen(value) { settingsScreens.set(value.id, value); return noop; },
     addAgentPanel(value) { panels.set(value.id, value); return noop; },
     openPanel(id, input) {
       if (options.panelError) throw new Error("Panel unavailable");
@@ -271,7 +277,7 @@ function createToolHarness(platform = "ios", options = {}) {
     frames.clear();
   }
   return {
-    load, nodes, text, reveals, links, copies, toasts, imageReads, transformers, renderers, panels, panelOpens, dimensions, get preferences() { return getPreferences(); }, tokens, draw, expansionHost, unmount, dispose,
+    settingsScreens, translations, setLocale: translations.setLocale, load, nodes, text, reveals, links, copies, toasts, imageReads, transformers, renderers, panels, panelOpens, dimensions, get preferences() { return getPreferences(); }, tokens, draw, expansionHost, unmount, dispose,
     setPanelMounted(value) { panelMounted = value; },
     mount(item, expand = true, identity = {}) {
       unmount(); reveals.length = links.length = copies.length = imageReads.length = 0;

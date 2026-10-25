@@ -1,3 +1,4 @@
+import { translate as t } from "./translation";
 import type { ToolCalloutData } from "../shared/contracts";
 import { record } from "./tool-detail";
 
@@ -109,9 +110,9 @@ export function buildEditDiff(detail: Record<string, unknown>, input: Record<str
       if (row.marker === "-") changes.removed++;
     }
     // The tool supplies snippets, so hunk coordinates are relative to each edit.
-    const label = replacements.length > 1 ? ` Replacement ${index + 1}` : "";
+    const label = replacements.length > 1 ? ` ${t("diff.replacement", { index: index + 1 })}` : "";
     const header = `@@ -${before.length ? 1 : 0},${before.length} +${after.length ? 1 : 0},${after.length} @@${label}`;
     hunks.push([header, ...rows.map(formatLine)].join("\n"));
   }
-  return { diff: hunks.join("\n") || "No changes.", changes };
+  return { diff: hunks.join("\n") || t("diff.noChanges"), changes };
 }

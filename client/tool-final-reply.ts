@@ -1,3 +1,4 @@
+import { translate as t } from "./translation";
 import { record, stringValue, valueText } from "./tool-detail";
 
 export type FinalToolReplyContent =
@@ -20,14 +21,14 @@ export function finalToolReplyMarkdown(text: string): string {
   const content = parseFinalToolReply(text);
   if (content.kind !== "wrap_up") return content.text;
   const sections = [content.recap];
-  if (content.ask) sections.push(`## Question\n\n${content.ask}`);
+  if (content.ask) sections.push(`${t("wrap.clipboardQuestion")}\n\n${content.ask}`);
   if (content.actions.length) {
-    sections.push(`## Options\n\n${content.actions.map((action, index) => {
+    sections.push(`${t("wrap.clipboardOptions")}\n\n${content.actions.map((action, index) => {
       const prefix = finalReplyOptionPrefix(action, index);
       return prefix ? `${prefix} ${action}` : action;
     }).join("\n\n")}`);
   }
-  if (content.isBlocked) sections.push(["## Blocked", ...content.blocked].join("\n\n"));
+  if (content.isBlocked) sections.push([t("wrap.clipboardBlocked"), ...content.blocked].join("\n\n"));
   return sections.filter(section => section.trim()).join("\n\n");
 }
 
@@ -42,7 +43,7 @@ function actionText(value: unknown): string | undefined {
 
 /** Decode the known reply envelope without hiding malformed or unfamiliar data. */
 export function parseFinalToolReply(text: string): FinalToolReplyContent {
-  const fallback = { kind: "text" as const, text: text.trim() ? text : "No final reply content was reported." };
+  const fallback = { kind: "text" as const, text: text.trim() ? text : t("wrap.empty") };
   const source = text.trim();
   const fenced = source.match(/^```(?:json)?\s*\n([\s\S]*?)\n```$/i);
   let decoded: unknown;

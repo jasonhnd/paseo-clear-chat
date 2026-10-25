@@ -1,3 +1,4 @@
+import { translate as t } from "../translation";
 import { useEffect, useMemo } from "react";
 import { Platform, type ViewProps } from "react-native";
 import type { ToolCalloutData } from "../../shared/contracts";
@@ -23,7 +24,7 @@ function outputPreview(data: ToolCalloutData): string {
     || data.search?.preview || data.fetch?.preview || data.toolSearch?.text
     || data.thinking?.text || data.cells?.[0]?.output || data.code || data.fallback?.output
     || data.checklist?.tasks.slice(0, 4).map(task => task.title).join("\n")
-    || data.subagent?.agents[0]?.task || "No output reported.";
+    || data.subagent?.agents[0]?.task || t("hover.noOutput");
   return snippet(readOutputText(data, text), 6, 800);
 }
 

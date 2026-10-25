@@ -1,3 +1,5 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "../messages";
 import React from "react";
 import { Image } from "react-native";
 import { MARK_BITMAPS } from "./mark-bitmaps";
@@ -126,6 +128,7 @@ export function FileTypeLogo({
   size = "md",
   foregroundColor,
 }: FileTypeLogoProps) {
+  const { t } = useTranslation(messages);
   const type = detectFileType(filename, language);
   const { box } = DIMENSIONS[size];
   const brand = MARK_BITMAPS[`devicon:${type}`];
@@ -140,7 +143,7 @@ export function FileTypeLogo({
             : { width: box, height: box }
         }
         resizeMode="contain"
-        accessibilityLabel={`${type} file`}
+        accessibilityLabel={t("code.fileTypeA11y", { type })}
       />
     );
   }
@@ -156,7 +159,7 @@ export function FileTypeLogo({
         tintColor: isDirectory ? "#EAB308" : "#94A3B8",
       }}
       resizeMode="contain"
-      accessibilityLabel={isDirectory ? "Folder" : "File"}
+      accessibilityLabel={isDirectory ? t("code.folderA11y") : t("code.fileA11y")}
     />
   );
 }

@@ -1,0 +1,551 @@
+{
+  "settings": {
+    "title": "Chat presentation",
+    "intro": "Changes are saved on the selected host and shared by its clients. New messages follow rendering changes; reload the chat to update existing messages. Accent colours update immediately.",
+    "accent": {
+      "label": "Accent colour",
+      "description": "Use the current Paseo theme, or choose a presentation accent.",
+      "host": "Host theme",
+      "jade": "Jade",
+      "violet": "Violet",
+      "amber": "Amber",
+      "rose": "Rose",
+      "custom": "Custom",
+      "optionA11y": "Accent: {{label}}",
+      "customA11y": "Accent: Custom",
+      "useSwatchA11y": "Use accent {{hex}}",
+      "hexLabel": "Custom HEX colour",
+      "hexHint": "Enter #RGB or #RRGGBB, then apply the colour.",
+      "hexPlaceholder": "#RRGGBB",
+      "applyA11y": "Apply custom accent",
+      "apply": "Apply",
+      "invalid": "Enter a HEX colour as #RGB or #RRGGBB.",
+      "contrastHelp": "The saved HEX stays unchanged. For readable text, we darken it on light themes or lighten it on dark themes until contrast is at least 4.5:1 on plugin surfaces. Filled buttons use black or white text, whichever has higher contrast. Midtone themes may use solid backgrounds to keep that contrast."
+    },
+    "uiFont": {
+      "label": "Interface font",
+      "description": "Choose the embedded Inter face or the system interface face.",
+      "inter": "Inter",
+      "system": "System"
+    },
+    "codeGlyphs": {
+      "label": "Code glyphs",
+      "description": "For Iosevka, use programming ligatures inside syntax blocks or keep glyphs literal. Other fonts use their own glyphs.",
+      "ligatures": "Ligatures",
+      "literal": "Literal"
+    },
+    "codeFont": {
+      "label": "Code font",
+      "description": "Paseo's code font is not exposed by the plugin SDK. Default (Iosevka) uses Iosevka and your Code glyphs choice. Other fonts must be installed on web or desktop; missing fonts use Iosevka. iOS and Android use platform monospace.",
+      "default": "Default (Iosevka)",
+      "iosevka": "Iosevka",
+      "menlo": "Menlo",
+      "consolas": "Consolas",
+      "fira": "Fira Code",
+      "cascadia": "Cascadia Code"
+    },
+    "textSize": {
+      "label": "Text size",
+      "description": "Scales the text this plugin draws, from replies and code blocks to callouts and badges. Saved on this host for all your devices.",
+      "small": "Small",
+      "default": "Default",
+      "large": "Large",
+      "xl": "XL"
+    },
+    "foldSteps": {
+      "label": "Fold finished steps",
+      "description": "Collapse finished tool calls by default. Turning this off expands every step. Saved choices for individual calls take precedence."
+    },
+    "collapsedAction": {
+      "label": "When a collapsed step is pressed",
+      "description": "Open a detail sheet, popover or side panel, or expand the card in the conversation.",
+      "details": "Open details",
+      "inline": "Expand inline"
+    },
+    "foldOutput": {
+      "label": "Fold long output after",
+      "description": "Preview long tool output, reply code and prompts with a button to reveal every line.",
+      "lines10": "10 lines",
+      "lines15": "15 lines",
+      "lines30": "30 lines",
+      "never": "Never"
+    },
+    "frosted": {
+      "label": "Frosted glass",
+      "description": "Blur surfaces where the host supports it, or use solid surfaces instead."
+    },
+    "glow": {
+      "label": "Pointer glow",
+      "description": "A soft light follows the pointer across each card. Desktop and web only: touch platforms have no hover, and the light is skipped when the system asks for reduced motion."
+    },
+    "promptBubble": {
+      "label": "Enhanced prompt bubble",
+      "description": "Paseo removes pasted images before a plugin sees the message, so the enhanced bubble cannot show them. Turn this off for Paseo's own bubble with image previews. New prompts follow the change. On iOS, text cannot be selected by dragging when this is enabled. Use the Copy button to copy text."
+    },
+    "selection": {
+      "label": "Selection actions",
+      "description": "Highlighting text in a callout raises a small bar with Copy and Add to chat. Add to chat drops the highlight into the composer as a quote, or a fenced block when it came from code. Desktop and web only: iOS and Android use the platform's own selection menu."
+    },
+    "markdown": {
+      "label": "Assistant markdown",
+      "description": "Draws the reply with the plugin's own headings, lists and syntax-highlighted code blocks. The plugin cannot reach Paseo's markdown pipeline, so its version is a subset: turn this off for mermaid diagrams, images, and the host's file-path links. On iOS, text cannot be selected by dragging when this is enabled. Use the Copy button to copy text."
+    },
+    "markdownStyle": {
+      "label": "Markdown style",
+      "description": "Document is airy and built for long answers. Compact tightens the spacing for short replies. Terminal sets the body in the code face.",
+      "document": "Document",
+      "compact": "Compact",
+      "terminal": "Terminal"
+    },
+    "reset": "Reset defaults",
+    "report": "Report a problem",
+    "retry": "Retry"
+  },
+  "startup": {
+    "incompatibleHost": "Clear Chat requires Paseo plugin settings and timeline support. Update Paseo on the daemon host and all connected apps, then reload Clear Chat.",
+    "startupFailed": "Clear Chat could not start because Paseo could not register the plugin. Update Paseo and reload Clear Chat. If it still fails, back up the plugin settings before reinstalling with the Paseo CLI.",
+    "settingsRead": "Clear Chat cannot read its host settings. Reconnect to the selected host, then select Retry. If it still fails, check the daemon's access to the plugin settings folder.",
+    "settingsInvalid": "Clear Chat settings are invalid or use an unsupported format. Back up the plugin settings, restore a valid backup or repair the settings file on the daemon host, then select Retry.",
+    "settingsWrite": "Clear Chat cannot save its host settings. Check the daemon's write access and available disk space, reconnect, then try the setting again.",
+    "settingsConflict": "Clear Chat settings keep changing in another client. Wait for other edits to finish, then try the setting again."
+  },
+  "find": {
+    "barTitle": "Searches the messages loaded in this chat",
+    "placeholder": "Find in chat",
+    "previous": "Previous match",
+    "next": "Next match",
+    "close": "Close find",
+    "count": "{{current}} of {{total}}",
+    "none": "No results"
+  },
+  "selection": {
+    "copy": "Copy",
+    "copied": "Copied",
+    "add": "Add to chat",
+    "added": "Added",
+    "copiedInstead": "Copied instead"
+  },
+  "toast": {
+    "copied": "Copied to clipboard",
+    "copyFailed": "Could not copy. Select all the text in the dialog and use Copy.",
+    "pathCopied": "Path copied. Open it on the host computer.",
+    "cwdMissing": "The session working directory is unavailable. Copy the path and open it on the host computer.",
+    "pathUnopened": "The path could not be opened on the host. It may not exist or may be inaccessible.",
+    "pathHostDown": "The path could not be opened on the host. Try again when the host is connected."
+  },
+  "copy": {
+    "dialogTitle": "Copy text",
+    "dialogBody": "Automatic copying failed. Touch and hold the text, choose Select All, then Copy.",
+    "dialogFieldA11y": "Text to copy"
+  },
+  "prompt": {
+    "you": "You",
+    "copyA11y": "Copy prompt",
+    "imagesAttached": "{{count}} image attached",
+    "imagesAttached_other": "{{count}} images attached",
+    "imageA11y": "Attached image",
+    "usageIn": "in",
+    "usageCached": "cached",
+    "usageOut": "out",
+    "counting": "counting…",
+    "tokensK": "{{count}}k",
+    "tokensM": "{{count}}M"
+  },
+  "reply": {
+    "copyA11y": "Copy reply",
+    "copiedA11y": "Reply copied",
+    "copy": "Copy",
+    "copied": "Copied",
+    "workedFor": "Worked for {{duration}}"
+  },
+  "duration": {
+    "workedZero": "0s",
+    "workedSeconds": "{{seconds}}s",
+    "workedMinutes": "{{minutes}}m",
+    "workedMinutesSeconds": "{{minutes}}m {{seconds}}s",
+    "workedHours": "{{hours}}h",
+    "workedHoursMinutes": "{{hours}}h {{minutes}}m",
+    "under1ms": "<1ms",
+    "ms": "{{milliseconds}}ms",
+    "seconds": "{{seconds}}s",
+    "hubMs": "{{milliseconds}}ms",
+    "hubSeconds": "{{seconds}}s",
+    "hubMinutes": "{{minutes}}m",
+    "hubMinutesSeconds": "{{minutes}}m {{seconds}}s",
+    "hubHours": "{{hours}}h",
+    "hubHoursMinutes": "{{hours}}h {{minutes}}m"
+  },
+  "tool": {
+    "status": {
+      "running": "running",
+      "completed": "completed",
+      "failed": "failed",
+      "canceled": "canceled",
+      "waiting": "waiting",
+      "waitingLabel": "Waiting"
+    },
+    "spinnerA11y": "Running",
+    "exitChip": "exit {{code}}",
+    "summary": {
+      "command": "$ {{command}}",
+      "skill": "Skill: {{name}}",
+      "search": "Search: {{query}}",
+      "webSearch": "web_search: {{query}}",
+      "searchBare": "Search",
+      "webSearchBare": "web_search",
+      "fetch": "Fetch: {{url}}",
+      "fetchBare": "Fetch",
+      "subagent": "Subagent",
+      "subagentCount": "{{count}} subagents",
+      "noSubagents": "No subagents",
+      "readFile": "Read file",
+      "readNamed": "Read {{file}}",
+      "writeFile": "Write file",
+      "writeNamed": "Write {{file}}",
+      "editFile": "Edit file",
+      "editNamed": "Edit {{file}}",
+      "editDelta": "+{{added}} −{{removed}}",
+      "gitCommand": "Git command",
+      "execute": "Execute command",
+      "reasoning": "Reasoning Process",
+      "paseo": "Paseo: {{name}}",
+      "userDecision": "User Decision",
+      "hub": "Hub: {{op}}",
+      "hubOperation": "operation",
+      "eval": "Eval: {{title}}",
+      "evalKernel": "Eval Kernel",
+      "github": "GitHub",
+      "unknown": "{{name}} · {{detail}}",
+      "valueUnavailable": "Value unavailable",
+      "unnamedSkill": "Unnamed skill",
+      "plan": "Plan",
+      "checklist": "Checklist Progress"
+    },
+    "row": {
+      "collapseA11y": "Collapse {{summary}}",
+      "expandA11y": "Expand {{summary}}",
+      "detailsA11y": "View details: {{summary}}",
+      "detailsHint": "Opens step details"
+    },
+    "error": {
+      "none": "Failed (no error message reported)"
+    },
+    "expansion": {
+      "prefix": "Tool expansion choice could not be saved or loaded: {{error}}",
+      "generic": "Tool expansion choice could not be saved or loaded.",
+      "disconnected": "Tool expansion storage is not connected to a host.",
+      "conflict": "Tool choices changed in another client. Try toggling the call again."
+    },
+    "shell": {
+      "waiting": "Waiting for command output…",
+      "failed": "Command failed without output.",
+      "canceled": "Command canceled without output.",
+      "completed": "Command completed without output.",
+      "noOutput": "The call returned no output."
+    },
+    "thinking": {
+      "live": "Live Reasoning Stream…",
+      "done": "Reasoning Completed",
+      "tokens": "{{count}} tokens",
+      "placeholder": "Analyzing constraints and formulating steps..."
+    },
+    "mcp": {
+      "input": "Input Parameters",
+      "response": "Response Payload",
+      "error": "Error: {{message}}"
+    },
+    "file": {
+      "empty": "// [Empty content or pending stream]",
+      "editApplied": "// [Edit: diff applied]"
+    },
+    "eval": {
+      "cell": "Persistent Kernel Cell",
+      "stdout": "stdout"
+    },
+    "ask": {
+      "offered": "Options offered:",
+      "waiting": "Waiting for a decision:",
+      "recommended": "Recommended",
+      "typed": "typed",
+      "answered": "answered"
+    },
+    "detail": {
+      "noOutput": "No output. Status: {{status}}.",
+      "noTasks": "No tasks reported. Status: {{status}}.",
+      "query": "Query: {{query}}",
+      "notReported": "Not reported",
+      "scope": "Scope: {{scope}}",
+      "scopeWeb": "Web",
+      "scopeWorkspace": "Workspace",
+      "scopeFilter": "{{scope}} ({{filter}})",
+      "matches": "Matches: {{count}}",
+      "matchesTruncated": "Matches: {{count}} (truncated)",
+      "openResultA11y": "Open {{target}}",
+      "searching": "Searching…",
+      "noResults": "No results reported.",
+      "noContent": "No content reported. Status: {{status}}.",
+      "parameter": "{{name}}:"
+    },
+    "subagent": {
+      "headline": "{{count}} subagents",
+      "bare": "subagents",
+      "spawning": "spawning subagents…",
+      "spawningOne": "spawning 1 subagent…",
+      "spawningMany": "spawning {{count}} subagents…",
+      "context": "shared context",
+      "model": "Model: {{model}}",
+      "taskMissing": "Task not reported by the provider.",
+      "agentN": "agent {{index}}",
+      "typeTask": "task",
+      "typeAgent": "agent"
+    },
+    "task": {
+      "checklist": "Checklist",
+      "working": "Tasks",
+      "progress": "{{completed}}/{{total}} ({{percent}}%)",
+      "inProgress": "In Progress",
+      "done": "Done",
+      "blocked": "Blocked ▾",
+      "reason": "Reason: {{reason}}",
+      "setStatusA11y": "Set {{title}} status",
+      "none": "No tasks reported."
+    },
+    "github": {
+      "waiting": "Waiting for GitHub…",
+      "noOutput": "The op returned no output.",
+      "request": "request",
+      "showRequestA11y": "Show the request",
+      "hideRequestA11y": "Hide the request",
+      "pullRequest": "pull request",
+      "base": "base",
+      "branches": "{{base}} ← {{head}}",
+      "defaultBranch": "default",
+      "currentBranch": "current branch",
+      "file": "file",
+      "op": "github"
+    }
+  },
+  "fold": {
+    "showAll": "Show all {{count}} lines",
+    "showFewer": "Show fewer lines",
+    "saveFailed": "Expansion choice could not be saved or loaded. Toggle again to retry."
+  },
+  "diff": {
+    "noChanges": "No changes.",
+    "replacement": "Replacement {{index}}",
+    "noNewline": "\\ No newline at end of file"
+  },
+  "hub": {
+    "badge": "hub {{op}}",
+    "unknown": "unknown",
+    "replyTo": "reply to {{id}}",
+    "timeout": "timeout {{duration}}",
+    "from": "from {{name}}",
+    "ago": "{{duration}} ago",
+    "justNow": "just now",
+    "noReply": "No reply yet.",
+    "waitEmpty": "The wait ended without a message.",
+    "peek": "peek — still queued",
+    "messagesOne": "{{count}} message",
+    "messagesOther": "{{count}} messages",
+    "inboxEmpty": "The inbox is empty.",
+    "countRunning": "{{count}} running",
+    "countIdle": "{{count}} idle",
+    "countParked": "{{count}} parked",
+    "countShown": "{{count}} shown",
+    "countHidden": "{{count}} hidden",
+    "peerCount": "{{count}} peers",
+    "unread": "{{count}} unread",
+    "peersEmpty": "No peers match.",
+    "noJobs": "no jobs",
+    "waitingOne": "waiting on {{count}} job",
+    "waitingOther": "waiting on {{count}} jobs",
+    "jobCount": "{{count}} jobs",
+    "failedCount": "{{count}} failed",
+    "showFirst": "show only the first {{count}}",
+    "showMore": "show {{count}} more jobs",
+    "cancelledHeading": "cancelled",
+    "agentsWithoutJob": "subagents without a job entry",
+    "nothingRunning": "Nothing is running.",
+    "under": "under {{id}}",
+    "notLive": "no longer live",
+    "advisor": "advisor",
+    "schema": "schema {{status}}",
+    "processOne": "{{count}} process",
+    "processOther": "{{count}} processes",
+    "timedOut": "timed out",
+    "cwd": "cwd {{path}}",
+    "restart": "restart {{value}}",
+    "readyLog": "ready log {{text}}",
+    "readyPort": "ready port {{port}}",
+    "pty": "pty",
+    "matched": "matched",
+    "stdin": "sent to stdin",
+    "cursor": "cursor {{n}}",
+    "pid": "pid {{n}}",
+    "restarts": "{{count}} restarts",
+    "match": "match {{text}}",
+    "started": "started {{age}}",
+    "persist": "persist",
+    "detached": "detached",
+    "noDetail": "The call returned no detail."
+  },
+  "paseo": {
+    "modelsFor": "Models for {{provider}}",
+    "activityFor": "Activity for {{agent}}",
+    "discovered": "Discovered Providers ({{count}})",
+    "newAgent": "New agent",
+    "running": "running",
+    "mode": "{{mode}} mode",
+    "initialPrompt": "Initial Task Prompt",
+    "backends": "Configured agent backends discovered on local daemon:",
+    "modelsIntro": "Supported models & reasoning modes:",
+    "reasoning": "Reasoning",
+    "target": "Target: {{agent}}",
+    "activities": "{{count}} recent activities"
+  },
+  "provider": {
+    "paseo": "Paseo",
+    "claude": "Claude",
+    "codex": "Codex",
+    "omp": "Oh My Pi",
+    "gemini": "Gemini",
+    "antigravity": "Antigravity",
+    "copilot": "Copilot",
+    "opencode": "OpenCode",
+    "minimax": "MiniMax",
+    "deepseek": "DeepSeek",
+    "grok": "Grok",
+    "ollama": "Ollama",
+    "generic": "Agent"
+  },
+  "agent": {
+    "messageReceived": "Message received",
+    "finished": "Agent finished",
+    "errored": "Agent errored",
+    "permission": "Agent needs permission",
+    "closed": "Agent closed",
+    "from": "Message from {{sender}}",
+    "eventFrom": "{{event}} · {{sender}}",
+    "senderLine": "Sender: {{id}}"
+  },
+  "system": {
+    "job": "Job",
+    "agent": "Agent",
+    "reminder": "Reminder",
+    "process": "Process",
+    "notice": "Notice",
+    "noticeTitle": "System notice",
+    "lines": "{{count}} lines"
+  },
+  "notice": {
+    "error": "Error",
+    "warning": "Warning",
+    "info": "Info"
+  },
+  "approval": {
+    "approved": "Approved",
+    "denied": "Denied",
+    "waiting": "Awaiting approval",
+    "body": "This edit is awaiting approval in Paseo.",
+    "collapseA11y": "Collapse approval details",
+    "expandA11y": "Expand approval details"
+  },
+  "reasoning": {
+    "thinking": "Thinking in progress…",
+    "thoughtFor": "Thought for {{seconds}}s",
+    "summary": "Reasoning summary",
+    "status": "Reasoning",
+    "steps": "{{count}} steps",
+    "tokens": "{{count}} tokens",
+    "step": "Step {{number}}",
+    "stepTitled": "{{number}}. {{title}}",
+    "stepSeconds": "{{seconds}}s",
+    "totalTokens": "Total Tokens: {{count}}",
+    "thoughtProcess": "Thought Process"
+  },
+  "wrap": {
+    "heading": "Wrap up",
+    "question": "Question",
+    "blocked": "Blocked",
+    "empty": "No final reply content was reported.",
+    "clipboardQuestion": "## Question",
+    "clipboardOptions": "## Options",
+    "clipboardBlocked": "## Blocked"
+  },
+  "menu": {
+    "copyCommand": "Copy command",
+    "copyPath": "Copy path",
+    "copyResult": "Copy result",
+    "open": "Open in file manager",
+    "actionsA11y": "Step actions",
+    "closeA11y": "Close step actions"
+  },
+  "hover": {
+    "noOutput": "No output reported."
+  },
+  "detail": {
+    "panelTitle": "Step details",
+    "empty": "Select a collapsed step to see its details. Use the panel tab's close control to return this space to chat.",
+    "resizeA11y": "Resize step details",
+    "half": "Half screen",
+    "full": "Full screen",
+    "resizeHint": "Drag up for full screen, down for half screen, or further down to close.",
+    "expandA11y": "Expand step details",
+    "halfA11y": "Half-screen step details",
+    "closeA11y": "Close step details",
+    "dismissA11y": "Dismiss step details",
+    "status": "Status: {{status}}",
+    "duration": "Duration: {{duration}}",
+    "exitCode": "Exit code: {{code}}",
+    "section": {
+      "input": "Input",
+      "output": "Output",
+      "error": "Error",
+      "stdout": "Stdout",
+      "stderr": "Stderr"
+    },
+    "sectionInline": {
+      "input": "input",
+      "output": "output",
+      "error": "error",
+      "stdout": "stdout",
+      "stderr": "stderr"
+    },
+    "copy": "Copy",
+    "copyA11y": "Copy {{section}}",
+    "none": "No {{section}} was reported.",
+    "emptySection": "Empty {{section}}."
+  },
+  "code": {
+    "copy": "Copy",
+    "copyA11y": "Copy code",
+    "copiedA11y": "Code copied",
+    "showFileA11y": "Show {{file}} in the file manager",
+    "fileTypeA11y": "{{type}} file",
+    "folderA11y": "Folder",
+    "fileA11y": "File"
+  },
+  "image": {
+    "hide": "Hide",
+    "show": "Show",
+    "hideA11y": "Hide the image",
+    "showA11y": "Show the image",
+    "bytes": "{{count}} B",
+    "kilobytes": "{{count}} KB",
+    "megabytes": "{{count}} MB",
+    "dimensions": "{{width}} × {{height}}",
+    "openSourceA11y": "Open image source",
+    "generatedAlt": "Generated image",
+    "altFallback": "Image",
+    "unsupported": "This image source is not supported.",
+    "failed": "The image could not be loaded.",
+    "openAddressA11y": "Open image address: {{url}}",
+    "copyAddressA11y": "Copy image address",
+    "emptyAddress": "Empty image address"
+  },
+  "markdown": {
+    "showPathA11y": "Show file path: {{path}}",
+    "copyPathA11y": "Copy file path: {{path}}"
+  }
+}

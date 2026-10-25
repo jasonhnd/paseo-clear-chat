@@ -1,0 +1,551 @@
+{
+  "settings": {
+    "title": "チャット表示",
+    "intro": "変更は選択中のホストに保存され、そのホストにつないだクライアントで共有されます。表示の変更は新しいメッセージから反映されます。既存のメッセージを更新するには、チャットを再読み込みしてください。アクセントカラーはすぐに反映されます。",
+    "accent": {
+      "label": "アクセントカラー",
+      "description": "現在の Paseo テーマを使うか、表示用のアクセントカラーを選びます。",
+      "host": "テーマに合わせる",
+      "jade": "ジェード",
+      "violet": "バイオレット",
+      "amber": "アンバー",
+      "rose": "ローズ",
+      "custom": "カスタム",
+      "optionA11y": "アクセント：{{label}}",
+      "customA11y": "アクセント：カスタム",
+      "useSwatchA11y": "アクセント {{hex}} を使う",
+      "hexLabel": "カスタム HEX カラー",
+      "hexHint": "#RGB または #RRGGBB を入力して、色を適用します。",
+      "hexPlaceholder": "#RRGGBB",
+      "applyA11y": "カスタムアクセントを適用",
+      "apply": "適用",
+      "invalid": "HEX カラーを #RGB または #RRGGBB の形式で入力してください。",
+      "contrastHelp": "保存した HEX の値は変わりません。文字を読みやすくするため、プラグインの表示面でコントラストが 4.5:1 以上になるまで、ライトテーマでは暗く、ダークテーマでは明るく調整します。塗りつぶしのボタンの文字は、黒と白のうちコントラストが高いほうを使います。中間色のテーマでは、コントラストを保つために単色の背景を使うことがあります。"
+    },
+    "uiFont": {
+      "label": "インターフェースのフォント",
+      "description": "内蔵の Inter か、システムのフォントを使います。",
+      "inter": "Inter",
+      "system": "システム"
+    },
+    "codeGlyphs": {
+      "label": "コードの字形",
+      "description": "Iosevka では、コードブロック内でプログラミング用の合字を使うか、文字をそのまま表示するかを選べます。ほかのフォントはそれぞれの字形を使います。",
+      "ligatures": "合字",
+      "literal": "そのまま"
+    },
+    "codeFont": {
+      "label": "コードのフォント",
+      "description": "プラグイン SDK からは Paseo のコードフォント設定を読めません。デフォルト（Iosevka）は Iosevka と「コードの字形」の選択を使います。Web とデスクトップでは、ほかのフォントはコンピューターにインストールされている必要があり、ない場合は Iosevka を使います。iOS と Android ではシステムの等幅フォントを使います。",
+      "default": "デフォルト（Iosevka）",
+      "iosevka": "Iosevka",
+      "menlo": "Menlo",
+      "consolas": "Consolas",
+      "fira": "Fira Code",
+      "cascadia": "Cascadia Code"
+    },
+    "textSize": {
+      "label": "文字サイズ",
+      "description": "このプラグインが表示する文字の大きさを変えます。返信やコードブロックから、吹き出しやバッジまで対象です。このホストに保存され、すべての端末で共有されます。",
+      "small": "小",
+      "default": "標準",
+      "large": "大",
+      "xl": "特大"
+    },
+    "foldSteps": {
+      "label": "完了したステップを折りたたむ",
+      "description": "完了したツール呼び出しを最初から折りたたみます。オフにするとすべてのステップを開きます。個別の呼び出しで選んだ状態が優先されます。"
+    },
+    "collapsedAction": {
+      "label": "折りたたんだステップを押したとき",
+      "description": "詳細のシート、ポップオーバー、サイドパネルを開くか、会話の中でカードを開きます。",
+      "details": "詳細を開く",
+      "inline": "その場で開く"
+    },
+    "foldOutput": {
+      "label": "長い出力を折りたたむ行数",
+      "description": "長いツールの出力、返信のコード、プロンプトは一部だけ表示し、ボタンですべての行を表示します。",
+      "lines10": "10 行",
+      "lines15": "15 行",
+      "lines30": "30 行",
+      "never": "折りたたまない"
+    },
+    "frosted": {
+      "label": "すりガラス",
+      "description": "ホストが対応していれば表示面をぼかし、そうでなければ単色にします。"
+    },
+    "glow": {
+      "label": "ポインターの光",
+      "description": "ポインターを追ってカードの上にやわらかい光が出ます。デスクトップと Web のみです。タッチ画面にはホバーがなく、システムで視差効果を減らす設定にしているときも表示しません。"
+    },
+    "promptBubble": {
+      "label": "プロンプトの吹き出しを強化",
+      "description": "Paseo はプラグインがメッセージを受け取る前に貼り付けた画像を取り除くため、強化した吹き出しでは画像を表示できません。画像のプレビューを見るには、これをオフにして Paseo 標準の吹き出しを使ってください。新しいプロンプトから反映されます。オンのときは、iOS ではドラッグで文字を選べません。コピーボタンを使ってください。"
+    },
+    "selection": {
+      "label": "選択したときの操作",
+      "description": "カードの中で文字を選ぶと、「コピー」と「チャットに追加」がある小さなバーが出ます。「チャットに追加」は選んだ内容を引用として入力欄に入れます。コードから選んだ場合はコードブロックとして入れます。デスクトップと Web のみです。iOS と Android ではシステムの選択メニューを使います。"
+    },
+    "markdown": {
+      "label": "アシスタントの Markdown",
+      "description": "プラグイン独自の見出し、リスト、色分けしたコードブロックで返信を表示します。プラグインは Paseo の Markdown 処理を使えないため、対応しているのはその一部です。mermaid の図、画像、ホストのファイルパスのリンクを使うには、これをオフにしてください。オンのときは、iOS ではドラッグで文字を選べません。コピーボタンを使ってください。"
+    },
+    "markdownStyle": {
+      "label": "Markdown のスタイル",
+      "description": "ドキュメント：ゆったりして長い回答向けです。コンパクト：間隔を詰めて短い返信向けです。ターミナル：本文をコードのフォントで表示します。",
+      "document": "ドキュメント",
+      "compact": "コンパクト",
+      "terminal": "ターミナル"
+    },
+    "reset": "初期設定に戻す",
+    "report": "問題を報告",
+    "retry": "再試行"
+  },
+  "startup": {
+    "incompatibleHost": "Clear Chat には Paseo のプラグイン設定とタイムラインへの対応が必要です。daemon のホストと、つないでいるすべてのアプリの Paseo を更新してから、Clear Chat を再読み込みしてください。",
+    "startupFailed": "Paseo がプラグインを登録できなかったため、Clear Chat を起動できません。Paseo を更新して Clear Chat を再読み込みしてください。それでも直らない場合は、プラグインの設定をバックアップしてから Paseo CLI で入れ直してください。",
+    "settingsRead": "Clear Chat がホストの設定を読み込めません。選択中のホストにつなぎ直してから「再試行」を押してください。それでも直らない場合は、daemon がプラグインの設定フォルダーにアクセスできるか確認してください。",
+    "settingsInvalid": "Clear Chat の設定が正しくないか、対応していない形式です。プラグインの設定をバックアップし、正しいバックアップから戻すか daemon のホストで設定ファイルを直してから、「再試行」を押してください。",
+    "settingsWrite": "Clear Chat がホストに設定を保存できません。daemon の書き込み権限と空き容量を確認し、つなぎ直してから、もう一度設定を変えてください。",
+    "settingsConflict": "Clear Chat の設定がほかのクライアントで変更され続けています。ほかの変更が終わるのを待ってから、もう一度設定を変えてください。"
+  },
+  "find": {
+    "barTitle": "このチャットで読み込み済みのメッセージを検索します",
+    "placeholder": "チャット内を検索",
+    "previous": "前へ",
+    "next": "次へ",
+    "close": "検索を閉じる",
+    "count": "{{current}}/{{total}}",
+    "none": "見つかりません"
+  },
+  "selection": {
+    "copy": "コピー",
+    "copied": "コピーしました",
+    "add": "チャットに追加",
+    "added": "追加しました",
+    "copiedInstead": "コピーしました"
+  },
+  "toast": {
+    "copied": "クリップボードにコピーしました",
+    "copyFailed": "コピーできませんでした。画面の文字をすべて選んで「コピー」を使ってください。",
+    "pathCopied": "パスをコピーしました。ホストのコンピューターで開いてください。",
+    "cwdMissing": "セッションの作業ディレクトリがわかりません。パスをコピーして、ホストのコンピューターで開いてください。",
+    "pathUnopened": "ホストでこのパスを開けませんでした。存在しないか、アクセスできない可能性があります。",
+    "pathHostDown": "ホストでこのパスを開けませんでした。ホストにつながってからもう一度試してください。"
+  },
+  "copy": {
+    "dialogTitle": "テキストをコピー",
+    "dialogBody": "自動でコピーできませんでした。文字を長押しして「すべてを選択」、続けて「コピー」を選んでください。",
+    "dialogFieldA11y": "コピーするテキスト"
+  },
+  "prompt": {
+    "you": "あなた",
+    "copyA11y": "プロンプトをコピー",
+    "imagesAttached": "画像 {{count}} 枚を添付",
+    "imagesAttached_other": "画像 {{count}} 枚を添付",
+    "imageA11y": "添付した画像",
+    "usageIn": "入力",
+    "usageCached": "キャッシュ",
+    "usageOut": "出力",
+    "counting": "集計中…",
+    "tokensK": "{{count}}k",
+    "tokensM": "{{count}}M"
+  },
+  "reply": {
+    "copyA11y": "返信をコピー",
+    "copiedA11y": "返信をコピーしました",
+    "copy": "コピー",
+    "copied": "コピー済み",
+    "workedFor": "作業時間 {{duration}}"
+  },
+  "duration": {
+    "workedZero": "0秒",
+    "workedSeconds": "{{seconds}}秒",
+    "workedMinutes": "{{minutes}}分",
+    "workedMinutesSeconds": "{{minutes}}分{{seconds}}秒",
+    "workedHours": "{{hours}}時間",
+    "workedHoursMinutes": "{{hours}}時間{{minutes}}分",
+    "under1ms": "<1ms",
+    "ms": "{{milliseconds}}ms",
+    "seconds": "{{seconds}}s",
+    "hubMs": "{{milliseconds}}ms",
+    "hubSeconds": "{{seconds}}s",
+    "hubMinutes": "{{minutes}}分",
+    "hubMinutesSeconds": "{{minutes}}分{{seconds}}秒",
+    "hubHours": "{{hours}}時間",
+    "hubHoursMinutes": "{{hours}}時間{{minutes}}分"
+  },
+  "tool": {
+    "status": {
+      "running": "実行中",
+      "completed": "完了",
+      "failed": "失敗",
+      "canceled": "キャンセル",
+      "waiting": "待機中",
+      "waitingLabel": "待機中"
+    },
+    "spinnerA11y": "実行中",
+    "exitChip": "終了 {{code}}",
+    "summary": {
+      "command": "$ {{command}}",
+      "skill": "スキル: {{name}}",
+      "search": "検索: {{query}}",
+      "webSearch": "web_search: {{query}}",
+      "searchBare": "検索",
+      "webSearchBare": "web_search",
+      "fetch": "取得: {{url}}",
+      "fetchBare": "取得",
+      "subagent": "サブエージェント",
+      "subagentCount": "サブエージェント {{count}} 件",
+      "noSubagents": "サブエージェントなし",
+      "readFile": "ファイルを読む",
+      "readNamed": "{{file}} を読む",
+      "writeFile": "ファイルに書く",
+      "writeNamed": "{{file}} に書く",
+      "editFile": "ファイルを編集",
+      "editNamed": "{{file}} を編集",
+      "editDelta": "+{{added}} −{{removed}}",
+      "gitCommand": "Git コマンド",
+      "execute": "コマンドを実行",
+      "reasoning": "推論の過程",
+      "paseo": "Paseo: {{name}}",
+      "userDecision": "ユーザーの判断",
+      "hub": "Hub: {{op}}",
+      "hubOperation": "操作",
+      "eval": "Eval: {{title}}",
+      "evalKernel": "Eval カーネル",
+      "github": "GitHub",
+      "unknown": "{{name}} · {{detail}}",
+      "valueUnavailable": "表示できない値",
+      "unnamedSkill": "名前のないスキル",
+      "plan": "計画",
+      "checklist": "チェックリストの進み具合"
+    },
+    "row": {
+      "collapseA11y": "{{summary}} を閉じる",
+      "expandA11y": "{{summary}} を開く",
+      "detailsA11y": "詳細を見る: {{summary}}",
+      "detailsHint": "ステップの詳細を開きます"
+    },
+    "error": {
+      "none": "失敗（エラーメッセージの報告なし）"
+    },
+    "expansion": {
+      "prefix": "ツールの開閉状態を保存または読み込めませんでした: {{error}}",
+      "generic": "ツールの開閉状態を保存または読み込めませんでした。",
+      "disconnected": "ツールの開閉状態の保存先がホストにつながっていません。",
+      "conflict": "ツールの選択がほかのクライアントで変更されました。もう一度この呼び出しを押してください。"
+    },
+    "shell": {
+      "waiting": "コマンドの出力を待っています…",
+      "failed": "コマンドは出力なしで失敗しました。",
+      "canceled": "コマンドは出力なしでキャンセルされました。",
+      "completed": "コマンドは出力なしで完了しました。",
+      "noOutput": "この呼び出しは出力を返しませんでした。"
+    },
+    "thinking": {
+      "live": "推論中…",
+      "done": "推論完了",
+      "tokens": "{{count}} トークン",
+      "placeholder": "条件を分析して手順を考えています..."
+    },
+    "mcp": {
+      "input": "入力パラメーター",
+      "response": "レスポンス",
+      "error": "エラー: {{message}}"
+    },
+    "file": {
+      "empty": "// [内容が空か、まだ受信中]",
+      "editApplied": "// [編集: 差分を適用済み]"
+    },
+    "eval": {
+      "cell": "常駐カーネルのセル",
+      "stdout": "stdout"
+    },
+    "ask": {
+      "offered": "提示した選択肢:",
+      "waiting": "判断を待っています:",
+      "recommended": "おすすめ",
+      "typed": "入力",
+      "answered": "回答済み"
+    },
+    "detail": {
+      "noOutput": "出力なし。状態: {{status}}。",
+      "noTasks": "タスクの報告なし。状態: {{status}}。",
+      "query": "クエリ: {{query}}",
+      "notReported": "報告なし",
+      "scope": "範囲: {{scope}}",
+      "scopeWeb": "Web",
+      "scopeWorkspace": "ワークスペース",
+      "scopeFilter": "{{scope}}（{{filter}}）",
+      "matches": "一致: {{count}}",
+      "matchesTruncated": "一致: {{count}}（省略あり）",
+      "openResultA11y": "{{target}} を開く",
+      "searching": "検索中…",
+      "noResults": "結果の報告なし。",
+      "noContent": "内容の報告なし。状態: {{status}}。",
+      "parameter": "{{name}}:"
+    },
+    "subagent": {
+      "headline": "サブエージェント {{count}} 件",
+      "bare": "サブエージェント",
+      "spawning": "サブエージェントを起動中…",
+      "spawningOne": "サブエージェントを 1 件起動中…",
+      "spawningMany": "サブエージェントを {{count}} 件起動中…",
+      "context": "共有コンテキスト",
+      "model": "モデル: {{model}}",
+      "taskMissing": "Provider からタスクの報告がありません。",
+      "agentN": "エージェント {{index}}",
+      "typeTask": "タスク",
+      "typeAgent": "エージェント"
+    },
+    "task": {
+      "checklist": "チェックリスト",
+      "working": "タスク",
+      "progress": "{{completed}}/{{total}}（{{percent}}%）",
+      "inProgress": "進行中",
+      "done": "完了",
+      "blocked": "ブロック中 ▾",
+      "reason": "理由: {{reason}}",
+      "setStatusA11y": "「{{title}}」の状態を設定",
+      "none": "タスクの報告なし。"
+    },
+    "github": {
+      "waiting": "GitHub を待っています…",
+      "noOutput": "この操作は出力を返しませんでした。",
+      "request": "リクエスト",
+      "showRequestA11y": "リクエストを表示",
+      "hideRequestA11y": "リクエストを隠す",
+      "pullRequest": "プルリクエスト",
+      "base": "ベース",
+      "branches": "{{base}} ← {{head}}",
+      "defaultBranch": "デフォルト",
+      "currentBranch": "現在のブランチ",
+      "file": "ファイル",
+      "op": "github"
+    }
+  },
+  "fold": {
+    "showAll": "全 {{count}} 行を表示",
+    "showFewer": "折りたたむ",
+    "saveFailed": "開閉状態を保存または読み込めませんでした。もう一度押して再試行してください。"
+  },
+  "diff": {
+    "noChanges": "変更なし。",
+    "replacement": " 置換 {{index}}",
+    "noNewline": "\\ No newline at end of file"
+  },
+  "hub": {
+    "badge": "hub {{op}}",
+    "unknown": "不明",
+    "replyTo": "{{id}} への返信",
+    "timeout": "タイムアウト {{duration}}",
+    "from": "{{name}} から",
+    "ago": "{{duration}}前",
+    "justNow": "たった今",
+    "noReply": "まだ返信はありません。",
+    "waitEmpty": "メッセージを受け取らずに待機が終わりました。",
+    "peek": "のぞき見 — まだキューにあります",
+    "messagesOne": "{{count}} 件のメッセージ",
+    "messagesOther": "{{count}} 件のメッセージ",
+    "inboxEmpty": "受信箱は空です。",
+    "countRunning": "実行中 {{count}}",
+    "countIdle": "待機 {{count}}",
+    "countParked": "保留 {{count}}",
+    "countShown": "表示 {{count}}",
+    "countHidden": "非表示 {{count}}",
+    "peerCount": "ピア {{count}}",
+    "unread": "未読 {{count}}",
+    "peersEmpty": "一致するピアはありません。",
+    "noJobs": "ジョブなし",
+    "waitingOne": "{{count}} 件のジョブを待機中",
+    "waitingOther": "{{count}} 件のジョブを待機中",
+    "jobCount": "ジョブ {{count}} 件",
+    "failedCount": "失敗 {{count}}",
+    "showFirst": "最初の {{count}} 件だけ表示",
+    "showMore": "ジョブをあと {{count}} 件表示",
+    "cancelledHeading": "キャンセル済み",
+    "agentsWithoutJob": "ジョブの記録がないサブエージェント",
+    "nothingRunning": "実行中のものはありません。",
+    "under": "{{id}} の下",
+    "notLive": "停止済み",
+    "advisor": "アドバイザー",
+    "schema": "スキーマ {{status}}",
+    "processOne": "プロセス {{count}}",
+    "processOther": "プロセス {{count}}",
+    "timedOut": "タイムアウト",
+    "cwd": "cwd {{path}}",
+    "restart": "再起動 {{value}}",
+    "readyLog": "準備完了ログ {{text}}",
+    "readyPort": "準備完了ポート {{port}}",
+    "pty": "pty",
+    "matched": "一致",
+    "stdin": "stdin に送信",
+    "cursor": "カーソル {{n}}",
+    "pid": "pid {{n}}",
+    "restarts": "再起動 {{count}} 回",
+    "match": "一致 {{text}}",
+    "started": "{{age}}に開始",
+    "persist": "永続",
+    "detached": "切り離し",
+    "noDetail": "この呼び出しは詳細を返しませんでした。"
+  },
+  "paseo": {
+    "modelsFor": "{{provider}} のモデル",
+    "activityFor": "{{agent}} のアクティビティ",
+    "discovered": "見つかった Provider（{{count}}）",
+    "newAgent": "新しいエージェント",
+    "running": "実行中",
+    "mode": "{{mode}} モード",
+    "initialPrompt": "最初のタスクのプロンプト",
+    "backends": "ローカルの daemon で見つかった設定済みのエージェント:",
+    "modelsIntro": "対応しているモデルと推論モード:",
+    "reasoning": "推論",
+    "target": "対象: {{agent}}",
+    "activities": "最近のアクティビティ {{count}} 件"
+  },
+  "provider": {
+    "paseo": "Paseo",
+    "claude": "Claude",
+    "codex": "Codex",
+    "omp": "Oh My Pi",
+    "gemini": "Gemini",
+    "antigravity": "Antigravity",
+    "copilot": "Copilot",
+    "opencode": "OpenCode",
+    "minimax": "MiniMax",
+    "deepseek": "DeepSeek",
+    "grok": "Grok",
+    "ollama": "Ollama",
+    "generic": "エージェント"
+  },
+  "agent": {
+    "messageReceived": "メッセージを受信",
+    "finished": "エージェントが完了",
+    "errored": "エージェントでエラー",
+    "permission": "エージェントが許可を求めています",
+    "closed": "エージェントを終了",
+    "from": "{{sender}} からのメッセージ",
+    "eventFrom": "{{event}} · {{sender}}",
+    "senderLine": "送信者: {{id}}"
+  },
+  "system": {
+    "job": "ジョブ",
+    "agent": "エージェント",
+    "reminder": "リマインダー",
+    "process": "プロセス",
+    "notice": "お知らせ",
+    "noticeTitle": "システムのお知らせ",
+    "lines": "{{count}} 行"
+  },
+  "notice": {
+    "error": "エラー",
+    "warning": "警告",
+    "info": "情報"
+  },
+  "approval": {
+    "approved": "承認済み",
+    "denied": "拒否",
+    "waiting": "承認待ち",
+    "body": "この編集は Paseo で承認を待っています。",
+    "collapseA11y": "承認の詳細を閉じる",
+    "expandA11y": "承認の詳細を開く"
+  },
+  "reasoning": {
+    "thinking": "考え中…",
+    "thoughtFor": "{{seconds}}秒考えました",
+    "summary": "推論のまとめ",
+    "status": "推論",
+    "steps": "{{count}} ステップ",
+    "tokens": "{{count}} トークン",
+    "step": "ステップ {{number}}",
+    "stepTitled": "{{number}}. {{title}}",
+    "stepSeconds": "{{seconds}}秒",
+    "totalTokens": "合計トークン: {{count}}",
+    "thoughtProcess": "思考の過程"
+  },
+  "wrap": {
+    "heading": "まとめ",
+    "question": "質問",
+    "blocked": "ブロック中",
+    "empty": "最終的な返信の内容は報告されていません。",
+    "clipboardQuestion": "## 質問",
+    "clipboardOptions": "## 選択肢",
+    "clipboardBlocked": "## ブロック中"
+  },
+  "menu": {
+    "copyCommand": "コマンドをコピー",
+    "copyPath": "パスをコピー",
+    "copyResult": "結果をコピー",
+    "open": "ファイルマネージャーで開く",
+    "actionsA11y": "ステップの操作",
+    "closeA11y": "ステップの操作を閉じる"
+  },
+  "hover": {
+    "noOutput": "出力の報告なし。"
+  },
+  "detail": {
+    "panelTitle": "ステップの詳細",
+    "empty": "折りたたんだステップを選ぶと詳細が表示されます。パネルのタブの閉じるボタンで、この場所をチャットに戻せます。",
+    "resizeA11y": "ステップの詳細の大きさを変更",
+    "half": "半画面",
+    "full": "全画面",
+    "resizeHint": "上にドラッグすると全画面、下にドラッグすると半画面、さらに下にドラッグすると閉じます。",
+    "expandA11y": "ステップの詳細を広げる",
+    "halfA11y": "ステップの詳細を半画面に",
+    "closeA11y": "ステップの詳細を閉じる",
+    "dismissA11y": "ステップの詳細を閉じる",
+    "status": "状態: {{status}}",
+    "duration": "所要時間: {{duration}}",
+    "exitCode": "終了コード: {{code}}",
+    "section": {
+      "input": "入力",
+      "output": "出力",
+      "error": "エラー",
+      "stdout": "Stdout",
+      "stderr": "Stderr"
+    },
+    "sectionInline": {
+      "input": "入力",
+      "output": "出力",
+      "error": "エラー",
+      "stdout": "Stdout",
+      "stderr": "Stderr"
+    },
+    "copy": "コピー",
+    "copyA11y": "{{section}}をコピー",
+    "none": "{{section}}の報告なし。",
+    "emptySection": "{{section}}は空です。"
+  },
+  "code": {
+    "copy": "コピー",
+    "copyA11y": "コードをコピー",
+    "copiedA11y": "コードをコピーしました",
+    "showFileA11y": "{{file}} をファイルマネージャーで表示",
+    "fileTypeA11y": "{{type}} ファイル",
+    "folderA11y": "フォルダー",
+    "fileA11y": "ファイル"
+  },
+  "image": {
+    "hide": "隠す",
+    "show": "表示",
+    "hideA11y": "画像を隠す",
+    "showA11y": "画像を表示",
+    "bytes": "{{count}} B",
+    "kilobytes": "{{count}} KB",
+    "megabytes": "{{count}} MB",
+    "dimensions": "{{width}} × {{height}}",
+    "openSourceA11y": "画像の元を開く",
+    "generatedAlt": "生成された画像",
+    "altFallback": "画像",
+    "unsupported": "この画像の形式には対応していません。",
+    "failed": "画像を読み込めませんでした。",
+    "openAddressA11y": "画像のアドレスを開く: {{url}}",
+    "copyAddressA11y": "画像のアドレスをコピー",
+    "emptyAddress": "画像のアドレスが空です"
+  },
+  "markdown": {
+    "showPathA11y": "ファイルパスを表示: {{path}}",
+    "copyPathA11y": "ファイルパスをコピー: {{path}}"
+  }
+}

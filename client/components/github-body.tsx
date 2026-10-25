@@ -1,3 +1,5 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "../messages";
 import React, { useMemo, useState } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Glyph } from "./glyph";
@@ -27,6 +29,7 @@ interface GitHubBodyProps {
  * repeats what the header just said.
  */
 export function GitHubBody({ data, tokens, running }: GitHubBodyProps) {
+  const { t } = useTranslation(messages);
   const [showRequest, setShowRequest] = useState(false);
 
   const styles = useMemo(
@@ -109,7 +112,7 @@ export function GitHubBody({ data, tokens, running }: GitHubBodyProps) {
   if (!data) {
     return (
       <Text selectable style={styles.note}>
-        {running ? "Waiting for GitHub…" : "The call returned no detail."}
+        {running ? t("tool.github.waiting") : t("hub.noDetail")}
       </Text>
     );
   }
@@ -166,7 +169,7 @@ export function GitHubBody({ data, tokens, running }: GitHubBodyProps) {
 
       {!data.file && !data.rows && !data.text ? (
         <Text selectable style={styles.note}>
-          {running ? "Waiting for GitHub…" : "The op returned no output."}
+          {running ? t("tool.github.waiting") : t("tool.github.noOutput")}
         </Text>
       ) : null}
 
@@ -174,7 +177,7 @@ export function GitHubBody({ data, tokens, running }: GitHubBodyProps) {
         <View style={{ gap: 6 }}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={showRequest ? "Hide the request" : "Show the request"}
+            accessibilityLabel={showRequest ? t("tool.github.hideRequestA11y") : t("tool.github.showRequestA11y")}
             onPress={() => setShowRequest((previous) => !previous)}
             style={styles.toggle}
           >
@@ -183,7 +186,7 @@ export function GitHubBody({ data, tokens, running }: GitHubBodyProps) {
               size={11}
               color={tokens.foregroundMuted}
             />
-            <Text style={styles.toggleLabel}>request</Text>
+            <Text style={styles.toggleLabel}>{t("tool.github.request")}</Text>
           </Pressable>
           {showRequest ? (
             <ToolCodeBlock code={data.request} language="json" tokens={tokens} compact />

@@ -1,3 +1,4 @@
+import { translate as t } from "./translation";
 import type { ToolCallKind, ToolCalloutData } from "../shared/contracts";
 import { record, stringValue } from "./tool-detail";
 import { errorText } from "./error-text";
@@ -31,7 +32,7 @@ export function toolFailureMessage(error: unknown, detail: Record<string, unknow
   const report = tool === "write" || tool === "edit" || tool === "github"
     ? { ...detail, content: undefined } : detail;
   return claudeResultError(error) ?? errorText(error) ?? reportedText(report)
-    ?? (error && typeof error === "object" ? undefined : "Failed (no error message reported)");
+    ?? (error && typeof error === "object" ? undefined : t("tool.error.none"));
 }
 
 /** Keep a separate error line when output folding would otherwise hide it. */

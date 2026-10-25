@@ -1,3 +1,4 @@
+import { translate as t } from "./translation";
 import type { GitHubToolData } from "../shared/contracts";
 
 function asString(value: unknown): string | undefined {
@@ -115,12 +116,12 @@ function pullRequestRows(text: string, record: Record<string, unknown>): GitHubT
   const number = text.match(PR_LINE)?.[1] ?? text.match(PR_URL)?.[1];
   const title = asString(record.title) ?? text.match(PR_LINE)?.[2]?.trim();
   const rows: NonNullable<GitHubToolData["rows"]> = [];
-  if (number) rows.push({ label: "pull request", value: `#${number}${title ? ` ${title}` : ""}` });
+  if (number) rows.push({ label: t("tool.github.pullRequest"), value: `#${number}${title ? ` ${title}` : ""}` });
 
   const base = asString(record.base);
   const head = asString(record.head);
   if (base || head) {
-    rows.push({ label: "base", value: `${base ?? "default"} ← ${head ?? "current branch"}` });
+    rows.push({ label: t("tool.github.base"), value: t("tool.github.branches", { base: base ?? t("tool.github.defaultBranch"), head: head ?? t("tool.github.currentBranch") }) });
   }
   return rows.length > 0 ? rows : undefined;
 }
@@ -150,7 +151,7 @@ export function buildGitHubData(
   const op = asString(record.op);
   if (!op && !reply) return undefined;
 
-  const data: GitHubToolData = { op: op ?? "github" };
+  const data: GitHubToolData = { op: op ?? t("tool.github.op") };
   const repo = asString(record.repo);
   if (repo) data.repo = repo;
   const subject = readSubject(record);
@@ -165,7 +166,7 @@ export function buildGitHubData(
   // surface under its own name rather than in a terminal frame.
   if (op === "file_read") {
     const name = asString(record.path);
-    data.file = { name: name ?? "file", code: reply };
+    data.file = { name: name ?? t("tool.github.file"), code: reply };
     const language = languageFor(name);
     if (language) data.file.language = language;
     return data;

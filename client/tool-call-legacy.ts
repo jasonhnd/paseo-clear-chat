@@ -1,3 +1,4 @@
+import { translate as t } from "./translation";
 import type { EvalCell, McpToolData, PaseoToolData, ToolCalloutData } from "../shared/contracts";
 
 export function extractStringProp(obj: unknown, key: string): string | undefined {
@@ -119,8 +120,8 @@ export function buildSubagentBatch(input: Record<string, unknown>): ToolCalloutD
     if (!brief) return [];
     return [
       {
-        name: asString(row.name) ?? `agent ${index + 1}`,
-        agentType: asString(row.agent) ?? "task",
+        name: asString(row.name) ?? t("tool.subagent.agentN", { index: index + 1 }),
+        agentType: asString(row.agent) ?? t("tool.subagent.typeTask"),
         task: brief,
       },
     ];
@@ -168,7 +169,7 @@ export function buildPaseoData(
     tool: "create_agent",
     durationMs,
     createAgent: {
-      title: asString(input.title) ?? "New agent",
+      title: asString(input.title) ?? t("paseo.newAgent"),
       provider: providerId ?? provider,
       model: model ?? asString(input.model),
       initialPrompt: asString(input.initialPrompt) ?? "",

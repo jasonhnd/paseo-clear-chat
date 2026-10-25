@@ -1,3 +1,5 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "../messages";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Platform, Text } from "react-native";
 import { copyText, Modal, TextInput, useToast } from "@getpaseo/plugin/client/ui";
@@ -9,6 +11,7 @@ export const copyTouchTarget = Platform.OS === "web"
   : { minWidth: 44, minHeight: 44, justifyContent: "center" as const, alignItems: "center" as const };
 
 export function useCopyText(text: string) {
+  const { t } = useTranslation(messages);
   const toast = useToast();
   const [copied, setCopied] = useState(false);
   const [fallbackText, setFallbackText] = useState<string | null>(null);
@@ -25,14 +28,14 @@ export function useCopyText(text: string) {
     } catch {
       // Keep a snapshot even if a streaming reply changes behind the dialog.
       setFallbackText(text);
-      toast.error("Could not copy. Select all the text in the dialog and use Copy.");
+      toast.error(t("toast.copyFailed"));
       return;
     }
     setFallbackText(null);
     setCopied(true);
-    toast.show("Copied to clipboard", { variant: "success" });
+    toast.show(t("toast.copied"), { variant: "success" });
     timer.current = setTimeout(() => setCopied(false), 1600);
-  }, [text, toast]);
+  }, [text, toast, t]);
 
   return { copied, handleCopy, fallbackText, setFallbackText };
 }
@@ -46,15 +49,16 @@ export function CopyFallbackDialog({
   onClose(): void;
   tokens: ExtendedThemeTokens;
 }) {
+  const { t } = useTranslation(messages);
   if (text === null) return null;
   return (
-    <Modal title="Copy text" open onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Modal title={t("copy.dialogTitle")} open onOpenChange={(open) => { if (!open) onClose(); }}>
       <Modal.Content>
         <Text style={{ color: tokens.foreground, fontSize: tokens.fs(13), lineHeight: tokens.fs(20) }}>
-          Automatic copying failed. Touch and hold the text, choose Select All, then Copy.
+          {t("copy.dialogBody")}
         </Text>
         <TextInput
-          accessibilityLabel="Text to copy"
+          accessibilityLabel={t("copy.dialogFieldA11y")}
           value={text}
           multiline
           readOnly
