@@ -38,9 +38,17 @@ under `KANBAN_TMP/capture` and are removed when the process exits. A local
 and compressed byte count for each output. It is not committed.
 
 The script reads the published image pairs from the root README and captures
-only those groups. Feature images are `docs/images/<group>-light.png` and
-`docs/images/<group>-dark.png`. Comparison images are `images/compare-light.png`
-and `images/compare-dark.png`.
+only those groups, plus the README v2 hero cover. Feature images are
+`docs/images/<group>-light.png` and `docs/images/<group>-dark.png`. Comparison
+images are `images/compare-light.png` and `images/compare-dark.png`. The hero
+pair is `images/hero-light.png` and `images/hero-dark.png`.
+
+`SHOWCASE_CAPTURE_ONLY=hero` captures only the cover. Each theme renders a
+1440×900 desktop conversation (finished steps folded into one-line rows, the
+edit diff open in the side panel) and the same conversation at a 390×820
+browser width (details open in the bottom sheet). Playwright then opens an HTML
+composition page, places the phone view over the desktop's lower right with a
+drop shadow, and screenshots a 2000px-wide PNG. No caption is drawn on that page.
 
 To verify the full output without replacing published images, redirect both
 image directories into the task's temporary directory:
@@ -147,6 +155,7 @@ unless a different file is named.
 | Light image | Dark image | Synthetic source |
 | --- | --- | --- |
 | [`images/compare-light.png`](../images/compare-light.png) | [`images/compare-dark.png`](../images/compare-dark.png) | `PROMPT`, `CALLS.search/read/edit/bash`, `CODE`, `REPLY`; `Baseline` in `showcase.tsx` uses the same values |
+| [`images/hero-light.png`](../images/hero-light.png) | [`images/hero-dark.png`](../images/hero-dark.png) | `PROMPT`, `REPLY`, `DIFF`, `CALLS.thinking/search/read/edit/bash/git`; desktop side panel and phone sheet in `showcase.tsx` |
 | [`docs/images/tool-bash-light.png`](../docs/images/tool-bash-light.png) | [`docs/images/tool-bash-dark.png`](../docs/images/tool-bash-dark.png) | `CALLS.bash/git` |
 | [`docs/images/tool-read-light.png`](../docs/images/tool-read-light.png) | [`docs/images/tool-read-dark.png`](../docs/images/tool-read-dark.png) | `CALLS.read`, `CODE` |
 | [`docs/images/tool-image-light.png`](../docs/images/tool-image-light.png) | [`docs/images/tool-image-dark.png`](../docs/images/tool-image-dark.png) | `CALLS.image`, `sample-image.svg` |
