@@ -31,6 +31,8 @@ interface UserMessageProps {
   imageCount?: number;
   /** Host agent id. The timeline renderer has it; the transformer does not. */
   agentId?: string;
+  /** Host id, when the timeline renderer has one. */
+  hostId?: string;
   /** Provider message id, when the timeline item carried one. */
   messageId?: string;
   /** Composer message id, when the timeline item carried one. */
@@ -79,11 +81,15 @@ type PastedCache = PastedList | { failed: true };
 
 const pastedCache = new Map<string, PastedCache>();
 const pastedInflight = new Map<string, Promise<PastedCache>>();
+/** Text-only lookups are not a message identity. Ask once, and do not paint that result on a later row. */
+const pastedAsked = new Set<string>();
 const fullImageCache = new Map<string, string | null>();
+const EMPTY_THUMBS: ReadonlySet<string> = new Set();
 
 /**
  * Message key for the image lookup. Prefer the provider id, then the composer
- * id, then the text when the host gave neither id.
+ * id, then the text when the host gave neither id. Text does not make a result
+ * safe to reuse: only a real id does.
  */
 function pastedMessageKey(messageId?: string | null, clientMessageId?: string | null, text?: string): string {
   if (messageId) return `m:${messageId}`;
@@ -91,13 +97,14 @@ function pastedMessageKey(messageId?: string | null, clientMessageId?: string | 
   return `t:${text ?? ""}`;
 }
 
-function pastedCacheKey(agentId: string, messageId?: string | null, clientMessageId?: string | null, text?: string): string {
-  return `${agentId}\0${pastedMessageKey(messageId, clientMessageId, text)}`;
+function pastedKeyShares(messageId?: string | null, clientMessageId?: string | null): boolean {
+  return Boolean(messageId || clientMessageId);
 }
 
-/** Interior of the 82% bubble after its own horizontal padding. */
-function bubbleInnerWidth(windowWidth: number): number {
-  return Math.max(120, Math.floor(windowWidth * 0.82) - 22);
+/** Host, when the renderer has one, plus the agent and the message key. */
+function pastedCacheKey(hostId: string | undefined, agentId: string, messageId?: string | null, clientMessageId?: string | null, text?: string): string {
+  const identity = `${agentId}\0${pastedMessageKey(messageId, clientMessageId, text)}`;
+  return hostId ? `${hostId}\0${identity}` : identity;
 }
 
 function readPastedList(result: {
@@ -184,6 +191,7 @@ export function UserMessage({
   images,
   imageCount,
   agentId,
+  hostId,
   messageId,
   clientMessageId,
   tokens,
@@ -197,23 +205,52 @@ export function UserMessage({
   const loadImage = useRpc(promptImageRpc);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [failedImages, setFailedImages] = useState<ReadonlySet<string>>(() => new Set());
-  const [failedThumbs, setFailedThumbs] = useState<ReadonlySet<string>>(() => new Set());
   const attachmentCount = Math.max(imageCount ?? 0, images?.length ?? 0);
-  const cacheKey = agentId ? pastedCacheKey(agentId, messageId, clientMessageId, text) : "";
-  const [pasted, setPasted] = useState<PastedCache | null>(cacheKey ? pastedCache.get(cacheKey) ?? null : null);
+  const cacheKey = agentId ? pastedCacheKey(hostId, agentId, messageId, clientMessageId, text) : "";
+  const sharesResult = pastedKeyShares(messageId, clientMessageId);
+  const [pasted, setPasted] = useState<{ key: string; value: PastedCache } | null>(() => {
+    if (!cacheKey || !sharesResult) return null;
+    const cached = pastedCache.get(cacheKey);
+    return cached ? { key: cacheKey, value: cached } : null;
+  });
   const [viewerId, setViewerId] = useState<string | null>(null);
+  const [viewerKey, setViewerKey] = useState(cacheKey);
   const [fullUri, setFullUri] = useState<string | null>(null);
+  const [failedThumbs, setFailedThumbs] = useState<ReadonlySet<string>>(() => new Set());
+  const [failedKey, setFailedKey] = useState(cacheKey);
+  const [contentWidth, setContentWidth] = useState(0);
+  // A reused row keeps the previous hook state. Show it only for this lookup.
+  if (viewerKey !== cacheKey) {
+    setViewerKey(cacheKey);
+    setViewerId(null);
+    setFullUri(null);
+  }
+  if (failedKey !== cacheKey) {
+    setFailedKey(cacheKey);
+    setFailedThumbs(new Set());
+  }
+  const activeViewerId = viewerKey === cacheKey ? viewerId : null;
+  const activeFullUri = viewerKey === cacheKey ? fullUri : null;
+  const hiddenThumbs = failedKey === cacheKey ? failedThumbs : EMPTY_THUMBS;
 
   useEffect(() => {
     if (!agentId || !cacheKey) return;
-    const cached = pastedCache.get(cacheKey);
-    if (cached) {
-      setPasted(cached);
+    const share = pastedKeyShares(messageId, clientMessageId);
+    if (share) {
+      const cached = pastedCache.get(cacheKey);
+      if (cached) {
+        setPasted({ key: cacheKey, value: cached });
+        return;
+      }
+    } else if (pastedAsked.has(cacheKey) && !pastedInflight.has(cacheKey)) {
+      // The server was already asked for this text. A later row must not
+      // inherit that result, because the key has no message id.
       return;
     }
     let cancelled = false;
     let pendingLookup = pastedInflight.get(cacheKey);
     if (!pendingLookup) {
+      if (!share) pastedAsked.add(cacheKey);
       pendingLookup = Promise.resolve()
         .then(() => loadImages({
           agentId,
@@ -224,28 +261,29 @@ export function UserMessage({
         .then((result) => readPastedList(result))
         .catch(() => ({ failed: true }) satisfies PastedCache)
         .then((value) => {
-          pastedCache.set(cacheKey, value);
+          if (share) pastedCache.set(cacheKey, value);
           pastedInflight.delete(cacheKey);
           return value;
         });
       pastedInflight.set(cacheKey, pendingLookup);
     }
     pendingLookup.then((value) => {
-      if (!cancelled) setPasted(value);
+      if (!cancelled) setPasted({ key: cacheKey, value });
     });
     return () => {
       cancelled = true;
     };
   }, [agentId, cacheKey, clientMessageId, loadImages, messageId, text]);
 
-  const list = isPastedList(pasted) ? pasted : null;
-  const shown = (list?.images ?? []).filter((image) => !failedThumbs.has(image.id)).slice(0, 3);
+  const pastedNow = pasted?.key === cacheKey ? pasted.value : null;
+  const list = isPastedList(pastedNow) ? pastedNow : null;
+  const shown = (list?.images ?? []).filter((image) => !hiddenThumbs.has(image.id)).slice(0, 3);
   const extra = list ? Math.max(0, list.total - Math.min(3, list.images.length)) : 0;
-  const openImage = shown.find((image) => image.id === viewerId) ?? list?.images.find((image) => image.id === viewerId) ?? null;
+  const openImage = shown.find((image) => image.id === activeViewerId) ?? list?.images.find((image) => image.id === activeViewerId) ?? null;
 
   useEffect(() => {
-    if (!viewerId || !agentId) return;
-    const fullKey = `${cacheKey}\0${viewerId}`;
+    if (!activeViewerId || !agentId) return;
+    const fullKey = `${cacheKey}\0${activeViewerId}`;
     const cached = fullImageCache.get(fullKey);
     if (cached !== undefined) {
       setFullUri(cached);
@@ -257,7 +295,7 @@ export function UserMessage({
       messageId: messageId ?? null,
       clientMessageId: clientMessageId ?? null,
       text,
-      id: viewerId,
+      id: activeViewerId,
     })
       .then((result) => {
         const uri = result?.dataUri ?? null;
@@ -271,10 +309,10 @@ export function UserMessage({
     return () => {
       cancelled = true;
     };
-  }, [agentId, cacheKey, clientMessageId, loadImage, messageId, text, viewerId]);
+  }, [activeViewerId, agentId, cacheKey, clientMessageId, loadImage, messageId, text]);
 
   useEffect(() => {
-    if (!viewerId || Platform.OS !== "web") return;
+    if (!activeViewerId || Platform.OS !== "web") return;
     const doc = globalThis.document;
     if (!doc) return;
     const onKey = (event: KeyboardEvent) => {
@@ -286,9 +324,9 @@ export function UserMessage({
     };
     doc.addEventListener("keydown", onKey, true);
     return () => doc.removeEventListener("keydown", onKey, true);
-  }, [viewerId]);
+  }, [activeViewerId]);
 
-  const innerWidth = bubbleInnerWidth(windowWidth);
+  const innerWidth = contentWidth > 0 ? contentWidth : 0;
   const thumbSlots = shown.length + (extra > 0 ? 1 : 0);
   const thumbMax = thumbSlots > 0
     ? Math.max(1, Math.floor((innerWidth - THUMB_GAP * Math.max(0, thumbSlots - 1) - (extra > 0 ? MORE_CHIP_WIDTH : 0)) / Math.max(1, shown.length)))
@@ -440,7 +478,14 @@ export function UserMessage({
   return (
     <View {...selectionSurface} style={styles.container}>
       <CopyFallbackDialog text={fallbackText} onClose={() => setFallbackText(null)} tokens={tokens} />
-      <View style={styles.body}>
+      <View
+        testID="prompt-bubble-body"
+        style={styles.body}
+        onLayout={(event) => {
+          const next = event.nativeEvent.layout.width;
+          if (next > 0) setContentWidth((previous) => (previous === next ? previous : next));
+        }}
+      >
         <View style={styles.metaRow}>
           <Text selectable style={styles.label}>
             {t("prompt.you")}
@@ -489,7 +534,11 @@ export function UserMessage({
                     source={{ uri: image.thumbDataUri }}
                     style={styles.thumbImage}
                     resizeMode="contain"
-                    onError={() => setFailedThumbs((previous) => new Set(previous).add(image.id))}
+                    onError={() => setFailedThumbs((previous) => {
+                      const next = new Set(previous);
+                      next.add(image.id);
+                      return next;
+                    })}
                   />
                 </Pressable>
               );
@@ -501,7 +550,7 @@ export function UserMessage({
             ) : null}
           </View>
         ) : null}
-        {viewerId && openImage ? (
+        {activeViewerId && openImage ? (
           <Modal transparent visible animationType="fade" onRequestClose={() => setViewerId(null)}>
             <View style={styles.viewerBackdrop} accessibilityViewIsModal>
               <Pressable
@@ -515,7 +564,7 @@ export function UserMessage({
               </Pressable>
               <Image
                 testID="prompt-image-full"
-                source={{ uri: fullUri || openImage.thumbDataUri }}
+                source={{ uri: activeFullUri || openImage.thumbDataUri }}
                 accessibilityLabel={t("prompt.imageThumbA11y")}
                 style={fitFrame(
                   openImage,

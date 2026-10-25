@@ -537,6 +537,7 @@ export function LiveUserMessageRenderer({
           messageId={item.data.messageId}
           clientMessageId={item.data.clientMessageId}
           agentId={agentId}
+          hostId={host.id}
           timestamp={timestamp}
           tokens={tokens}
           usage={observedLive ? usage : null}

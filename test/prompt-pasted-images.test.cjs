@@ -26,7 +26,8 @@ const five = [
 ];
 const style = (value) => Object.assign({}, ...[value].flat(Infinity).filter(Boolean));
 const thumbs = (h, tree) => h.nodes(tree, (node) => node.props.testID === "prompt-pasted-thumb");
-const bubbleInner = (width) => Math.max(120, Math.floor(width * 0.82) - 22);
+const bubbleBody = (h, tree) => h.nodes(tree, (node) => node.props.testID === "prompt-bubble-body")[0];
+const measure = (node, width) => node.props.onLayout({ nativeEvent: { layout: { x: 0, y: 0, width, height: 48 } } });
 
 function sanitize(value) {
   if (Array.isArray(value)) return value.map(sanitize);
@@ -187,27 +188,105 @@ test("pasted prompt images: the viewer opens, loads the full image, and closes",
 
 test("pasted prompt thumbnails stay inside the bubble at 1440, 820 and 390", async () => {
   for (const width of [1440, 820, 390]) {
+    // Narrower than the window, as when the bubble's parent is inset.
+    const inset = Math.max(160, Math.floor(width * 0.42));
     const { h } = harness(width, async () => ({ images: five, total: 5, reason: null }));
     const mounted = h.mount(prompt({ messageId: `width-${width}` }));
     await settle();
+    measure(bubbleBody(h, mounted.render()), inset);
     const tree = mounted.render();
     const row = thumbs(h, tree);
     const chip = h.nodes(tree, (node) => node.props.testID === "prompt-pasted-more")[0];
     assert.equal(row.length, 3);
-    const inner = bubbleInner(width);
     let used = 0;
     for (const node of row) {
       const frame = style(node.props.style);
-      assert.ok(frame.width > 0 && frame.width <= inner, `${width} thumb width ${frame.width}`);
+      assert.ok(frame.width > 1 && frame.width <= inset, `${width} thumb width ${frame.width} inset ${inset}`);
       assert.ok(frame.height > 0 && frame.height <= 96, `${width} thumb height ${frame.height}`);
       used += frame.width;
     }
     const chipFrame = style(chip.props.style);
     used += chipFrame.width + 6 * 3;
-    assert.ok(used <= inner + 1, `${width} row uses ${used} of ${inner}`);
+    assert.ok(used <= inset + 1, `${width} row uses ${used} of ${inset}`);
     assert.equal(chipFrame.width, 44);
-    assert.equal(style(h.nodes(tree, (node) => node.props.testID === "prompt-pasted-thumb")[0].props.style).height <= 96, true);
+
+    const panoramic = harness(width, async () => ({ images: [pasted("pano", 8000, 40)], total: 1, reason: null }));
+    const wide = panoramic.h.mount(prompt({ messageId: `pano-${width}`, text: "Wide" }));
+    await settle();
+    measure(bubbleBody(panoramic.h, wide.render()), inset);
+    const frame = style(thumbs(panoramic.h, wide.render())[0].props.style);
+    assert.equal(frame.width, inset, `${width} panoramic uses the measured content width`);
+    assert.ok(frame.height > 0 && frame.height <= 96);
   }
+});
+
+test("a reused prompt row hides the previous thumbnails while the next lookup is pending", async () => {
+  let release = () => {};
+  const { h } = harness(820, (input) => {
+    if (input.messageId === "prompt-b") {
+      return new Promise((resolve) => {
+        release = () => resolve({ images: [five[0]], total: 1, reason: null });
+      });
+    }
+    return Promise.resolve({ images: [five[0]], total: 1, reason: null });
+  });
+  const mounted = h.mount(prompt({ messageId: "prompt-a", clientMessageId: "client-a", text: "Alpha" }));
+  await settle();
+  const first = mounted.render();
+  assert.equal(thumbs(h, first).length, 1);
+  h.nodes(thumbs(h, first)[0], (node) => node.type === "Image")[0].props.onError();
+  thumbs(h, first)[0].props.onPress();
+  assert.equal(h.nodes(mounted.render(), (node) => node.type === "Native.Modal").length, 1);
+  const beta = { text: "Beta", messageId: "prompt-b", clientMessageId: "client-b" };
+  const pending = mounted.render(beta);
+  assert.equal(thumbs(h, pending).length, 0);
+  assert.equal(h.nodes(pending, (node) => node.type === "Native.Modal").length, 0);
+  assert.match(h.text(pending), /Beta/);
+  assert.doesNotMatch(h.text(pending), /Pasted image|\+\d/);
+  await settle();
+  assert.equal(thumbs(h, mounted.render(beta)).length, 0);
+  release();
+  await settle();
+  assert.equal(thumbs(h, mounted.render(beta)).length, 1, "the new message's thumbnail is not stuck on the previous failure");
+});
+
+test("a reused prompt row drops the previous thumbnails when the next lookup is empty or fails", async () => {
+  for (const outcome of ["empty", "error"]) {
+    const { h } = harness(820, (input) => {
+      if (input.messageId === "prompt-b") {
+        if (outcome === "error") return Promise.reject(new Error("secret lookup"));
+        return Promise.resolve({ images: [], total: 0, reason: null });
+      }
+      return Promise.resolve({ images: [five[0]], total: 1, reason: null });
+    });
+    const mounted = h.mount(prompt({ messageId: "prompt-a", text: "Alpha" }));
+    await settle();
+    assert.equal(thumbs(h, mounted.render()).length, 1);
+    const beta = { text: "Beta", messageId: "prompt-b", clientMessageId: "client-b" };
+    const next = mounted.render(beta);
+    assert.equal(thumbs(h, next).length, 0, outcome);
+    await settle();
+    const settled = mounted.render(beta);
+    assert.equal(thumbs(h, settled).length, 0, outcome);
+    assert.doesNotMatch(h.text(settled), /secret|Pasted image|\+\d/);
+    assert.match(h.text(settled), /Beta/);
+  }
+});
+
+test("identical prompts without ids ask once and neither shows thumbnails", async () => {
+  const { h, calls } = harness(820, async () => ({ images: [], total: 0, reason: null }));
+  const fields = { text: "Same prompt", messageId: undefined, clientMessageId: undefined };
+  const first = h.mount(prompt(fields));
+  await settle();
+  assert.equal(thumbs(h, first.render()).length, 0);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].messageId, null);
+  assert.equal(calls[0].clientMessageId, null);
+  assert.equal(calls[0].text, "Same prompt");
+  const second = h.mount(prompt(fields));
+  await settle();
+  assert.equal(thumbs(h, second.render()).length, 0);
+  assert.equal(calls.length, 1, "a text-only key is asked once");
 });
 
 test("the transformer forwards message ids and the renderer supplies agentId", () => {
