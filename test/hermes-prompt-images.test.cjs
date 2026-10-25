@@ -52,7 +52,7 @@ async function fixture(t, relativeHome = ".hermes") {
   t.after(() => { writer.close(); fs.rmSync(root, { recursive: true, force: true }); });
   writer.exec(`PRAGMA journal_mode = WAL;
     CREATE TABLE sessions (id TEXT PRIMARY KEY);
-    CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content, platform_message_id TEXT, message_uid TEXT, timestamp REAL);
+    CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content, platform_message_id TEXT, message_uid TEXT, timestamp REAL, active INTEGER NOT NULL DEFAULT 1, compacted INTEGER NOT NULL DEFAULT 0);
     INSERT INTO sessions VALUES ('session-one'), ('session-two');
     PRAGMA wal_checkpoint(TRUNCATE);`);
   // Synthetic headers suffice because the server reads originals without decoding.
@@ -81,9 +81,9 @@ async function fixture(t, relativeHome = ".hermes") {
     return path;
   }
   function add(content, overrides = {}) {
-    const row = { session: "session-one", role: "user", platformId: null, uid: null, ...overrides };
-    writer.prepare("INSERT INTO messages (session_id, role, content, platform_message_id, message_uid, timestamp) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(row.session, row.role, content, row.platformId, row.uid, 1234567890);
+    const row = { session: "session-one", role: "user", platformId: null, uid: null, active: 1, compacted: 0, ...overrides };
+    writer.prepare("INSERT INTO messages (session_id, role, content, platform_message_id, message_uid, timestamp, active, compacted) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .run(row.session, row.role, content, row.platformId, row.uid, 1234567890, row.active, row.compacted);
   }
   function config(command, env) {
     fs.writeFileSync(join(paseoHome, "config.json"), JSON.stringify({ agents: { providers: { "custom-provider": { command, env } } } }));
@@ -280,6 +280,55 @@ test("Hermes never uses another session or nativeHandle, including orphaned rows
   assert.deepEqual(await f.find({ sessionId: null, nativeHandle: "session-two" }), empty(0));
   f.add(annotated([f.image()]), { session: "missing-session", platformId: ID });
   assert.deepEqual(await f.find({ sessionId: "missing-session", messageId: ID }), empty(0));
+});
+
+test("Hermes ignores an inactive row and returns only the displayed row with the same caption", async t => {
+  const f = await fixture(t);
+  f.add(annotated([f.image()]), { active: 0, compacted: 0 });
+  assert.deepEqual(await f.find(), empty(0));
+  f.add(annotated([f.image("jpg", f.jpg)]), { active: 1, compacted: 0 });
+  const live = await f.find();
+  assert.equal(live.matchedMessages, 1);
+  assert.equal(live.images.length, 1);
+  assert.deepEqual(await live.images[0].readBytes(), f.jpg);
+  f.writer.exec("DELETE FROM messages");
+  f.add(annotated([f.image()]), { active: 0, compacted: 1 });
+  const archived = await f.find();
+  assert.equal(archived.matchedMessages, 1);
+  assert.deepEqual(await archived.images[0].readBytes(), f.png);
+});
+
+test("Hermes returns no images when the display columns are absent", async t => {
+  const f = await fixture(t);
+  f.writer.exec(`DROP TABLE messages;
+    CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, content, platform_message_id TEXT, message_uid TEXT, timestamp REAL)`);
+  f.writer.prepare("INSERT INTO messages (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)")
+    .run("session-one", "user", annotated([f.image()]), 1);
+  assert.deepEqual(await f.find(), empty(0));
+});
+
+test("Hermes drops only the image whose descriptor close fails", async t => {
+  const f = await fixture(t);
+  const bad = f.image(), good = f.image("jpg", f.jpg);
+  f.add(annotated([bad, good]));
+  const promises = require("node:fs/promises");
+  const h = harness({ "node:fs/promises": { ...promises, async open(candidate, flags) {
+    const file = await promises.open(candidate, flags);
+    const close = file.close.bind(file);
+    file.close = async () => { await close(); throw new Error("close failed"); };
+    if (candidate === bad) file.stat = async () => ({ isFile: () => false, size: 1 });
+    return file;
+  } } });
+  const resolver = h.createHermesPromptImageResolver({ userHome: f.root, paseoHome: f.paseoHome });
+  const snapshot = { provider: "custom-provider", command: "hermes acp", env: { HERMES_HOME: f.home },
+    cwd: f.root, persistence: { provider: "custom-provider", sessionId: "session-one" } };
+  const context = { paseo: { agents: { ref: () => ({ refresh: async () => ({ agent: snapshot }) }) } } };
+  const handlers = h.createPromptImageHandlers({ resolvers: [resolver] });
+  const result = await handlers.images({ agentId: "fake-agent", text: "Synthetic question" }, context);
+  assert.notEqual(result.reason, "lookup_failed");
+  assert.equal(result.total, 1);
+  assert.deepEqual(result.images.map(image => image.id), ["hermes-1"]);
+  assert.deepEqual(Buffer.from(result.images[0].thumbDataUri.split(",")[1], "base64"), f.jpg);
 });
 
 test("Hermes skips missing files, unknown formats and byte/pixel oversize while retaining valid images", async t => {

@@ -195,7 +195,11 @@ export function createHermesPromptImageResolver(options: { userHome?: string; pa
           let idMatches = 0, textMatches = 0;
           let idContent: unknown, textContent: unknown;
           if (!database.prepare("SELECT id FROM sessions WHERE id = ?").get(context.sessionId)) return null;
-          const rows = database.prepare("SELECT content, platform_message_id, message_uid FROM messages WHERE session_id = ? AND role = 'user'");
+          // hermes_state_messages.py shows active=1 or compacted=1. A schema without those
+          // columns is not a transcript this reader understands.
+          const names = new Set(database.prepare("PRAGMA table_info(messages)").all().map(column => column.name));
+          if (!names.has("active") || !names.has("compacted")) return null;
+          const rows = database.prepare("SELECT content, platform_message_id, message_uid FROM messages WHERE session_id = ? AND role = 'user' AND (active = 1 OR compacted = 1)");
           const prompt = context.text.trim();
           for (const row of rows.iterate(context.sessionId)) {
             if (context.signal.aborted) return null;

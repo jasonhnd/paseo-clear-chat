@@ -50,7 +50,8 @@ export async function readLocalImageReadOnly(candidate: string, allowedRoots: re
   } catch {
     return null;
   } finally {
-    await file?.close();
+    // A close error must not replace the read result, or one bad file fails every thumbnail.
+    try { await file?.close(); } catch { /* The caller already has the read result. */ }
   }
 }
 
