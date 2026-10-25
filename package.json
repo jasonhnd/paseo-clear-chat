@@ -2,7 +2,7 @@
   "name": "clear-chat",
   "version": "0.12.0.1",
   "private": true,
-  "description": "Paseo plugin: clear, syntax-aware chat cards for OMP tools, reasoning, prompts, and tasks",
+  "description": "Makes agent conversations easy to read: one-line steps, a card for every tool and step details.",
   "license": "MIT",
   "scripts": {
     "test": "node --test test/*.test.cjs",

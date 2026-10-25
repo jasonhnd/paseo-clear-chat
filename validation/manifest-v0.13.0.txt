@@ -1,0 +1,26 @@
+Source: https://github.com/getpaseo/paseo/tree/v0.13.0
+Loader: packages/server/src/server/plugins/manifest.ts
+Dependencies: packages/protocol/src/plugin-config.ts and plugin-requirements.ts
+Ran the downloaded, unmodified loader and protocol modules via TypeScript transpilation.
+PluginManifestSchema is z.object(...); readPluginManifest calls .parse(...).
+Only PluginRequirementsSchema uses .strict() in the loader.
+
+PASS: unmodified v0.13.0 readPluginManifest parsed the manifest.
+PASS: deepStrictEqual(result, input with only translations removed).
+{
+  "id": "clear-chat",
+  "name": "Clear Chat",
+  "description": "Makes agent conversations easy to read: one-line steps, a card for every tool and step details.",
+  "requirements": {
+    "paseo": ">=0.13.0"
+  },
+  "build": [
+    [
+      "node",
+      "scripts/install.cjs"
+    ]
+  ]
+}
+51205af56fb879e398ecc5842b16190ce2bbb09e8e1125649a930d0e9084e3f6  .manifest-v0.13.0.ts
+e9867400518f3cc32db224a5a5cdcff32287eb6e7298a87c590cb697e37742b3  .plugin-config.ts
+b9df5d90d474609c685a93a8464c1eeda4fd0df42b2621bfa6b09e4340b2a87c  .plugin-requirements.ts
