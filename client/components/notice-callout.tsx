@@ -1,3 +1,6 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "../messages";
+import { translate as t } from "../translation";
 import React, { useMemo } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { Glyph } from "./glyph";
@@ -30,7 +33,7 @@ function levelLook(data: NoticeCalloutData, tokens: ExtendedThemeTokens): LevelL
   // danger tokens before the level is read.
   if (data.fatal || data.level === "error") {
     return {
-      label: "Error",
+      label: t("notice.error"),
       glyph: "AlertCircle",
       accent: tokens.danger,
       tint: tokens.dangerBg,
@@ -39,7 +42,7 @@ function levelLook(data: NoticeCalloutData, tokens: ExtendedThemeTokens): LevelL
   }
   if (data.level === "warning") {
     return {
-      label: "Warning",
+      label: t("notice.warning"),
       glyph: "AlertTriangle",
       accent: tokens.warning,
       tint: tokens.warningBg,
@@ -47,7 +50,7 @@ function levelLook(data: NoticeCalloutData, tokens: ExtendedThemeTokens): LevelL
     };
   }
   return {
-    label: "Info",
+    label: t("notice.info"),
     glyph: "CircleDot",
     accent: tokens.accent,
     tint: tokens.accentBg,
@@ -77,6 +80,7 @@ const TECHNICAL =
  * one message and nothing else, so hiding it behind a chevron only adds a click.
  */
 export function NoticeCallout({ data, tokens }: NoticeCalloutProps): React.ReactElement {
+  useTranslation(messages);
   const look = levelLook(data, tokens);
   const message = data.message.trim();
   const asData = message.includes("\n") || message.length > INLINE_LIMIT || TECHNICAL.test(message);

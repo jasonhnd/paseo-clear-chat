@@ -1,3 +1,5 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "../messages";
 import React, { useState, useMemo } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Glyph } from "./glyph";
@@ -27,6 +29,7 @@ interface PaseoToolCalloutProps {
 }
 
 export function PaseoToolCallout({ data, tokens, defaultExpanded = true }: PaseoToolCalloutProps) {
+  const { t } = useTranslation(messages);
   const [expanded, setExpanded] = useState(defaultExpanded);
 
   const styles = useMemo(
@@ -110,16 +113,16 @@ export function PaseoToolCallout({ data, tokens, defaultExpanded = true }: Paseo
           {data.activity && <ProviderLogo provider={data.activity.provider} size={14} />}
           <Text selectable style={styles.titleText} numberOfLines={1}>
             {data.createAgent?.title ||
-              (data.models && `Models for ${data.models.provider}`) ||
-              (data.activity && `Activity for ${data.activity.agentId}`) ||
-              (data.providers && `Discovered Providers (${data.providers.providers.length})`)}
+              (data.models && t("paseo.modelsFor", { provider: data.models.provider })) ||
+              (data.activity && t("paseo.activityFor", { agent: data.activity.agentId })) ||
+              (data.providers && t("paseo.discovered", { count: data.providers.providers.length }))}
           </Text>
         </View>
 
         <View style={styles.headerRight}>
           {data.durationMs ? (
             <Text selectable style={styles.durationBadge}>
-              {data.durationMs}ms
+              {t("duration.ms", { milliseconds: data.durationMs })}
             </Text>
           ) : null}
           <Rotate active={expanded}>
@@ -155,6 +158,7 @@ function CreateAgentView({
   data: PaseoCreateAgentData;
   tokens: ExtendedThemeTokens;
 }) {
+  const { t } = useTranslation(messages);
   return (
     <View style={{ gap: 8 }}>
       <View
@@ -198,7 +202,7 @@ function CreateAgentView({
                 borderRadius: radius.block,
               }}
             >
-              {data.modeId} mode
+              {t("paseo.mode", { mode: data.modeId })}
             </Text>
           )}
         </View>
@@ -224,7 +228,7 @@ function CreateAgentView({
               fontWeight: "600",
             }}
           >
-            {data.agentId ? `${data.agentId.slice(0, 12)}…` : "running"}
+            {data.agentId ? `${data.agentId.slice(0, 12)}…` : t("paseo.running")}
           </Text>
         </View>
       </View>
@@ -239,7 +243,7 @@ function CreateAgentView({
             color: tokens.foregroundSubtle,
           }}
         >
-          Initial Task Prompt
+          {t("paseo.initialPrompt")}
         </Text>
         <ToolCodeBlock
           code={data.initialPrompt}
@@ -259,6 +263,7 @@ function ListProvidersView({
   data: PaseoListProvidersData;
   tokens: ExtendedThemeTokens;
 }) {
+  const { t } = useTranslation(messages);
   return (
     <View style={{ gap: 8 }}>
       <Text
@@ -268,7 +273,7 @@ function ListProvidersView({
           color: tokens.foregroundMuted,
         }}
       >
-        Configured agent backends discovered on local daemon:
+        {t("paseo.backends")}
       </Text>
 
       <View style={{ gap: 6 }}>
@@ -370,12 +375,13 @@ function ListModelsView({
   data: PaseoListModelsData;
   tokens: ExtendedThemeTokens;
 }) {
+  const { t } = useTranslation(messages);
   return (
     <View style={{ gap: 8 }}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
         <ProviderLogo provider={data.provider} size={16} showLabel />
         <Text selectable style={{ fontSize: tokens.fs(11), color: tokens.foregroundSubtle }}>
-          Supported models & reasoning modes:
+          {t("paseo.modelsIntro")}
         </Text>
       </View>
 
@@ -440,7 +446,7 @@ function ListModelsView({
                       fontWeight: "600",
                     }}
                   >
-                    Reasoning
+                    {t("paseo.reasoning")}
                   </Text>
                 </View>
               )}
@@ -473,6 +479,7 @@ function GetActivityView({
   data: PaseoGetActivityData;
   tokens: ExtendedThemeTokens;
 }) {
+  const { t } = useTranslation(messages);
   return (
     <View style={{ gap: 6 }}>
       <View
@@ -495,11 +502,11 @@ function GetActivityView({
               color: tokens.foregroundMuted,
             }}
           >
-            Target: {data.agentId}
+            {t("paseo.target", { agent: data.agentId })}
           </Text>
         </View>
         <Text selectable style={{ fontSize: tokens.fs(10), color: tokens.foregroundSubtle }}>
-          {data.activities.length} recent activities
+          {t("paseo.activities", { count: data.activities.length })}
         </Text>
       </View>
 

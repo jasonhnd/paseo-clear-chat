@@ -1,3 +1,5 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "../messages";
 import React, { useEffect, useMemo, useSyncExternalStore } from "react";
 import { Text, useWindowDimensions } from "react-native";
 import type { PluginAgentPanelProps, PluginClientContext } from "@getpaseo/plugin/client";
@@ -69,6 +71,7 @@ export function updateHostStepDetail(hostId: string, agentId: string, selection:
 }
 
 export function StepDetailHostPanel({ host, params: { agentId }, theme }: PluginAgentPanelProps) {
+  const { t } = useTranslation(messages);
   const preferences = useEnhancerPreferences();
   const tokens = useMemo(() => buildThemeTokens(theme.colors, preferences), [theme.colors, preferences]);
   const { width } = useWindowDimensions();
@@ -99,7 +102,7 @@ export function StepDetailHostPanel({ host, params: { agentId }, theme }: Plugin
   // a Modal escapes that hidden root, so it must never own the phone sheet.
   if (width < TABLET_MIN) return null;
   if (!selection) {
-    return <Text style={{ color: tokens.foregroundMuted, fontFamily: tokens.fontUi, fontSize: tokens.fs(13), padding: 16 }}>Select a collapsed step to see its details. Use the panel tab's close control to return this space to chat.</Text>;
+  return <Text style={{ color: tokens.foregroundMuted, fontFamily: tokens.fontUi, fontSize: tokens.fs(13), padding: 16 }}>{t("detail.empty")}</Text>;
   }
   return (
     <StepDetailPanel
@@ -118,7 +121,7 @@ export function StepDetailHostPanel({ host, params: { agentId }, theme }: Plugin
 
 export function installStepDetailPanel(client: PluginClientContext): () => void {
   const remove = client.addAgentPanel({
-    id: PANEL_ID, title: "Step details", icon: "PanelRight", locations: ["explorer"], Component: StepDetailHostPanel,
+    id: PANEL_ID, title: messages.message("detail.panelTitle"), icon: "PanelRight", locations: ["explorer"], Component: StepDetailHostPanel,
   });
   panelClient = client;
   return () => {

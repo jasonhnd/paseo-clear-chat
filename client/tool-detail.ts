@@ -1,3 +1,4 @@
+import { translate as t } from "./translation";
 import type { TaskItemData, TaskListData, ToolCalloutData } from "../shared/contracts";
 
 export function record(value: unknown): Record<string, unknown> {
@@ -42,9 +43,9 @@ export function preview(text: string | undefined, limit: number): { text?: strin
 function parameterValue(value: unknown): string {
   if (typeof value === "string") return value;
   try {
-    return JSON.stringify(value) ?? "Value unavailable";
+    return JSON.stringify(value) ?? t("tool.summary.valueUnavailable");
   } catch {
-    return "Value unavailable";
+    return t("tool.summary.valueUnavailable");
   }
 }
 
@@ -67,7 +68,7 @@ export function unknownTitle(name: string, input: Record<string, unknown>): stri
   );
   const first = Object.values(input)[0];
   const important = key ?? (first !== undefined ? parameterValue(first) : undefined);
-  return important ? `${name} · ${important.replace(/\s+/g, " ").slice(0, 80)}` : name;
+  return important ? t("tool.summary.unknown", { name, detail: important.replace(/\s+/g, " ").slice(0, 80) }) : name;
 }
 
 export function skillData(detail: Record<string, unknown>, input: Record<string, unknown>): NonNullable<ToolCalloutData["skill"]> {
@@ -76,7 +77,7 @@ export function skillData(detail: Record<string, unknown>, input: Record<string,
   const leaf = parts.pop();
   const name = stringValue(input.name, input.skill_name, input.skill, detail.skillName)
     ?? stringValue(leaf?.toLowerCase() === "skill.md" ? parts.pop() : leaf)
-    ?? "Unnamed skill";
+    ?? t("tool.summary.unnamedSkill");
   return { name, text: valueText(detail.content ?? detail.output ?? detail.result) };
 }
 
@@ -107,7 +108,7 @@ export function searchData(
   const result = record(output);
   const query = stringValue(detail.query, input.query, input.pattern, input.search_term, input.q) ?? "";
   const scope = stringValue(detail.scope, detail.path, input.path, input.directory, input.cwd)
-    ?? (web ? "Web" : "Workspace");
+    ?? (web ? t("tool.detail.scopeWeb") : t("tool.detail.scopeWorkspace"));
   const filter = stringValue(input.glob, input.include, input.filePattern);
   const rows = detail.webResults ?? detail.results ?? result.results ?? result.matches
     ?? (Array.isArray(output) ? output : web && typeof result.url === "string" ? [result] : undefined);
@@ -137,7 +138,7 @@ export function searchData(
   const reported = detail.numMatches ?? detail.numFiles ?? result.total ?? result.count;
   return {
     query,
-    scope: filter ? `${scope} (${filter})` : scope,
+    scope: filter ? t("tool.detail.scopeFilter", { scope, filter }) : scope,
     count: typeof reported === "number" && Number.isFinite(reported) ? reported : results.length,
     truncated: detail.truncated === true,
     preview: web ? preview(stringValue(detail.content, result.content, result.text, typeof output === "string" ? output : undefined), 5).text : undefined,
@@ -164,11 +165,11 @@ export function subagentData(
 ): NonNullable<ToolCalloutData["subagent"]> {
   return {
     agents: [{
-      name: stringValue(detail.name, detail.agentName, input.name, input.agent_name, detail.subAgentType) ?? "Subagent",
-      agentType: stringValue(detail.subAgentType, input.subagent_type, input.agent_type) ?? "agent",
+      name: stringValue(detail.name, detail.agentName, input.name, input.agent_name, detail.subAgentType) ?? t("tool.summary.subagent"),
+      agentType: stringValue(detail.subAgentType, input.subagent_type, input.agent_type) ?? t("tool.subagent.typeAgent"),
       model: stringValue(detail.model, input.model, metadata.model),
       task: stringValue(detail.task, input.task, input.prompt, input.instructions, detail.description)
-        ?? "Task not reported by the provider.",
+        ?? t("tool.subagent.taskMissing"),
     }],
   };
 }
@@ -196,5 +197,5 @@ export function buildChecklist(
       blockerReason: stringValue(row.blockerReason, row.reason),
     }];
   });
-  return { id: `live-${kind}`, phaseName: kind === "plan" ? "Plan" : "Checklist Progress", tasks };
+  return { id: `live-${kind}`, phaseName: kind === "plan" ? t("tool.summary.plan") : t("tool.summary.checklist"), tasks };
 }

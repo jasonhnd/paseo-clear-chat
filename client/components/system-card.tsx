@@ -1,3 +1,5 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { messages } from "../messages";
 import React, { useMemo, useState } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Glyph } from "./glyph";
@@ -17,12 +19,12 @@ interface SystemCardProps {
   tokens: ExtendedThemeTokens;
 }
 
-const KIND_LOOK: Record<SystemEnvelopeKind, { glyph: string; label: string }> = {
-  job: { glyph: "ListChecks", label: "Job" },
-  message: { glyph: "Bot", label: "Agent" },
-  reminder: { glyph: "AlertCircle", label: "Reminder" },
-  process: { glyph: "Terminal", label: "Process" },
-  notice: { glyph: "CircleDot", label: "Notice" },
+const KIND_LOOK: Record<SystemEnvelopeKind, { glyph: string; label: keyof typeof messages.resources.en.system }> = {
+  job: { glyph: "ListChecks", label: "job" },
+  message: { glyph: "Bot", label: "agent" },
+  reminder: { glyph: "AlertCircle", label: "reminder" },
+  process: { glyph: "Terminal", label: "process" },
+  notice: { glyph: "CircleDot", label: "notice" },
 };
 
 /** Body longer than this opens closed: a job preview is pages of JSON. */
@@ -47,6 +49,7 @@ function bodyKind(envelope: SystemEnvelope): "json" | "output" | "prose" {
  * the raw `<system-notice>` markup reads as something the model typed.
  */
 export function SystemCard({ envelope, tokens }: SystemCardProps): React.ReactElement {
+  const { t } = useTranslation(messages);
   const look = KIND_LOOK[envelope.kind];
   const [expanded, setExpanded] = useState(envelope.body.length <= COLLAPSE_LIMIT);
   const accent = envelope.failed ? tokens.danger : tokens.foregroundSubtle;
@@ -126,7 +129,7 @@ export function SystemCard({ envelope, tokens }: SystemCardProps): React.ReactEl
   const head = (
     <View style={styles.header}>
       <Glyph name={look.glyph} size={13} color={accent} />
-      <Text style={styles.badge}>{look.label}</Text>
+      <Text style={styles.badge}>{t(`system.${look.label}`)}</Text>
       <Text style={styles.title} numberOfLines={2}>
         {envelope.title}
       </Text>

@@ -1,4 +1,8 @@
+import { translate as t } from "../translation";
 import { getEnhancerPreferences } from "../preferences";
+
+let refreshLabels = () => {};
+export function refreshChatFindTranslations(): void { refreshLabels(); }
 
 const STYLE_ELEMENT_ID = "clear-chat-find-style";
 const BAR_ID = "clear-chat-find";
@@ -185,17 +189,17 @@ export function installChatFind(): () => void {
   bar.id = BAR_ID;
   bar.hidden = true;
   bar.setAttribute("role", "search");
-  bar.title = "Searches the messages loaded in this chat";
+  bar.title = t("find.barTitle");
   const input = document.createElement("input");
   input.type = "text";
-  input.placeholder = "Find in chat";
-  input.setAttribute("aria-label", "Find in chat");
+  input.placeholder = t("find.placeholder");
+  input.setAttribute("aria-label", t("find.placeholder"));
   const count = document.createElement("span");
   count.setAttribute("aria-live", "polite");
-  const controls: [string, string, () => void][] = [
-    ["Previous match", "\u2191", () => step(-1)],
-    ["Next match", "\u2193", () => step(1)],
-    ["Close find", "\u2715", close],
+  const controls: ["find.previous" | "find.next" | "find.close", string, () => void][] = [
+    ["find.previous", "\u2191", () => step(-1)],
+    ["find.next", "\u2193", () => step(1)],
+    ["find.close", "\u2715", close],
   ];
   bar.append(
     input,
@@ -204,12 +208,24 @@ export function installChatFind(): () => void {
       const element = document.createElement("button");
       element.type = "button";
       element.textContent = glyph;
-      element.setAttribute("aria-label", label);
-      element.title = label;
+      element.setAttribute("aria-label", t(label));
+      element.title = t(label);
       element.addEventListener("click", onClick);
       return element;
     }),
   );
+  refreshLabels = () => {
+    bar.title = t("find.barTitle");
+    input.placeholder = t("find.placeholder");
+    input.setAttribute("aria-label", t("find.placeholder"));
+    bar.querySelectorAll("button").forEach((button, index) => {
+      const key = controls[index]?.[0];
+      if (!key) return;
+      button.title = t(key);
+      button.setAttribute("aria-label", t(key));
+    });
+    if (!bar.hidden) show();
+  };
   document.body.appendChild(bar);
 
   function place() {
@@ -228,8 +244,8 @@ export function installChatFind(): () => void {
     if (active) CSS.highlights.set(CURRENT, new Highlight(active));
     else CSS.highlights.delete(CURRENT);
     if (!input.value.trim()) count.textContent = "";
-    else if (ranges.length) count.textContent = `${current + 1} of ${ranges.length}`;
-    else count.textContent = "No results";
+    else if (ranges.length) count.textContent = t("find.count", { current: current + 1, total: ranges.length });
+    else count.textContent = t("find.none");
     active?.startContainer.parentElement?.scrollIntoView({ block: "center" });
   }
 
@@ -295,6 +311,7 @@ export function installChatFind(): () => void {
     event.preventDefault();
     event.stopImmediatePropagation();
     chat = target;
+    refreshLabels();
     bar.hidden = false;
     place();
     input.focus();
@@ -322,6 +339,7 @@ export function installChatFind(): () => void {
     window.removeEventListener("keydown", onKeyDown, true);
     window.removeEventListener("pointerdown", onPointerDown, true);
     window.removeEventListener("resize", place);
+    refreshLabels = () => {};
     bar.remove();
     style.remove();
   };
