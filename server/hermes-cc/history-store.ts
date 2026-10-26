@@ -14,12 +14,16 @@ export interface HermesCcHistoryStore {
   start(key: HermesCcJournalKey): Promise<void>;
   /** Durably append one provider event (already in final, emitted form). Ordered; serialised per key; resolves only after fsync. No-op if the key has no journal or is invalidated. */
   append(key: HermesCcJournalKey, event: unknown): Promise<void>;
-  /** Mark that a turn started / settled (prompt admitted, prompt result received). A journal with an open turn is "unusable". */
+  /** Mark prompt admission / terminal ACP response after notifications drain (not the SDK session.prompt_result). Open turns are unusable. */
   turnStarted(key: HermesCcJournalKey): Promise<void>;
   turnSettled(key: HermesCcJournalKey): Promise<void>;
   /** Permanently mark unusable (history-mutating commands, load failure mismatch, etc.). */
   invalidate(key: HermesCcJournalKey, reason: string): Promise<void>;
   read(key: HermesCcJournalKey): Promise<HermesCcJournalState>;
+  /** Optional recorder ownership. Refuses a second live claimant, including in this process.
+   * Heartbeats expire after 30 seconds; release when recording ends. This does not replace journal operation locks.
+   */
+  claimWriter?(key: HermesCcJournalKey): Promise<{ release(): Promise<void> } | null>;
 }
 
 /**
@@ -33,6 +37,9 @@ const VERSION = 1;
 const EVENTS = "events.jsonl";
 const MANIFEST = "manifest.json";
 const LOCK = ".journal.lock";
+const USAGE = ".usage.json";
+const USAGE_BYTES = 256;
+const WRITER_MS = 30_000;
 const DEFAULT_SESSION_BYTES = 64 * 1024 * 1024;
 const DEFAULT_TOTAL_BYTES = 1024 * 1024 * 1024;
 const MAX_MANIFEST_BYTES = 64 * 1024;
@@ -53,6 +60,9 @@ interface Manifest {
   bytes: number;
   records: number;
   createdAt: number;
+  journalId: string;
+  headHash: string;
+  manifestHash: string;
   invalid?: string;
 }
 interface Directory { path: string; handle: FileHandle }
@@ -65,6 +75,12 @@ export function hermesCcHistoryRoot(_server: PluginServerContext, home = hermesC
 
 function hash(bytes: Buffer | string): string { return createHash("sha256").update(bytes).digest("hex"); }
 function keyHash(key: HermesCcJournalKey): string { return hash(`${key.providerId}\0${key.nativeSessionId}`); }
+function snapshotKey(key: HermesCcJournalKey): HermesCcJournalKey {
+  if (key === null || typeof key !== "object") throw new Error("invalid_journal_key");
+  const snapshot = { providerId: key.providerId, nativeSessionId: key.nativeSessionId };
+  assertKey(snapshot);
+  return snapshot;
+}
 function assertKey(key: HermesCcJournalKey): void {
   if (key === null || typeof key !== "object") throw new Error("invalid_journal_key");
   for (const id of [key.providerId, key.nativeSessionId]) {
@@ -99,7 +115,7 @@ async function directory(path: string, create = false, trustedRoot = parse(resol
     for (const name of tail.split(sep).filter(Boolean)) {
       const target = child(current, name);
       if (create) {
-        try { await mkdir(target, { mode: 0o700 }); }
+        try { await mkdir(target, { mode: 0o700 }); await syncDirectory(current); }
         catch (error) { if (!hasCode(error, "EEXIST")) throw error; }
       }
       const next = await openDirectory(target, join(current.path, name));
@@ -163,47 +179,42 @@ async function atomicWrite(directory: Directory, name: string, bytes: Buffer): P
   } finally { await unlink(temporary).catch(error => { if (!hasCode(error, "ENOENT")) throw error; }); }
 }
 
+// Checksums detect corruption and accidental mixing, not a local attacker who can rewrite everything.
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (record(value)) return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}`;
+  return JSON.stringify(value);
+}
+function seed(manifest: Pick<Manifest, "providerId" | "nativeSessionId" | "journalId">): string {
+  return hash(canonical({ providerId: manifest.providerId, nativeSessionId: manifest.nativeSessionId, journalId: manifest.journalId }));
+}
+function manifestDigest(manifest: Manifest): string {
+  const { manifestHash: _ignored, ...fields } = manifest;
+  return hash(keyHash(manifest) + canonical(fields));
+}
 function encodeManifest(manifest: Manifest): Buffer {
-  const value: Record<string, unknown> = {
-    version: VERSION,
-    providerId: manifest.providerId,
-    nativeSessionId: manifest.nativeSessionId,
-    startedFromCreation: manifest.startedFromCreation,
-    openTurns: manifest.openTurns,
-    bytes: manifest.bytes,
-    records: manifest.records,
-    createdAt: manifest.createdAt,
-  };
-  if (manifest.invalid !== undefined) value.invalid = manifest.invalid;
-  const bytes = Buffer.from(JSON.stringify(value));
+  const bytes = Buffer.from(canonical(manifest));
   if (bytes.length > MAX_MANIFEST_BYTES) throw new Error("history_store_failed");
   return bytes;
 }
-function parseManifest(value: unknown, key: HermesCcJournalKey, dirName: string): Manifest | "schema_mismatch" {
+function parseManifest(value: unknown, key: HermesCcJournalKey, dirName: string): Manifest | "schema_mismatch" | "corrupt" {
   if (!record(value) || value.version !== VERSION) return "schema_mismatch";
-  if (typeof value.providerId !== "string" || typeof value.nativeSessionId !== "string") return "schema_mismatch";
   if (value.providerId !== key.providerId || value.nativeSessionId !== key.nativeSessionId) return "schema_mismatch";
   if (!HASH.test(dirName) || keyHash(key) !== dirName) return "schema_mismatch";
   if (typeof value.startedFromCreation !== "boolean") return "schema_mismatch";
-  if (typeof value.openTurns !== "number" || !Number.isSafeInteger(value.openTurns) || value.openTurns < 0) return "schema_mismatch";
-  if (typeof value.bytes !== "number" || !Number.isSafeInteger(value.bytes) || value.bytes < 0) return "schema_mismatch";
-  if (typeof value.records !== "number" || !Number.isSafeInteger(value.records) || value.records < 0) return "schema_mismatch";
+  for (const field of ["openTurns", "bytes", "records"]) {
+    if (typeof value[field] !== "number" || !Number.isSafeInteger(value[field]) || Number(value[field]) < 0) return "schema_mismatch";
+  }
   if (typeof value.createdAt !== "number" || !Number.isFinite(value.createdAt)) return "schema_mismatch";
   if (value.invalid !== undefined && (typeof value.invalid !== "string" || !REASON.test(value.invalid))) return "schema_mismatch";
-  const manifest: Manifest = {
-    version: VERSION,
-    providerId: value.providerId,
-    nativeSessionId: value.nativeSessionId,
-    startedFromCreation: value.startedFromCreation,
-    openTurns: value.openTurns,
-    bytes: value.bytes,
-    records: value.records,
-    createdAt: value.createdAt,
-  };
-  if (typeof value.invalid === "string") manifest.invalid = value.invalid;
+  if (typeof value.journalId !== "string" || !/^[a-f0-9-]{36}$/.test(value.journalId) ||
+      typeof value.headHash !== "string" || !HASH.test(value.headHash) ||
+      typeof value.manifestHash !== "string" || !HASH.test(value.manifestHash)) return "corrupt";
+  const manifest = value as unknown as Manifest;
+  if (manifestDigest(manifest) !== manifest.manifestHash) return "corrupt";
   return manifest;
 }
-async function loadManifest(session: Directory, key: HermesCcJournalKey, dirName: string): Promise<Manifest | "schema_mismatch" | "missing"> {
+async function loadManifest(session: Directory, key: HermesCcJournalKey, dirName: string): Promise<Manifest | "schema_mismatch" | "corrupt" | "missing"> {
   try {
     const value: unknown = JSON.parse((await readFile(session, MANIFEST, MAX_MANIFEST_BYTES)).toString("utf8"));
     return parseManifest(value, key, dirName);
@@ -214,6 +225,7 @@ async function loadManifest(session: Directory, key: HermesCcJournalKey, dirName
   }
 }
 async function writeManifest(session: Directory, manifest: Manifest): Promise<void> {
+  manifest.manifestHash = manifestDigest(manifest);
   await atomicWrite(session, MANIFEST, encodeManifest(manifest));
 }
 
@@ -221,7 +233,7 @@ function encodeEvent(event: unknown): string {
   try {
     const text = JSON.stringify(event);
     if (typeof text !== "string" || text.length === 0 || /[\n\r]/.test(text)) throw new Error("invalid_event");
-    return text;
+    return canonical(JSON.parse(text));
   } catch (error) {
     if (error instanceof Error && error.message === "invalid_event") throw error;
     throw new Error("invalid_event");
@@ -243,7 +255,7 @@ async function viewEvents(session: Directory, manifest: Manifest, maxBytesPerSes
     if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1) return { status: "unsafe" };
     size = BigInt(before.size);
   } catch (error) {
-    if (hasCode(error, "ENOENT")) return manifest.bytes === 0 && manifest.records === 0 ? { status: "ok", events: [] } : { status: "corrupt" };
+    if (hasCode(error, "ENOENT")) return { status: "corrupt" };
     throw error;
   }
   if (size > BigInt(Number.MAX_SAFE_INTEGER) || Number(size) !== manifest.bytes) return { status: "corrupt" };
@@ -257,12 +269,19 @@ async function viewEvents(session: Directory, manifest: Manifest, maxBytesPerSes
   if (bytes.length !== manifest.bytes) return { status: "corrupt" };
   const lines = parseLines(bytes);
   if (lines === null || lines.length !== manifest.records) return { status: "corrupt" };
+  if (!Buffer.from(lines.length ? `${lines.join("\n")}\n` : "").equals(bytes)) return { status: "corrupt" };
   const events: unknown[] = [];
+  let head = seed(manifest);
   for (const line of lines) {
-    try { events.push(JSON.parse(line)); }
-    catch { return { status: "corrupt" }; }
+    try {
+      const value: unknown = JSON.parse(line);
+      if (!record(value) || !Object.hasOwn(value, "event")) return { status: "corrupt" };
+      head = hash(head + canonical(value.event));
+      if (value.hash !== head || canonical({ event: value.event, hash: head }) !== line) return { status: "corrupt" };
+      events.push(value.event);
+    } catch { return { status: "corrupt" }; }
   }
-  return { status: "ok", events };
+  return head === manifest.headHash ? { status: "ok", events } : { status: "corrupt" };
 }
 async function appendLine(session: Directory, line: string): Promise<number> {
   const payload = Buffer.from(`${line}\n`, "utf8");
@@ -378,7 +397,7 @@ async function withDiskLock<T>(root: Directory, run: () => Promise<T>): Promise<
 
 async function cleanTemps(root: Directory): Promise<void> {
   for (const name of await readdir(child(root, "."))) {
-    if (name === LOCK || isEvictedMarker(name) || isReapedMarker(name)) continue;
+    if (name === LOCK || name === USAGE || name.startsWith(".writer-") || isEvictedMarker(name) || isReapedMarker(name)) continue;
     const entry = await lstat(child(root, name));
     if (entry.isSymbolicLink()) {
       if (isTemp(name) || Date.now() - entry.mtimeMs > STALE_MS) await unlink(child(root, name));
@@ -411,7 +430,7 @@ async function listEntries(root: Directory): Promise<{ total: number; entries: E
   const entries: Entry[] = [];
   let total = 0;
   for (const name of await readdir(child(root, "."))) {
-    if (name === LOCK) continue;
+    if (name === LOCK || name === USAGE || name.startsWith(".writer-")) continue;
     const entry = await lstat(child(root, name));
     if ((isEvictedMarker(name) || isReapedMarker(name)) && entry.isFile() && !entry.isSymbolicLink() && entry.nlink === 1 && entry.size === 0) continue;
     if (entry.isSymbolicLink()) {
@@ -477,7 +496,7 @@ async function tombstone(root: Directory, name: string, reason: string, key?: He
     nested = await openDirectory(child(root, name));
     const loaded = key ? await loadManifest(nested, key, name) : "missing";
     let manifest: Manifest | undefined;
-    if (loaded !== "missing" && loaded !== "schema_mismatch") manifest = loaded;
+    if (typeof loaded !== "string") manifest = loaded;
     else {
       try {
         const value: unknown = JSON.parse((await readFile(nested, MANIFEST, MAX_MANIFEST_BYTES)).toString("utf8"));
@@ -492,6 +511,7 @@ async function tombstone(root: Directory, name: string, reason: string, key?: He
             bytes: 0,
             records: 0,
             createdAt: value.createdAt,
+            journalId: randomUUID(), headHash: "", manifestHash: "",
             invalid: typeof value.invalid === "string" && REASON.test(value.invalid) ? value.invalid : reason,
           };
         }
@@ -502,6 +522,7 @@ async function tombstone(root: Directory, name: string, reason: string, key?: He
       manifest.bytes = 0;
       manifest.records = 0;
       manifest.openTurns = 0;
+      manifest.headHash = seed(manifest);
       await writeManifest(nested, manifest);
       await removeChildren(nested, MANIFEST);
       return;
@@ -521,7 +542,7 @@ async function enforceCaps(root: Directory, maxBytesPerSession: number, maxBytes
       await tombstone(root, entry.name, "over_cap");
       continue;
     }
-    if (total <= maxBytesTotal) return;
+    if (total + USAGE_BYTES <= maxBytesTotal) return;
     const orphans = entries.filter(entry => entry.kind !== "session").sort(byAge);
     if (orphans.length) {
       const entry = orphans[0]!;
@@ -588,23 +609,146 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
     void pending.finally(() => { if (lanes.get(id) === pending) lanes.delete(id); }).catch(() => {});
     return pending;
   }
-  async function locked<T>(create: boolean, run: (rootDirectory: Directory) => Promise<T>): Promise<T> {
+  // The fixed-size ledger is dirtied before mutations. A crash requires a full
+  // rescan; cooperating processes otherwise update only the affected session's delta.
+  async function usageWrite(rootDirectory: Directory, total: number | null): Promise<void> {
+    const text = JSON.stringify({ version: 1, total });
+    await atomicWrite(rootDirectory, USAGE, Buffer.from(text.padEnd(USAGE_BYTES, " ")));
+  }
+  async function sessionBytes(rootDirectory: Directory, key: HermesCcJournalKey): Promise<number> {
+    const session = await openSession(rootDirectory, keyHash(key));
+    if (session === "missing") return 0;
+    try { return await directoryBytes(session); }
+    finally { await session.handle.close(); }
+  }
+  async function locked<T>(create: boolean, key: HermesCcJournalKey, run: (rootDirectory: Directory) => Promise<T>, refresh = false): Promise<T> {
     // Walk from the trusted root. lstat of the full path would follow an ancestor symlink and hide it.
     const rootDirectory = await directory(root, create, trustedRoot);
-    try { return await withDiskLock(rootDirectory, () => run(rootDirectory)); }
-    finally { await rootDirectory.handle.close(); }
+    try {
+      return await withDiskLock(rootDirectory, async () => {
+        let total: number | undefined;
+        if (!create && !refresh) {
+          try {
+            const value: unknown = JSON.parse((await readFile(rootDirectory, USAGE, USAGE_BYTES)).toString("utf8"));
+            if (record(value) && value.version === 1 && typeof value.total === "number" && Number.isSafeInteger(value.total) && value.total >= 0) total = value.total;
+          } catch { /* Missing or dirty accounting is recovered under the lock. */ }
+        }
+        if (total === undefined) {
+          await enforceCaps(rootDirectory, maxBytesPerSession, maxBytesTotal);
+          total = (await listEntries(rootDirectory)).total;
+        }
+        const before = await sessionBytes(rootDirectory, key);
+        await usageWrite(rootDirectory, null);
+        const result = await run(rootDirectory);
+        total += await sessionBytes(rootDirectory, key) - before;
+        if (total + USAGE_BYTES > maxBytesTotal) {
+          await enforceCaps(rootDirectory, maxBytesPerSession, maxBytesTotal);
+          total = (await listEntries(rootDirectory)).total;
+        }
+        await usageWrite(rootDirectory, total);
+        return result;
+      });
+    } finally { await rootDirectory.handle.close(); }
+  }
+  type Verified = { manifestHash: string; fingerprint: string; headHash: string; records: number; bytes: number };
+  const verified = new Map<string, Verified>();
+  async function fingerprint(session: Directory): Promise<string> {
+    const stat = await lstat(child(session, EVENTS), { bigint: true });
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1n) throw new Error("unsafe_history_file");
+    return `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`;
+  }
+  async function remember(session: Directory, manifest: Manifest): Promise<void> {
+    verified.set(keyHash(manifest), { manifestHash: manifest.manifestHash, fingerprint: await fingerprint(session),
+      headHash: manifest.headHash, records: manifest.records, bytes: manifest.bytes });
+  }
+  async function verifyForWrite(session: Directory, manifest: Manifest): Promise<EventsView> {
+    const cached = verified.get(keyHash(manifest));
+    let current: string;
+    try { current = await fingerprint(session); }
+    catch (error) { if (hasCode(error, "ENOENT")) return { status: "corrupt" }; throw error; }
+    if (cached && cached.manifestHash === manifest.manifestHash && cached.fingerprint === current &&
+        cached.headHash === manifest.headHash && cached.records === manifest.records && cached.bytes === manifest.bytes) {
+      return { status: "ok", events: [] };
+    }
+    const viewed = await viewEvents(session, manifest, maxBytesPerSession);
+    if (viewed.status === "ok") await remember(session, manifest);
+    else verified.delete(keyHash(manifest));
+    return viewed;
+  }
+  async function publish(session: Directory, manifest: Manifest): Promise<void> {
+    await writeManifest(session, manifest);
+    if (!manifest.invalid) await remember(session, manifest);
+    else verified.delete(keyHash(manifest));
   }
   async function openSession(rootDirectory: Directory, name: string): Promise<Directory | "missing"> {
     try { return await openDirectory(child(rootDirectory, name)); }
     catch (error) { if (hasCode(error, "ENOENT")) return "missing"; throw error; }
   }
 
-  return {
-    async start(key) {
-      assertKey(key);
+  async function claimWriter(key: HermesCcJournalKey): Promise<{ release(): Promise<void> } | null> {
+    const rootDirectory = await directory(root, true, trustedRoot);
+    const name = `.writer-${keyHash(key)}`;
+    const token = randomUUID();
+    let held: FileHandle | undefined;
+    try {
+      const acquired = await withDiskLock(rootDirectory, async () => {
+        try {
+          const stat = await lstat(child(rootDirectory, name));
+          if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1) throw new Error("unsafe_history_lock");
+          if (Date.now() - stat.mtimeMs <= WRITER_MS) return false;
+          await unlink(child(rootDirectory, name));
+        } catch (error) { if (!hasCode(error, "ENOENT")) throw error; }
+        held = await open(child(rootDirectory, name), constants.O_RDWR | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+        await held.writeFile(JSON.stringify({ pid: process.pid, token }));
+        await held.sync();
+        await syncDirectory(rootDirectory);
+        return true;
+      });
+      if (!acquired || !held) return null;
+    } catch (error) {
+      await held?.close();
+      throw error;
+    } finally { await rootDirectory.handle.close(); }
+    const handle = held;
+    const heartbeat = setInterval(() => {
+      const now = new Date();
+      void handle.utimes(now, now).catch(() => {});
+    }, WRITER_MS / 3);
+    heartbeat.unref();
+    let released = false;
+    return { async release() {
+      if (released) return;
+      released = true;
+      clearInterval(heartbeat);
+      let currentRoot: Directory | undefined;
       try {
-        await serialized(key, () => locked(true, async rootDirectory => {
-          await cleanTemps(rootDirectory);
+        currentRoot = await directory(root, false, trustedRoot);
+        const openedRoot = currentRoot;
+        await withDiskLock(openedRoot, async () => {
+          try {
+            const stat = await lstat(child(openedRoot, name)), original = await handle.stat();
+            const owner: unknown = JSON.parse((await readFile(openedRoot, name, LOCK_BYTES)).toString("utf8"));
+            if (stat.dev === original.dev && stat.ino === original.ino && record(owner) && owner.token === token) {
+              await unlink(child(openedRoot, name));
+              await syncDirectory(openedRoot);
+            }
+          } catch (error) { if (!hasCode(error, "ENOENT")) throw error; }
+        });
+      } catch (error) { if (!hasCode(error, "ENOENT")) fail(error); }
+      finally { await currentRoot?.handle.close(); await handle.close(); }
+    } };
+  }
+
+  return {
+    async claimWriter(key) {
+      key = snapshotKey(key);
+      try { return await serialized(key, () => claimWriter(key)); }
+      catch (error) { fail(error); }
+    },
+    async start(key) {
+      key = snapshotKey(key);
+      try {
+        await serialized(key, () => locked(true, key, async rootDirectory => {
           const name = keyHash(key);
           const existing = await openSession(rootDirectory, name);
           if (existing !== "missing") {
@@ -613,13 +757,16 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
           }
           if (await markerExists(rootDirectory, name)) throw new Error("journal_exists");
           await mkdir(child(rootDirectory, name), { mode: 0o700 });
+          await syncDirectory(rootDirectory);
           const session = await openDirectory(child(rootDirectory, name));
           try {
             await session.handle.chmod(0o700);
             const created = await open(child(session, EVENTS), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
             try { await created.sync(); } finally { await created.close(); }
             await syncDirectory(session);
-            await writeManifest(session, {
+            const journalId = randomUUID();
+            await publish(session, {
+              journalId, headHash: seed({ ...key, journalId }), manifestHash: "",
               version: VERSION,
               providerId: key.providerId,
               nativeSessionId: key.nativeSessionId,
@@ -630,132 +777,131 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
               createdAt: Date.now(),
             });
           } finally { await session.handle.close(); }
-          await enforceCaps(rootDirectory, maxBytesPerSession, maxBytesTotal);
         }));
       } catch (error) { fail(error); }
     },
     async append(key, event) {
-      assertKey(key);
+      key = snapshotKey(key);
       let line: string | undefined;
       try { line = encodeEvent(event); }
       catch (error) {
         if (!(error instanceof Error) || error.message !== "invalid_event") fail(error);
       }
       const encoded = line;
-      const added = encoded === undefined ? 0 : Buffer.byteLength(`${encoded}\n`, "utf8");
       let rejectInvalid = false;
       try {
-        await serialized(key, () => locked(false, async rootDirectory => {
+        await serialized(key, () => locked(false, key, async rootDirectory => {
           const name = keyHash(key);
           const session = await openSession(rootDirectory, name);
           if (session === "missing") return;
           try {
             const loaded = await loadManifest(session, key, name);
-            if (loaded === "missing" || loaded === "schema_mismatch" || loaded.invalid) return;
+            if (typeof loaded === "string" || loaded.invalid) return;
             if (encoded === undefined) {
-              await writeManifest(session, { ...loaded, invalid: "invalid_event" });
+              await publish(session, { ...loaded, invalid: "invalid_event" });
               rejectInvalid = true;
               return;
             }
-            const viewed = await viewEvents(session, loaded, maxBytesPerSession);
+            const headHash = hash(loaded.headHash + encoded);
+            const line = canonical({ event: JSON.parse(encoded), hash: headHash });
+            const added = Buffer.byteLength(`${line}\n`, "utf8");
+            const viewed = await verifyForWrite(session, loaded);
             if (viewed.status === "unsafe") throw new Error("unsafe_history_file");
             if (viewed.status === "corrupt") {
-              await writeManifest(session, { ...loaded, invalid: "corrupt" });
+              await publish(session, { ...loaded, invalid: "corrupt" });
               return;
             }
             if (viewed.status === "over_cap" || loaded.bytes + added > maxBytesPerSession) {
-              await writeManifest(session, { ...loaded, invalid: "over_cap" });
+              await publish(session, { ...loaded, invalid: "over_cap" });
               if (viewed.status === "over_cap") await removeChildren(session, MANIFEST);
               return;
             }
-            const bytes = await appendLine(session, encoded);
-            await writeManifest(session, { ...loaded, bytes, records: loaded.records + 1 });
+            const bytes = await appendLine(session, line);
+            await publish(session, { ...loaded, bytes, records: loaded.records + 1, headHash });
           } finally { await session.handle.close(); }
-          await enforceCaps(rootDirectory, maxBytesPerSession, maxBytesTotal);
         }).catch(error => { if (hasCode(error, "ENOENT")) return; throw error; }));
       } catch (error) { fail(error); }
       if (rejectInvalid) throw new Error("invalid_event");
     },
     async turnStarted(key) {
-      assertKey(key);
+      key = snapshotKey(key);
       try {
-        await serialized(key, () => locked(false, async rootDirectory => {
+        await serialized(key, () => locked(false, key, async rootDirectory => {
           const session = await openSession(rootDirectory, keyHash(key));
           if (session === "missing") return;
           try {
             const loaded = await loadManifest(session, key, keyHash(key));
-            if (loaded === "missing" || loaded === "schema_mismatch" || loaded.invalid) return;
-            const viewed = await viewEvents(session, loaded, maxBytesPerSession);
+            if (typeof loaded === "string" || loaded.invalid) return;
+            const viewed = await verifyForWrite(session, loaded);
             if (viewed.status !== "ok") {
               if (viewed.status === "unsafe") throw new Error("unsafe_history_file");
-              await writeManifest(session, { ...loaded, invalid: viewed.status === "over_cap" ? "over_cap" : "corrupt" });
+              await publish(session, { ...loaded, invalid: viewed.status === "over_cap" ? "over_cap" : "corrupt" });
               return;
             }
             if (loaded.openTurns === Number.MAX_SAFE_INTEGER) {
-              await writeManifest(session, { ...loaded, invalid: "corrupt" });
+              await publish(session, { ...loaded, invalid: "corrupt" });
               return;
             }
-            await writeManifest(session, { ...loaded, openTurns: loaded.openTurns + 1 });
+            await publish(session, { ...loaded, openTurns: loaded.openTurns + 1 });
           } finally { await session.handle.close(); }
         }).catch(error => { if (hasCode(error, "ENOENT")) return; throw error; }));
       } catch (error) { fail(error); }
     },
     async turnSettled(key) {
-      assertKey(key);
+      key = snapshotKey(key);
       try {
-        await serialized(key, () => locked(false, async rootDirectory => {
+        await serialized(key, () => locked(false, key, async rootDirectory => {
           const session = await openSession(rootDirectory, keyHash(key));
           if (session === "missing") return;
           try {
             const loaded = await loadManifest(session, key, keyHash(key));
-            if (loaded === "missing" || loaded === "schema_mismatch" || loaded.invalid) return;
-            const viewed = await viewEvents(session, loaded, maxBytesPerSession);
+            if (typeof loaded === "string" || loaded.invalid) return;
+            const viewed = await verifyForWrite(session, loaded);
             if (viewed.status !== "ok") {
               if (viewed.status === "unsafe") throw new Error("unsafe_history_file");
-              await writeManifest(session, { ...loaded, invalid: viewed.status === "over_cap" ? "over_cap" : "corrupt" });
+              await publish(session, { ...loaded, invalid: viewed.status === "over_cap" ? "over_cap" : "corrupt" });
               return;
             }
             // A duplicate settle must not destroy a journal that has already settled.
             if (loaded.openTurns === 0) return;
-            await writeManifest(session, { ...loaded, openTurns: loaded.openTurns - 1 });
+            await publish(session, { ...loaded, openTurns: loaded.openTurns - 1 });
           } finally { await session.handle.close(); }
         }).catch(error => { if (hasCode(error, "ENOENT")) return; throw error; }));
       } catch (error) { fail(error); }
     },
     async invalidate(key, reason) {
-      assertKey(key);
+      key = snapshotKey(key);
       const code = reasonCode(reason);
       try {
-        await serialized(key, () => locked(false, async rootDirectory => {
+        await serialized(key, () => locked(false, key, async rootDirectory => {
           const session = await openSession(rootDirectory, keyHash(key));
           if (session === "missing") return;
           try {
             const loaded = await loadManifest(session, key, keyHash(key));
-            if (loaded === "missing" || loaded === "schema_mismatch" || loaded.invalid) return;
-            await writeManifest(session, { ...loaded, invalid: code });
+            if (typeof loaded === "string" || loaded.invalid) return;
+            await publish(session, { ...loaded, invalid: code });
           } finally { await session.handle.close(); }
         }).catch(error => { if (hasCode(error, "ENOENT")) return; throw error; }));
       } catch (error) { fail(error); }
     },
     async read(key) {
-      assertKey(key);
+      key = snapshotKey(key);
       try {
-        return await serialized(key, () => locked(false, async rootDirectory => {
-          await enforceCaps(rootDirectory, maxBytesPerSession, maxBytesTotal);
+        return await serialized(key, () => locked(false, key, async rootDirectory => {
           const name = keyHash(key);
           const session = await openSession(rootDirectory, name);
           if (session === "missing") return await markerExists(rootDirectory, name) ? unusable("evicted") : unusable("missing");
           try {
             const loaded = await loadManifest(session, key, name);
-            if (loaded === "missing" || loaded === "schema_mismatch") return unusable("schema_mismatch");
+            if (typeof loaded === "string") return unusable(loaded === "corrupt" ? "corrupt" : "schema_mismatch");
             const viewed = await viewEvents(session, loaded, maxBytesPerSession);
             const { total } = await listEntries(rootDirectory);
-            if (total > maxBytesTotal && !loaded.invalid && viewed.status === "ok" && loaded.startedFromCreation && loaded.openTurns === 0) {
+            if (total + USAGE_BYTES > maxBytesTotal && !loaded.invalid && viewed.status === "ok" && loaded.startedFromCreation && loaded.openTurns === 0) {
               return unusable("over_cap");
             }
             return judge(loaded, viewed);
           } finally { await session.handle.close(); }
-        }).catch(error => { if (hasCode(error, "ENOENT")) return unusable("missing"); throw error; }));
+        }, true).catch(error => { if (hasCode(error, "ENOENT")) return unusable("missing"); throw error; }));
       } catch (error) {
         if (error instanceof Error && (error.message === "unsafe_history_directory" || error.message === "unsafe_history_file" || error.message === "unsafe_history_lock")) {
           return unusable("unsafe_path");
