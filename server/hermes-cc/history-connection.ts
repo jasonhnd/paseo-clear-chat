@@ -9,6 +9,8 @@ interface Session {
   open: Open;
   key: HermesCcJournalKey | null;
   recording: boolean;
+  claimRefused: boolean;
+  lease: { release(): Promise<void> } | null;
   namespaced: boolean;
   pendingPrompts: Set<string>;
   clientMessageIds: Set<string>;
@@ -83,9 +85,9 @@ function isCommand(input: Extract<ProviderInput, { type: "session.prompt" }>): b
   return input.prompt.input.content.filter(part => part.type === "text").map(part => part.text).join("\n").trimStart().startsWith("/");
 }
 
-// Shared across connections and store instances in this process. The store
-// interface has no lease/epoch, so this cannot exclude writers in other processes;
-// that requires a durable store lease. Never let two local lanes settle one flag.
+// Shared across connections and store instances in this process. The
+// local reservation is acquired before awaiting the store's cross-process lease.
+// Stores without claimWriter still exclude competing lanes in this process.
 const recorders = new Map<string, Session>();
 const recorderId = (key: HermesCcJournalKey) => JSON.stringify([key.providerId, key.nativeSessionId]);
 
@@ -102,29 +104,51 @@ export function journalHermesCcConnection(
   const emit = (event: ProviderEvent) => {
     if (!closed) for (const listener of listeners) listener(event);
   };
-  const claim = (session: Session) => {
+  const claim = async (session: Session) => {
     if (!session.key) return false;
     const id = recorderId(session.key);
-    if (recorders.has(id)) return false;
+    if (recorders.has(id)) { session.claimRefused = true; return false; }
     recorders.set(id, session);
-    return true;
+    try {
+      if (store.claimWriter) {
+        session.lease = await store.claimWriter(session.key);
+        if (!session.lease) {
+          session.claimRefused = true;
+          recorders.delete(id);
+          return false;
+        }
+      }
+      return true;
+    } catch (error) {
+      recorders.delete(id);
+      throw error;
+    }
   };
-  const release = (session: Session) => {
-    if (session.key && recorders.get(recorderId(session.key)) === session) recorders.delete(recorderId(session.key));
+  const release = async (session: Session) => {
+    const lease = session.lease;
+    session.lease = null;
+    try { await lease?.release(); }
+    finally {
+      if (session.key && recorders.get(recorderId(session.key)) === session) recorders.delete(recorderId(session.key));
+    }
   };
-  const invalidate = async (session: Session, reason: string) => {
+  const invalidate = async (session: Session, reason: string, appending = false) => {
+    // A refused claimant may only invalidate on a live history append. Merely
+    // opening or sending a command says nothing about the owner's transcript.
+    if (session.claimRefused && !appending) return;
     session.recording = false;
     if (session.key && !session.invalidated) {
       await store.invalidate(session.key, reason);
       session.invalidated = true;
     }
+    await release(session);
   };
-  const fail = (session: Session) => {
+  const fail = async (session: Session) => {
     session.failed = true;
     session.recording = false;
     session.replay = null;
     session.opening = [];
-    release(session);
+    try { await release(session); } catch { /* Still finish failure cleanup if storage is unavailable. */ }
   };
   const enqueue = (session: Session, operation: () => Promise<void>): Promise<void> => {
     const work = session.lane.then(operation);
@@ -135,7 +159,7 @@ export function journalHermesCcConnection(
       if (session.ready && session.recording) {
         try { await invalidate(session, "journal operation failed"); } catch { /* Fail closed if storage is unavailable. */ }
       }
-      fail(session);
+      await fail(session);
       const error = { message: "Hermes·CC session journal failed" };
       emit(session.ready
         ? { type: "session.runtime_failed", sessionId: session.open.sessionId, error }
@@ -156,7 +180,7 @@ export function journalHermesCcConnection(
     if (original.type === "request.failed" || original.type === "request.completed") {
       requests.delete(original.requestId);
       if (original.type === "request.failed" && original.requestId === session.open.requestId) {
-        fail(session);
+        await fail(session);
         emit(original);
         return;
       }
@@ -170,7 +194,7 @@ export function journalHermesCcConnection(
       if (original.type === "session.opened") {
         if (session.open.history === "skip" && session.open.persistence === undefined && nativeSessionId !== null) {
           session.key = { providerId, nativeSessionId };
-          if (claim(session)) {
+          if (await claim(session)) {
             // start() rejects existing journals: only own it after success.
             await store.start(session.key);
             session.recording = true;
@@ -185,7 +209,7 @@ export function journalHermesCcConnection(
       // The durable open-turn flag already rejects an interrupted prompt.
       // An idle runtime failure/close says nothing about a settled transcript.
       const ready = session.ready;
-      fail(session);
+      await fail(session);
       if (ready && original.type === "session.closed") sessions.delete(session.open.sessionId);
       requests.delete(session.open.requestId);
       emit(ready ? original : { type: "request.failed", requestId: session.open.requestId,
@@ -228,8 +252,8 @@ export function journalHermesCcConnection(
         if (original.result.type === "turn" || original.result.type === "steer") {
           session.turns.set(original.result.turnId, original.clientMessageId);
         } else {
-          session.pendingPrompts.delete(original.clientMessageId);
-          if (!session.pendingPrompts.size) await store.turnSettled(session.key);
+          // No terminal turn means we cannot certify this admission as settled.
+          await invalidate(session, "prompt ended without a terminal turn");
         }
       }
       if (original.type === "session.turn" && original.state !== "started") {
@@ -245,7 +269,7 @@ export function journalHermesCcConnection(
       // A second live session never records. Opening/replay alone is harmless;
       // only an actual live history event invalidates its key. A rejected send
       // that produces no history must leave a settled journal intact.
-      await invalidate(session, "history appended outside the recorder");
+      await invalidate(session, "history appended outside the recorder", true);
     }
     emit(event);
   };
@@ -270,7 +294,7 @@ export function journalHermesCcConnection(
         const nativeSessionId = nativeKey(input.persistence);
         const session: Session = {
           open: input, key: nativeSessionId === null ? null : { providerId, nativeSessionId },
-          recording: false, namespaced: false, pendingPrompts: new Set(), turns: new Map(),
+          recording: false, claimRefused: false, lease: null, namespaced: false, pendingPrompts: new Set(), turns: new Map(),
           clientMessageIds: new Set(), opening: [], openingHistory: false, invalidated: false,
           replay: null, generation: 0, opened: false, ready: false, failed: false, lane: Promise.resolve(),
         };
@@ -279,7 +303,7 @@ export function journalHermesCcConnection(
         try {
           // Persisted skip is a caller-owned transcript: pass it through without
           // reading, claiming, starting or otherwise changing the journal.
-          if (session.key && input.history === "replay" && claim(session)) {
+          if (session.key && input.history === "replay" && await claim(session)) {
             const state = await store.read(session.key).catch(async () => {
               await invalidate(session, "journal read failed");
               return { status: "unusable" as const, reason: "journal read failed" };
@@ -298,11 +322,11 @@ export function journalHermesCcConnection(
                 }
               } else await invalidate(session, "journal projection is invalid");
             }
-            if (!session.recording) release(session);
+            if (!session.recording) await release(session);
           }
           await connection.send(session.replay ? { ...input, history: "skip" } : input);
         } catch (error) {
-          fail(session);
+          await fail(session);
           requests.delete(input.requestId);
           throw error;
         }
@@ -339,20 +363,29 @@ export function journalHermesCcConnection(
         // Forward every session send on the lane, including interrupts. Otherwise
         // an interrupt could overtake a prompt still waiting for turnStarted fsync.
         // SDK send failures leave the busy flag open; they are not storage errors.
-        try { await forward(); } catch (error) { sendFailed = true; sendError = error; }
+        try { await forward(); } catch (error) {
+          sendFailed = true;
+          sendError = error;
+          await fail(session);
+        }
       });
       if (sendFailed) throw sendError;
     },
     onEvent(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     async close() {
-      await connection.close();
-      await Promise.all([...sessions.values()].map(session => session.lane));
-      closed = true;
-      for (const session of sessions.values()) release(session);
-      unsubscribe();
-      listeners.clear();
-      sessions.clear();
-      requests.clear();
+      try {
+        await connection.close();
+      } finally {
+        await Promise.all([...sessions.values()].map(session => session.lane));
+        closed = true;
+        try { await Promise.all([...sessions.values()].map(release)); }
+        finally {
+          unsubscribe();
+          listeners.clear();
+          sessions.clear();
+          requests.clear();
+        }
+      }
     },
   };
 }
