@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { open, stat, type FileHandle } from "node:fs/promises";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { revealPathRpc } from "./shared/file-rpc";
@@ -9,6 +9,7 @@ import { imageRpc } from "./shared/image-rpc";
 import { promptImageRpc, promptImagesRpc } from "./shared/prompt-images-rpc";
 import { createPromptImageHandlers } from "./server/prompt-images/registry";
 import { createHermesCcImageStore, hermesCcImageRoot, hermesCcPaseoHome, type HermesCcImageStore } from "./server/hermes-cc/store";
+import { createHermesCcCatalogStore } from "./server/hermes-cc/catalog";
 import { hermesCcProvidersFromConfig } from "./server/hermes-cc/provider";
 import type { HermesCcHistoryStore } from "./server/hermes-cc/history-store";
 import { createHermesCcHistoryStore, hermesCcHistoryRoot } from "./server/hermes-cc/history-store";
@@ -567,7 +568,7 @@ function registerServer(server: PluginServerContext, historyStore: (home: string
       const result = await hermesCcImageStore?.save({ sessionKey, messageId: clientMessageId }, images);
       if (result === "conflict") console.debug("[clear-chat] hermes_cc: save_conflict");
     } catch { console.debug("[clear-chat] hermes_cc: save_failed"); }
-  }, historyStore(home)) : [];
+  }, historyStore(home), createHermesCcCatalogStore(join(home, "plugin-data", "clear-chat", "hermes-cc-catalog"))) : [];
   for (const provider of providers) server.registerProvider(provider);
   const promptImages = createPromptImageHandlers({
     hermesCcImageStore,

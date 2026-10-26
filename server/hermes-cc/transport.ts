@@ -6,6 +6,7 @@ import { extname } from "node:path";
 import { Readable, Writable } from "node:stream";
 import { promisify } from "node:util";
 import type { AcpStream } from "@getpaseo/plugin/server/acp";
+import type { hermesCcCatalogObserver } from "./catalog";
 import { ndJsonStream } from "./ndjson";
 
 export interface HermesCcLaunch {
@@ -19,6 +20,7 @@ export async function hermesCcTransport(
   command: readonly [string, ...string[]],
   env: Record<string, string>,
   launch: HermesCcLaunch = {},
+  catalogObserver?: ReturnType<typeof hermesCcCatalogObserver>,
 ): Promise<AcpStream> {
   // Probes/discovery match the built-in provider (acp-agent.ts:1412-1413).
   let processCwd = launch.cwd ?? process.cwd();
@@ -64,13 +66,17 @@ export async function hermesCcTransport(
         try {
           const next = await reader.read();
           if (next.done) controller.close();
-          else controller.enqueue(next.value);
+          else {
+            catalogObserver?.received(next.value);
+            controller.enqueue(next.value);
+          }
         } catch (error) { controller.error(error); }
       },
       cancel: close,
     }),
     writable: new WritableStream({
       async write(message) {
+        catalogObserver?.sent(message);
         const writer = stream.writable.getWriter();
         try { await writer.write(message); } finally { writer.releaseLock(); }
       },

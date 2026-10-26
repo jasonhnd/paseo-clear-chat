@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { z } from "zod";
 import { hermesCcTransport } from "./transport";
 import type { HermesCcLaunch } from "./transport";
 import { nativeKey } from "./session-key";
+import { hermesCcCatalogObserver, type HermesCcCatalogStore } from "./catalog";
 import { journalHermesCcConnection } from "./history-connection";
 import type { HermesCcHistoryStore } from "./history-store";
 export { nativeSessionKeyFromPersistence } from "./session-key";
@@ -95,6 +97,7 @@ export function hermesCcProvidersFromConfig(
   enabled: boolean,
   hook: HermesCcPromptHook,
   historyStore?: HermesCcHistoryStore,
+  catalogStore?: HermesCcCatalogStore,
 ): ProviderRegistration[] {
   if (!enabled) return [];
   const registrations: ProviderRegistration[] = [];
@@ -114,9 +117,10 @@ export function hermesCcProvidersFromConfig(
     // registration; no manifest provider entry or host config mutation is needed.
     // The connector runs asynchronously after send() returns. AsyncLocalStorage
     // keeps launch context isolated across concurrent sessions and discovery.
-    const context = new AsyncLocalStorage<HermesCcLaunch & { env?: Readonly<Record<string, string>> }>();
-    const models = hermesCcConfiguredModels(source);
-    const defaultModel = models.find((model) => model.isDefault)?.id;
+    // Read the bounded document at registration, outside all user opens/prompts.
+    catalogStore?.read(id);
+    const catalogIdentity = JSON.stringify([command, hermesCcSourceEnv(process.env, env), source.models, source.additionalModels]);
+    const context = new AsyncLocalStorage<HermesCcLaunch & { env?: Readonly<Record<string, string>>; userOpen?: boolean }>();
     const provider = runAcpProvider({
       id, label: `${typeof source.label === "string" && source.label.trim() ? source.label : sourceId}·CC`,
       // SDK v0.13.0 acp-internal/connection.ts:72-89 probes with initialize
@@ -124,20 +128,36 @@ export function hermesCcProvidersFromConfig(
       // acp.ts:47-48 supports an initialization-only global catalog; route all
       // catalogs through it below; configured models need no ACP session.
       acpOptions: { workspaceOnlyCatalog: true },
-      transformers: [{ discover: (catalog) => ({
-        ...catalog,
-        models,
-        ...(defaultModel ? { defaultModel } : {}),
-      }) }],
+      transformers: [{ discover: (catalog) => {
+        const remembered = catalogStore?.read(id);
+        const models = hermesCcConfiguredModels(source, remembered?.models ?? []);
+        const defaultModel = models.find((model) => model.isDefault)?.id;
+        return {
+          ...catalog, models, modes: remembered?.modes ?? [],
+          ...(remembered?.defaultMode !== undefined ? { defaultMode: remembered.defaultMode } : {}),
+          ...(defaultModel !== undefined ? { defaultModel } : {}),
+        };
+      } }],
       connector: () => {
         const launch = context.getStore();
         // Rebuild from the worker's inherited daemon env, not the -cc launch
         // env, whose overrides belong to a different provider ID.
-        return hermesCcTransport(command, hermesCcSourceEnv(process.env, { ...env, ...launch?.env }), launch);
+        const observer = launch?.userOpen && catalogStore
+          ? hermesCcCatalogObserver((response) => catalogStore.capture(id, response)) : undefined;
+        return hermesCcTransport(command, hermesCcSourceEnv(process.env, { ...env, ...launch?.env }), launch, observer);
       },
     });
+    // SDK 0.13 exposes no catalog-changed event or provider refresh operation.
+    // A changing getCatalogCacheKey lets the next host catalog warm-up bypass
+    // its old cache (provider-snapshot-manager.ts:925-944). Existing snapshots
+    // still need a host provider refresh/reload; see
+    // Paseo v0.13.1 plugin/server/provider.ts (ProviderEvent, ProviderRegistration)
+    // and server/session/provider/provider-catalog-session.ts:
+    // handleRefreshProvidersSnapshotRequest. Do not emit an unsolicited catalog.
     registrations.push({
       ...provider,
+      getCatalogCacheKey: async () => createHash("sha256")
+        .update(catalogIdentity).update(JSON.stringify(catalogStore?.read(id) ?? null)).digest("hex"),
       async connect(request) {
         const captured = captureHermesCcPrompts(await provider.connect(request), hook);
         const connection = historyStore ? journalHermesCcConnection(captured, id, historyStore) : captured;
@@ -145,7 +165,7 @@ export function hermesCcProvidersFromConfig(
           ...connection,
           send(input) {
             const launch = input.type === "session.open" ? {
-              cwd: input.config.cwd, env: input.config.env, history: input.history,
+              cwd: input.config.cwd, env: input.config.env, history: input.history, userOpen: true,
               existingSession: nativeKey(input.persistence) !== null,
             } : {};
             // A workspace cwd bypasses workspaceOnlyCatalog in SDK
@@ -171,17 +191,32 @@ const configuredModelSchema = z.object({
 });
 
 /** Match source model replacement/addition semantics without probing Hermes. */
-function hermesCcConfiguredModels(source: Record<string, unknown>): ProviderModel[] {
+function hermesCcConfiguredModels(source: Record<string, unknown>, remembered: readonly ProviderModel[]): ProviderModel[] {
   const read = (value: unknown): ProviderModel[] => {
-    const parsed = z.array(configuredModelSchema).safeParse(value);
-    return parsed.success ? parsed.data.map((model) => ({
-      ...model,
-      ...(model.thinkingOptions?.some((option) => option.isDefault) ? {
-        defaultThinkingOptionId: model.thinkingOptions.find((option) => option.isDefault)!.id,
-      } : {}),
-    })) : [];
+    if (value === undefined) return [];
+    if (!Array.isArray(value)) {
+      console.debug("[clear-chat] hermes_cc: configured_model_invalid");
+      return [];
+    }
+    return value.flatMap((row) => {
+      const parsed = configuredModelSchema.safeParse(row);
+      if (!parsed.success) {
+        console.debug("[clear-chat] hermes_cc: configured_model_invalid");
+        return [];
+      }
+      const model = parsed.data;
+      return [{
+        ...model,
+        ...(model.thinkingOptions?.some((option) => option.isDefault) ? {
+          defaultThinkingOptionId: model.thinkingOptions.find((option) => option.isDefault)!.id,
+        } : {}),
+      }];
+    });
   };
-  const models = read(source.models), additions = read(source.additionalModels);
+  // Host provider-registry.ts:374-387 treats a nonempty models list as replacement;
+  // an absent/empty list keeps the runtime catalog and merges additions onto it.
+  const configured = read(source.models), additions = read(source.additionalModels);
+  const models = configured.length ? configured : structuredClone([...remembered]);
   // provider-registry.ts:390-435 merges additions by ID, preserving order, and
   // clears previous defaults when an addition declares a new default.
   for (const model of additions) {

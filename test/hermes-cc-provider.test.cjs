@@ -29,7 +29,8 @@ function harness(runAcpProvider) {
   }).outputText;
   runInThisContext(`(function(require,module,exports,console){${compiled}\n})`, { filename })(
     id => {
-      if (id === "node:async_hooks" || id === "zod") return require(id);
+      if (id === "node:async_hooks" || id === "node:crypto" || id === "zod") return require(id);
+      if (id === "./catalog") return { hermesCcCatalogObserver() {} };
       if (id === "./history-connection") {
         const history = { exports: {} };
         const source = ts.transpileModule(readFileSync(resolve(__dirname, "../server/hermes-cc/history-connection.ts"), "utf8"), {
@@ -40,7 +41,7 @@ function harness(runAcpProvider) {
         );
         return history.exports;
       }
-      if (id === "./transport") return { hermesCcTransport: async (command, env, launch) => launches.push({ ...launch, command, env }) };
+      if (id === "./transport") return { hermesCcTransport: async (command, env, launch) => launches.push({ ...Object.fromEntries(Object.entries(launch ?? {}).filter(([key]) => key !== "userOpen")), command, env }) };
       if (id === "./session-key") {
         const keys = { exports: {} };
         const source = ts.transpileModule(readFileSync(resolve(__dirname, "../server/hermes-cc/session-key.ts"), "utf8"), {
@@ -314,4 +315,24 @@ test("malformed image parts are skipped individually and never change the forwar
   const large = Buffer.alloc(3 * 1024 ** 2, 42);
   await wrapped.send(prompt("boundary", "large", [{ ...good, data: large.toString("base64") }]));
   assert.deepEqual(captured.at(-1).images, [{ mime: "image/png", data: large }]);
+});
+
+test("model configuration drops only invalid rows and preserves host merge/default semantics", () => {
+  const h = harness();
+  const source = { extends: "acp", command: ["hermes", "acp"],
+    models: [{ id: "first", label: "First", isDefault: true }, null,
+      { id: "second", label: "Second", description: "Keep this description" }],
+    additionalModels: [{ id: "second", label: "Override", isDefault: true },
+      { id: "invalid", label: 7, description: "private row" }, { id: "third", label: "Third" }],
+  };
+  const before = structuredClone(source);
+  h.hermesCcProvidersFromConfig({ source }, true, async () => {});
+  const catalog = h.commands[0].transformers[0].discover({ models: [], modes: [] });
+  assert.deepEqual(catalog, { modes: [], defaultModel: "second", models: [
+    { id: "first", label: "First", isDefault: false },
+    { id: "second", label: "Override", description: "Keep this description", isDefault: true },
+    { id: "third", label: "Third", isDefault: false },
+  ] });
+  assert.deepEqual(h.logs, Array.from({ length: 2 }, () => ["[clear-chat] hermes_cc: configured_model_invalid"]));
+  assert.deepEqual(source, before);
 });
