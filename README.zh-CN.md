@@ -152,7 +152,7 @@ Paseo 在桌面、网页、iPhone 和 iPad 上运行同一个插件。Clear Chat
 | 代码字形（Code glyphs） | 带连字（Ligatures）的 Iosevka，或原样（Literal）字形。 |
 | 代码字体（Code font） | 「默认（Iosevka）」（Default (Iosevka)，默认）、Iosevka、Menlo、Consolas、Fira Code 或 Cascadia Code。对代码块、行内代码、终端输出和差异对比生效。 |
 | 文字大小（Text size） | 小（Small，90%）、默认（Default，100%）、大（Large，115%）、特大（XL，130%）。图标大小不变。 |
-| Hermes·CC 提供商（Hermes·CC providers） | 默认开。为你在 Paseo 里配置的每个 Hermes 提供商加一个 **·CC** 版本，这样粘贴到 Hermes Agent 里的图片就能显示在气泡里。改动在重新加载主机后生效。 |
+| Hermes·CC 提供商（Hermes·CC providers） | 默认开。为每个用 `hermes acp` 启动的 Hermes 提供商加一个 **·CC** 版本，这样粘贴到 Hermes Agent 里的图片就能显示在气泡里。改动在重新加载主机后生效。 |
 | 折叠已完成的步骤（Fold finished steps） | 默认开。关掉后所有步骤都展开，你单独设过的调用除外。 |
 | 点按收起的步骤时（When a collapsed step is pressed） | 打开详情（Open details，默认）：在底部弹窗、浮出小窗或侧边面板里显示步骤详情。原地展开（Expand inline）：在对话里直接展开。 |
 | 长输出折叠行数（Fold long output after） | 10、15（默认）、30 行，或不折叠（Never）。对工具输出、回复里的代码块和提问生效。按原文的行数算，自动换行不多算。 |
@@ -176,12 +176,11 @@ Paseo 0.13 会在插件拿到消息前去掉粘贴的图片，Hermes 也没有�
 要知道的事：
 
 - 只有装了这个版本之后，在 **·CC** Agent 里新发的提问才显示图。以前建的 Agent 和它们的旧消息不显示。
-- 只有图片、没有文字的提问，显示不了图。
 - 错误、通知这类系统消息不会保存，重启后看不到。
 - 保存的文件本身被改坏时，这段对话会退回 Hermes 自己的原文，不显示图；坏一张图只影响它所在的那条提问。
 - 保存的记录对不上、被改过，或用过斜杠命令、回退（例如 `/undo`）时，这段对话会退回 Hermes 自己的原文，不显示图。
 - 同一段对话一次只从一个窗口用。要是第二个窗口也向同一段对话发了提问，记录会作废，两个窗口都退回 Hermes 自己的原文。
-- 图片存在你的 Paseo 主目录（默认 `~/.paseo`）下的 `plugin-data/clear-chat/hermes-cc-images` 文件夹里，最多 2 GB，满了先删最旧的。保存的记录在它旁边的 `hermes-cc-history` 里，每段对话最多 64 MB，全部合计最多 1 GB，超过就退回 Hermes 自己的原文。
+- 图片存在你的 Paseo 主目录（默认 `~/.paseo`）下的 `plugin-data/clear-chat/hermes-cc-images` 文件夹里，最多 2 GB，满了先删最旧的。保存的记录在它旁边的 `hermes-cc-history` 里。一段对话的记录超过 64 MB，这段对话就退回 Hermes 自己的原文。全部记录合计超过 1 GB 时，先删最旧的那段对话的记录，那段对话退回 Hermes 自己的原文，不显示图。
 - 想清理的话，先退出 Paseo。删掉图片文件夹，对话和文字都还在，只是图没了；删掉记录文件夹，对话会退回 Hermes 自己的原文，不显示图。
 - 不想再加 **·CC** 版本，就在设置里关掉 **Hermes·CC 提供商**（Hermes·CC providers），再重新加载主机。已经建好的 **·CC** Agent 还在列表里，但点开会提示 "Failed to load agent"（找不到它的提供商），对话没有丢。把开关重新打开并重新加载，它们就又能打开了，原文和图都在。
 
