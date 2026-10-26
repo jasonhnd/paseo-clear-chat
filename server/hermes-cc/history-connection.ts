@@ -11,6 +11,10 @@ interface Session {
   recording: boolean;
   namespaced: boolean;
   pendingPrompts: Set<string>;
+  clientMessageIds: Set<string>;
+  opening: ProviderEvent[];
+  openingHistory: boolean;
+  invalidated: boolean;
   turns: Map<string, string>;
   replay: HistoryEvent[] | null;
   generation: number;
@@ -21,6 +25,9 @@ interface Session {
 }
 
 const namespace = "hermes-cc:";
+// Opening notifications go in Paseo's initialTimeline (SDK plugin-provider.ts:
+// 1117-1119); journaling them would repeat runtime notices on hydration. Error
+// and plugin items likewise stay runtime-only and are not restored by replay.
 const historyItems = new Set(["user_message", "assistant_message", "reasoning", "tool_call", "todo", "compaction"]);
 function isHistory(event: ProviderEvent): event is HistoryEvent {
   return event.type === "session.turn" || (event.type === "timeline.item" && historyItems.has(event.item.type));
@@ -72,9 +79,15 @@ function withRuntimeIds(event: ProviderEvent, generation: number): ProviderEvent
 
 function isCommand(input: Extract<ProviderInput, { type: "session.prompt" }>): boolean {
   if (input.prompt.input.type === "command") return true;
-  // Match the text actually sent by the SDK, without trimming or changing it.
-  return input.prompt.input.content.filter(part => part.type === "text").map(part => part.text).join("\n").startsWith("/");
+  // Be conservative about parsers that ignore leading whitespace.
+  return input.prompt.input.content.filter(part => part.type === "text").map(part => part.text).join("\n").trimStart().startsWith("/");
 }
+
+// Shared across connections and store instances in this process. The store
+// interface has no lease/epoch, so this cannot exclude writers in other processes;
+// that requires a durable store lease. Never let two local lanes settle one flag.
+const recorders = new Map<string, Session>();
+const recorderId = (key: HermesCcJournalKey) => JSON.stringify([key.providerId, key.nativeSessionId]);
 
 /** Journal final provider events before Paseo observes them, including readiness. */
 export function journalHermesCcConnection(
@@ -89,17 +102,40 @@ export function journalHermesCcConnection(
   const emit = (event: ProviderEvent) => {
     if (!closed) for (const listener of listeners) listener(event);
   };
+  const claim = (session: Session) => {
+    if (!session.key) return false;
+    const id = recorderId(session.key);
+    if (recorders.has(id)) return false;
+    recorders.set(id, session);
+    return true;
+  };
+  const release = (session: Session) => {
+    if (session.key && recorders.get(recorderId(session.key)) === session) recorders.delete(recorderId(session.key));
+  };
   const invalidate = async (session: Session, reason: string) => {
     session.recording = false;
+    if (session.key && !session.invalidated) {
+      await store.invalidate(session.key, reason);
+      session.invalidated = true;
+    }
+  };
+  const fail = (session: Session) => {
+    session.failed = true;
+    session.recording = false;
     session.replay = null;
-    if (session.key) await store.invalidate(session.key, reason);
+    session.opening = [];
+    release(session);
   };
   const enqueue = (session: Session, operation: () => Promise<void>): Promise<void> => {
     const work = session.lane.then(operation);
     session.lane = work.catch(async () => {
       if (session.failed) return;
-      session.failed = true;
-      try { await invalidate(session, "journal operation failed"); } catch { /* Fail closed even if storage is unavailable. */ }
+      // A failed start/read/open is not evidence against an existing journal.
+      // A failed recording operation may already have persisted an unseen row.
+      if (session.ready && session.recording) {
+        try { await invalidate(session, "journal operation failed"); } catch { /* Fail closed if storage is unavailable. */ }
+      }
+      fail(session);
       const error = { message: "Hermes·CC session journal failed" };
       emit(session.ready
         ? { type: "session.runtime_failed", sessionId: session.open.sessionId, error }
@@ -109,15 +145,21 @@ export function journalHermesCcConnection(
   };
 
   const accept = async (session: Session, original: ProviderEvent) => {
-    if (session.failed) return;
+    if (session.failed) {
+      // The SDK can acknowledge close/configure after a terminal session event.
+      if (session.ready && (original.type === "request.failed" || original.type === "request.completed")) {
+        requests.delete(original.requestId);
+        emit(original);
+      }
+      return;
+    }
     if (original.type === "request.failed" || original.type === "request.completed") {
       requests.delete(original.requestId);
       if (original.type === "request.failed" && original.requestId === session.open.requestId) {
-        await invalidate(session, "session load failed");
-        session.failed = true;
+        fail(session);
+        emit(original);
+        return;
       }
-      emit(original);
-      return;
     }
     if (original.type === "session.opened" || original.type === "session.persistence") {
       const nativeSessionId = nativeKey(original.persistence);
@@ -128,26 +170,58 @@ export function journalHermesCcConnection(
       if (original.type === "session.opened") {
         if (session.open.history === "skip" && session.open.persistence === undefined && nativeSessionId !== null) {
           session.key = { providerId, nativeSessionId };
-          await store.start(session.key);
-          session.recording = true;
-          session.namespaced = true;
+          if (claim(session)) {
+            // start() rejects existing journals: only own it after success.
+            await store.start(session.key);
+            session.recording = true;
+            session.namespaced = true;
+          }
+          if (session.openingHistory) await invalidate(session, "history arrived during session open");
         }
         session.opened = true;
       }
     }
-    if (original.type === "session.ready") {
-      if (!session.opened) throw new Error("Session became ready without a successful open");
-      // opened is emitted only after session/load succeeds (SDK connection.ts:507-560).
-      if (session.replay) {
-        for (const event of session.replay) emit({ ...event, sessionId: original.sessionId });
-        session.replay = null;
+    if (original.type === "session.runtime_failed" || original.type === "session.closed") {
+      // The durable open-turn flag already rejects an interrupted prompt.
+      // An idle runtime failure/close says nothing about a settled transcript.
+      const ready = session.ready;
+      fail(session);
+      if (ready && original.type === "session.closed") sessions.delete(session.open.sessionId);
+      requests.delete(session.open.requestId);
+      emit(ready ? original : { type: "request.failed", requestId: session.open.requestId,
+        error: { message: original.type === "session.runtime_failed"
+          ? original.error?.message ?? "Session runtime failed before ready" : "Session closed before ready" } });
+      return;
+    }
+    if (!session.ready) {
+      if (original.type !== "session.ready") {
+        if (isHistory(original)) {
+          session.openingHistory = true;
+          if (session.recording) await invalidate(session, "history arrived during session open");
+        }
+        session.opening.push(original);
+        return;
       }
+      if (!session.opened) throw new Error("Session became ready without a successful open");
+      // Preserve the selected snapshot even if a config-time update invalidated
+      // future replay: the inner open already suppressed Hermes's history.
+      for (const event of session.replay ?? []) emit({ ...event, sessionId: original.sessionId });
+      session.replay = null;
       session.ready = true;
       requests.delete(session.open.requestId);
+      for (const event of session.opening) emit(session.namespaced ? withRuntimeIds(event, session.generation) : event);
+      session.opening = [];
+      emit(original);
+      return;
     }
     const event = session.namespaced ? withRuntimeIds(original, session.generation) : original;
     if (session.recording && session.key) {
-      if (isHistory(event)) await store.append(session.key, event);
+      if (isHistory(event)) {
+        await store.append(session.key, event);
+        if (event.type === "timeline.item" && event.item.type === "user_message" && event.item.clientMessageId) {
+          session.clientMessageIds.add(event.item.clientMessageId);
+        }
+      }
       // prompt_result {type:turn} is an admission ACK, not the ACP result.
       // SDK connection.ts:623-647 emits the terminal boundary after draining it.
       if (original.type === "session.prompt_result") {
@@ -167,12 +241,11 @@ export function journalHermesCcConnection(
           if (!session.pendingPrompts.size) await store.turnSettled(session.key);
         }
       }
-    }
-    if (original.type === "session.runtime_failed" || original.type === "session.closed") {
-      // An interrupted runtime must not make an unfinished journal complete.
-      if (original.type === "session.runtime_failed") await invalidate(session, "session runtime failed");
-      sessions.delete(session.open.sessionId);
-      requests.delete(session.open.requestId);
+    } else if (isHistory(event)) {
+      // A second live session never records. Opening/replay alone is harmless;
+      // only an actual live history event invalidates its key. A rejected send
+      // that produces no history must leave a settled journal intact.
+      await invalidate(session, "history appended outside the recorder");
     }
     emit(event);
   };
@@ -198,30 +271,38 @@ export function journalHermesCcConnection(
         const session: Session = {
           open: input, key: nativeSessionId === null ? null : { providerId, nativeSessionId },
           recording: false, namespaced: false, pendingPrompts: new Set(), turns: new Map(),
+          clientMessageIds: new Set(), opening: [], openingHistory: false, invalidated: false,
           replay: null, generation: 0, opened: false, ready: false, failed: false, lane: Promise.resolve(),
         };
         sessions.set(input.sessionId, session);
         requests.set(input.requestId, session);
         try {
-          if (session.key) {
+          // Persisted skip is a caller-owned transcript: pass it through without
+          // reading, claiming, starting or otherwise changing the journal.
+          if (session.key && input.history === "replay" && claim(session)) {
             const state = await store.read(session.key).catch(async () => {
               await invalidate(session, "journal read failed");
               return { status: "unusable" as const, reason: "journal read failed" };
             });
-            if (input.history === "replay" && state.status === "complete") {
+            if (state.status === "complete") {
               const projection = project(state.events);
               if (projection) {
                 session.replay = projection.events;
                 session.generation = projection.generation;
                 session.recording = true;
                 session.namespaced = true;
+                for (const event of projection.events) {
+                  if (event.type === "timeline.item" && event.item.type === "user_message" && event.item.clientMessageId) {
+                    session.clientMessageIds.add(event.item.clientMessageId);
+                  }
+                }
               } else await invalidate(session, "journal projection is invalid");
-            } else if (state.status === "complete") await invalidate(session, "session opened without journal replay");
+            }
+            if (!session.recording) release(session);
           }
           await connection.send(session.replay ? { ...input, history: "skip" } : input);
         } catch (error) {
-          await invalidate(session, "session open failed");
-          sessions.delete(input.sessionId);
+          fail(session);
           requests.delete(input.requestId);
           throw error;
         }
@@ -229,32 +310,45 @@ export function journalHermesCcConnection(
       }
       const session = "sessionId" in input ? sessions.get(input.sessionId) : undefined;
       if (session && "requestId" in input) requests.set(input.requestId, session);
-      if (session && (input.type === "session.prompt" || input.type === "session.revert")) {
-        await enqueue(session, async () => {
-          if (input.type === "session.revert" || isCommand(input)) await invalidate(session, "history-mutating command");
-          else if (session.recording && session.key && input.type === "session.prompt") {
-            if (session.pendingPrompts.has(input.prompt.clientMessageId)) await invalidate(session, "duplicate prompt identity");
+      const forward = async () => {
+        try { await connection.send(input); }
+        catch (error) {
+          if ("requestId" in input) requests.delete(input.requestId);
+          throw error;
+        }
+      };
+      if (!session) { await forward(); return; }
+      let sendFailed = false, sendError: unknown;
+      await enqueue(session, async () => {
+        if (session.failed) throw new Error("Hermes·CC session journal failed");
+        if (input.type === "session.revert" || (input.type === "session.prompt" && isCommand(input))) {
+          await invalidate(session, "history-mutating command");
+        } else if (input.type === "session.prompt") {
+          if (session.recording && session.key) {
+            const id = input.prompt.clientMessageId;
+            if (session.clientMessageIds.has(id)) await invalidate(session, "duplicate prompt identity");
             else {
               // Persist the busy marker BEFORE the inner SDK can send anything
               // to Hermes. Keep it open across overlapping prompt admissions.
               if (!session.pendingPrompts.size) await store.turnStarted(session.key);
-              session.pendingPrompts.add(input.prompt.clientMessageId);
+              session.pendingPrompts.add(id);
+              session.clientMessageIds.add(id);
             }
           }
-        });
-        if (session.failed) throw new Error("Hermes·CC session journal failed");
-      }
-      try { await connection.send(input); }
-      catch (error) {
-        if ("requestId" in input) requests.delete(input.requestId);
-        throw error;
-      }
+        }
+        // Forward every session send on the lane, including interrupts. Otherwise
+        // an interrupt could overtake a prompt still waiting for turnStarted fsync.
+        // SDK send failures leave the busy flag open; they are not storage errors.
+        try { await forward(); } catch (error) { sendFailed = true; sendError = error; }
+      });
+      if (sendFailed) throw sendError;
     },
     onEvent(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     async close() {
       await connection.close();
       await Promise.all([...sessions.values()].map(session => session.lane));
       closed = true;
+      for (const session of sessions.values()) release(session);
       unsubscribe();
       listeners.clear();
       sessions.clear();

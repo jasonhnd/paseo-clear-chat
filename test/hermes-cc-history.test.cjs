@@ -242,17 +242,22 @@ test("slash commands invalidate before forwarding and force normal replay on the
   assert.ok(!timeline(second.events).some(event => event.item.clientMessageId === "original-client"));
 });
 
-test("load failures surface the SDK failure and never present cached history or ready", async t => {
+test("load failures preserve the settled journal and a retry replays it without exposing failed-open history", async t => {
   const f = fixture(t), first = await f.connect();
   await f.open(first); await f.prompt(first); await first.connection.close();
+  const saved = await f.store.read(key);
   const second = await f.connect({ failLoad: true });
   const failed = await f.open(second, "failed", persistence);
   assert.equal(failed.type, "request.failed");
   assert.match(failed.error.message, /fixture load failed/);
   assert.deepEqual(historyOnly(second.events), []);
   assert.ok(!second.events.some(event => event.type === "session.ready"));
-  assert.equal((await f.store.read(key)).status, "unusable");
+  assert.deepEqual(await f.store.read(key), saved);
   assert.equal(f.requests().filter(request => request.method === "session/load").length, 1);
+  await second.connection.close();
+  const retry = await f.connect(); await f.open(retry, "retry", persistence);
+  assert.deepEqual(historyOnly(retry.events), saved.events.map(event => ({ ...event, sessionId: "retry" })));
+  assert.equal(f.store.calls.filter(call => call.method === "invalidate").length, 0);
 });
 
 // A synchronous fake provider lets tests hold fsync precisely between events.
@@ -264,9 +269,9 @@ function rawConnection() {
     emit(event) { for (const listener of listeners) listener(event); }, async close() {},
   };
 }
-function queuedHarness(store = new FakeHistoryStore()) {
+function queuedHarness(store = new FakeHistoryStore(), journal = load("server/hermes-cc/history-connection.ts").journalHermesCcConnection) {
   const raw = rawConnection();
-  const connection = load("server/hermes-cc/history-connection.ts").journalHermesCcConnection(raw, "hermes-cc", store);
+  const connection = journal(raw, "hermes-cc", store);
   const events = []; connection.onEvent(event => events.push(event));
   const open = (sessionId = "boundary", persist) => connection.send({ type: "session.open", requestId: `open-${sessionId}`, sessionId,
     history: persist ? "replay" : "skip", config: { cwd: "/unused", env: {}, settings: {}, mcpServers: {}, persist: true }, ...(persist ? { persistence: persist } : {}) });
@@ -281,21 +286,22 @@ test("start and append durability gate every subsequent event; session queues st
   const h = queuedHarness(), start = deferred(), append = deferred();
   h.store.before = (method, k) => k.nativeSessionId === "native-session" && method === "start" ? start.promise
     : k.nativeSessionId === "native-session" && method === "append" ? append.promise : Promise.resolve();
-  await h.open(); h.opened();
-  const event = { type: "timeline.item", sessionId: "boundary", item: { type: "assistant_message", id: "counter:1", text: "First snapshot" } };
-  h.raw.emit(event); event.item.text = "mutated after emit"; h.ready();
+  await h.open(); h.opened(); h.ready();
   await tick(); assert.deepEqual(h.events, []);
   await h.open("independent");
   const independentReady = waitEvent(h.connection, event => event.type === "session.ready");
   h.opened("independent", { version: 1, data: { sessionId: "other-native" } }); h.ready("independent");
   await independentReady;
   assert.deepEqual(h.events.map(event => event.sessionId), ["independent", "independent"]);
-  start.resolve(); await tick();
-  assert.equal(h.events.at(-1).type, "session.opened");
-  assert.ok(!h.events.some(event => event.type === "timeline.item"));
-  const done = waitEvent(h.connection, event => event.type === "session.ready" && event.sessionId === "boundary");
+  const ready = waitEvent(h.connection, event => event.type === "session.ready" && event.sessionId === "boundary");
+  start.resolve(); await ready;
+  const event = { type: "timeline.item", sessionId: "boundary", item: { type: "assistant_message", id: "counter:1", text: "First snapshot" } };
+  h.raw.emit(event); event.item.text = "mutated after emit";
+  h.raw.emit({ type: "session.config", sessionId: "boundary", config: { models: [], modes: [], thinkingOptions: [], settings: [] } });
+  await tick(); assert.equal(h.events.at(-1).type, "session.ready");
+  const done = waitEvent(h.connection, event => event.type === "session.config");
   append.resolve(); await done;
-  assert.deepEqual(h.events.slice(-2).map(event => event.type), ["timeline.item", "session.ready"]);
+  assert.deepEqual(h.events.slice(-2).map(event => event.type), ["timeline.item", "session.config"]);
   assert.equal(h.events.at(-2).item.text, "First snapshot");
   assert.deepEqual((await h.store.read(key)).events, [h.events.at(-2)]);
   await h.connection.close();
@@ -337,7 +343,7 @@ test("unbalanced or malformed complete logs fall back; non-history events are ex
   assert.equal(h.raw.sent[0].history, "skip");
   const ready = waitEvent(h.connection, event => event.type === "session.ready");
   h.opened(); h.ready(); await ready;
-  assert.deepEqual(h.events.map(event => event.type), ["session.opened", "timeline.item", "session.ready"]);
+  assert.deepEqual(h.events.map(event => event.type), ["timeline.item", "session.opened", "session.ready"]);
   await h.connection.close();
 });
 
@@ -422,7 +428,7 @@ test("overlapping prompts keep the journal busy until both ACP turns settle", as
   assert.equal(f.store.calls.filter(call => call.method === "turnSettled").length, 1);
 });
 
-test("journal read failures fall back after invalidation; persisted skip opens never start a new journal", async () => {
+test("journal read failures fall back after invalidation; persisted skip opens leave the journal alone", async () => {
   const h = queuedHarness(); await h.store.start(key);
   h.store.read = async () => { throw new Error("fixture read failed"); };
   await h.open("boundary", persistence);
@@ -437,7 +443,8 @@ test("journal read failures fall back after invalidation; persisted skip opens n
   const ready = waitEvent(other.connection, event => event.type === "session.ready"); other.opened("skip"); other.ready("skip"); await ready;
   assert.strictEqual(other.raw.sent[0], input);
   assert.equal(other.store.calls.filter(call => call.method === "start").length, 1);
-  assert.equal((await other.store.read(key)).status, "unusable");
+  assert.equal(other.store.calls.filter(call => call.method !== "start").length, 0);
+  assert.equal((await other.store.read(key)).status, "complete");
   await other.connection.close();
 });
 
@@ -472,4 +479,342 @@ test("server contribution injects the supplied history store into its registered
   await f.prompt({ connection });
   assert.equal((await f.store.read(key)).status, "complete");
   assert.ok((await f.store.read(key)).events.some(event => event.type === "timeline.item" && event.item.clientMessageId === "original-client"));
+});
+
+const savedTranscript = () => [
+  { type: "timeline.item", sessionId: "original", item: {
+    type: "user_message", id: "original-client", clientMessageId: "original-client", text: "Original prompt",
+  } },
+  { type: "timeline.item", sessionId: "original", item: {
+    type: "assistant_message", id: "hermes-cc:0:agent_message_chunk:1", text: "Original answer",
+  } },
+];
+function seed(store, events = savedTranscript()) {
+  store.rows.set(store.id(key), { events, open: false });
+}
+function promptInput(sessionId = "boundary", clientMessageId = "new-client", text = "New prompt") {
+  return { type: "session.prompt", sessionId, prompt: {
+    clientMessageId, delivery: "auto", input: { type: "message", content: [{ type: "text", text }] },
+  } };
+}
+async function becomeReady(h, sessionId = "boundary") {
+  const ready = waitEvent(h.connection, event => event.type === "session.ready" && event.sessionId === sessionId);
+  h.opened(sessionId); h.ready(sessionId); await ready;
+}
+
+test("an idle runtime failure preserves the exact journal for the next open", async () => {
+  const h = queuedHarness(); seed(h.store);
+  await h.open("boundary", persistence); await becomeReady(h);
+  const saved = await h.store.read(key), failed = waitEvent(h.connection, event => event.type === "session.runtime_failed");
+  h.raw.emit({ type: "session.runtime_failed", sessionId: "boundary", error: { message: "idle transport closed" } }); await failed;
+  assert.deepEqual(await h.store.read(key), saved);
+  await h.open("retry", persistence); await becomeReady(h, "retry");
+  assert.equal(h.raw.sent.at(-1).history, "skip");
+  assert.deepEqual(historyOnly(h.events.filter(event => event.sessionId === "retry")), saved.events.map(event => ({ ...event, sessionId: "retry" })));
+  assert.equal(h.store.calls.filter(call => call.method === "invalidate").length, 0);
+  await h.connection.close();
+});
+
+test("a runtime failure during this process's admitted turn leaves its durable flag unsettled", async () => {
+  const h = queuedHarness(); seed(h.store);
+  await h.open("boundary", persistence); await becomeReady(h);
+  await h.connection.send(promptInput());
+  const failed = waitEvent(h.connection, event => event.type === "session.runtime_failed");
+  h.raw.emit({ type: "session.runtime_failed", sessionId: "boundary", error: { message: "transport closed mid-turn" } }); await failed;
+  assert.deepEqual(await h.store.read(key), { status: "unusable", reason: "unsettled turn" });
+  await h.open("retry", persistence);
+  assert.equal(h.raw.sent.at(-1).history, "replay");
+  assert.equal(h.store.calls.filter(call => call.method === "invalidate" || call.method === "turnSettled").length, 0);
+  await h.connection.close();
+});
+
+for (const kind of ["request before opened", "request after opened", "send throws", "runtime before ready"]) {
+  test(`generic open failure (${kind}) drops the opening buffer and preserves the settled journal`, async () => {
+    const h = queuedHarness(); seed(h.store);
+    const saved = await h.store.read(key);
+    if (kind === "send throws") {
+      const send = h.raw.send;
+      h.raw.send = async () => {
+        h.opened();
+        h.raw.emit({ type: "session.config", sessionId: "boundary", config: { models: [], modes: [], thinkingOptions: [], settings: [] } });
+        throw new Error("generic open failure");
+      };
+      await assert.rejects(h.open("boundary", persistence), /generic open failure/);
+      h.raw.send = send;
+    } else {
+      await h.open("boundary", persistence);
+      const failed = waitEvent(h.connection, event => event.type === "request.failed");
+      if (kind !== "request before opened") h.opened();
+      h.raw.emit(kind === "runtime before ready"
+        ? { type: "session.runtime_failed", sessionId: "boundary", error: { message: "generic open failure" } }
+        : { type: "request.failed", requestId: "open-boundary", error: { message: "generic open failure" } });
+      await failed;
+    }
+    h.ready(); await tick();
+    assert.deepEqual(h.events.filter(event => event.type !== "request.failed"), []);
+    assert.deepEqual(await h.store.read(key), saved);
+    await h.open("retry", persistence); await becomeReady(h, "retry");
+    assert.equal(h.raw.sent.at(-1).history, "skip");
+    assert.deepEqual(timeline(h.events).map(event => event.item.text), ["Original prompt", "Original answer"]);
+    assert.equal(h.store.calls.filter(call => call.method === "invalidate").length, 0);
+    await h.connection.close();
+  });
+}
+
+for (const resume of [false, true]) for (const beforeOpened of [true, false]) {
+  test(`${resume ? "resume" : "create"} history ${beforeOpened ? "before opened" : "between opened and ready"} is buffered and invalidates future replay`, async () => {
+    const h = queuedHarness(); if (resume) seed(h.store);
+    await h.open("boundary", resume ? persistence : undefined);
+    if (!beforeOpened) h.opened();
+    const aside = { type: "timeline.item", sessionId: "boundary", item: {
+      type: "assistant_message", id: "agent_message_chunk:9", text: "config-time aside",
+    } };
+    h.raw.emit(aside); aside.item.text = "mutated after emit";
+    if (beforeOpened) h.opened();
+    h.raw.emit({ type: "session.config", sessionId: "boundary", config: { models: [], modes: [], thinkingOptions: [], settings: [] } });
+    await tick(); assert.deepEqual(h.events, [], "all opening events wait for ready");
+    const ready = waitEvent(h.connection, event => event.type === "session.ready"); h.ready(); await ready;
+    assert.deepEqual(timeline(h.events).map(event => event.item.text), resume
+      ? ["Original prompt", "Original answer", "config-time aside"] : ["config-time aside"]);
+    if (resume) assert.deepEqual(h.events.slice(0, 2).map(event => event.item.text), ["Original prompt", "Original answer"]);
+    assert.equal((await h.store.read(key)).status, "unusable");
+    assert.equal(h.store.calls.filter(call => call.method === "append").length, 0);
+    await h.open("retry", persistence); await becomeReady(h, "retry");
+    assert.equal(h.raw.sent.at(-1).history, "replay");
+    assert.deepEqual(timeline(h.events).filter(event => event.sessionId === "retry"), []);
+    await h.connection.close();
+  });
+}
+
+test("two connections cannot record one native key, and an idle second reader does no damage", async () => {
+  const journal = load("server/hermes-cc/history-connection.ts").journalHermesCcConnection;
+  const store = new FakeHistoryStore(); seed(store);
+  const a = queuedHarness(store, journal), b = queuedHarness(store, journal);
+  await a.open("a", persistence); await becomeReady(a, "a");
+  await b.open("b", persistence); await becomeReady(b, "b");
+  assert.equal(a.raw.sent[0].history, "skip");
+  assert.equal(b.raw.sent[0].history, "replay");
+  assert.equal((await store.read(key)).status, "complete");
+  assert.equal(store.calls.filter(call => call.method === "invalidate").length, 0);
+  await b.connection.close();
+  assert.equal((await store.read(key)).status, "complete");
+  await a.connection.close();
+  const c = queuedHarness(store, journal); await c.open("c", persistence); await becomeReady(c, "c");
+  assert.equal(c.raw.sent[0].history, "skip", "closing the owner releases its local claim");
+  await c.connection.close();
+});
+
+for (const mutation of ["prompt", "live update"]) {
+  test(`a second connection's ${mutation} invalidates before it can produce a mixed journal`, async () => {
+    const journal = load("server/hermes-cc/history-connection.ts").journalHermesCcConnection;
+    const store = new FakeHistoryStore(); seed(store);
+    const a = queuedHarness(store, journal), b = queuedHarness(store, journal);
+    await a.open("a", persistence); await becomeReady(a, "a");
+    await b.open("b", persistence); await becomeReady(b, "b");
+    await a.connection.send(promptInput("a", "from-a"));
+    if (mutation === "prompt") await b.connection.send(promptInput("b", "from-b"));
+    assert.equal(store.rows.get(store.id(key)).reason, undefined, "sending alone is not a live append");
+    const shown = waitEvent(b.connection, event => event.type === "timeline.item");
+    b.raw.emit({ type: "timeline.item", sessionId: "b", item: {
+      type: "assistant_message", id: "agent_message_chunk:1", text: "answer B",
+    } }); await shown;
+    assert.ok(store.rows.get(store.id(key)).reason);
+    for (const [h, sessionId] of [[a, "a"], [b, "b"]]) {
+      const done = waitEvent(h.connection, event => event.type === "session.turn" && event.state === "completed");
+      h.raw.emit({ type: "session.prompt_result", sessionId, clientMessageId: `from-${sessionId}`,
+        result: { type: "turn", turnId: `turn-${sessionId}` } });
+      h.raw.emit({ type: "session.turn", sessionId, turnId: `turn-${sessionId}`, state: "started" });
+      h.raw.emit({ type: "timeline.item", sessionId, item: {
+        type: "user_message", id: `from-${sessionId}`, clientMessageId: `from-${sessionId}`, text: `from ${sessionId}`,
+      } });
+      h.raw.emit({ type: "timeline.item", sessionId, item: { type: "assistant_message", id: "answer", text: `answer ${sessionId}` } });
+      h.raw.emit({ type: "session.turn", sessionId, turnId: `turn-${sessionId}`, state: "completed" });
+      await done;
+    }
+    assert.equal(store.calls.filter(call => call.method === "turnStarted").length, 1, "only the owner marks turns");
+    assert.equal(store.calls.filter(call => call.method === "turnSettled").length, 1, "the second session cannot settle the owner's flag");
+    assert.equal(store.calls.filter(call => call.method === "append" && call.event.sessionId === "b").length, 0);
+    assert.equal((await store.read(key)).status, "unusable", "even both terminal turns cannot make a mixed journal complete");
+    await a.connection.close(); await b.connection.close();
+    const retry = queuedHarness(store, journal); await retry.open("retry", persistence);
+    assert.equal(retry.raw.sent[0].history, "replay");
+    await retry.connection.close();
+  });
+}
+
+test("a rejected second-session prompt with no history does not invalidate the journal", async () => {
+  const journal = load("server/hermes-cc/history-connection.ts").journalHermesCcConnection;
+  const store = new FakeHistoryStore(); seed(store);
+  const a = queuedHarness(store, journal), b = queuedHarness(store, journal);
+  await a.open("a", persistence); await becomeReady(a, "a");
+  await b.open("b", persistence); await becomeReady(b, "b");
+  b.raw.send = async () => { throw new Error("prompt rejected"); };
+  await assert.rejects(b.connection.send(promptInput("b")), /prompt rejected/);
+  assert.deepEqual(await store.read(key), { status: "complete", events: savedTranscript() });
+  assert.equal(store.calls.filter(call => call.method === "invalidate").length, 0);
+  await a.connection.close(); await b.connection.close();
+});
+
+test("simultaneous opens reserve a single recorder before asynchronous reads", async () => {
+  const journal = load("server/hermes-cc/history-connection.ts").journalHermesCcConnection;
+  const store = new FakeHistoryStore(); seed(store);
+  const barrier = deferred(), entered = deferred();
+  store.before = async method => { if (method === "read") { entered.resolve(); await barrier.promise; } };
+  const a = queuedHarness(store, journal), b = queuedHarness(store, journal);
+  const first = a.open("a", persistence); await entered.promise;
+  await b.open("b", persistence);
+  assert.equal(b.raw.sent[0].history, "replay");
+  barrier.resolve(); await first;
+  assert.equal(a.raw.sent[0].history, "skip");
+  await a.connection.close(); await b.connection.close();
+});
+
+test("a rejected start leaves the existing journal intact and emits only an open failure", async () => {
+  const h = queuedHarness(); seed(h.store);
+  const saved = await h.store.read(key);
+  await h.open();
+  const failed = waitEvent(h.connection, event => event.type === "request.failed");
+  h.opened(); h.ready(); await failed; await tick();
+  assert.deepEqual(await h.store.read(key), saved);
+  assert.deepEqual(h.events.map(event => event.type), ["request.failed"]);
+  assert.equal(h.store.calls.filter(call => call.method === "invalidate").length, 0);
+  await h.open("retry", persistence); await becomeReady(h, "retry");
+  assert.equal(h.raw.sent.at(-1).history, "skip");
+  await h.connection.close();
+});
+
+test("a settled clientMessageId cannot be reused with different text in the same runtime", async t => {
+  const f = fixture(t), h = await f.connect(); await f.open(h);
+  await f.prompt(h, "first", "same-client", "first wording");
+  f.store.before = async method => {
+    if (method === "invalidate") assert.equal(f.requests().filter(request => request.method === "session/prompt").length, 1);
+  };
+  await f.prompt(h, "first", "same-client", "retried wording");
+  assert.equal((await f.store.read(key)).status, "unusable");
+  const users = timeline(f.store.rows.get(f.store.id(key)).events).filter(event => event.item.type === "user_message");
+  assert.deepEqual(users.map(event => event.item.text), ["first wording"]);
+  await h.connection.close();
+  const retry = await f.connect(); await f.open(retry, "retry", persistence);
+  assert.ok(timeline(retry.events).every(event => event.item.clientMessageId === undefined));
+});
+
+test("a clientMessageId already in a resumed journal invalidates before forwarding", async () => {
+  const h = queuedHarness(); seed(h.store);
+  await h.open("boundary", persistence); await becomeReady(h);
+  const send = h.raw.send;
+  h.raw.send = async input => {
+    assert.equal((await h.store.read(key)).status, "unusable");
+    await send(input);
+  };
+  await h.connection.send(promptInput("boundary", "original-client", "retried wording"));
+  assert.equal(h.store.calls.filter(call => call.method === "turnStarted").length, 0);
+  assert.equal(h.store.rows.get(h.store.id(key)).reason, "duplicate prompt identity");
+  await h.connection.close();
+});
+
+test("leading whitespace slash commands invalidate before the SDK receives the original prompt", async t => {
+  const f = fixture(t), h = await f.connect(); await f.open(h); await f.prompt(h);
+  f.store.before = async method => {
+    if (method === "invalidate") assert.equal(f.requests().filter(request => request.method === "session/prompt").length, 1);
+  };
+  await f.prompt(h, "first", "spaced-command", " \n\t/undo");
+  assert.equal((await f.store.read(key)).status, "unusable");
+});
+
+test("revert invalidates before forwarding even when the provider rejects it", async () => {
+  const h = queuedHarness(); seed(h.store); await h.open("boundary", persistence); await becomeReady(h);
+  const send = h.raw.send;
+  h.raw.send = async input => { assert.equal((await h.store.read(key)).status, "unusable"); await send(input); };
+  await h.connection.send({ type: "session.revert", sessionId: "boundary", requestId: "revert", turnId: "old-turn" });
+  const failed = waitEvent(h.connection, event => event.type === "request.failed");
+  h.raw.emit({ type: "request.failed", requestId: "revert", error: { message: "unsupported" } }); await failed;
+  assert.equal(h.store.rows.get(h.store.id(key)).reason, "history-mutating command");
+  await h.connection.close();
+});
+
+for (const type of ["error", "notification", "plugin"]) {
+  test(`opening ${type} notices wait for the snapshot and stay out of the journal`, async () => {
+    const h = queuedHarness(); seed(h.store); const saved = await h.store.read(key);
+    await h.open("boundary", persistence);
+    const item = type === "plugin" ? { type, id: "notice", pluginId: "plugin", kind: "notice", version: 1, data: {} }
+      : { type, id: "notice", message: "opening notice", ...(type === "notification" ? { level: "info" } : {}) };
+    h.raw.emit({ type: "timeline.item", sessionId: "boundary", item });
+    h.opened(); await tick(); assert.deepEqual(h.events, []);
+    const ready = waitEvent(h.connection, event => event.type === "session.ready"); h.ready(); await ready;
+    assert.deepEqual(timeline(h.events).map(event => event.item.type), ["user_message", "assistant_message", type]);
+    assert.deepEqual(await h.store.read(key), saved);
+    await h.connection.close();
+  });
+}
+
+for (const followup of [
+  { type: "session.interrupt", requestId: "interrupt" },
+  { type: "session.configure", requestId: "configure", changes: {} },
+  { type: "session.permission", permissionId: "permission", response: { behavior: "deny" } },
+  { type: "session.close", requestId: "close" },
+]) {
+  test(`${followup.type} cannot overtake a prompt awaiting turnStarted durability`, async () => {
+    const h = queuedHarness(); await h.open(); await becomeReady(h);
+    const entered = deferred(), barrier = deferred();
+    h.store.before = async method => { if (method === "turnStarted") { entered.resolve(); await barrier.promise; } };
+    const prompt = h.connection.send(promptInput()); await entered.promise;
+    const next = h.connection.send({ ...followup, sessionId: "boundary" });
+    await tick(); assert.deepEqual(h.raw.sent.map(input => input.type), ["session.open"]);
+    barrier.resolve(); await Promise.all([prompt, next]);
+    assert.deepEqual(h.raw.sent.map(input => input.type), ["session.open", "session.prompt", followup.type]);
+    await h.connection.close();
+  });
+}
+
+for (const availability of ["stub", "factory only", "root only", "factory throws", "root throws", "available"]) {
+  test(`default contribution builds the history store only when available (${availability})`, async t => {
+    const f = fixture(t), previousHome = process.env.PASEO_HOME;
+    process.env.PASEO_HOME = f.root;
+    t.after(() => { if (previousHome === undefined) delete process.env.PASEO_HOME; else process.env.PASEO_HOME = previousHome; });
+    fs.writeFileSync(join(f.root, "config.json"), JSON.stringify({ version: 1, agents: { providers: {
+      hermes: { extends: "acp", command: [join(f.root, "hermes"), "acp"] },
+    } } }));
+    const calls = [], exports = {};
+    if (availability !== "stub" && availability !== "root only") exports.createHermesCcHistoryStore = (root, options) => {
+      calls.push("factory");
+      assert.equal(root, join(f.root, "history"));
+      assert.deepEqual(options, { trustedRoot: f.root });
+      if (availability === "factory throws") throw new Error("store unavailable");
+      return f.store;
+    };
+    if (availability !== "stub" && availability !== "factory only") exports.hermesCcHistoryRoot = (server, home) => {
+      calls.push("root"); assert.equal(home, f.root); assert.strictEqual(server, context);
+      if (availability === "root throws") throw new Error("root unavailable");
+      return join(home, "history");
+    };
+    const modules = new Map();
+    // Leave the actual interface-only module in place for the stub regression.
+    if (availability !== "stub") modules.set(resolve(__dirname, "../server/hermes-cc/history-store.ts"), { exports });
+    const providers = [], context = { registerSettings() {}, handle() {}, registerProvider(provider) { providers.push(provider); } };
+    const cleanup = load("index.server.ts", modules).default(context); t.after(cleanup);
+    assert.equal(typeof cleanup, "function"); assert.equal(providers.length, 1);
+    const connection = await providers[0].connect({ versions: [1], capabilities: ["prompt.message", "session.persistence"] });
+    t.after(() => connection.close());
+    await f.open({ connection }); await f.prompt({ connection });
+    assert.deepEqual(calls, availability === "stub" || availability.endsWith("only") ? []
+      : availability === "root throws" ? ["root"] : ["root", "factory"]);
+    assert.equal((await f.store.read(key)).status, availability === "available" ? "complete" : "unusable");
+    if (availability === "available") assert.ok((await f.store.read(key)).events.some(event =>
+      event.type === "timeline.item" && event.item.clientMessageId === "original-client"));
+    else assert.equal(f.store.calls.filter(call => call.method !== "read").length, 0);
+  });
+}
+
+test("session close releases its recorder, preserves the journal, and forwards the SDK acknowledgement", async () => {
+  const h = queuedHarness(); seed(h.store); await h.open("boundary", persistence); await becomeReady(h);
+  const saved = await h.store.read(key);
+  await h.connection.send({ type: "session.close", sessionId: "boundary", requestId: "close" });
+  const completed = waitEvent(h.connection, event => event.type === "request.completed");
+  h.raw.emit({ type: "session.closed", sessionId: "boundary" });
+  h.raw.emit({ type: "request.completed", requestId: "close" }); await completed;
+  assert.deepEqual(h.events.slice(-2).map(event => event.type), ["session.closed", "request.completed"]);
+  assert.deepEqual(await h.store.read(key), saved);
+  await h.open("boundary", persistence); await becomeReady(h);
+  assert.equal(h.raw.sent.at(-1).history, "skip");
+  await h.connection.close();
 });
