@@ -39,14 +39,35 @@ function harness(t, overrides = {}) {
     store: history.createHermesCcHistoryStore(storeRoot),
   };
 }
+function compileHistory(h) {
+  const compiledDir = join(h.root, "compiled");
+  fs.mkdirSync(compiledDir);
+  for (const name of ["store.ts", "history-store.ts"]) {
+    fs.writeFileSync(join(compiledDir, name.replace(/\.ts$/, ".js")), ts.transpileModule(
+      fs.readFileSync(resolve(__dirname, "../server/hermes-cc", name), "utf8"),
+      { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } },
+    ).outputText);
+  }
+  return join(compiledDir, "history-store.js");
+}
 const key = (nativeSessionId = "native-1", providerId = "hermes-cc") => ({ providerId, nativeSessionId });
 const digest = (providerId, nativeSessionId) => createHash("sha256").update(`${providerId}\0${nativeSessionId}`).digest("hex");
 const sessionDir = (h, k = key()) => join(h.storeRoot, digest(k.providerId, k.nativeSessionId));
 const manifestPath = (h, k = key()) => join(sessionDir(h, k), "manifest.json");
 const eventsPath = (h, k = key()) => join(sessionDir(h, k), "events.jsonl");
 const readManifest = (h, k = key()) => JSON.parse(fs.readFileSync(manifestPath(h, k), "utf8"));
-function editManifest(h, k, change) {
-  fs.writeFileSync(manifestPath(h, k), JSON.stringify({ ...readManifest(h, k), ...change }));
+function canonical(value) {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (value && typeof value === "object") return `{${Object.keys(value).sort().map(k => `${JSON.stringify(k)}:${canonical(value[k])}`).join(",")}}`;
+  return JSON.stringify(value);
+}
+function editManifest(h, k, change, resign = false) {
+  const value = { ...readManifest(h, k), ...change };
+  if (resign) {
+    const { manifestHash, ...fields } = value;
+    value.manifestHash = createHash("sha256").update(digest(k.providerId, k.nativeSessionId) + canonical(fields)).digest("hex");
+  }
+  fs.writeFileSync(manifestPath(h, k), JSON.stringify(value));
 }
 function diskBytes(path) {
   if (!fs.existsSync(path)) return 0;
@@ -188,7 +209,7 @@ test("Hermes CC history refuses torn, mismatched, unreadable and wrong-version j
   editManifest(h, k, { records: 2, bytes: original.length, version: 2, startedFromCreation: true, providerId: k.providerId });
   assertUnusable(await h.store.read(k), "schema_mismatch");
   editManifest(h, k, { version: 1, startedFromCreation: false });
-  assertUnusable(await h.store.read(k), "started_mid_session");
+  assertUnusable(await h.store.read(k), "corrupt");
   editManifest(h, k, { startedFromCreation: true, providerId: "other-provider" });
   assertUnusable(await h.store.read(k), "schema_mismatch");
   fs.writeFileSync(manifestPath(h, k), "{");
@@ -209,7 +230,7 @@ test("Hermes CC history refuses torn, mismatched, unreadable and wrong-version j
 
 test("Hermes CC history caps invalidate a session and evict the oldest sessions", async t => {
   const h = harness(t), k = key();
-  const line = `${JSON.stringify({ pad: "x".repeat(20) })}\n`;
+  const line = `${canonical({ event: { pad: "x".repeat(20) }, hash: "0".repeat(64) })}\n`;
   const exact = h.create(h.storeRoot, { maxBytesPerSession: Buffer.byteLength(line), maxBytesTotal: 5_000_000 });
   await exact.start(k);
   await exact.append(k, { pad: "x".repeat(20) });
@@ -239,8 +260,8 @@ test("Hermes CC history caps invalidate a session and evict the oldest sessions"
   await h.store.append(a, { who: "a", pad: "a".repeat(4000) });
   await h.store.start(b);
   await h.store.append(b, { who: "b", pad: "b".repeat(4000) });
-  editManifest(h, a, { createdAt: 10 });
-  editManifest(h, b, { createdAt: 20 });
+  editManifest(h, a, { createdAt: 10 }, true);
+  editManifest(h, b, { createdAt: 20 }, true);
   const future = new Date(Date.now() + 120_000);
   fs.utimesSync(sessionDir(h, a), future, future);
   const outside = join(h.root, "outside");
@@ -288,14 +309,7 @@ test("Hermes CC history keeps one process and two processes ordered on the same 
 test("Hermes CC history serializes two processes appending the same key", { timeout: 30_000 }, async t => {
   const h = harness(t), k = key("shared-native");
   await h.store.start(k);
-  const compiledDir = join(h.root, "compiled");
-  fs.mkdirSync(compiledDir);
-  for (const name of ["store.ts", "history-store.ts"]) {
-    fs.writeFileSync(join(compiledDir, name.replace(/\.ts$/, ".js")), ts.transpileModule(
-      fs.readFileSync(resolve(__dirname, "../server/hermes-cc", name), "utf8"),
-      { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } },
-    ).outputText);
-  }
+  const compiledModule = compileHistory(h);
   const worker = join(h.root, "writer.cjs");
   fs.writeFileSync(worker, `
     const { createHermesCcHistoryStore } = require(process.argv[2]);
@@ -313,7 +327,7 @@ test("Hermes CC history serializes two processes appending the same key", { time
   `);
   const count = 25;
   const children = ["a", "b"].map(id => {
-    const child = fork(worker, [join(compiledDir, "history-store.js"), h.storeRoot, id, String(count)], { stdio: ["ignore", "ignore", "pipe", "ipc"] });
+    const child = fork(worker, [compiledModule, h.storeRoot, id, String(count)], { stdio: ["ignore", "ignore", "pipe", "ipc"] });
     t.after(() => { if (child.connected) child.kill(); });
     let stderr = "";
     child.stderr.on("data", chunk => { stderr += chunk; });
@@ -358,7 +372,7 @@ test("Hermes CC history fsyncs the journal line before the directory", async t =
     const handle = await fsp.open(path, flags, mode);
     const original = handle.sync.bind(handle);
     handle.sync = async () => {
-      syncs.push({ directory: (await handle.stat()).isDirectory() });
+      syncs.push({ directory: (await handle.stat()).isDirectory(), path: fs.realpathSync(`/proc/self/fd/${handle.fd}`) });
       return original();
     };
     return handle;
@@ -367,10 +381,12 @@ test("Hermes CC history fsyncs the journal line before the directory", async t =
   await h.store.start(k);
   syncs.length = 0;
   await h.store.append(k, { n: 1 });
-  const fileSync = syncs.findIndex(entry => entry.directory === false);
-  const dirSync = syncs.findIndex(entry => entry.directory === true);
+  const fileSync = syncs.findIndex(entry => entry.path === eventsPath(h, k));
+  const manifestSync = syncs.findIndex(entry => entry.path.startsWith(sessionDir(h, k)) && entry.path.endsWith(".tmp"));
+  const dirSync = syncs.findIndex(entry => entry.path === sessionDir(h, k) && entry.directory);
   assert.ok(fileSync >= 0);
-  assert.ok(dirSync > fileSync);
+  assert.ok(manifestSync > fileSync);
+  assert.ok(dirSync > manifestSync);
   assert.deepEqual(await h.store.read(k), { status: "complete", events: [{ n: 1 }] });
 });
 
@@ -482,4 +498,295 @@ test("Hermes CC history invalidates a journal that cannot record an event", asyn
   await h.store.append(k, { n: 2 });
   assertUnusable(await h.create(h.storeRoot).read(k), "invalid_event");
   assert.equal(fs.readFileSync(eventsPath(h, k), "utf8").includes('"n":2'), false);
+});
+
+test("Hermes CC history binds the canonical hash chain to the exact key and journal", async t => {
+  const h = harness(t), a = key("session-a"), b = key("session-b");
+  const event = { text: "Image A", clientMessageId: "message-A", nested: { z: 1, a: 2 } };
+  for (const k of [a, b]) {
+    await h.store.start(k);
+    await h.store.append(k, event);
+    await h.store.append(k, { text: "second" });
+  }
+  const original = fs.readFileSync(eventsPath(h, a));
+  const manifest = readManifest(h, a);
+  let head = createHash("sha256").update(canonical({ ...a, journalId: manifest.journalId })).digest("hex");
+  const records = original.toString("utf8").trimEnd().split("\n").map(JSON.parse);
+  for (const record of records) {
+    head = createHash("sha256").update(head + canonical(record.event)).digest("hex");
+    assert.equal(record.hash, head);
+  }
+  assert.equal(manifest.headHash, head);
+  const { manifestHash, ...fields } = manifest;
+  assert.equal(manifestHash, createHash("sha256").update(digest(a.providerId, a.nativeSessionId) + canonical(fields)).digest("hex"));
+  const edits = [
+    Buffer.from(original.toString().replaceAll("message-A", "message-B").replaceAll("Image A", "Image B")),
+    fs.readFileSync(eventsPath(h, b)),
+    Buffer.from(`${original.toString().trimEnd().split("\n").reverse().join("\n")}\n`),
+  ];
+  // Even a second journal for the same key has a different random chain seed.
+  const secondRoot = join(h.root, "second-history"), other = h.create(secondRoot);
+  await other.start(a);
+  await other.append(a, event);
+  await other.append(a, { text: "second" });
+  edits.push(fs.readFileSync(join(secondRoot, digest(a.providerId, a.nativeSessionId), "events.jsonl")));
+  for (const edited of edits) {
+    assert.equal(edited.length, original.length);
+    fs.writeFileSync(eventsPath(h, a), edited);
+    assertUnusable(await h.create(h.storeRoot).read(a), "corrupt");
+    assertUnusable(await h.store.read(a), "corrupt");
+  }
+  fs.writeFileSync(eventsPath(h, a), original);
+  assert.deepEqual((await h.store.read(a)).events, [event, { text: "second" }]);
+  // A warm writer must notice an equal-size edit too, rather than blessing it on append.
+  fs.writeFileSync(eventsPath(h, a), edits[0]);
+  await h.store.append(a, { text: "third" });
+  assertUnusable(await h.create(h.storeRoot).read(a), "corrupt");
+  assert.equal(readManifest(h, a).records, 2);
+});
+
+test("Hermes CC history refuses checksum edits to turn and completeness metadata", async t => {
+  const h = harness(t), k = key();
+  await h.store.start(k);
+  await h.store.turnStarted(k);
+  const original = fs.readFileSync(manifestPath(h, k));
+  for (const change of [{ openTurns: 0 }, { startedFromCreation: false }, { headHash: "0".repeat(64) }, { journalId: "0".repeat(36) }]) {
+    fs.writeFileSync(manifestPath(h, k), original);
+    editManifest(h, k, change);
+    assertUnusable(await h.create(h.storeRoot).read(k), "corrupt");
+    await h.store.turnSettled(k);
+    assertUnusable(await h.store.read(k), "corrupt");
+  }
+  fs.writeFileSync(manifestPath(h, k), original);
+  assertUnusable(await h.store.read(k), "unsettled_turn");
+  await h.store.turnSettled(k);
+  assert.equal((await h.store.read(k)).status, "complete");
+});
+
+test("Hermes CC history snapshots both key strings before queueing every public operation", async t => {
+  const h = harness(t);
+  for (const method of ["start", "append", "turnStarted", "turnSettled", "invalidate", "read", "claimWriter"]) {
+    const a = key(`a-${method}`), b = key(`b-${method}`, "other-provider");
+    await h.store.start(b);
+    if (method !== "start") await h.store.start(a);
+    if (method === "turnSettled") await h.store.turnStarted(a);
+    const mutable = { ...a };
+    // Queue behind another operation on A, then mutate the caller's object synchronously.
+    const preceding = h.store.append(a, { preceding: true });
+    const pending = method === "append" ? h.store.append(mutable, { from: "a" }) :
+      method === "invalidate" ? h.store.invalidate(mutable, "history_mutated") : h.store[method](mutable);
+    Object.assign(mutable, b);
+    await preceding;
+    const result = await pending;
+    assert.deepEqual(await h.store.read(b), { status: "complete", events: [] });
+    if (method === "turnStarted") assertUnusable(await h.store.read(a), "unsettled_turn");
+    else if (method === "invalidate") assertUnusable(await h.store.read(a), "history_mutated");
+    else if (method === "append") assert.deepEqual((await h.store.read(a)).events, [{ preceding: true }, { from: "a" }]);
+    else if (method === "read") assert.deepEqual(result, { status: "complete", events: [{ preceding: true }] });
+    else assert.equal((await h.store.read(a)).status, "complete");
+    if (method === "claimWriter") {
+      assert.ok(result);
+      assert.equal(await h.store.claimWriter(a), null);
+      const leaseB = await h.store.claimWriter(b);
+      assert.ok(leaseB);
+      await leaseB.release();
+      await result.release();
+    }
+  }
+});
+
+test("Hermes CC history syncs every newly created directory's parent including the history root", async t => {
+  const fsp = require("node:fs/promises"), operations = [];
+  const wrapped = { ...fsp,
+    async mkdir(path, options) {
+      const result = await fsp.mkdir(path, options);
+      operations.push({ mkdir: true, parent: fs.realpathSync(dirname(path)) });
+      return result;
+    },
+    async open(path, flags, mode) {
+      const handle = await fsp.open(path, flags, mode), sync = handle.sync.bind(handle);
+      handle.sync = async () => {
+        if ((await handle.stat()).isDirectory()) operations.push({ sync: fs.realpathSync(`/proc/self/fd/${handle.fd}`) });
+        return sync();
+      };
+      return handle;
+    },
+  };
+  const h = harness(t, { "node:fs/promises": wrapped });
+  const root = join(h.root, "new-parent", "nested", "history"), store = h.create(root);
+  await store.start(key());
+  await store.append(key(), { n: 1 });
+  const parents = operations.filter(op => op.mkdir).map(op => op.parent);
+  assert.deepEqual(parents, [h.root, join(h.root, "new-parent"), join(h.root, "new-parent", "nested"), root]);
+  for (const [index, op] of operations.entries()) {
+    if (op.mkdir) assert.equal(operations[index + 1].sync, op.parent);
+  }
+});
+
+test("Hermes CC history appends incrementally and re-verifies when another writer changes the manifest", async t => {
+  const fsp = require("node:fs/promises");
+  let fullReads = 0, rootScans = 0, rootInode;
+  const wrapped = { ...fsp,
+    async open(path, flags, mode) {
+      if (String(path).endsWith("/events.jsonl") && (flags & 3) === fs.constants.O_RDONLY) fullReads++;
+      return fsp.open(path, flags, mode);
+    },
+    async readdir(path, ...args) {
+      if (rootInode && fs.statSync(path).ino === rootInode) rootScans++;
+      return fsp.readdir(path, ...args);
+    },
+  };
+  const h = harness(t, { "node:fs/promises": wrapped }), k = key();
+  await h.store.start(k);
+  rootInode = fs.statSync(h.storeRoot).ino;
+  fullReads = rootScans = 0;
+  for (let i = 0; i < 40; i++) {
+    await h.store.append(k, { i });
+    await h.store.turnStarted(k);
+    await h.store.turnSettled(k);
+  }
+  assert.equal(fullReads, 0);
+  assert.equal(rootScans, 0);
+  const other = h.create(h.storeRoot);
+  await other.append(k, { writer: "other" });
+  assert.equal(fullReads, 1);
+  await h.store.append(k, { writer: "original" });
+  assert.equal(fullReads, 2);
+  assert.equal(rootScans, 0);
+  await h.store.append(k, { final: true });
+  assert.equal(fullReads, 2);
+  const state = await h.create(h.storeRoot).read(k);
+  assert.equal(state.status, "complete");
+  assert.equal(state.events.length, 43);
+  assert.equal(fullReads, 3);
+  const usage = JSON.parse(fs.readFileSync(join(h.storeRoot, ".usage.json"), "utf8"));
+  assert.equal(usage.total + 256, diskBytes(h.storeRoot));
+});
+
+test("Hermes CC history recovers dirty cap accounting and counts manifest growth", async t => {
+  const h = harness(t), k = key();
+  await h.store.start(k);
+  await h.store.append(k, { n: 1 });
+  const before = diskBytes(h.storeRoot);
+  const store = h.create(h.storeRoot, { maxBytesTotal: before, maxBytesPerSession: 10_000 });
+  await store.invalidate(k, "history_mutated");
+  assert.ok(diskBytes(h.storeRoot) <= before);
+  const recovered = key("recovered");
+  await h.store.start(recovered);
+  fs.writeFileSync(join(h.storeRoot, ".usage.json"), JSON.stringify({ version: 1, total: null }));
+  fs.writeFileSync(join(h.storeRoot, "junk"), Buffer.alloc(5000));
+  const capped = h.create(h.storeRoot, { maxBytesTotal: 3000 });
+  await capped.append(recovered, { kept: true });
+  assert.ok(diskBytes(h.storeRoot) <= 3000);
+  assert.equal(fs.existsSync(join(h.storeRoot, "junk")), false);
+  assert.deepEqual(await capped.read(recovered), { status: "complete", events: [{ kept: true }] });
+});
+
+test("Hermes CC history writer leases refuse duplicate recorders and safely expire", async t => {
+  const h = harness(t), k = key(), other = h.create(h.storeRoot);
+  const lease = await h.store.claimWriter(k);
+  assert.ok(lease);
+  const path = join(h.storeRoot, `.writer-${digest(k.providerId, k.nativeSessionId)}`);
+  const owner = JSON.parse(fs.readFileSync(path, "utf8"));
+  assert.equal(owner.pid, process.pid);
+  assert.match(owner.token, /^[a-f0-9-]{36}$/);
+  assert.equal(await other.claimWriter(k), null);
+  const otherKey = await other.claimWriter(key("other"));
+  assert.ok(otherKey);
+  await otherKey.release();
+  const old = new Date(Date.now() - 31_000);
+  fs.utimesSync(path, old, old);
+  const replacement = await other.claimWriter(k);
+  assert.ok(replacement);
+  assert.notEqual(JSON.parse(fs.readFileSync(path, "utf8")).token, owner.token);
+  await lease.release();
+  await lease.release();
+  assert.equal(await h.store.claimWriter(k), null);
+  await replacement.release();
+  assert.equal(fs.existsSync(path), false);
+  const final = await h.store.claimWriter(k);
+  assert.ok(final);
+  await final.release();
+});
+
+test("Hermes CC history never repairs an interrupted append or settlement into complete", async t => {
+  const fsp = require("node:fs/promises");
+  let failManifest = false;
+  const wrapped = { ...fsp, async rename(from, to) {
+    if (failManifest && String(to).endsWith("/manifest.json")) throw new Error("injected publication failure");
+    return fsp.rename(from, to);
+  } };
+  const h = harness(t, { "node:fs/promises": wrapped }), appended = key("appended"), unsettled = key("unsettled");
+  await h.store.start(appended);
+  await h.store.start(unsettled);
+  await h.store.turnStarted(unsettled);
+  failManifest = true;
+  await assert.rejects(h.store.append(appended, { durable: true }), /history_store_failed/);
+  assert.equal(JSON.parse(fs.readFileSync(join(h.storeRoot, ".usage.json"))).total, null);
+  await assert.rejects(h.store.turnSettled(unsettled), /history_store_failed/);
+  failManifest = false;
+  const reopened = h.create(h.storeRoot);
+  assertUnusable(await reopened.read(appended), "corrupt");
+  assertUnusable(await reopened.read(unsettled), "unsettled_turn");
+  await reopened.append(appended, { extra: true });
+  assertUnusable(await reopened.read(appended), "corrupt");
+  assert.equal(readManifest(h, appended).records, 0);
+});
+
+test("Hermes CC history writer lease heartbeats renew the on-disk mtime", async t => {
+  const fsp = require("node:fs/promises");
+  let beat;
+  const heartbeat = new Promise(resolve => { beat = resolve; });
+  const wrapped = { ...fsp, async open(path, flags, mode) {
+    const handle = await fsp.open(path, flags, mode);
+    if (String(path).includes("/.writer-")) {
+      const utimes = handle.utimes.bind(handle);
+      handle.utimes = async (...args) => { await utimes(...args); beat(); };
+    }
+    return handle;
+  } };
+  const h = harness(t, { "node:fs/promises": wrapped }), k = key();
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const lease = await h.store.claimWriter(k);
+  assert.ok(lease);
+  const path = join(h.storeRoot, `.writer-${digest(k.providerId, k.nativeSessionId)}`);
+  const old = new Date(Date.now() - 29_000);
+  fs.utimesSync(path, old, old);
+  t.mock.timers.tick(10_000);
+  await heartbeat;
+  assert.ok(fs.statSync(path).mtimeMs > old.getTime() + 20_000);
+  assert.equal(await h.create(h.storeRoot).claimWriter(k), null);
+  await lease.release();
+});
+
+test("Hermes CC history writer leases refuse a second process", async t => {
+  const h = harness(t), k = key(), compiled = compileHistory(h);
+  const worker = join(h.root, "claimant.cjs");
+  fs.writeFileSync(worker, `
+    const { createHermesCcHistoryStore } = require(process.argv[2]);
+    (async () => {
+      const lease = await createHermesCcHistoryStore(process.argv[3]).claimWriter({ providerId: "hermes-cc", nativeSessionId: "native-1" });
+      if (lease) await lease.release();
+      process.send({ acquired: !!lease });
+      process.disconnect();
+    })().catch(error => { process.send({ error: String(error) }); process.exitCode = 1; process.disconnect(); });
+  `);
+  async function claimInChild() {
+    const child = fork(worker, [compiled, h.storeRoot], { stdio: ["ignore", "ignore", "inherit", "ipc"] });
+    t.after(() => { if (child.connected) child.kill(); });
+    return new Promise((resolve, reject) => {
+      let result;
+      child.on("message", message => { result = message; });
+      child.once("error", reject);
+      child.once("exit", code => {
+        if (code !== 0 || !result || result.error) reject(new Error(result?.error || `claimant exited ${code}`));
+        else resolve(result.acquired);
+      });
+    });
+  }
+  const lease = await h.store.claimWriter(k);
+  assert.ok(lease);
+  assert.equal(await claimInChild(), false);
+  await lease.release();
+  assert.equal(await claimInChild(), true);
 });
