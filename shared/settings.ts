@@ -47,3 +47,10 @@ export const presentationSettings = defineSettings({
 export type PreferenceOverrides = z.output<typeof preferenceOverridesSchema>;
 export type PresentationSettings = z.output<typeof presentationSettings.schema>;
 export const presentationSettingsRpc = settingsRpc(presentationSettings.id);
+
+export const hermesCcSettings = defineSettings({
+  id: "hermes-cc",
+  scope: "host",
+  version: 1,
+  schema: z.object({ enabled: z.boolean().default(true) }),
+});

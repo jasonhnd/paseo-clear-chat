@@ -315,6 +315,11 @@ test("server startup still registers settings with defaults and RPCs after migra
   assert.doesNotThrow(() => {
     cleanup = h.load("index.server.ts").default({
       registerSettings(definition) {
+        if (definition.id === "hermes-cc") {
+          assert.equal(definition.scope, "host");
+          assert.deepEqual(definition.schema.parse({}), { enabled: true });
+          return;
+        }
         if (definition.id !== "presentation") {
           assert.equal(definition.id, "tool-expansion");
           assert.equal(definition.scope, "host");
