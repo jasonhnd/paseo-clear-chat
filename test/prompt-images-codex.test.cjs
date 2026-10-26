@@ -276,7 +276,7 @@ describe("codex pasted images", { concurrency: false }, () => {
     for (const provider of ["Codex", "codex ", "codex/gpt-5.5", "/usr/bin/codex", "wrapper", "claude"]) {
       assert.equal(h.codexPromptImages.matches(provider), false, provider);
     }
-    assert.equal(h.promptImageResolvers.length, 2);
+    assert.equal(h.promptImageResolvers.length, 3);
     assert.equal(h.promptImageResolvers[0].matches("codex"), true);
     assert.equal(h.promptImageResolvers[1].matches("claude"), true);
   });

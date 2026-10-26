@@ -114,13 +114,16 @@ test("prompt RPC contracts keep their exact names, optional nullable IDs and nul
   assert.equal(h.promptImageRpc.input.safeParse(input).success, false);
 });
 
-test("the production registry registers Codex and Claude and unknown providers return no images for both RPCs", async () => {
+test("the production registry registers Codex, Claude and Hermes CC and unknown providers return no images for both RPCs", async () => {
   const h = harness();
-  assert.equal(h.promptImageResolvers.length, 2);
+  assert.equal(h.promptImageResolvers.length, 3);
   assert.equal(h.promptImageResolvers[0].matches("codex"), true);
   assert.equal(h.promptImageResolvers[1].matches("claude"), true);
   assert.equal(h.promptImageResolvers[1].matches("sample"), false);
   assert.equal(h.promptImageResolvers[0].matches("sample"), false);
+  assert.equal(h.promptImageResolvers[2].matches("hermes-cc"), true);
+  assert.equal(h.promptImageResolvers[2].matches("hermes"), false);
+  assert.equal(h.promptImageResolvers[2].matches("sample"), false);
   const handlers = h.createPromptImageHandlers();
   assert.deepEqual(await handlers.images(input, context()), empty("unknown_provider"));
   assert.deepEqual(await handlers.image({ ...input, id: "anything" }, context()), emptyFull("unknown_provider"));
