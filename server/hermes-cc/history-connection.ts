@@ -90,6 +90,10 @@ function isCommand(input: Extract<ProviderInput, { type: "session.prompt" }>): b
 // Stores without claimWriter still exclude competing lanes in this process.
 const recorders = new Map<string, Session>();
 const recorderId = (key: HermesCcJournalKey) => JSON.stringify([key.providerId, key.nativeSessionId]);
+// An invalidation failure must never let another local connection certify this
+// key again. Retry persistence on its next open or mutation, without blocking
+// the user's prompt if storage remains unavailable.
+const failedInvalidations = new Set<string>();
 
 /** Journal final provider events before Paseo observes them, including readiness. */
 export function journalHermesCcConnection(
@@ -133,6 +137,10 @@ export function journalHermesCcConnection(
     }
   };
   const mutate = async (session: Session, operation: () => Promise<void>): Promise<boolean> => {
+    if (session.key && failedInvalidations.has(recorderId(session.key))) {
+      await invalidateForeignWriter(session);
+      return false;
+    }
     try { await operation(); return true; }
     catch (error) {
       if (!(error instanceof Error) || error.message !== "writer_changed") throw error;
@@ -147,8 +155,8 @@ export function journalHermesCcConnection(
     }
   };
   const invalidate = async (session: Session, reason: string, appending = false) => {
-    // A refused claimant may only invalidate on a live history append. Merely
-    // opening or sending a command says nothing about the owner's transcript.
+    // Opening alone is harmless. Foreign mutations use the durable send fence
+    // below; identity/open failures must leave the owner's transcript alone.
     if (session.claimRefused && !appending) return;
     session.recording = false;
     if (session.key && !session.invalidated) {
@@ -156,6 +164,23 @@ export function journalHermesCcConnection(
       session.invalidated = true;
     }
     await release(session);
+  };
+  const invalidateForeignWriter = async (session: Session) => {
+    if (!session.key) return;
+    session.recording = false;
+    session.invalidated = true;
+    session.pendingPrompts.clear();
+    session.turns.clear();
+    try {
+      // Always await this fence, even after losing a lease or the owner closing.
+      await store.invalidate(session.key, "foreign_writer");
+    } catch {
+      failedInvalidations.add(recorderId(session.key));
+      // Keep live prompts usable. The disk store retains this failed fence and
+      // persists it before its next read/mutation once storage recovers. A crash
+      // while all writes remain unavailable cannot guarantee a durable marker.
+    }
+    try { await release(session); } catch { /* The key is already unusable. */ }
   };
   const fail = async (session: Session) => {
     session.failed = true;
@@ -282,9 +307,7 @@ export function journalHermesCcConnection(
         }
       }
     } else if (isHistory(event)) {
-      // A second live session never records. Opening/replay alone is harmless;
-      // only an actual live history event invalidates its key. A rejected send
-      // that produces no history must leave a settled journal intact.
+      // Also cover unsolicited history that did not follow a local send.
       await invalidate(session, session.claimRefused ? "writer_changed" : "history appended outside the recorder", true);
     }
     emit(event);
@@ -320,10 +343,13 @@ export function journalHermesCcConnection(
           // Persisted skip is a caller-owned transcript: pass it through without
           // reading, claiming, starting or otherwise changing the journal.
           if (session.key && input.history === "replay" && await claim(session)) {
-            const state = await store.read(session.key).catch(async () => {
-              await invalidate(session, "journal read failed");
-              return { status: "unusable" as const, reason: "journal read failed" };
-            });
+            const poisoned = failedInvalidations.has(recorderId(session.key));
+            if (poisoned) await invalidateForeignWriter(session);
+            const state = poisoned ? { status: "unusable" as const, reason: "foreign_writer" }
+              : await store.read(session.key).catch(async () => {
+                await invalidate(session, "journal read failed");
+                return { status: "unusable" as const, reason: "journal read failed" };
+              });
             if (state.status === "complete") {
               const projection = project(state.events);
               if (projection) {
@@ -361,7 +387,11 @@ export function journalHermesCcConnection(
       let sendFailed = false, sendError: unknown;
       await enqueue(session, async () => {
         if (session.failed) throw new Error("Hermes·CC session journal failed");
-        if (input.type === "session.revert" || (input.type === "session.prompt" && isCommand(input))) {
+        const changesHistory = input.type === "session.prompt" || input.type === "session.revert";
+        if (changesHistory && session.key && (!session.recording || recorders.get(recorderId(session.key)) !== session
+          || failedInvalidations.has(recorderId(session.key)))) {
+          await invalidateForeignWriter(session);
+        } else if (input.type === "session.revert" || (input.type === "session.prompt" && isCommand(input))) {
           await invalidate(session, "history-mutating command");
         } else if (input.type === "session.prompt") {
           if (session.recording && session.key) {
@@ -371,6 +401,8 @@ export function journalHermesCcConnection(
               // Persist the busy marker BEFORE the inner SDK can send anything
               // to Hermes. Keep it open across overlapping prompt admissions.
               if (!session.pendingPrompts.size) await mutate(session, () => store.turnStarted(session.key!, session.lease ?? undefined));
+              // A fenced mutation relinquishes ownership before this send.
+              if (!session.recording) await invalidateForeignWriter(session);
               if (session.recording) {
                 session.pendingPrompts.add(id);
                 session.clientMessageIds.add(id);

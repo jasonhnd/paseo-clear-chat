@@ -20,7 +20,10 @@ export interface HermesCcHistoryStore {
   /** Mark prompt admission / terminal ACP response after notifications drain (not the SDK session.prompt_result). Open turns are unusable. */
   turnStarted(key: HermesCcJournalKey, owner?: HermesCcWriterOwner): Promise<void>;
   turnSettled(key: HermesCcJournalKey, owner?: HermesCcWriterOwner): Promise<void>;
-  /** Permanently mark unusable (history-mutating commands, load failure mismatch, etc.). */
+  /** Permanently mark unusable (history-mutating commands, load failure mismatch, etc.).
+   * Failed foreign_writer invalidation is retained across local store instances
+   * and retried before the next read/mutation. Storage must recover to persist it.
+   */
   invalidate(key: HermesCcJournalKey, reason: string): Promise<void>;
   read(key: HermesCcJournalKey): Promise<HermesCcJournalState>;
   /** Optional recorder ownership. Refuses a second live claimant, including in this process.
@@ -73,6 +76,10 @@ interface Manifest {
 interface Directory { path: string; handle: FileHandle }
 interface Entry { name: string; createdAt: number; size: number; eventsBytes: number; kind: "session" | "orphan" | "link" }
 const lanes = new Map<string, Promise<unknown>>();
+// Shared across store instances for one root. Failed foreign-writer fences are
+// retried under the disk lock before any subsequent read or mutation. Until
+// persistence recovers, reads fail closed; prompts can still reach Hermes.
+const pendingInvalidations = new Map<string, string>();
 
 export function hermesCcHistoryRoot(_server: PluginServerContext, home = hermesCcPaseoHome()): string {
   return join(home, "plugin-data", "clear-chat", "hermes-cc-history");
@@ -655,6 +662,17 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
         }
         const before = await sessionBytes(rootDirectory, key);
         await usageWrite(rootDirectory, null);
+        const pending = pendingInvalidations.get(lane(key));
+        if (pending) {
+          const session = await openSession(rootDirectory, keyHash(key));
+          if (session !== "missing") {
+            try {
+              const loaded = await loadManifest(session, key, keyHash(key));
+              if (typeof loaded !== "string" && !loaded.invalid) await publish(session, { ...loaded, invalid: pending });
+            } finally { await session.handle.close(); }
+          }
+          pendingInvalidations.delete(lane(key));
+        }
         const result = await run(rootDirectory);
         total += await sessionBytes(rootDirectory, key) - before;
         if (total + USAGE_BYTES > maxBytesTotal) {
@@ -702,6 +720,7 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
   }
 
   async function checkWriter(session: Directory, manifest: Manifest, owner: HermesCcWriterOwner | undefined): Promise<void> {
+    if (manifest.invalid === "foreign_writer") throw new Error("writer_changed");
     if (sameWriter(manifest.writer, owner)) return;
     await publish(session, { ...manifest, invalid: "writer_changed" });
     throw new Error("writer_changed");
@@ -935,6 +954,7 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
     async invalidate(key, reason) {
       key = snapshotKey(key);
       const code = reasonCode(reason);
+      if (code === "foreign_writer") pendingInvalidations.set(lane(key), code);
       try {
         await serialized(key, () => locked(false, key, async rootDirectory => {
           const session = await openSession(rootDirectory, keyHash(key));
