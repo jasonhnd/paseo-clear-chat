@@ -11,7 +11,6 @@ Built and tested on Paseo 0.13.1. Needs Paseo 0.13.0 or later.
 ### Fixed
 
 - **·CC** agents can now choose a model and a permission mode, like the original Hermes agents. The permission modes appear in the list after you open a **·CC** window for the first time and Paseo refreshes its options (or after you reload); the models do too, unless your Hermes provider settings already list them.
-- **·CC** versions now show the same description as the original Hermes provider in the new-agent list.
 
 ## [0.13.1.1] - 2026-10-26
 
