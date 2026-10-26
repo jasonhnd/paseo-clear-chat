@@ -5,6 +5,7 @@ import { codexPromptImages } from "./codex";
 import { readLocalImageReadOnly } from "./read-only";
 import { readImageHeader } from "./image-header";
 import { claudePromptImageResolver } from "./claude";
+import { hermesPromptImageResolver } from "./hermes";
 
 type LookupInput = RpcInput<typeof promptImagesRpc>;
 type ImagesResult = RpcOutput<typeof promptImagesRpc>;
@@ -24,6 +25,8 @@ export interface ResolverContext extends LookupInput {
   nativeHandle: string | null;
   /** Only resolver-specific storage variables, never the full provider env. */
   providerEnv?: Readonly<Record<string, string>>;
+  /** Command tokens only, for resolving provider-specific storage profiles. */
+  providerCommand?: readonly string[];
   /** Resolvers should stop streaming/scanning when the lookup expires. */
   signal: AbortSignal;
 }
@@ -52,6 +55,7 @@ export interface PromptImageResolver {
 export const promptImageResolvers: readonly PromptImageResolver[] = [
   codexPromptImages,
   claudePromptImageResolver,
+  hermesPromptImageResolver,
 ];
 
 const MAX_THUMBNAILS = 3;
@@ -153,7 +157,7 @@ export function createPromptImageHandlers(options: {
     const providerEnv: Record<string, string> = {};
     const env = launch?.env;
     if (env && typeof env === "object") {
-      for (const key of ["CLAUDE_CONFIG_DIR", "CLAUDE_SECURESTORAGE_CONFIG_DIR"] as const) {
+      for (const key of ["CLAUDE_CONFIG_DIR", "CLAUDE_SECURESTORAGE_CONFIG_DIR", "HERMES_HOME"] as const) {
         const value = (env as Record<string, unknown>)[key];
         if (typeof value === "string") providerEnv[key] = value;
       }
@@ -168,6 +172,7 @@ export function createPromptImageHandlers(options: {
       provider, cwd: agent.cwd, sessionId: persistence?.sessionId ?? null,
       nativeHandle: persistence?.nativeHandle ?? null, signal,
       ...(config ? { providerEnv } : {}),
+      ...(command ? { providerCommand: command } : {}),
     });
     check();
     if (found.matchedMessages === 0) throw new LookupError("no_match");
