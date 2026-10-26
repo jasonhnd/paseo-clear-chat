@@ -4,6 +4,15 @@ All notable changes to Clear Chat are listed here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and each version is the Paseo version it is built and tested for plus one number that counts Clear Chat's releases for that Paseo version, for example 0.12.0.1 for the first release for Paseo 0.12.0. Releases 1.0.0 and 1.0.1 came out before this rule.
 
+## [0.13.1.2] - Unreleased
+
+Built and tested on Paseo 0.13.1. Needs Paseo 0.13.0 or later.
+
+### Fixed
+
+- **·CC** agents can now choose a model and a permission mode, like the original Hermes agents. The permission modes appear in the list after you open a **·CC** window for the first time and Paseo refreshes its options (or after you reload); the models do too, unless your Hermes provider settings already list them.
+- **·CC** versions now show the same description as the original Hermes provider in the new-agent list.
+
 ## [0.13.1.1] - 2026-10-26
 
 Built and tested on Paseo 0.13.1. Needs Paseo 0.13.0 or later.
@@ -127,6 +136,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.13.1.2]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.13.1.2
 [0.13.1.1]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.13.1.1
 [0.13.0.2]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.13.0.2
 [0.13.0.1]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.13.0.1
