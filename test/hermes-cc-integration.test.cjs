@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const { createRequire } = require("node:module");
 const { tmpdir } = require("node:os");
-const { dirname, join, resolve } = require("node:path");
+const { delimiter, dirname, join, resolve } = require("node:path");
 const test = require("node:test");
 const { runInThisContext } = require("node:vm");
 const ts = require("typescript");
@@ -38,8 +38,8 @@ function loadServer(root, runAcpProvider) {
 }
 
 function fakeAgent(root) {
-  const filename = join(root, "agent.cjs");
-  fs.writeFileSync(filename, `
+  const filename = join(root, "hermes");
+  fs.writeFileSync(filename, `#!/usr/bin/env node
     const readline = require("node:readline");
     readline.createInterface({ input: process.stdin }).on("line", line => {
       const request = JSON.parse(line);
@@ -48,10 +48,12 @@ function fakeAgent(root) {
       else if (request.method === "session/new") reply({ sessionId: "native-session" });
       else if (request.method === "session/prompt") {
         require("node:fs").writeFileSync(${JSON.stringify(join(root, "received.json"))}, JSON.stringify(request.params));
+        require("node:fs").writeFileSync(${JSON.stringify(join(root, "env.json"))}, JSON.stringify({ SOURCE_ONLY: process.env.SOURCE_ONLY, CLAUDECODE: process.env.CLAUDECODE, PASEO_NODE_ENV: process.env.PASEO_NODE_ENV }));
         reply({ stopReason: "end_turn" });
       } else if (request.id !== undefined) reply({});
     });
   `);
+  fs.chmodSync(filename, 0o700);
   return filename;
 }
 function host(provider, native = "native-session") {
@@ -65,16 +67,16 @@ test("contribution registers a mirrored provider and captures exact-ID PNGs thro
   const { runAcpProvider } = await import("@getpaseo/plugin/server/acp");
   const root = fs.mkdtempSync(join(tmpdir(), "cc-integration-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fakeAgent(root);
   fs.writeFileSync(join(root, "config.json"), JSON.stringify({ providers: {
-    assistant: { extends: "acp", label: "Assistant", command: ["hermes", "acp"] },
+    assistant: { extends: "acp", label: "Assistant", command: ["hermes", "acp"],
+      env: { PATH: `${root}${delimiter}${process.env.PATH}`, SOURCE_ONLY: "exact source value", CLAUDECODE: "stripped", PASEO_NODE_ENV: "stripped" } },
   } }));
-  const agentFile = fakeAgent(root);
   const h = loadServer(root, runAcpProvider);
   t.after(h.cleanup);
   assert.deepEqual(h.providers.map(p => p.id), ["assistant-cc"]);
-  assert.deepEqual(h.providers[0].command, ["hermes", "acp"]);
+  assert.equal(h.providers[0].command, undefined);
   const connection = await h.providers[0].connect({ versions: [1], capabilities: ["prompt.message", "prompt.image", "session.persistence"],
-    launch: { command: process.execPath, args: [agentFile], env: { ...process.env } },
   });
   t.after(() => connection.close());
   const ready = new Promise((resolve, reject) => {
@@ -101,6 +103,7 @@ test("contribution registers a mirrored provider and captures exact-ID PNGs thro
   assert.deepEqual(JSON.parse(fs.readFileSync(join(root, "received.json"))), {
     sessionId: "native-session", prompt: before.prompt.input.content,
   });
+  assert.deepEqual(JSON.parse(fs.readFileSync(join(root, "env.json"))), { SOURCE_ONLY: "exact source value" });
   const rpc = h.handlers.get("prompt.images");
   const lookup = { agentId: "agent", messageId: "exact-client-id", text: "irrelevant" };
   const found = await rpc(lookup, host("assistant-cc"));
@@ -112,6 +115,29 @@ test("contribution registers a mirrored provider and captures exact-ID PNGs thro
     [lookup, host("hermes")],
     [lookup, host("hermes-unregistered-cc")],
   ]) assert.deepEqual((await rpc(request, context)).images, []);
+  // A second boundary session reporting the same native ACP ID cannot silently
+  // replace the first prompt's images, even when it reuses the client identity.
+  const secondReady = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("second session timed out")), 5000);
+    connection.onEvent(event => { if (event.type === "session.ready" && event.sessionId === "other-boundary") { clearTimeout(timer); resolve(); } });
+  });
+  await connection.send({ type: "session.open", requestId: "open-2", sessionId: "other-boundary",
+    config: { cwd: root, env: {}, mcpServers: {}, settings: {}, persist: true }, history: "skip" });
+  await secondReady;
+  const second = structuredClone(input);
+  second.sessionId = "other-boundary";
+  const different = Buffer.from(png); different[different.length - 1] ^= 1;
+  second.prompt.input.content[1].data = different.toString("base64");
+  const secondCompleted = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("second prompt timed out")), 5000);
+    connection.onEvent(event => { if (event.type === "session.turn" && event.state === "completed" && event.sessionId === "other-boundary") { clearTimeout(timer); resolve(); } });
+  });
+  await connection.send(second);
+  await secondCompleted;
+  assert.deepEqual(JSON.parse(fs.readFileSync(join(root, "received.json"))).prompt, second.prompt.input.content);
+  assert.deepEqual((await rpc(lookup, host("assistant-cc"))).images, []);
+  assert.ok(h.logs.some(log => log.length === 1 && log[0] === "[clear-chat] hermes_cc: save_conflict"));
+
   const settingDir = join(root, "plugin-settings", "clear-chat");
   fs.mkdirSync(settingDir, { recursive: true });
   fs.writeFileSync(join(settingDir, "hermes-cc.json"), JSON.stringify({ version: 1, values: { enabled: false } }));
