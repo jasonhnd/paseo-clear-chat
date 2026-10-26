@@ -30,6 +30,16 @@ function harness(runAcpProvider) {
   runInThisContext(`(function(require,module,exports,console){${compiled}\n})`, { filename })(
     id => {
       if (id === "node:async_hooks") return require(id);
+      if (id === "./history-connection") {
+        const history = { exports: {} };
+        const source = ts.transpileModule(readFileSync(resolve(__dirname, "../server/hermes-cc/history-connection.ts"), "utf8"), {
+          compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+        }).outputText;
+        runInThisContext(`(function(require,module,exports){${source}\n})`)(
+          name => name === "./session-key" ? { nativeKey() {} } : require(name), history, history.exports,
+        );
+        return history.exports;
+      }
       if (id === "./transport") return { hermesCcTransport: async (command, env, launch) => launches.push({ ...launch, command, env }) };
       if (id === "./session-key") {
         const keys = { exports: {} };
