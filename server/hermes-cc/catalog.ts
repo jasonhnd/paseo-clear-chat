@@ -6,21 +6,25 @@ import { z } from "zod";
 import type { AcpStreamMessage } from "@getpaseo/plugin/server/acp";
 import type { ProviderCatalog } from "@getpaseo/plugin/server/provider";
 
-const MAX_BYTES = 64 * 1024;
+const MAX_BYTES = 1024 * 1024;
 const text = z.string().max(4096);
 const choice = z.object({ value: text, name: text, description: text.nullish() });
 const select = z.object({
-  type: z.literal("select"), category: text.optional(), currentValue: text,
-  options: z.array(z.union([choice, z.object({ group: text, options: z.array(choice).max(256) })])).max(256),
-});
+  type: z.literal("select"), category: text.nullish(), currentValue: text,
+  options: z.array(z.union([choice, z.object({ group: text, options: z.array(choice) })])),
+}).refine((option) => option.category === "model" || option.options.reduce((count, entry) =>
+  count + ("value" in entry ? 1 : entry.options.length), 0) <= 256);
+const nativeModelsSchema = z.object({
+  currentModelId: text, availableModels: z.array(z.object({
+    modelId: text, name: text, description: text.nullish(),
+  })),
+}).nullish();
 const responseSchema = z.object({
   modes: z.object({ currentModeId: text.nullish(), availableModes: z.array(z.object({
     id: text, name: text, description: text.nullish(),
   })).max(256).nullish() }).nullish(),
-  models: z.object({ currentModelId: text, availableModels: z.array(z.object({
-    modelId: text, name: text, description: text.nullish(),
-  })).max(256) }).nullish(),
-  configOptions: z.array(z.unknown()).max(256).nullish(),
+  models: z.unknown().optional(),
+  configOptions: z.array(z.unknown()).max(256).nullish().catch(undefined),
 });
 const selector = z.object({
   id: text, label: text, description: text.optional(), isDefault: z.boolean().optional(),
@@ -30,7 +34,7 @@ const catalogSchema = z.object({
   modes: z.array(z.object({ id: text, label: text, description: text.optional() }).strict()).max(256),
   models: z.array(selector.extend({
     thinkingOptions: z.array(selector).max(256).optional(), defaultThinkingOptionId: text.optional(),
-  }).strict()).max(256),
+  }).strict()),
   defaultMode: text.optional(), defaultModel: text.optional(),
 }).strict();
 const envelopeSchema = z.object({ version: z.literal(1), providerId: text, catalog: catalogSchema }).strict();
@@ -43,7 +47,6 @@ const envelopeSchema = z.object({ version: z.literal(1), providerId: text, catal
  * No fallback modes: generic Hermes ACP has no static mode definitions.
  */
 export function deriveHermesCcCatalog(response: unknown): ProviderCatalog | undefined {
-  if (Buffer.byteLength(JSON.stringify(response) ?? "") > MAX_BYTES) return;
   const parsed = responseSchema.safeParse(response);
   if (!parsed.success) return;
   const state = parsed.data;
@@ -52,7 +55,7 @@ export function deriveHermesCcCatalog(response: unknown): ProviderCatalog | unde
   for (const entry of state.configOptions ?? []) {
     if (!entry || typeof entry !== "object" || !("type" in entry) || entry.type !== "select") continue;
     const parsed = select.safeParse(entry);
-    if (!parsed.success) return;
+    if (!parsed.success) continue;
     options.push(parsed.data);
   }
   const find = (category: string) => options.find((entry) => entry.category === category);
@@ -72,20 +75,24 @@ export function deriveHermesCcCatalog(response: unknown): ProviderCatalog | unde
   })) : modeOption ? flatten(modeOption).map((entry) => ({
     id: entry.value, label: entry.name, description: entry.description ?? undefined,
   })) : [];
-  const currentMode = state.modes?.availableModes?.length ? state.modes.currentModeId : modeOption?.currentValue;
   const thinkingOptions = selectors("thought_level");
   const thinking = thinkingOptions.length ? {
     thinkingOptions, defaultThinkingOptionId: thinkingOptions.find((entry) => entry.isDefault)?.id,
   } : {};
-  const models = state.models?.availableModels?.length ? state.models.availableModels.map((model) => ({
+  // A doubtful model list is discarded in full without losing valid modes.
+  const nativeModels = nativeModelsSchema.safeParse(state.models);
+  const modelState = nativeModels.success ? nativeModels.data : undefined;
+  const models = !nativeModels.success ? [] : modelState?.availableModels?.length ? modelState.availableModels.map((model) => ({
     id: model.modelId, label: model.name, description: model.description ?? undefined,
-    isDefault: model.modelId === state.models!.currentModelId, ...thinking,
+    isDefault: model.modelId === modelState.currentModelId, ...thinking,
   })) : selectors("model").map((model) => ({ ...model, ...thinking }));
+  // The source snapshot leaves defaultMode to the host; currentModeId is session state.
   const catalog = catalogSchema.safeParse({ modes, models,
-    ...(currentMode != null ? { defaultMode: currentMode } : {}),
     ...(models.some((model) => model.isDefault) ? { defaultModel: models.find((model) => model.isDefault)!.id } : {}),
   });
-  return catalog.success ? catalog.data : undefined;
+  if (catalog.success) return catalog.data;
+  const modesOnly = catalogSchema.safeParse({ modes, models: [] });
+  return modesOnly.success ? modesOnly.data : undefined;
 }
 
 /** Observe only replies to opens on a user-requested session transport. */
@@ -133,10 +140,16 @@ export function createHermesCcCatalogStore(root: string) {
       return structuredClone(cache.get(id));
     },
     capture(id: string, response: unknown) {
-      const catalog = deriveHermesCcCatalog(response);
-      if (!catalog || JSON.stringify(catalog) === JSON.stringify(this.read(id))) return;
-      const data = JSON.stringify({ version: 1, providerId: id, catalog });
+      let catalog = deriveHermesCcCatalog(response);
+      if (!catalog) return;
+      let data = JSON.stringify({ version: 1, providerId: id, catalog });
+      if (Buffer.byteLength(data) > MAX_BYTES) {
+        // Keep all models or none; the persisted envelope is the size boundary.
+        catalog = { modes: catalog.modes, models: [] };
+        data = JSON.stringify({ version: 1, providerId: id, catalog });
+      }
       if (Buffer.byteLength(data) > MAX_BYTES) return;
+      if (JSON.stringify(catalog) === JSON.stringify(this.read(id))) return;
       cache.set(id, catalog);
       // Publish to memory immediately; disk latency/failure never delays an open.
       writes = writes.then(async () => {

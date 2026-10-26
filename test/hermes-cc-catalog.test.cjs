@@ -22,6 +22,12 @@ const response = {
   configOptions: [option("model", "agent-model", [{ value: "agent-model", name: "Agent model" }])],
 };
 const catalog = wire(derive(response));
+const nativeModels = (count, description) => ({
+  currentModelId: `provider-${Math.floor((count - 1) / 200)}/model-${count - 1}`,
+  availableModels: Array.from({ length: count }, (_, index) => ({
+    modelId: `provider-${Math.floor(index / 200)}/model-${index}`, name: `Model ${index}`, description,
+  })),
+});
 const pathFor = (root, id) => join(root, `${createHash("sha256").update(id).digest("hex")}.json`);
 const temporary = t => {
   const root = fs.mkdtempSync(join(tmpdir(), "cc-catalog-"));
@@ -38,7 +44,7 @@ test("host ACP mapping prefers native lists, preserves descriptions/defaults and
       option("thought_level", "deep", [{ group: "Reasoning", options: [{ value: "deep", name: "Deep", description: "Details" }] }])],
   }));
   assert.deepEqual(actual, {
-    modes: catalog.modes, defaultMode: "custom", defaultModel: "native",
+    modes: catalog.modes, defaultModel: "native",
     models: [
       { id: "native", label: "Native", description: "Native description", isDefault: true },
       { id: "other", label: "Other", isDefault: false },
@@ -54,14 +60,70 @@ test("host ACP mapping flattens grouped mode/model config choices and uses the f
     option("model", "ignored", [{ value: "ignored", name: "Ignored" }]),
     option("mode", "raw-id", [{ group: "Modes", options: [{ value: "raw-id", name: "Raw label", description: "Mode description" }] }]),
   ] })), {
-    modes: [{ id: "raw-id", label: "Raw label", description: "Mode description" }], defaultMode: "raw-id", defaultModel: "second",
+    modes: [{ id: "raw-id", label: "Raw label", description: "Mode description" }], defaultModel: "second",
     models: [{ id: "first", label: "First", description: "Description", isDefault: false },
       { id: "second", label: "Second", isDefault: true, metadata: { group: "Vendor" } }],
   });
   assert.deepEqual(wire(derive({ configOptions: [] })), { models: [], modes: [] });
-  for (const invalid of [undefined, null, {}, { modes: { availableModes: [{}] } },
-    { configOptions: [{ type: "select", options: "bad" }] }, { ...response, extra: "x".repeat(65536) }]) {
+  for (const invalid of [undefined, null, {}, { modes: { availableModes: [{}] } }]) {
     assert.equal(derive(invalid), undefined);
+  }
+});
+
+test("large native and config model lists are complete, even when the raw ACP body exceeds the document limit", () => {
+  const models = nativeModels(400, "Description ".repeat(20));
+  const actual = wire(derive({ modes: response.modes, models, extra: "x".repeat(1024 * 1024) }));
+  assert.deepEqual(actual.modes, catalog.modes);
+  assert.equal(actual.defaultModel, models.currentModelId);
+  assert.deepEqual(actual.models, models.availableModels.map(model => ({
+    id: model.modelId, label: model.name, description: model.description,
+    isDefault: model.modelId === models.currentModelId,
+  })));
+  const choices = models.availableModels.map(model => ({ value: model.modelId, name: model.name, description: model.description }));
+  for (const options of [choices, [{ group: "Providers", options: choices }]]) {
+    const fromSelect = wire(derive({ modes: response.modes, configOptions: [option("model", models.currentModelId, options)] }));
+    assert.deepEqual(fromSelect.models.map(({ metadata, ...model }) => model), actual.models);
+    assert.deepEqual(fromSelect.modes, actual.modes);
+  }
+});
+
+test("doubtful model lists are discarded as a whole while valid modes survive", () => {
+  const models = nativeModels(400);
+  for (const invalid of [
+    { ...models, availableModels: [...models.availableModels, { modelId: 7, name: "Invalid" }] },
+    { ...models, currentModelId: null },
+    { ...models, availableModels: "invalid" },
+  ]) {
+    // A config select must not supply a partial replacement for the native list.
+    assert.deepEqual(wire(derive({ ...response, models: invalid })), { modes: catalog.modes, models: [] });
+  }
+});
+
+test("null select categories are accepted and failed selects do not erase valid native lists or other selects", () => {
+  const native = { modes: response.modes, models: nativeModels(2) };
+  const expected = wire(derive(native));
+  for (const select of [
+    option(null, "unused", [{ value: "unused", name: "Unused" }]),
+    { type: "select", category: "model", options: "invalid" },
+    option("thought_level", "deep", [{ value: "deep", name: 7 }]),
+    option("thought_level", "deep", [{ group: "Too many", options: Array.from({ length: 257 }, (_, index) =>
+      ({ value: `level-${index}`, name: `Level ${index}` })) }]),
+  ]) assert.deepEqual(wire(derive({ ...native, configOptions: [select] })), expected);
+  assert.deepEqual(wire(derive({ ...response,
+    configOptions: [{ type: "select", options: "invalid" }, ...response.configOptions],
+  })), catalog);
+  assert.deepEqual(wire(derive({ configOptions: [{ type: "select", options: "invalid" }] })), { modes: [], models: [] });
+});
+
+test("remembered native and select current modes never become the catalog default", () => {
+  const modes = { currentModeId: "second", availableModes: [{ id: "first", name: "First" }, { id: "second", name: "Second" }] };
+  for (const state of [
+    { modes },
+    { configOptions: [option("mode", "second", modes.availableModes.map(mode => ({ value: mode.id, name: mode.name })))] },
+  ]) {
+    const actual = wire(derive(state));
+    assert.deepEqual(actual.modes.map(mode => mode.id), ["first", "second"]);
+    assert.equal(Object.hasOwn(actual, "defaultMode"), false);
   }
 });
 
@@ -97,15 +159,44 @@ test("catalog is immediately available, atomically persisted per provider and sc
   await current.flush();
   assert.equal(fs.readdirSync(root).length, 2);
   const stored = fs.readFileSync(pathFor(root, "custom-cc"), "utf8");
-  assert.ok(Buffer.byteLength(stored) <= 65536);
+  assert.ok(Buffer.byteLength(stored) <= 1024 * 1024);
   const stat = fs.statSync(pathFor(root, "custom-cc"));
   current.capture("custom-cc", changed); await current.flush();
   assert.equal(fs.statSync(pathFor(root, "custom-cc")).mtimeMs, stat.mtimeMs);
   assert.deepEqual(wire(store(root).read("custom-cc")), wire(derive(changed)));
   assert.deepEqual(wire(store(root).read("another-cc")), catalog);
   assert.equal(store(root).read("unknown-cc"), undefined);
-  current.capture("custom-cc", {}); current.capture("custom-cc", { ...response, extra: "x".repeat(65536) });
-  assert.equal(current.read("custom-cc").defaultMode, "other");
+  current.capture("custom-cc", {});
+  assert.deepEqual(current.read("custom-cc").modes, [{ id: "other", label: "Other", description: undefined }]);
+});
+
+test("persists all 400 native models above 64 KiB and reloads them without truncation", async t => {
+  const root = temporary(t), current = store(root);
+  const state = { modes: response.modes, models: nativeModels(400, "Description ".repeat(20)) };
+  const expected = wire(derive(state));
+  current.capture("provider-cc", state);
+  assert.deepEqual(wire(current.read("provider-cc")), expected);
+  await current.flush();
+  const bytes = fs.readFileSync(pathFor(root, "provider-cc"));
+  assert.ok(bytes.length > 64 * 1024 && bytes.length <= 1024 * 1024);
+  assert.deepEqual(wire(store(root).read("provider-cc")), expected);
+  assert.equal(fs.readdirSync(root).length, 1);
+});
+
+test("an envelope over 1 MiB replaces the whole model list with modes only, in memory and after restart", async t => {
+  const root = temporary(t), current = store(root);
+  current.capture("provider-cc", response);
+  await current.flush();
+  const state = { modes: response.modes, models: nativeModels(400, "x".repeat(4096)) };
+  assert.equal(derive(state).models.length, 400);
+  const expected = { modes: catalog.modes, models: [] };
+  current.capture("provider-cc", state);
+  assert.deepEqual(wire(current.read("provider-cc")), expected);
+  await current.flush();
+  assert.deepEqual(wire(store(root).read("provider-cc")), expected);
+  const envelope = JSON.parse(fs.readFileSync(pathFor(root, "provider-cc"), "utf8"));
+  assert.deepEqual(envelope.catalog, expected);
+  assert.equal(fs.readdirSync(root).length, 1);
 });
 
 for (const invalid of ["json", "version", "identity", "model", "mode", "extra", "oversize", "directory", "symlink"]) {
@@ -120,7 +211,7 @@ for (const invalid of ["json", "version", "identity", "model", "mode", "extra", 
     if (invalid === "directory") fs.mkdirSync(file);
     else if (invalid === "symlink") {
       const other = join(root, "other.json"); fs.writeFileSync(other, JSON.stringify(envelope)); fs.symlinkSync(other, file);
-    } else fs.writeFileSync(file, invalid === "json" ? "{" : invalid === "oversize" ? " ".repeat(65537) : JSON.stringify(envelope));
+    } else fs.writeFileSync(file, invalid === "json" ? "{" : invalid === "oversize" ? " ".repeat(1024 * 1024 + 1) : JSON.stringify(envelope));
     assert.equal(store(root).read("provider-cc"), undefined);
   });
 }
