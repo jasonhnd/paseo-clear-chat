@@ -1006,7 +1006,7 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
     async read(key) {
       key = snapshotKey(key);
       try {
-        return await serialized(key, () => locked(false, key, async rootDirectory => {
+        const state = await serialized(key, () => locked(false, key, async rootDirectory => {
           const name = keyHash(key);
           if (await hasForeignMarker(rootDirectory, name)) return unusable("foreign_writer");
           const session = await openSession(rootDirectory, name);
@@ -1022,6 +1022,12 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
             return judge(loaded, viewed);
           } finally { await session.handle.close(); }
         }, true).catch(error => { if (hasCode(error, "ENOENT")) return unusable("missing"); throw error; }));
+        if (state.status !== "complete") return state;
+        // Foreign fences bypass the lane and lock. Check after their cleanup
+        // awaits as well as the event read, immediately before returning events.
+        try { await lstat(join(root, foreignMarker(keyHash(key)))); }
+        catch (error) { if (hasCode(error, "ENOENT")) return state; throw error; }
+        return unusable("foreign_writer");
       } catch (error) {
         if (error instanceof Error && (error.message === "unsafe_history_directory" || error.message === "unsafe_history_file" || error.message === "unsafe_history_lock")) {
           return unusable("unsafe_path");
