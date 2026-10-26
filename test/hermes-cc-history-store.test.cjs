@@ -735,6 +735,31 @@ test("Hermes CC history never repairs an interrupted append or settlement into c
   assert.equal(readManifest(h, appended).records, 0);
 });
 
+for (const recovery of ["read", "owner mutation"]) test(`Hermes CC history retries a failed foreign fence before the next ${recovery}`, async t => {
+  const fsp = require("node:fs/promises");
+  let unavailable = false;
+  const wrapped = { ...fsp, async rename(from, to) {
+    if (unavailable && String(to).endsWith("/manifest.json")) throw new Error("disk unavailable");
+    return fsp.rename(from, to);
+  } };
+  const h = harness(t, { "node:fs/promises": wrapped }), k = key();
+  const lease = await h.store.claimWriter(k);
+  t.after(() => lease.release());
+  await h.store.start(k, lease); await h.store.append(k, { text: "original" }, lease);
+  unavailable = true;
+  await assert.rejects(h.store.invalidate(k, "foreign_writer"), /history_store_failed/);
+  assert.equal(readManifest(h, k).invalid, undefined, "failed persistence leaves the original disk rows");
+  assertUnusable(await h.create(h.storeRoot).read(k), "unavailable");
+  unavailable = false;
+  const other = h.create(h.storeRoot);
+  if (recovery === "read") assertUnusable(await other.read(k), "foreign_writer");
+  else await assert.rejects(other.turnStarted(k, lease), /^Error: writer_changed$/);
+  assert.equal(readManifest(h, k).invalid, "foreign_writer", "the next access persists the fence across store instances");
+  await assert.rejects(h.store.append(k, { text: "must not append" }, lease), /^Error: writer_changed$/);
+  assertUnusable(await other.read(k), "foreign_writer");
+  assert.equal(readManifest(h, k).records, 1);
+});
+
 test("Hermes CC history writer lease heartbeats renew the on-disk mtime", async t => {
   const fsp = require("node:fs/promises");
   let beat;

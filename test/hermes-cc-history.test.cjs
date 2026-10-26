@@ -124,7 +124,7 @@ function fixture(t, store = new FakeHistoryStore()) {
   const requests = () => fs.existsSync(log) ? fs.readFileSync(log, "utf8").trim().split("\n").map(JSON.parse) : [];
   async function connect(options = {}) {
     // Reload the provider module for each simulated daemon: no runtime or counters survive.
-    const { hermesCcProvidersFromConfig } = load("server/hermes-cc/provider.ts");
+    const { hermesCcProvidersFromConfig } = load("server/hermes-cc/provider.ts", options.modules);
     const [provider] = hermesCcProvidersFromConfig({ hermes: {
       extends: "acp", command: [command, "acp"], env: options.failLoad ? { FAIL_LOAD: "1" } : {},
     } }, true, async info => {
@@ -613,7 +613,7 @@ for (const mutation of ["prompt", "live update"]) {
     await b.open("b", persistence); await becomeReady(b, "b");
     await a.connection.send(promptInput("a", "from-a"));
     if (mutation === "prompt") await b.connection.send(promptInput("b", "from-b"));
-    assert.equal(store.rows.get(store.id(key)).reason, undefined, "sending alone is not a live append");
+    assert.equal(store.rows.get(store.id(key)).reason, mutation === "prompt" ? "foreign_writer" : undefined);
     const shown = waitEvent(b.connection, event => event.type === "timeline.item");
     b.raw.emit({ type: "timeline.item", sessionId: "b", item: {
       type: "assistant_message", id: "agent_message_chunk:1", text: "answer B",
@@ -642,7 +642,7 @@ for (const mutation of ["prompt", "live update"]) {
   });
 }
 
-test("a rejected second-session prompt with no history does not invalidate the journal", async () => {
+test("a rejected second-session prompt still invalidates before forwarding", async () => {
   const journal = load("server/hermes-cc/history-connection.ts").journalHermesCcConnection;
   const store = new FakeHistoryStore(); seed(store);
   const a = queuedHarness(store, journal), b = queuedHarness(store, journal);
@@ -650,9 +650,132 @@ test("a rejected second-session prompt with no history does not invalidate the j
   await b.open("b", persistence); await becomeReady(b, "b");
   b.raw.send = async () => { throw new Error("prompt rejected"); };
   await assert.rejects(b.connection.send(promptInput("b")), /prompt rejected/);
-  assert.deepEqual(await store.read(key), { status: "complete", events: savedTranscript() });
-  assert.equal(store.calls.filter(call => call.method === "invalidate").length, 0);
+  assert.deepEqual(await store.read(key), { status: "unusable", reason: "foreign_writer" });
+  assert.equal(store.calls.filter(call => call.method === "invalidate").length, 1);
   await a.connection.close(); await b.connection.close();
+});
+
+for (const ownerClosed of [false, true]) for (const mutation of ["prompt", "slash command", "structured command", "revert"]) {
+  test(`a non-owner's ${mutation} waits for durable invalidation (owner closed: ${ownerClosed})`, async t => {
+    const journal = load("server/hermes-cc/history-connection.ts").journalHermesCcConnection;
+    const store = new FakeHistoryStore(); seed(store);
+    const a = queuedHarness(store, journal), b = queuedHarness(store, journal);
+    t.after(() => a.connection.close()); t.after(() => b.connection.close());
+    await a.open("a", persistence); await becomeReady(a, "a");
+    await b.open("b", persistence); await becomeReady(b, "b");
+    if (ownerClosed) await a.connection.close();
+    const entered = deferred(), barrier = deferred();
+    t.after(() => barrier.resolve());
+    store.before = async method => { if (method === "invalidate") { entered.resolve(); await barrier.promise; } };
+    const input = mutation === "revert"
+      ? { type: "session.revert", sessionId: "b", requestId: "revert", turnId: "old-turn" }
+      : promptInput("b", "foreign", mutation === "slash command" ? "/undo" : "New prompt");
+    if (mutation === "structured command") input.prompt.input = { type: "command", name: "undo", arguments: "" };
+    const sending = b.connection.send(input); await entered.promise;
+    await tick();
+    assert.equal(b.raw.sent.length, 1, "no mutation reaches Hermes before fsync");
+    assert.equal((await store.read(key)).status, "complete");
+    const send = b.raw.send;
+    b.raw.send = async value => {
+      assert.deepEqual(await store.read(key), { status: "unusable", reason: "foreign_writer" });
+      await send(value);
+    };
+    barrier.resolve(); await sending;
+    assert.strictEqual(b.raw.sent.at(-1), input);
+  });
+}
+
+test("a lost lease fences the triggering prompt before it reaches Hermes", async t => {
+  const h = queuedHarness(); seed(h.store);
+  t.after(() => h.connection.close());
+  await h.open("boundary", persistence); await becomeReady(h);
+  h.store.turnStarted = async () => {
+    h.store.rows.get(h.store.id(key)).reason = "writer_changed";
+    throw new Error("writer_changed");
+  };
+  const entered = deferred(), barrier = deferred();
+  t.after(() => barrier.resolve());
+  h.store.before = async method => { if (method === "invalidate") { entered.resolve(); await barrier.promise; } };
+  const sending = h.connection.send(promptInput()); await entered.promise;
+  assert.equal(h.raw.sent.length, 1);
+  barrier.resolve(); await sending;
+  assert.equal(h.raw.sent.at(-1).type, "session.prompt");
+  assert.deepEqual(await h.store.read(key), { status: "unusable", reason: "foreign_writer" });
+});
+
+test("failed foreign invalidation forwards prompts but poisons every local recorder and future open", async t => {
+  const journal = load("server/hermes-cc/history-connection.ts").journalHermesCcConnection;
+  const store = new FakeHistoryStore(); seed(store);
+  const a = queuedHarness(store, journal), b = queuedHarness(store, journal);
+  t.after(() => a.connection.close()); t.after(() => b.connection.close());
+  await a.open("a", persistence); await becomeReady(a, "a");
+  await b.open("b", persistence); await becomeReady(b, "b");
+  store.before = async method => { if (method === "invalidate") throw new Error("disk unavailable"); };
+  await b.connection.send(promptInput("b", "foreign"));
+  for (const [h, sessionId] of [[a, "a"], [b, "b"]]) {
+    const shown = waitEvent(h.connection, event => event.type === "timeline.item");
+    h.raw.emit({ type: "timeline.item", sessionId, item: { type: "assistant_message", id: "live", text: "live answer" } });
+    await shown;
+    assert.equal(h.events.some(event => event.type === "session.runtime_failed"), false);
+  }
+  await a.connection.send(promptInput("a", "owner-after-failure"));
+  assert.equal(b.raw.sent.at(-1).prompt.clientMessageId, "foreign");
+  assert.equal(a.raw.sent.at(-1).prompt.clientMessageId, "owner-after-failure");
+  assert.equal(store.calls.filter(call => call.method === "turnStarted").length, 0);
+  const c = queuedHarness(store, journal); t.after(() => c.connection.close());
+  await c.open("c", persistence); await becomeReady(c, "c");
+  assert.equal(c.raw.sent[0].history, "replay", "an unavailable fence never restores the old snapshot");
+  assert.deepEqual(historyOnly(c.events), []);
+  store.before = async () => {};
+  await a.connection.send(promptInput("a", "retry-persistence"));
+  assert.deepEqual(await store.read(key), { status: "unusable", reason: "foreign_writer" });
+  assert.equal(store.calls.filter(call => call.method === "append" || call.method === "turnSettled").length, 0);
+});
+
+test("a crash at the foreign prompt fence reopens durable rows using Hermes replay without images", async t => {
+  const entered = deferred(), persist = deferred(), persisted = deferred(), forward = deferred();
+  t.after(() => { persist.resolve(); forward.resolve(); });
+  const root = fs.mkdtempSync(join(tmpdir(), "cc-foreign-crash-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const { createHermesCcHistoryStore } = load("server/hermes-cc/history-store.ts");
+  const store = createHermesCcHistoryStore(root), observer = createHermesCcHistoryStore(root);
+  await store.start(key);
+  for (const event of savedTranscript()) await store.append(key, event);
+  const f = fixture(t, store), modules = new Map();
+  const a = await f.connect({ modules }), b = await f.connect({ modules });
+  await f.open(a, "a", persistence); await f.open(b, "b", persistence);
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=", "base64");
+  await f.images.save({ sessionKey: key.nativeSessionId, messageId: "original-client" }, [{ mime: "image/png", data: png }]);
+  assert.equal((await f.resolver.find({ provider: "hermes-cc", sessionId: `plugin:${JSON.stringify(persistence)}`,
+    messageId: "original-client", hermesCcImageStore: f.images, signal: new AbortController().signal,
+  })).matchedMessages, 1, "the stale identity would restore its original image");
+  const invalidate = store.invalidate.bind(store);
+  store.invalidate = async (k, reason) => {
+    assert.equal(reason, "foreign_writer");
+    entered.resolve(); await persist.promise;
+    await invalidate(k, reason);
+    persisted.resolve(); await forward.promise;
+  };
+  const sending = b.connection.send(promptInput("b", "foreign")); await entered.promise;
+  assert.equal((await observer.read(key)).status, "complete");
+  assert.equal(f.requests().filter(request => request.method === "session/prompt").length, 0);
+  persist.resolve(); await persisted.promise;
+  assert.deepEqual(await observer.read(key), { status: "unusable", reason: "foreign_writer" });
+  assert.equal(f.requests().filter(request => request.method === "session/prompt").length, 0);
+  // Drop the original owner's runtime/lease without allowing the blocked prompt
+  // or any history event to run. Only the persisted fence survives the restart.
+  await a.connection.close();
+  const recoveredStore = createHermesCcHistoryStore(root), restarted = fixture(t, recoveredStore);
+  const resumed = await restarted.connect(); await restarted.open(resumed, "restarted", persistence);
+  assert.deepEqual(timeline(resumed.events).map(event => event.item.text), ["Hermes stored ", "Hermes stored rewritten text", "Hermes stored reply"]);
+  assert.ok(!timeline(resumed.events).some(event => event.item.clientMessageId === "original-client"));
+  for (const event of timeline(resumed.events).filter(event => event.item.type === "user_message")) {
+    assert.deepEqual(await f.resolver.find({ provider: "hermes-cc", sessionId: `plugin:${JSON.stringify(persistence)}`,
+      messageId: event.item.id, clientMessageId: event.item.clientMessageId, text: event.item.text,
+      hermesCcImageStore: f.images, signal: new AbortController().signal,
+    }), { matchedMessages: 0, images: [] });
+  }
+  forward.resolve(); await sending;
 });
 
 test("simultaneous opens reserve a single recorder before asynchronous reads", async () => {
@@ -766,7 +889,7 @@ for (const followup of [
   });
 }
 
-for (const resume of [false, true]) test(`a store lease held outside the wrapper blocks ${resume ? "resume" : "creation"} recording until a live append invalidates`, async t => {
+for (const resume of [false, true]) test(`a store lease held outside the wrapper fences ${resume ? "resume" : "creation"} sends before forwarding`, async t => {
   const f = fixture(t);
   const { createHermesCcHistoryStore } = load("server/hermes-cc/history-store.ts");
   const root = join(f.root, "history"), owner = createHermesCcHistoryStore(root);
@@ -784,7 +907,7 @@ for (const resume of [false, true]) test(`a store lease held outside the wrapper
   await h.connection.send(promptInput());
   await h.connection.send(promptInput("boundary", "slash", "/undo"));
   await h.connection.send({ type: "session.revert", sessionId: "boundary", requestId: "revert", turnId: "old-turn" });
-  assert.deepEqual(await observer.read(key), saved, "sending prompts or commands without history never invalidates");
+  assert.deepEqual(await observer.read(key), { status: "unusable", reason: "foreign_writer" });
   const shown = waitEvent(h.connection, event => event.type === "timeline.item");
   h.raw.emit({ type: "timeline.item", sessionId: "boundary", item: { type: "assistant_message", id: "other-writer", text: "new history" } });
   await shown;
@@ -1040,7 +1163,7 @@ for (const rejected of ["start", "append", "turnStarted", "turnSettled"]) {
     const shown = waitEvent(h.connection, event => event.type === "timeline.item" && event.item.text === "after fence");
     h.raw.emit({ type: "timeline.item", sessionId: "boundary", item: { type: "assistant_message", id: "after-fence", text: "after fence" } });
     await shown;
-    assert.equal(store.calls.length, calls, "the stopped recorder makes no further mutations");
+    assert.deepEqual(store.calls.slice(calls).map(call => call.method), ["invalidate"], "the stopped recorder fences later sends");
     assert.equal(h.raw.sent.at(-1).prompt.clientMessageId, "after-fence");
     assert.equal(h.events.some(event => event.type === "request.failed" || event.type === "session.runtime_failed"), false);
     await h.connection.close();
