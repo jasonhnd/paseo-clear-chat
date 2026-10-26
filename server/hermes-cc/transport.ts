@@ -26,7 +26,7 @@ export async function hermesCcTransport(
   // session/load but spawns archived history from home if that directory is gone.
   // All other launches pass cwd through so spawn reports invalid directories.
   if (launch.history === "replay" && launch.existingSession &&
-      !await stat(processCwd).then(entry => entry.isDirectory(), () => false)) processCwd = homedir();
+      !await isDirectory(processCwd)) processCwd = homedir();
   // Node treats an empty cwd as inherited; reject it instead of running elsewhere.
   if (processCwd === "") throw new Error("Hermes·CC working directory is empty");
   // Match SDK process.ts Windows command-script handling and argument quoting.
@@ -78,6 +78,17 @@ export async function hermesCcTransport(
       abort: close,
     }),
   };
+}
+
+// Paseo v0.13.0 acp-agent.ts:156-165 propagates stat errors other than missing paths.
+async function isDirectory(target: string): Promise<boolean> {
+  try {
+    return (await stat(target)).isDirectory();
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return false;
+    throw error;
+  }
 }
 
 // Paseo SDK v0.13.0 process-internal/windows-command.ts:11-32.
