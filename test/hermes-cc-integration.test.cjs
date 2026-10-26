@@ -199,14 +199,16 @@ function waitEvent(connection, predicate) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => { stop(); reject(new Error("fake ACP timed out")); }, 5000);
     const stop = connection.onEvent(event => {
-      if (event.type === "request.failed" || event.type === "session.runtime_failed") {
+      if (predicate(event)) { clearTimeout(timer); stop(); resolve(event); }
+      else if (event.type === "request.failed" || event.type === "session.runtime_failed") {
         clearTimeout(timer); stop(); reject(new Error("fake ACP operation failed"));
-      } else if (predicate(event)) { clearTimeout(timer); stop(); resolve(event); }
+      }
     });
   });
 }
 
-for (const removed of [false, true]) test(`Hermes process uses ${removed ? "home for removed history cwd" : "the session cwd"} and closes with the SDK connection`, async t => {
+for (const [removed, history, existing] of [[false, "skip", false], [false, "replay", true], [true, "replay", true]])
+test(`Hermes process uses ${removed ? "home for removed history cwd" : "the session cwd"} (${history}, existing=${existing}) and closes with the SDK connection`, async t => {
   const { runAcpProvider } = await import("@getpaseo/plugin/server/acp");
   const root = fs.mkdtempSync(join(tmpdir(), "cc-cwd-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -222,7 +224,7 @@ for (const removed of [false, true]) test(`Hermes process uses ${removed ? "home
   const ready = waitEvent(connection, event => event.type === "session.ready");
   await connection.send({ type: "session.open", requestId: "open", sessionId: "boundary",
     config: { cwd, env: { SESSION_ONLY: "kept", NODE_CHANNEL_FD: "discard", CLAUDECODE: "discard" }, mcpServers: {}, settings: {}, persist: true },
-    history: "replay", ...(removed ? { persistence: { version: 1, data: { sessionId: "native-session" } } } : {}),
+    history, ...(existing ? { persistence: { version: 1, data: { sessionId: "native-session" } } } : {}),
   });
   await ready;
   const completed = waitEvent(connection, event => event.type === "session.turn" && event.state === "completed");
@@ -236,9 +238,43 @@ for (const removed of [false, true]) test(`Hermes process uses ${removed ? "home
   assert.equal(launch.env.SESSION_ONLY, "kept");
   assert.equal(launch.env.NODE_CHANNEL_FD, undefined);
   assert.equal(launch.env.CLAUDECODE, undefined);
+  assert.equal(fs.existsSync(cwd), !removed);
   await connection.close();
   const pids = fs.readFileSync(join(root, "pids.log"), "utf8").trim().split("\n").map(Number);
   assert.equal(pids.length, 2); // Capability probe and session process.
+  for (const pid of pids) assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+});
+
+for (const [history, existing, kind] of [
+  ["skip", false, "missing"], ["replay", false, "missing"], ["skip", true, "missing"],
+  ["skip", false, "file"], ["skip", false, "empty"],
+]) test(`Hermes session fails for an invalid cwd (${history}, existing=${existing}, ${kind})`, async t => {
+  const { runAcpProvider } = await import("@getpaseo/plugin/server/acp");
+  const root = fs.mkdtempSync(join(tmpdir(), "cc-invalid-cwd-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fakeAgent(root);
+  const cwd = kind === "empty" ? "" : join(root, "workspace");
+  if (kind === "file") fs.writeFileSync(cwd, "a file is not a directory");
+  fs.writeFileSync(join(root, "config.json"), JSON.stringify(paseoConfig({ PATH: `${root}${delimiter}${process.env.PATH}` })));
+  const h = loadServer(root, runAcpProvider);
+  t.after(h.cleanup);
+  const connection = await h.providers[0].connect({ versions: [1], capabilities: ["prompt.message", "session.persistence"] });
+  t.after(() => connection.close());
+  const events = [];
+  connection.onEvent(event => events.push(event));
+  const failed = waitEvent(connection, event => event.type === "request.failed" && event.requestId === "open");
+  await connection.send({ type: "session.open", requestId: "open", sessionId: "boundary",
+    config: { cwd, env: {}, mcpServers: {}, settings: {}, persist: true }, history,
+    ...(existing ? { persistence: { version: 1, data: { sessionId: "native-session" } } } : {}),
+  });
+  assert.match((await failed).error.message, kind === "empty" ? /working directory is empty/ : kind === "file" ? /ENOTDIR/ : /ENOENT/);
+  assert.equal(events.some(event => event.type === "session.ready"), false);
+  assert.equal(fs.existsSync(cwd), kind === "file");
+  if (kind === "file") assert.equal(fs.readFileSync(cwd, "utf8"), "a file is not a directory");
+  assert.equal(fs.existsSync(join(root, "launch.json")), false);
+  await connection.close();
+  const pids = fs.readFileSync(join(root, "pids.log"), "utf8").trim().split("\n").map(Number);
+  assert.equal(pids.length, 1); // Only the capability probe ran; no session process.
   for (const pid of pids) assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
 });
 

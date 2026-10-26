@@ -30,7 +30,7 @@ function harness(runAcpProvider) {
   runInThisContext(`(function(require,module,exports,console){${compiled}\n})`, { filename })(
     id => {
       if (id === "node:async_hooks") return require(id);
-      if (id === "./transport") return { hermesCcTransport: async (command, env, cwd) => launches.push({ command, env, cwd }) };
+      if (id === "./transport") return { hermesCcTransport: async (command, env, launch) => launches.push({ ...launch, command, env }) };
       if (id === "./session-key") {
         const keys = { exports: {} };
         const source = ts.transpileModule(readFileSync(resolve(__dirname, "../server/hermes-cc/session-key.ts"), "utf8"), {
@@ -95,7 +95,7 @@ for (const command of matches) test(`mirrors ${JSON.stringify(command)} without 
   assert.equal(provider.extends, undefined);
   assert.equal(provider.env, undefined);
   await provider.connect({ versions: [1], capabilities: [], launch: { command: "/resolved/hermes", args: command.slice(1), env: { HOST: "kept", A: "old" } } });
-  assert.deepEqual(h.launches[0], { command, env: h.hermesCcSourceEnv(process.env, { A: "exact value", EMPTY: "" }), cwd: undefined });
+  assert.deepEqual(h.launches[0], { command, env: h.hermesCcSourceEnv(process.env, { A: "exact value", EMPTY: "" }) });
   assert.deepEqual(config, before);
 });
 for (const command of misses) test(`ignores ${JSON.stringify(command)}`, () => {
@@ -272,14 +272,19 @@ test("source env strips Paseo controls and worker IPC after overrides, for daemo
   }
 });
 
-test("concurrent sessions keep their cwd and launch env isolated through asynchronous SDK dispatch", async () => {
+test("concurrent sessions keep cwd, env and history isolated through asynchronous SDK dispatch", async () => {
   const h = harness();
   const [provider] = h.hermesCcProvidersFromConfig({ x: { extends: "acp", command: ["hermes", "acp"], env: { SOURCE: "kept", ORDER: "source" } } }, true, async () => {});
   const connection = await provider.connect({ versions: [1], capabilities: [] });
-  await Promise.all(["one", "two"].map(cwd => connection.send({ type: "session.open", config: { cwd, env: { ORDER: cwd, NODE_CHANNEL_FD: "discard" } } })));
-  assert.deepEqual(h.launches.slice(1).map(({ cwd, env }) => ({ cwd, source: env.SOURCE, order: env.ORDER, ipc: env.NODE_CHANNEL_FD })), [
-    { cwd: "one", source: "kept", order: "one", ipc: undefined },
-    { cwd: "two", source: "kept", order: "two", ipc: undefined },
+  await Promise.all(["one", "two"].map(cwd => connection.send({ type: "session.open",
+    config: { cwd, env: { ORDER: cwd, NODE_CHANNEL_FD: "discard" } },
+    history: cwd === "one" ? "replay" : "skip", ...(cwd === "one" ? { persistence: persistence("native") } : {}),
+  })));
+  assert.deepEqual(h.launches.slice(1).map(({ cwd, env, history, existingSession }) => ({
+    cwd, source: env.SOURCE, order: env.ORDER, ipc: env.NODE_CHANNEL_FD, history, existingSession,
+  })), [
+    { cwd: "one", source: "kept", order: "one", ipc: undefined, history: "replay", existingSession: true },
+    { cwd: "two", source: "kept", order: "two", ipc: undefined, history: "skip", existingSession: false },
   ]);
 });
 

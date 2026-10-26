@@ -8,15 +8,28 @@ import { promisify } from "node:util";
 import type { AcpStream } from "@getpaseo/plugin/server/acp";
 import { ndJsonStream } from "./ndjson";
 
+export interface HermesCcLaunch {
+  cwd?: string;
+  history?: "replay" | "skip";
+  existingSession?: boolean;
+}
+
 /** The SDK's command adapter has no spawn cwd option (connection.ts:412-416). */
 export async function hermesCcTransport(
   command: readonly [string, ...string[]],
   env: Record<string, string>,
-  cwd?: string,
+  launch: HermesCcLaunch = {},
 ): Promise<AcpStream> {
+  // Probes/catalogs without a session cwd keep using home. The SDK connector
+  // exposes no probe purpose, so it cannot match the original's probe-only NO_BROWSER.
+  let processCwd = launch.cwd ?? homedir();
   // Paseo v0.13.0 acp-agent.ts:2864-2872 keeps the session's original cwd in
   // session/load but spawns archived history from home if that directory is gone.
-  const processCwd = cwd && await stat(cwd).then(entry => entry.isDirectory(), () => false) ? cwd : homedir();
+  // All other launches pass cwd through so spawn reports invalid directories.
+  if (launch.history === "replay" && launch.existingSession &&
+      !await stat(processCwd).then(entry => entry.isDirectory(), () => false)) processCwd = homedir();
+  // Node treats an empty cwd as inherited; reject it instead of running elsewhere.
+  if (processCwd === "") throw new Error("Hermes·CC working directory is empty");
   // Match SDK process.ts Windows command-script handling and argument quoting.
   const shell = process.platform === "win32" && (!extname(command[0]) || /\.(cmd|bat)$/i.test(command[0]));
   const argv = shell ? command.map(quoteWindowsArgument) : [...command];
