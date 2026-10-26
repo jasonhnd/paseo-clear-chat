@@ -182,7 +182,7 @@ What to know:
 - Use one conversation from one window at a time. If a second window sends a prompt to the same conversation, the record is discarded and both windows fall back to Hermes's own text.
 - The images are saved in the `plugin-data/clear-chat/hermes-cc-images` folder in your Paseo home (`~/.paseo` by default), up to 2 GB. When it is full, the oldest are deleted first. The saved records are in `hermes-cc-history` next to it, up to 64 MB for each conversation and 1 GB in all; past that, the conversation falls back to Hermes's own text.
 - To clear them, quit Paseo first. Deleting the images folder keeps your conversations and text but removes the images. Deleting the records folder makes the conversations fall back to Hermes's own text, with no images.
-- To stop adding the **·CC** versions, turn off **Hermes·CC providers** in the settings and reload the host. The **·CC** agents you already created stop working for now; turn the setting back on and they come back. Nothing saved is deleted.
+- To stop adding the **·CC** versions, turn off **Hermes·CC providers** in the settings and reload the host. The **·CC** agents you already created stay in the list, but opening one shows "Failed to load agent" because its provider cannot be found; the conversation is not lost. Turn the setting back on and reload, and they open again.
 
 ## What a plugin cannot do
 

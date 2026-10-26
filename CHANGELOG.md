@@ -16,7 +16,7 @@ Built and tested on Paseo 0.13.1. Needs Paseo 0.13.0 or later.
   - If the saved record does not match, has been changed, or you used a slash command or a revert such as `/undo`, Clear Chat falls back to Hermes's own text for that conversation and shows no images.
   - Use one conversation from one window at a time. If a second window sends a prompt to the same conversation, both windows fall back to Hermes's own text.
   - The images take up to 2 GB in Clear Chat's own folder; when it is full, the oldest are deleted first.
-- New setting **Hermes·CC providers**, on by default, controls whether the **·CC** versions are added. Changes apply after you reload the host. The **·CC** agents you already created stop working for now, and come back when you turn it on again.
+- New setting **Hermes·CC providers**, on by default, controls whether the **·CC** versions are added. Changes apply after you reload the host. The **·CC** agents you already created stay in the list, but opening one shows "Failed to load agent" until you turn the setting back on and reload; the conversation is not lost.
 
 ### Changed
 

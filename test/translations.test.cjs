@@ -234,9 +234,10 @@ test("numeric interpolation renders the original ungrouped English reasoning foo
 });
 
 const approvedResourceHashes = {
-  "en": "152d71e2522554c58ab5fc015b1c3b32d9345d12d02e26074bf541085f09cea8",
-  "zh-CN": "e69c786128d8af0530ca1f8eaf627503512ab9686b0526c6670745acbb4c70a1",
-  "ja": "30e45b7e3724162c02f550a5dfc7b0174cf8b0e1fd273917472cf2c6010112df",
+  // Accept the 0.13.1.1 settings.promptBubble.description wording; pin all other baseline text.
+  "en": "22dc51297bae961a892bc91f597465e0fcfad8020c8c99cde9d4d7faeafb67e1",
+  "zh-CN": "29ba2ca0de1925b4d89edb1d4f3a9408217d61aa9147a9cb36789f8bcae954cb",
+  "ja": "e0a6fcd7c7957641820db490b4576139ff07716957c1d8c75b61aa25808f384d",
 };
 
 for (const locale of ["en", "zh-CN", "ja"]) {
