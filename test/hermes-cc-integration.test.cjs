@@ -45,13 +45,15 @@ function fakeAgent(root, failInitialize = false) {
     let sessionCwd;
     readline.createInterface({ input: process.stdin }).on("line", line => {
       const request = JSON.parse(line);
+      require("node:fs").appendFileSync(${JSON.stringify(join(root, "requests.log"))}, JSON.stringify({ method: request.method, cwd: process.cwd(), params: request.params }) + "\\n");
       const reply = result => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result }) + "\\n");
       if (${JSON.stringify(failInitialize)} && request.method === "initialize") {
         process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, error: { code: -32603, message: "fixture initialization failed" } }) + "\\n");
         return;
       }
-      if (request.method === "initialize") reply({ protocolVersion: 1, agentCapabilities: { loadSession: true, promptCapabilities: { image: true } } });
-      else if (request.method === "session/new") { sessionCwd = request.params.cwd; reply({ sessionId: "native-session" }); }
+      if (request.method === "initialize") reply({ protocolVersion: 1, agentCapabilities: { loadSession: true, promptCapabilities: { image: true }, sessionCapabilities: { list: {} } } });
+      else if (request.method === "session/new") { sessionCwd = request.params.cwd; reply({ sessionId: "native-session", configOptions: [{ id: "model", name: "Model", category: "model", type: "select", currentValue: "fake-model", options: [{ value: "fake-model", name: "Fake model" }] }] }); }
+      else if (request.method === "session/list") reply({ sessions: [{ sessionId: "existing-session", cwd: ${JSON.stringify(root)}, title: "Existing session" }] });
       else if (request.method === "session/load") { sessionCwd = request.params.cwd; reply({}); }
       else if (request.method === "session/prompt") {
         require("node:fs").writeFileSync(${JSON.stringify(join(root, "received.json"))}, JSON.stringify(request.params));
@@ -83,6 +85,80 @@ function paseoConfig(env = {}) {
   } } };
 }
 
+function requests(root) {
+  const path = join(root, "requests.log");
+  return fs.existsSync(path) ? fs.readFileSync(path, "utf8").trim().split("\n").map(JSON.parse) : [];
+}
+
+test("SDK v0.13.0 opens sessions for catalog discovery, but not capability probes or session listing", async t => {
+  const { runAcpProvider } = await import("@getpaseo/plugin/server/acp");
+  const root = fs.mkdtempSync(join(tmpdir(), "cc-sdk-discovery-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const provider = runAcpProvider({ id: "fixture", label: "Fixture", command: [fakeAgent(root), "acp"] });
+  assert.deepEqual(requests(root), []);
+  const connection = await provider.connect({ versions: [1], capabilities: ["session.list"] });
+  t.after(() => connection.close());
+  assert.deepEqual(requests(root).map(request => request.method), ["initialize"]);
+  for (const cwd of [undefined, root]) {
+    const catalog = waitEvent(connection, event => event.type === "catalog");
+    await connection.send({ type: "catalog", requestId: "models", ...(cwd ? { cwd } : {}) });
+    assert.deepEqual((await catalog).catalog.models, [{ id: "fake-model", label: "Fake model" }]);
+  }
+  assert.equal(requests(root).filter(request => request.method === "session/new").length, 2);
+  const listed = waitEvent(connection, event => event.type === "sessions");
+  await connection.send({ type: "sessions", requestId: "list" });
+  assert.equal((await listed).sessions.length, 1);
+  assert.equal(requests(root).filter(request => request.method === "session/new").length, 2);
+});
+
+test("Hermes·CC registration, startup probes, catalogs and session listings create no sessions", async t => {
+  const { runAcpProvider } = await import("@getpaseo/plugin/server/acp");
+  const root = fs.mkdtempSync(join(tmpdir(), "cc-startup-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fakeAgent(root);
+  const config = paseoConfig({ PATH: `${root}${delimiter}${process.env.PATH}` });
+  config.agents.providers["hermes-zk"].env = config.agents.providers.hermes.env;
+  fs.writeFileSync(join(root, "config.json"), JSON.stringify(config));
+  const h = loadServer(root, runAcpProvider);
+  t.after(h.cleanup);
+  assert.equal(h.providers.length, 2);
+  assert.deepEqual(requests(root), []);
+  for (const provider of h.providers) {
+    const connection = await provider.connect({ versions: [1], capabilities: ["prompt.message", "prompt.image", "session.list", "session.persistence"] });
+    t.after(() => connection.close());
+    assert.ok(connection.capabilities.includes("prompt.image"));
+    assert.ok(connection.capabilities.includes("session.list"));
+    assert.ok(connection.capabilities.includes("session.persistence"));
+    assert.equal(requests(root).filter(request => request.method === "session/new").length, 0);
+    // Repeat discovery, including a workspace that no longer exists.
+    for (const cwd of [undefined, root, join(root, "removed"), undefined]) {
+      const input = { type: "catalog", requestId: "models", ...(cwd ? { cwd } : {}) };
+      const before = structuredClone(input);
+      const catalog = waitEvent(connection, event => event.type === "catalog");
+      await connection.send(input);
+      assert.deepEqual((await catalog).catalog, { models: [], modes: [] });
+      assert.deepEqual(input, before);
+      assert.equal(requests(root).filter(request => request.method === "session/new").length, 0);
+    }
+    for (const cwd of [undefined, root]) {
+      const listed = waitEvent(connection, event => event.type === "sessions");
+      await connection.send({ type: "sessions", requestId: "list", ...(cwd ? { cwd } : {}) });
+      assert.deepEqual((await listed).sessions, [{ persistence: { version: 1, data: { sessionId: "existing-session" } }, cwd: root, title: "Existing session", updatedAt: undefined }]);
+    }
+    await connection.close();
+  }
+  assert.equal(requests(root).filter(request => request.method === "initialize").length, 14);
+  assert.equal(requests(root).filter(request => request.method === "session/list").length, 4);
+  assert.deepEqual(requests(root).filter(request => request.method === "session/list").map(request => request.params.cwd), [undefined, root, undefined, root]);
+  assert.equal(requests(root).filter(request => request.method === "session/new").length, 0);
+  for (const request of requests(root)) {
+    assert.equal(request.cwd, process.cwd());
+  }
+  for (const pid of fs.readFileSync(join(root, "pids.log"), "utf8").trim().split("\n").map(Number)) {
+    assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+  }
+});
+
 test("v0.13.0 agents.providers mirrors only enabled Hermes sources and captures exact-ID PNGs through real ACP and RPC", async t => {
   const { runAcpProvider } = await import("@getpaseo/plugin/server/acp");
   const root = fs.mkdtempSync(join(tmpdir(), "cc-integration-"));
@@ -101,6 +177,8 @@ test("v0.13.0 agents.providers mirrors only enabled Hermes sources and captures 
   const connection = await h.providers[0].connect({ versions: [1], capabilities: ["prompt.message", "prompt.image", "session.persistence"],
   });
   t.after(() => connection.close());
+  assert.equal(requests(root).filter(request => request.method === "session/new").length, 0);
+  const configured = waitEvent(connection, event => event.type === "session.config");
   const ready = new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("fake ACP timed out")), 5000);
     connection.onEvent(event => { if (event.type === "session.ready") { clearTimeout(timer); resolve(); } });
@@ -108,6 +186,8 @@ test("v0.13.0 agents.providers mirrors only enabled Hermes sources and captures 
   await connection.send({ type: "session.open", requestId: "open", sessionId: "boundary-session",
     config: { cwd: root, env: {}, mcpServers: {}, settings: {}, persist: true }, history: "skip" });
   await ready;
+  assert.deepEqual((await configured).config.models, [{ id: "fake-model", label: "Fake model" }]);
+  assert.equal(requests(root).filter(request => request.method === "session/new").length, 1);
   const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=", "base64");
   const input = { type: "session.prompt", sessionId: "boundary-session", prompt: {
     clientMessageId: "exact-client-id", delivery: "auto", input: { type: "message", content: [

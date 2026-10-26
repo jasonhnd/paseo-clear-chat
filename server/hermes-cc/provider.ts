@@ -112,6 +112,11 @@ export function hermesCcProvidersFromConfig(
     const context = new AsyncLocalStorage<HermesCcLaunch & { env?: Readonly<Record<string, string>> }>();
     const provider = runAcpProvider({
       id, label: `${typeof source.label === "string" && source.label.trim() ? source.label : sourceId}·CC`,
+      // SDK v0.13.0 acp-internal/connection.ts:72-89 probes with initialize
+      // only. discover():564-574 otherwise creates a persistent session/new.
+      // acp.ts:47-48 supports an initialization-only global catalog; route all
+      // catalogs through it below and defer models/config to a real session.
+      acpOptions: { workspaceOnlyCatalog: true },
       connector: () => {
         const launch = context.getStore();
         // Rebuild from the worker's inherited daemon env, not the -cc launch
@@ -129,9 +134,11 @@ export function hermesCcProvidersFromConfig(
             const launch = input.type === "session.open" ? {
               cwd: input.config.cwd, env: input.config.env, history: input.history,
               existingSession: nativeKey(input.persistence) !== null,
-            }
-              : input.type === "catalog" || input.type === "sessions" ? { cwd: input.cwd } : {};
-            return context.run(launch, () => connection.send(input));
+            } : {};
+            // A workspace cwd bypasses workspaceOnlyCatalog in SDK
+            // connection.ts:565. Listing sessions still forwards its cwd filter.
+            const request = input.type === "catalog" ? { type: input.type, requestId: input.requestId } : input;
+            return context.run(launch, () => connection.send(request));
           },
         };
       },

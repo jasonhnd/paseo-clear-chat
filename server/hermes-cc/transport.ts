@@ -20,9 +20,8 @@ export async function hermesCcTransport(
   env: Record<string, string>,
   launch: HermesCcLaunch = {},
 ): Promise<AcpStream> {
-  // Probes/catalogs without a session cwd keep using home. The SDK connector
-  // exposes no probe purpose, so it cannot match the original's probe-only NO_BROWSER.
-  let processCwd = launch.cwd ?? homedir();
+  // Probes/discovery match the built-in provider (acp-agent.ts:1412-1413).
+  let processCwd = launch.cwd ?? process.cwd();
   // Paseo v0.13.0 acp-agent.ts:2864-2872 keeps the session's original cwd in
   // session/load but spawns archived history from home if that directory is gone.
   // All other launches pass cwd through so spawn reports invalid directories.
