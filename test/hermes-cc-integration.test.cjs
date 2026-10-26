@@ -8,7 +8,7 @@ const { runInThisContext } = require("node:vm");
 const ts = require("typescript");
 
 function loadServer(root, runAcpProvider, workerEnv = {}) {
-  const cache = new Map(), logs = [];
+  const cache = new Map(), logs = [], catalogStores = [];
   function load(filename) {
     filename = resolve(__dirname, "..", filename);
     if (cache.has(filename)) return cache.get(filename).exports;
@@ -19,6 +19,12 @@ function loadServer(root, runAcpProvider, workerEnv = {}) {
     const realRequire = createRequire(filename);
     function localRequire(id) {
       if (id === "@getpaseo/plugin/server/acp") return { runAcpProvider };
+      if (id === "./server/hermes-cc/catalog") {
+        const catalog = load(resolve(dirname(filename), `${id}.ts`));
+        return { ...catalog, createHermesCcCatalogStore(...args) {
+          const store = catalog.createHermesCcCatalogStore(...args); catalogStores.push(store); return store;
+        } };
+      }
       return id.startsWith(".") ? load(resolve(dirname(filename), `${id}.ts`)) : realRequire(id);
     }
     runInThisContext(`(function(require,module,exports,process,console){${code}\n})`, { filename })(
@@ -34,7 +40,7 @@ function loadServer(root, runAcpProvider, workerEnv = {}) {
     handle(contract, handler) { handlers.set(contract.name, handler); },
   });
   assert.equal(typeof cleanup, "function");
-  return { providers, handlers, cleanup, logs, startup: () => load("server/hermes-cc/startup.ts").hermesCcStartupConfig(root) };
+  return { providers, handlers, cleanup, logs, flushCatalogs: () => Promise.all(catalogStores.map(store => store.flush())), startup: () => load("server/hermes-cc/startup.ts").hermesCcStartupConfig(root) };
 }
 
 const fakeModes = {
@@ -50,13 +56,13 @@ const fakeModelOptions = [{ id: "model", name: "Model", category: "model", type:
     { value: "fake-model", name: "Fake model" }, { value: "other-model", name: "Other model" },
   ] }];
 
-function fakeAgent(root, failInitialize = false) {
+function fakeAgent(root, failInitialize = false, sessionCatalog = { modes: fakeModes, configOptions: fakeModelOptions }) {
   const filename = join(root, "hermes");
   fs.writeFileSync(filename, `#!/usr/bin/env node
     const readline = require("node:readline");
     require("node:fs").appendFileSync(${JSON.stringify(join(root, "pids.log"))}, process.pid + "\\n");
     let sessionCwd;
-    const modes = ${JSON.stringify(fakeModes)}, configOptions = ${JSON.stringify(fakeModelOptions)};
+    const catalog = ${JSON.stringify(sessionCatalog)}, modes = catalog.modes, configOptions = catalog.configOptions ?? [];
     readline.createInterface({ input: process.stdin }).on("line", line => {
       const request = JSON.parse(line);
       require("node:fs").appendFileSync(${JSON.stringify(join(root, "requests.log"))}, JSON.stringify({ method: request.method, cwd: process.cwd(), params: request.params }) + "\\n");
@@ -66,14 +72,14 @@ function fakeAgent(root, failInitialize = false) {
         return;
       }
       if (request.method === "initialize") reply({ protocolVersion: 1, agentCapabilities: { loadSession: true, promptCapabilities: { image: true }, sessionCapabilities: { list: {} } } });
-      else if (request.method === "session/new") { sessionCwd = request.params.cwd; reply({ sessionId: "native-session", modes, configOptions }); }
+      else if (request.method === "session/new") { sessionCwd = request.params.cwd; reply({ sessionId: "native-session", ...catalog }); }
       else if (request.method === "session/set_mode") { modes.currentModeId = request.params.modeId; reply({}); }
       else if (request.method === "session/set_config_option") {
         configOptions.find(option => option.id === request.params.configId).currentValue = request.params.value;
         reply({ configOptions });
       }
       else if (request.method === "session/list") reply({ sessions: [{ sessionId: "existing-session", cwd: ${JSON.stringify(root)}, title: "Existing session" }] });
-      else if (request.method === "session/load") { sessionCwd = request.params.cwd; reply({}); }
+      else if (request.method === "session/load") { sessionCwd = request.params.cwd; reply(catalog); }
       else if (request.method === "session/prompt") {
         require("node:fs").writeFileSync(${JSON.stringify(join(root, "received.json"))}, JSON.stringify(request.params));
         require("node:fs").writeFileSync(${JSON.stringify(join(root, "launch.json"))}, JSON.stringify({ env: process.env, cwd: process.cwd(), sessionCwd }));
@@ -178,6 +184,38 @@ test("Hermes·CC registration, startup probes, catalogs and session listings cre
   for (const pid of fs.readFileSync(join(root, "pids.log"), "utf8").trim().split("\n").map(Number)) {
     assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
   }
+  // A command-only source learns from the first user open; discovery stays inert.
+  const originalKey = await h.providers[0].getCatalogCacheKey({ scope: "global" });
+  assert.equal(await h.providers[0].getCatalogCacheKey({ scope: "workspace", cwd: root }), originalKey);
+  const connection = await h.providers[0].connect({ versions: [1], capabilities: ["session.configure"] });
+  t.after(() => connection.close());
+  const ready = waitEvent(connection, event => event.type === "session.ready");
+  await connection.send({ type: "session.open", requestId: "real-open", sessionId: "boundary",
+    config: { cwd: root, env: {}, mcpServers: {}, settings: {}, persist: true }, history: "skip" });
+  await ready;
+  const learnedKey = await h.providers[0].getCatalogCacheKey({ scope: "global" });
+  assert.notEqual(learnedKey, originalKey);
+  const expected = {
+    modes: fakeModes.availableModes.map(mode => ({ id: mode.id, label: mode.name, description: undefined })),
+    defaultMode: fakeModes.currentModeId,
+    models: fakeModelOptions[0].options.map(option => ({ id: option.value, label: option.name,
+      description: undefined, isDefault: option.value === "fake-model", metadata: undefined })),
+    defaultModel: "fake-model",
+  };
+  for (const cwd of [undefined, root, join(root, "removed")]) {
+    const catalog = waitEvent(connection, event => event.type === "catalog");
+    await connection.send({ type: "catalog", requestId: "remembered", ...(cwd ? { cwd } : {}) });
+    assert.deepEqual((await catalog).catalog, expected);
+    assert.equal(requests(root).filter(request => request.method === "session/new").length, 1);
+  }
+  assert.equal(await h.providers[0].getCatalogCacheKey({ scope: "global" }), learnedKey);
+  // A different CC provider id must not inherit this catalog.
+  const other = await h.providers[1].connect({ versions: [1], capabilities: [] });
+  t.after(() => other.close());
+  const empty = waitEvent(other, event => event.type === "catalog");
+  await other.send({ type: "catalog", requestId: "other" });
+  assert.deepEqual((await empty).catalog, { models: [], modes: [] });
+  assert.equal(requests(root).filter(request => request.method === "session/new").length, 1);
 });
 
 test("CC catalogs mirror source model config before any session and mode/model changes reach ACP", async t => {
@@ -246,7 +284,71 @@ test("CC catalogs mirror source model config before any session and mode/model c
     ...["dontAsk", "acceptEdits", "dontAsk"].map(modeId => ({ method: "session/set_mode", params: { sessionId: "native-session", modeId } })),
     { method: "session/set_config_option", params: { sessionId: "native-session", configId: "model", value: "fake-model" } },
   ]);
+  const refreshed = waitEvent(connection, event => event.type === "catalog");
+  await connection.send({ type: "catalog", requestId: "after-open" });
+  const catalog = (await refreshed).catalog;
+  assert.deepEqual(catalog.modes.map(mode => [mode.id, mode.label]), fakeModes.availableModes.map(mode => [mode.id, mode.name]));
+  assert.equal(catalog.defaultMode, fakeModes.currentModeId);
+  assert.deepEqual(catalog.models, [
+    { ...source.models[0], isDefault: false, defaultThinkingOptionId: "high" },
+    { ...source.models[1], ...source.additionalModels[0] }, { ...source.additionalModels[1], isDefault: false },
+  ]);
+  assert.equal(catalog.defaultModel, "other-model");
   assert.deepEqual(config, before);
+});
+
+for (const [kind, models] of [["new", undefined], ["load", []]]) test(`remembers ${kind} catalog across host reload and merges additionalModels with ${models ? "empty" : "absent"} models`, async t => {
+  const { runAcpProvider } = await import("@getpaseo/plugin/server/acp");
+  const root = fs.mkdtempSync(join(tmpdir(), "cc-learned-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fakeAgent(root);
+  const config = paseoConfig({ PATH: `${root}${delimiter}${process.env.PATH}` });
+  const source = config.agents.providers.hermes;
+  if (models) source.models = models;
+  source.additionalModels = [
+    { id: "other-model", label: "Override other", isDefault: true },
+    { id: "bad-row", label: 12, description: "private invalid row" },
+    { id: "extra", label: "Extra" },
+  ];
+  config.agents.providers = { arbitrary: source };
+  fs.writeFileSync(join(root, "config.json"), JSON.stringify(config));
+  const h = loadServer(root, runAcpProvider);
+  t.after(h.cleanup);
+  const connection = await h.providers[0].connect({ versions: [1], capabilities: ["session.configure", "session.persistence"] });
+  t.after(() => connection.close());
+  const before = waitEvent(connection, event => event.type === "catalog");
+  await connection.send({ type: "catalog", requestId: "before" });
+  assert.deepEqual((await before).catalog.modes, []);
+  assert.equal(requests(root).some(request => request.method === "session/new"), false);
+  const ready = waitEvent(connection, event => event.type === "session.ready");
+  await connection.send({ type: "session.open", requestId: "user-open", sessionId: "boundary",
+    config: { cwd: root, env: {}, mcpServers: {}, settings: {}, persist: true }, history: "skip",
+    ...(kind === "load" ? { persistence: { version: 1, data: { sessionId: "native-session" } } } : {}),
+  });
+  await ready;
+  await h.flushCatalogs();
+  const reloaded = loadServer(root, runAcpProvider);
+  t.after(reloaded.cleanup);
+  const fresh = await reloaded.providers[0].connect({ versions: [1], capabilities: [] });
+  t.after(() => fresh.close());
+  for (const current of [connection, fresh]) {
+    for (const cwd of [undefined, root, join(root, "missing")]) {
+      const refreshed = waitEvent(current, event => event.type === "catalog");
+      await current.send({ type: "catalog", requestId: "after", ...(cwd ? { cwd } : {}) });
+      // Normalize optional undefined properties as the host wire transport does.
+      assert.deepEqual(JSON.parse(JSON.stringify((await refreshed).catalog)), {
+        modes: fakeModes.availableModes.map(mode => ({ id: mode.id, label: mode.name })),
+        defaultMode: fakeModes.currentModeId, defaultModel: "other-model",
+        models: [{ id: "fake-model", label: "Fake model", isDefault: false },
+          { id: "other-model", label: "Override other", isDefault: true },
+          { id: "extra", label: "Extra", isDefault: false }],
+      });
+    }
+  }
+  assert.equal(requests(root).filter(request => request.method === "session/new").length, kind === "new" ? 1 : 0);
+  assert.equal(requests(root).filter(request => request.method === "session/load").length, kind === "load" ? 1 : 0);
+  assert.ok(h.logs.some(log => log.length === 1 && log[0] === "[clear-chat] hermes_cc: configured_model_invalid"));
+  assert.ok(h.logs.every(log => !JSON.stringify(log).includes("private invalid row")));
 });
 
 test("v0.13.0 agents.providers mirrors only enabled Hermes sources and captures exact-ID PNGs through real ACP and RPC", async t => {
