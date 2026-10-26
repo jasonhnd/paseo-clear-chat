@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+import { hermesCcTransport } from "./transport";
 import { nativeKey } from "./session-key";
 export { nativeSessionKeyFromPersistence } from "./session-key";
 import { runAcpProvider } from "@getpaseo/plugin/server/acp";
@@ -104,34 +106,42 @@ export function hermesCcProvidersFromConfig(
     }
     // SDK v0.13.0 packages/plugin/src/server/acp.ts:106-124 returns a public
     // registration; no manifest provider entry or host config mutation is needed.
-    const provider = runAcpProvider({ id, label: `${typeof source.label === "string" && source.label.trim() ? source.label : sourceId}·CC`, command });
+    // The connector runs asynchronously after send() returns. AsyncLocalStorage
+    // keeps launch context isolated across concurrent sessions and discovery.
+    const context = new AsyncLocalStorage<{ cwd?: string; env?: Readonly<Record<string, string>> }>();
+    const provider = runAcpProvider({
+      id, label: `${typeof source.label === "string" && source.label.trim() ? source.label : sourceId}·CC`,
+      connector: () => {
+        const launch = context.getStore();
+        // Rebuild from the worker's inherited daemon env, not the -cc launch
+        // env, whose overrides belong to a different provider ID.
+        return hermesCcTransport(command, hermesCcSourceEnv(process.env, { ...env, ...launch?.env }), launch?.cwd);
+      },
+    });
     registrations.push({
       ...provider,
-      // ProviderRegistration.command is optional (SDK server/provider.ts:33-36).
-      // Host resolution is keyed by the new -cc ID and cannot see source env/PATH.
-      // Keep the source command in the ACP adapter; supply its exact launch below.
-      command: undefined,
       async connect(request) {
-        // The worker inherits the daemon env (server/plugins/runtime.ts:233-238).
-        // Reproduce the source provider's env from that base, including stripping
-        // AFTER overlays: agent/provider-launch-config.ts:211-216,237-253 and
-        // server/paseo-env.ts:4-11,25-40. The SDK exports no env builder. Using the
-        // -cc launch env as a base would retain unrelated -cc overrides.
-        const launch = { command: command[0], args: command.slice(1), env: hermesCcSourceEnv(process.env, env) };
-        // ACP connection.ts:405-416 accepts an explicit launch. Its spawn uses
-        // source PATH, as GenericACPAgentClient.resolveLaunchCommand does in
-        // server/agent/providers/generic-acp-agent.ts:72-77.
-        const connection = await provider.connect({ ...request, launch });
-        return captureHermesCcPrompts(connection, hook);
+        const connection = captureHermesCcPrompts(await provider.connect(request), hook);
+        return {
+          ...connection,
+          send(input) {
+            const launch = input.type === "session.open" ? { cwd: input.config.cwd, env: input.config.env }
+              : input.type === "catalog" || input.type === "sessions" ? { cwd: input.cwd } : {};
+            return context.run(launch, () => connection.send(input));
+          },
+        };
       },
     });
   }
   return registrations;
 }
 
-/** Exact Paseo 0.13 source-provider env policy; no daemon controls reach ACP. */
+/** Paseo 0.13 provider-launch-config.ts:238-252 and paseo-env.ts:21-34. */
 export function hermesCcSourceEnv(base: NodeJS.ProcessEnv, overlay: Record<string, string>): Record<string, string> {
   const env = { ...base, ...overlay };
+  // The plugin is forked (plugins/runtime.ts:233-238); ACP is not. Never pass
+  // the worker's IPC channel to Hermes, including future NODE_CHANNEL_* keys.
+  for (const key of Object.keys(env)) if (key.startsWith("NODE_CHANNEL_")) delete env[key];
   for (const key of [
     "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SSE_PORT", "CLAUDE_AGENT_SDK_VERSION",
     "PASEO_NODE_ENV", "PASEO_DESKTOP_MANAGED", "PASEO_SUPERVISED", "ELECTRON_RUN_AS_NODE",

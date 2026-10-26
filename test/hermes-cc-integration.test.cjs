@@ -1,13 +1,13 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const { createRequire } = require("node:module");
-const { tmpdir } = require("node:os");
+const { homedir, tmpdir } = require("node:os");
 const { delimiter, dirname, join, resolve } = require("node:path");
 const test = require("node:test");
 const { runInThisContext } = require("node:vm");
 const ts = require("typescript");
 
-function loadServer(root, runAcpProvider) {
+function loadServer(root, runAcpProvider, workerEnv = {}) {
   const cache = new Map(), logs = [];
   function load(filename) {
     filename = resolve(__dirname, "..", filename);
@@ -22,7 +22,7 @@ function loadServer(root, runAcpProvider) {
       return id.startsWith(".") ? load(resolve(dirname(filename), `${id}.ts`)) : realRequire(id);
     }
     runInThisContext(`(function(require,module,exports,process,console){${code}\n})`, { filename })(
-      localRequire, mod, mod.exports, { ...process, env: { ...process.env, PASEO_HOME: root } },
+      localRequire, mod, mod.exports, { ...process, env: { ...process.env, PASEO_HOME: root, ...workerEnv } },
       { debug: (...args) => logs.push(args), error: (...args) => logs.push(args) },
     );
     return mod.exports;
@@ -34,21 +34,28 @@ function loadServer(root, runAcpProvider) {
     handle(contract, handler) { handlers.set(contract.name, handler); },
   });
   assert.equal(typeof cleanup, "function");
-  return { providers, handlers, cleanup, logs };
+  return { providers, handlers, cleanup, logs, startup: () => load("server/hermes-cc/startup.ts").hermesCcStartupConfig(root) };
 }
 
-function fakeAgent(root) {
+function fakeAgent(root, failInitialize = false) {
   const filename = join(root, "hermes");
   fs.writeFileSync(filename, `#!/usr/bin/env node
     const readline = require("node:readline");
+    require("node:fs").appendFileSync(${JSON.stringify(join(root, "pids.log"))}, process.pid + "\\n");
+    let sessionCwd;
     readline.createInterface({ input: process.stdin }).on("line", line => {
       const request = JSON.parse(line);
       const reply = result => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, result }) + "\\n");
-      if (request.method === "initialize") reply({ protocolVersion: 1, agentCapabilities: { promptCapabilities: { image: true } } });
-      else if (request.method === "session/new") reply({ sessionId: "native-session" });
+      if (${JSON.stringify(failInitialize)} && request.method === "initialize") {
+        process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, error: { code: -32603, message: "fixture initialization failed" } }) + "\\n");
+        return;
+      }
+      if (request.method === "initialize") reply({ protocolVersion: 1, agentCapabilities: { loadSession: true, promptCapabilities: { image: true } } });
+      else if (request.method === "session/new") { sessionCwd = request.params.cwd; reply({ sessionId: "native-session" }); }
+      else if (request.method === "session/load") { sessionCwd = request.params.cwd; reply({}); }
       else if (request.method === "session/prompt") {
         require("node:fs").writeFileSync(${JSON.stringify(join(root, "received.json"))}, JSON.stringify(request.params));
-        require("node:fs").writeFileSync(${JSON.stringify(join(root, "env.json"))}, JSON.stringify({ SOURCE_ONLY: process.env.SOURCE_ONLY, CLAUDECODE: process.env.CLAUDECODE, PASEO_NODE_ENV: process.env.PASEO_NODE_ENV }));
+        require("node:fs").writeFileSync(${JSON.stringify(join(root, "launch.json"))}, JSON.stringify({ env: process.env, cwd: process.cwd(), sessionCwd }));
         reply({ stopReason: "end_turn" });
       } else if (request.id !== undefined) reply({});
     });
@@ -63,18 +70,33 @@ function host(provider, native = "native-session") {
   return { paseo: { agents: { ref: () => ({ refresh: async () => ({ agent }), current: () => agent }) } } };
 }
 
-test("contribution registers a mirrored provider and captures exact-ID PNGs through real ACP and the prompt.images RPC", async t => {
+const stripped = ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SSE_PORT", "CLAUDE_AGENT_SDK_VERSION",
+  "PASEO_NODE_ENV", "PASEO_DESKTOP_MANAGED", "PASEO_SUPERVISED", "ELECTRON_RUN_AS_NODE", "ELECTRON_NO_ATTACH_CONSOLE", "ESBUILD_BINARY_PATH"];
+
+function paseoConfig(env = {}) {
+  return { version: 1, providers: { openai: { apiKey: "not-a-real-key" } }, agents: { providers: {
+    hermes: { extends: "acp", label: "Hermes", command: ["hermes", "acp"], env },
+    "hermes-zk": { extends: "acp", label: "Hermes ZK", command: ["hermes", "-p", "zksc-ops", "acp"] },
+    gemini: { extends: "acp", label: "Google Gemini", command: ["gemini", "--acp"] },
+    disabled: { extends: "acp", label: "Disabled Hermes", command: ["hermes", "acp"], enabled: false },
+    claude: { enabled: true, command: ["claude"] },
+  } } };
+}
+
+test("v0.13.0 agents.providers mirrors only enabled Hermes sources and captures exact-ID PNGs through real ACP and RPC", async t => {
   const { runAcpProvider } = await import("@getpaseo/plugin/server/acp");
   const root = fs.mkdtempSync(join(tmpdir(), "cc-integration-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   fakeAgent(root);
-  fs.writeFileSync(join(root, "config.json"), JSON.stringify({ providers: {
-    assistant: { extends: "acp", label: "Assistant", command: ["hermes", "acp"],
-      env: { PATH: `${root}${delimiter}${process.env.PATH}`, SOURCE_ONLY: "exact source value", CLAUDECODE: "stripped", PASEO_NODE_ENV: "stripped" } },
-  } }));
-  const h = loadServer(root, runAcpProvider);
+  const sourceEnv = { PATH: `${root}${delimiter}${process.env.PATH}`, SOURCE_ONLY: "exact source value",
+    ...Object.fromEntries(stripped.map(key => [key, "stripped"])) };
+  const config = paseoConfig(sourceEnv), beforeConfig = structuredClone(config);
+  fs.writeFileSync(join(root, "config.json"), JSON.stringify(config));
+  const workerEnv = { NODE_CHANNEL_FD: "100", NODE_CHANNEL_SERIALIZATION_MODE: "advanced", NODE_CHANNEL_FUTURE: "stripped", WORKER_ONLY: "inherited" };
+  const h = loadServer(root, runAcpProvider, workerEnv);
   t.after(h.cleanup);
-  assert.deepEqual(h.providers.map(p => p.id), ["assistant-cc"]);
+  assert.deepEqual(h.providers.map(p => [p.id, p.label]), [["hermes-cc", "Hermes·CC"], ["hermes-zk-cc", "Hermes ZK·CC"]]);
+  assert.deepEqual(h.startup().providers, beforeConfig.agents.providers);
   assert.equal(h.providers[0].command, undefined);
   const connection = await h.providers[0].connect({ versions: [1], capabilities: ["prompt.message", "prompt.image", "session.persistence"],
   });
@@ -103,15 +125,19 @@ test("contribution registers a mirrored provider and captures exact-ID PNGs thro
   assert.deepEqual(JSON.parse(fs.readFileSync(join(root, "received.json"))), {
     sessionId: "native-session", prompt: before.prompt.input.content,
   });
-  assert.deepEqual(JSON.parse(fs.readFileSync(join(root, "env.json"))), { SOURCE_ONLY: "exact source value" });
+  const expectedEnv = { ...process.env, PASEO_HOME: root, ...workerEnv, ...sourceEnv };
+  for (const key of Object.keys(expectedEnv)) if (stripped.includes(key) || key.startsWith("NODE_CHANNEL_")) delete expectedEnv[key];
+  assert.deepEqual(JSON.parse(fs.readFileSync(join(root, "launch.json"))), { env: expectedEnv, cwd: root, sessionCwd: root });
+  assert.deepEqual(config, beforeConfig);
+  assert.deepEqual(JSON.parse(fs.readFileSync(join(root, "config.json"))), beforeConfig);
   const rpc = h.handlers.get("prompt.images");
   const lookup = { agentId: "agent", messageId: "exact-client-id", text: "irrelevant" };
-  const found = await rpc(lookup, host("assistant-cc"));
+  const found = await rpc(lookup, host("hermes-cc"));
   assert.equal(found.total, 1);
   assert.equal(found.images[0].thumbDataUri, `data:image/png;base64,${png.toString("base64")}`);
   for (const [request, context] of [
-    [{ ...lookup, messageId: "another-id" }, host("assistant-cc")],
-    [lookup, host("assistant-cc", "another-session")],
+    [{ ...lookup, messageId: "another-id" }, host("hermes-cc")],
+    [lookup, host("hermes-cc", "another-session")],
     [lookup, host("hermes")],
     [lookup, host("hermes-unregistered-cc")],
   ]) assert.deepEqual((await rpc(request, context)).images, []);
@@ -135,7 +161,7 @@ test("contribution registers a mirrored provider and captures exact-ID PNGs thro
   await connection.send(second);
   await secondCompleted;
   assert.deepEqual(JSON.parse(fs.readFileSync(join(root, "received.json"))).prompt, second.prompt.input.content);
-  assert.deepEqual((await rpc(lookup, host("assistant-cc"))).images, []);
+  assert.deepEqual((await rpc(lookup, host("hermes-cc"))).images, []);
   assert.ok(h.logs.some(log => log.length === 1 && log[0] === "[clear-chat] hermes_cc: save_conflict"));
 
   const settingDir = join(root, "plugin-settings", "clear-chat");
@@ -144,4 +170,90 @@ test("contribution registers a mirrored provider and captures exact-ID PNGs thro
   const off = loadServer(root, runAcpProvider);
   assert.deepEqual(off.providers, []);
   off.cleanup();
+});
+
+for (const failure of ["missing", "unreadable", "malformed"]) test(`startup registers nothing and logs a fixed reason when config is ${failure}`, t => {
+  const root = fs.mkdtempSync(join(tmpdir(), "cc-config-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const path = join(root, "config.json");
+  if (failure === "unreadable") fs.mkdirSync(path);
+  if (failure === "malformed") fs.writeFileSync(path, '{"private-detail":');
+  const h = loadServer(root, () => { throw new Error("must not register"); });
+  t.after(h.cleanup);
+  assert.deepEqual(h.providers, []);
+  assert.deepEqual(h.logs, [["[clear-chat] hermes_cc: config_unavailable"]]);
+  assert.deepEqual(h.startup(), { enabled: false, providers: {} });
+});
+
+for (const providers of [[], null, "invalid"]) test(`startup rejects a non-object agents.providers: ${JSON.stringify(providers)}`, t => {
+  const root = fs.mkdtempSync(join(tmpdir(), "cc-config-shape-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.writeFileSync(join(root, "config.json"), JSON.stringify({ ...paseoConfig(), agents: { providers } }));
+  const h = loadServer(root, () => { throw new Error("must not register"); });
+  t.after(h.cleanup);
+  assert.deepEqual(h.providers, []);
+  assert.deepEqual(h.startup().providers, {});
+});
+
+function waitEvent(connection, predicate) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { stop(); reject(new Error("fake ACP timed out")); }, 5000);
+    const stop = connection.onEvent(event => {
+      if (event.type === "request.failed" || event.type === "session.runtime_failed") {
+        clearTimeout(timer); stop(); reject(new Error("fake ACP operation failed"));
+      } else if (predicate(event)) { clearTimeout(timer); stop(); resolve(event); }
+    });
+  });
+}
+
+for (const removed of [false, true]) test(`Hermes process uses ${removed ? "home for removed history cwd" : "the session cwd"} and closes with the SDK connection`, async t => {
+  const { runAcpProvider } = await import("@getpaseo/plugin/server/acp");
+  const root = fs.mkdtempSync(join(tmpdir(), "cc-cwd-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fakeAgent(root);
+  const cwd = join(root, "workspace");
+  fs.mkdirSync(cwd);
+  if (removed) fs.rmdirSync(cwd);
+  fs.writeFileSync(join(root, "config.json"), JSON.stringify(paseoConfig({ PATH: `${root}${delimiter}${process.env.PATH}` })));
+  const h = loadServer(root, runAcpProvider);
+  t.after(h.cleanup);
+  const connection = await h.providers[0].connect({ versions: [1], capabilities: ["prompt.message", "session.persistence"] });
+  t.after(() => connection.close());
+  const ready = waitEvent(connection, event => event.type === "session.ready");
+  await connection.send({ type: "session.open", requestId: "open", sessionId: "boundary",
+    config: { cwd, env: { SESSION_ONLY: "kept", NODE_CHANNEL_FD: "discard", CLAUDECODE: "discard" }, mcpServers: {}, settings: {}, persist: true },
+    history: "replay", ...(removed ? { persistence: { version: 1, data: { sessionId: "native-session" } } } : {}),
+  });
+  await ready;
+  const completed = waitEvent(connection, event => event.type === "session.turn" && event.state === "completed");
+  await connection.send({ type: "session.prompt", sessionId: "boundary", prompt: {
+    clientMessageId: "cwd-test", delivery: "auto", input: { type: "message", content: [{ type: "text", text: "cwd" }] },
+  } });
+  await completed;
+  const launch = JSON.parse(fs.readFileSync(join(root, "launch.json")));
+  assert.equal(launch.cwd, removed ? homedir() : cwd);
+  assert.equal(launch.sessionCwd, cwd);
+  assert.equal(launch.env.SESSION_ONLY, "kept");
+  assert.equal(launch.env.NODE_CHANNEL_FD, undefined);
+  assert.equal(launch.env.CLAUDECODE, undefined);
+  await connection.close();
+  const pids = fs.readFileSync(join(root, "pids.log"), "utf8").trim().split("\n").map(Number);
+  assert.equal(pids.length, 2); // Capability probe and session process.
+  for (const pid of pids) assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+});
+
+for (const failure of ["spawn", "initialize"]) test(`SDK connector cleans up when Hermes fails to ${failure}`, async t => {
+  const { runAcpProvider } = await import("@getpaseo/plugin/server/acp");
+  const root = fs.mkdtempSync(join(tmpdir(), "cc-launch-failure-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const config = paseoConfig();
+  config.agents.providers.hermes.command[0] = failure === "spawn" ? join(root, "missing", "hermes") : fakeAgent(root, true);
+  fs.writeFileSync(join(root, "config.json"), JSON.stringify(config));
+  const h = loadServer(root, runAcpProvider);
+  t.after(h.cleanup);
+  await assert.rejects(h.providers[0].connect({ versions: [1], capabilities: [] }));
+  if (failure === "initialize") {
+    const pid = Number(fs.readFileSync(join(root, "pids.log"), "utf8").trim());
+    assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+  }
 });
