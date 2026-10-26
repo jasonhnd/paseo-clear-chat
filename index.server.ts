@@ -8,7 +8,7 @@ import { type HighlightLine, type HighlightToken, highlightRpc } from "./shared/
 import { imageRpc } from "./shared/image-rpc";
 import { promptImageRpc, promptImagesRpc } from "./shared/prompt-images-rpc";
 import { createPromptImageHandlers } from "./server/prompt-images/registry";
-import { presentationSettings } from "./shared/settings";
+import { hermesCcSettings, presentationSettings } from "./shared/settings";
 import { toolExpansionSettings } from "./shared/tool-expansion-settings";
 import { migrateHostSettings } from "./server/settings-migration";
 import { stripFileSelector } from "./shared/file-path";
@@ -464,6 +464,7 @@ function registerServer(server: PluginServerContext) {
   migrateHostSettings();
   server.registerSettings(presentationSettings);
   server.registerSettings(toolExpansionSettings);
+  server.registerSettings(hermesCcSettings);
 
   server.handle(revealPathRpc, async (input) => {
     const requested = requestedFile(input.path);
