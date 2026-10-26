@@ -11,7 +11,7 @@ import { createPromptImageHandlers } from "./server/prompt-images/registry";
 import { createHermesCcImageStore, hermesCcImageRoot, hermesCcPaseoHome, type HermesCcImageStore } from "./server/hermes-cc/store";
 import { hermesCcProvidersFromConfig } from "./server/hermes-cc/provider";
 import type { HermesCcHistoryStore } from "./server/hermes-cc/history-store";
-import * as hermesCcHistory from "./server/hermes-cc/history-store";
+import { createHermesCcHistoryStore, hermesCcHistoryRoot } from "./server/hermes-cc/history-store";
 import { hermesCcStartupConfig } from "./server/hermes-cc/startup";
 import { hermesCcSettings, presentationSettings } from "./shared/settings";
 import { toolExpansionSettings } from "./shared/tool-expansion-settings";
@@ -457,24 +457,16 @@ function tokenize(
 }
 
 export default function contribute(server: PluginServerContext) {
-  // The store implementation can land independently of the connection wrapper.
-  // Resolve its exports dynamically so an interface-only module keeps working.
-  const { createHermesCcHistoryStore, hermesCcHistoryRoot } = hermesCcHistory as {
-    createHermesCcHistoryStore?: (root: string, options: { trustedRoot: string }) => HermesCcHistoryStore;
-    hermesCcHistoryRoot?: (server: PluginServerContext, home: string) => string;
-  };
-  let historyStore: HermesCcHistoryStore | undefined;
-  if (typeof createHermesCcHistoryStore === "function" && typeof hermesCcHistoryRoot === "function") {
-    try {
-      const home = hermesCcPaseoHome();
-      historyStore = createHermesCcHistoryStore(hermesCcHistoryRoot(server, home), { trustedRoot: home });
-    } catch { console.debug?.("[clear-chat] hermes_cc: history_unavailable"); }
-  }
-  return contributeWithHermesCcHistory(server, historyStore);
+  return contributeWithHistoryFactory(server, home =>
+    createHermesCcHistoryStore(hermesCcHistoryRoot(server, home), { trustedRoot: home }));
 }
 
 /** Injection point for the durable journal store supplied by the server host. */
-export function contributeWithHermesCcHistory(server: PluginServerContext, historyStore?: HermesCcHistoryStore) {
+export function contributeWithHermesCcHistory(server: PluginServerContext, historyStore: HermesCcHistoryStore) {
+  return contributeWithHistoryFactory(server, () => historyStore);
+}
+
+function contributeWithHistoryFactory(server: PluginServerContext, historyStore: (home: string) => HermesCcHistoryStore) {
   requireHostMethods(server, ["registerSettings", "handle"]);
   try {
     return registerServer(server, historyStore);
@@ -483,7 +475,7 @@ export function contributeWithHermesCcHistory(server: PluginServerContext, histo
   }
 }
 
-function registerServer(server: PluginServerContext, historyStore?: HermesCcHistoryStore) {
+function registerServer(server: PluginServerContext, historyStore: (home: string) => HermesCcHistoryStore) {
   migrateHostSettings();
   server.registerSettings(presentationSettings);
   server.registerSettings(toolExpansionSettings);
@@ -557,13 +549,14 @@ function registerServer(server: PluginServerContext, historyStore?: HermesCcHist
   });
 
   let hermesCcImageStore: HermesCcImageStore | undefined;
+  let home: string | undefined;
   let startup: ReturnType<typeof hermesCcStartupConfig> = { providers: {}, enabled: false };
   try {
-    const home = hermesCcPaseoHome();
+    home = hermesCcPaseoHome();
     hermesCcImageStore = createHermesCcImageStore(hermesCcImageRoot(server, home), { trustedRoot: home });
     startup = hermesCcStartupConfig(home);
   } catch { console.debug?.("[clear-chat] hermes_cc: startup_unavailable"); }
-  const providers = hermesCcProvidersFromConfig(startup.providers, startup.enabled, async ({ sessionKey, clientMessageId, images }) => {
+  const providers = startup.enabled && home !== undefined ? hermesCcProvidersFromConfig(startup.providers, true, async ({ sessionKey, clientMessageId, images }) => {
     if (!clientMessageId) {
       console.debug("[clear-chat] hermes_cc: message_id_unavailable");
       return;
@@ -574,7 +567,7 @@ function registerServer(server: PluginServerContext, historyStore?: HermesCcHist
       const result = await hermesCcImageStore?.save({ sessionKey, messageId: clientMessageId }, images);
       if (result === "conflict") console.debug("[clear-chat] hermes_cc: save_conflict");
     } catch { console.debug("[clear-chat] hermes_cc: save_failed"); }
-  }, historyStore);
+  }, historyStore(home)) : [];
   for (const provider of providers) server.registerProvider(provider);
   const promptImages = createPromptImageHandlers({
     hermesCcImageStore,

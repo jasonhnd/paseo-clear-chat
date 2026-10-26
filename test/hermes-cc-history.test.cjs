@@ -766,44 +766,221 @@ for (const followup of [
   });
 }
 
-for (const availability of ["stub", "factory only", "root only", "factory throws", "root throws", "available"]) {
-  test(`default contribution builds the history store only when available (${availability})`, async t => {
-    const f = fixture(t), previousHome = process.env.PASEO_HOME;
-    process.env.PASEO_HOME = f.root;
-    t.after(() => { if (previousHome === undefined) delete process.env.PASEO_HOME; else process.env.PASEO_HOME = previousHome; });
-    fs.writeFileSync(join(f.root, "config.json"), JSON.stringify({ version: 1, agents: { providers: {
-      hermes: { extends: "acp", command: [join(f.root, "hermes"), "acp"] },
-    } } }));
-    const calls = [], exports = {};
-    if (availability !== "stub" && availability !== "root only") exports.createHermesCcHistoryStore = (root, options) => {
-      calls.push("factory");
-      assert.equal(root, join(f.root, "history"));
-      assert.deepEqual(options, { trustedRoot: f.root });
-      if (availability === "factory throws") throw new Error("store unavailable");
-      return f.store;
-    };
-    if (availability !== "stub" && availability !== "factory only") exports.hermesCcHistoryRoot = (server, home) => {
-      calls.push("root"); assert.equal(home, f.root); assert.strictEqual(server, context);
-      if (availability === "root throws") throw new Error("root unavailable");
-      return join(home, "history");
-    };
-    const modules = new Map();
-    // Leave the actual interface-only module in place for the stub regression.
-    if (availability !== "stub") modules.set(resolve(__dirname, "../server/hermes-cc/history-store.ts"), { exports });
-    const providers = [], context = { registerSettings() {}, handle() {}, registerProvider(provider) { providers.push(provider); } };
-    const cleanup = load("index.server.ts", modules).default(context); t.after(cleanup);
-    assert.equal(typeof cleanup, "function"); assert.equal(providers.length, 1);
-    const connection = await providers[0].connect({ versions: [1], capabilities: ["prompt.message", "session.persistence"] });
-    t.after(() => connection.close());
-    await f.open({ connection }); await f.prompt({ connection });
-    assert.deepEqual(calls, availability === "stub" || availability.endsWith("only") ? []
-      : availability === "root throws" ? ["root"] : ["root", "factory"]);
-    assert.equal((await f.store.read(key)).status, availability === "available" ? "complete" : "unusable");
-    if (availability === "available") assert.ok((await f.store.read(key)).events.some(event =>
-      event.type === "timeline.item" && event.item.clientMessageId === "original-client"));
-    else assert.equal(f.store.calls.filter(call => call.method !== "read").length, 0);
+for (const resume of [false, true]) test(`a store lease held outside the wrapper blocks ${resume ? "resume" : "creation"} recording until a live append invalidates`, async t => {
+  const f = fixture(t);
+  const { createHermesCcHistoryStore } = load("server/hermes-cc/history-store.ts");
+  const root = join(f.root, "history"), owner = createHermesCcHistoryStore(root);
+  await owner.start(key);
+  for (const event of savedTranscript()) await owner.append(key, event);
+  const saved = await owner.read(key), lease = await owner.claimWriter(key);
+  assert.ok(lease);
+  t.after(() => lease.release());
+  const observer = createHermesCcHistoryStore(root), h = queuedHarness(observer);
+  t.after(() => h.connection.close());
+  await h.open("boundary", resume ? persistence : undefined); await becomeReady(h);
+  assert.equal(h.raw.sent[0].history, resume ? "replay" : "skip");
+  assert.deepEqual(historyOnly(h.events), [], "a refused claim never hydrates from the journal");
+  assert.deepEqual(await observer.read(key), saved, "opening alone never invalidates");
+  await h.connection.send(promptInput());
+  await h.connection.send(promptInput("boundary", "slash", "/undo"));
+  await h.connection.send({ type: "session.revert", sessionId: "boundary", requestId: "revert", turnId: "old-turn" });
+  assert.deepEqual(await observer.read(key), saved, "sending prompts or commands without history never invalidates");
+  const shown = waitEvent(h.connection, event => event.type === "timeline.item");
+  h.raw.emit({ type: "timeline.item", sessionId: "boundary", item: { type: "assistant_message", id: "other-writer", text: "new history" } });
+  await shown;
+  assert.equal((await observer.read(key)).status, "unusable");
+  assert.equal(await observer.claimWriter(key), null, "a non-owner cannot release the owner's lease");
+  await h.connection.close(); await lease.release();
+  const replacement = await observer.claimWriter(key);
+  assert.ok(replacement); await replacement.release();
+});
+
+test("a refused writer's native identity mismatch fails the open without invalidating the owner's journal", async t => {
+  const f = fixture(t);
+  const { createHermesCcHistoryStore } = load("server/hermes-cc/history-store.ts");
+  const root = join(f.root, "history"), owner = createHermesCcHistoryStore(root);
+  await owner.start(key);
+  for (const event of savedTranscript()) await owner.append(key, event);
+  const saved = await owner.read(key), lease = await owner.claimWriter(key);
+  t.after(() => lease.release());
+  const h = queuedHarness(createHermesCcHistoryStore(root));
+  await h.open("boundary", persistence);
+  const failed = waitEvent(h.connection, event => event.type === "request.failed");
+  h.opened("boundary", { version: 1, data: { sessionId: "wrong-native" } });
+  await failed;
+  assert.deepEqual(await owner.read(key), saved);
+  await h.connection.close(); await lease.release();
+});
+
+for (const failure of ["open send", "open request", "start", "runtime", "prompt send", "close", "close throws"]) {
+  test(`the durable writer lease is released after ${failure}`, async t => {
+    const f = fixture(t);
+    const { createHermesCcHistoryStore } = load("server/hermes-cc/history-store.ts");
+    const root = join(f.root, "history"), store = createHermesCcHistoryStore(root), other = createHermesCcHistoryStore(root);
+    await store.start(key);
+    for (const event of savedTranscript()) await store.append(key, event);
+    const saved = await store.read(key), h = queuedHarness(store);
+    t.after(() => h.connection.close());
+    if (failure === "open send") {
+      h.raw.send = async () => { throw new Error("open send failed"); };
+      await assert.rejects(h.open("boundary", persistence), /open send failed/);
+    } else {
+      await h.open("boundary", failure === "start" ? undefined : persistence);
+      if (failure === "start" || failure === "open request") {
+        const failed = waitEvent(h.connection, event => event.type === "request.failed");
+        if (failure === "start") h.opened();
+        else h.raw.emit({ type: "request.failed", requestId: "open-boundary", error: { message: "open failed" } });
+        await failed;
+      } else {
+        await becomeReady(h);
+        assert.equal(await other.claimWriter(key), null, "recording owns the store lease");
+        if (failure === "runtime") {
+          const failed = waitEvent(h.connection, event => event.type === "session.runtime_failed");
+          h.raw.emit({ type: "session.runtime_failed", sessionId: "boundary", error: { message: "runtime failed" } });
+          await failed;
+        } else if (failure === "prompt send") {
+          h.raw.send = async () => { throw new Error("prompt send failed"); };
+          await assert.rejects(h.connection.send(promptInput()), /prompt send failed/);
+        } else if (failure === "close throws") {
+          h.raw.close = async () => { throw new Error("close failed"); };
+          await assert.rejects(h.connection.close(), /close failed/);
+          h.raw.close = async () => {};
+        } else await h.connection.close();
+      }
+    }
+    const replacement = await other.claimWriter(key);
+    assert.ok(replacement, "cleanup releases ownership before the failure or close is observed");
+    await replacement.release();
+    if (failure === "prompt send") assert.equal((await other.read(key)).status, "unusable");
+    else assert.deepEqual(await other.read(key), saved);
+    await h.connection.close();
   });
 }
+
+for (const result of [{ type: "completed" }, { type: "failed", error: { message: "admission failed" } }]) {
+  test(`a prompt_result ${result.type} cannot certify a terminal ACP turn`, async () => {
+    const h = queuedHarness(); await h.open(); await becomeReady(h);
+    await h.connection.send(promptInput());
+    const reply = waitEvent(h.connection, event => event.type === "session.prompt_result");
+    h.raw.emit({ type: "session.prompt_result", sessionId: "boundary", clientMessageId: "client", result });
+    await reply;
+    assert.equal(h.store.calls.filter(call => call.method === "turnSettled").length, 0);
+    assert.equal((await h.store.read(key)).status, "unusable");
+    await h.connection.close();
+  });
+}
+
+test("default contribution restores two image prompts from disk after restart and rejects a tampered journal", async t => {
+  const f = fixture(t), previousHome = process.env.PASEO_HOME;
+  process.env.PASEO_HOME = f.root;
+  t.after(() => { if (previousHome === undefined) delete process.env.PASEO_HOME; else process.env.PASEO_HOME = previousHome; });
+  fs.writeFileSync(join(f.root, "config.json"), JSON.stringify({ version: 1, agents: { providers: {
+    hermes: { extends: "acp", command: [join(f.root, "hermes"), "acp"] },
+  } } }));
+  async function restart() {
+    // Fresh contribution, provider, journal, image store and module state share only disk.
+    const modules = new Map(), providers = [];
+    const cleanup = load("index.server.ts", modules).default({
+      registerSettings() {}, handle() {}, registerProvider(provider) { providers.push(provider); },
+    });
+    t.after(cleanup);
+    assert.deepEqual(providers.map(provider => provider.id), ["hermes-cc"]);
+    const connection = await providers[0].connect({ versions: [1], capabilities: ["prompt.message", "prompt.image", "session.persistence"] });
+    t.after(() => connection.close());
+    const events = [];
+    connection.onEvent(event => events.push(structuredClone(event)));
+    const history = load("server/hermes-cc/history-store.ts", modules);
+    const images = load("server/hermes-cc/store.ts", modules);
+    const historyRoot = history.hermesCcHistoryRoot({});
+    assert.equal(historyRoot, join(f.root, "plugin-data", "clear-chat", "hermes-cc-history"));
+    return { connection, events, historyRoot,
+      store: history.createHermesCcHistoryStore(historyRoot, { trustedRoot: f.root }),
+      images: images.createHermesCcImageStore(images.hermesCcImageRoot({}), { trustedRoot: f.root }),
+      resolver: load("server/prompt-images/hermes-cc.ts", modules).hermesCcPromptImageResolver,
+    };
+  }
+  const pngs = [
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=",
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  ].map(value => Buffer.from(value, "base64"));
+  assert.notDeepEqual(pngs[0], pngs[1]);
+  const first = await restart();
+  await f.open(first);
+  const texts = ["  First paste\n🎉  ", "Second paste, different image"];
+  for (let i = 0; i < pngs.length; i++) await f.prompt(first, "first", `paste-${i}`, texts[i], [
+    { type: "text", text: texts[i] }, { type: "image", mimeType: "image/png", data: pngs[i].toString("base64") },
+  ]);
+  const recorded = await first.store.read(key);
+  assert.equal(recorded.status, "complete");
+  assert.deepEqual(recorded.events, JSON.parse(JSON.stringify(historyOnly(first.events))));
+  assert.equal(recorded.events.filter(event => event.type === "session.turn" && event.state === "completed").length, 2);
+  assert.deepEqual(timeline(recorded.events).filter(event => event.item.type === "assistant_message").map(event => event.item.text),
+    ["Hello", "Hello world", "Hello", "Hello world"]);
+  await first.connection.close();
+
+  const second = await restart();
+  assert.notStrictEqual(first.store, second.store);
+  assert.notStrictEqual(first.images, second.images);
+  await f.open(second, "resumed", persistence);
+  assert.equal(f.requests().filter(request => request.method === "session/load").length, 1);
+  assert.deepEqual(historyOnly(second.events), recorded.events.map(event => ({ ...event, sessionId: "resumed" })));
+  assert.equal(second.events.at(-1).type, "session.ready");
+  assert.ok(!timeline(second.events).some(event => event.item.text?.startsWith("Hermes stored")));
+  const users = timeline(second.events).filter(event => event.item.type === "user_message").map(event => event.item);
+  assert.deepEqual(users, texts.map((text, i) => ({ type: "user_message", id: `paste-${i}`, clientMessageId: `paste-${i}`, text })));
+  const lookup = (h, item) => h.resolver.find({ provider: "hermes-cc", sessionId: `plugin:${JSON.stringify(persistence)}`,
+    messageId: item.id, clientMessageId: item.clientMessageId, text: item.text,
+    hermesCcImageStore: h.images, signal: new AbortController().signal });
+  for (let i = 0; i < users.length; i++) {
+    const found = await lookup(second, users[i]);
+    assert.equal(found.matchedMessages, 1);
+    assert.equal(found.images.length, 1);
+    assert.deepEqual(await found.images[0].readBytes(), pngs[i]);
+  }
+  assert.deepEqual(await second.store.read(key), recorded, "hydration never appends itself");
+  await second.connection.close();
+
+  const directory = fs.readdirSync(second.historyRoot).find(name => /^[a-f0-9]{64}$/.test(name));
+  const file = join(second.historyRoot, directory, "events.jsonl"), bytes = fs.readFileSync(file);
+  const offset = bytes.indexOf(Buffer.from("First paste"));
+  assert.ok(offset >= 0);
+  bytes[offset] ^= 1; // Preserve length and JSON syntax while breaking the hash chain.
+  fs.writeFileSync(file, bytes);
+  const third = await restart();
+  assert.equal((await third.store.read(key)).status, "unusable");
+  await f.open(third, "fallback", persistence);
+  assert.equal(f.requests().filter(request => request.method === "session/load").length, 2);
+  assert.deepEqual(timeline(third.events).map(event => event.item.text),
+    ["Hermes stored ", "Hermes stored rewritten text", "Hermes stored reply"]);
+  for (const event of timeline(third.events).filter(event => event.item.type === "user_message")) {
+    assert.equal(event.item.clientMessageId, undefined);
+    assert.deepEqual(await lookup(third, event.item), { matchedMessages: 0, images: [] });
+  }
+  await third.connection.close();
+});
+
+for (const setting of [true, false]) test(`original Hermes sessions never write Clear Chat journals (Hermes·CC enabled: ${setting})`, async t => {
+  const f = fixture(t), previousHome = process.env.PASEO_HOME;
+  process.env.PASEO_HOME = f.root;
+  t.after(() => { if (previousHome === undefined) delete process.env.PASEO_HOME; else process.env.PASEO_HOME = previousHome; });
+  fs.writeFileSync(join(f.root, "config.json"), JSON.stringify({ version: 1, agents: { providers: {
+    hermes: { extends: "acp", command: [join(f.root, "hermes"), "acp"] },
+  } } }));
+  const settings = join(f.root, "plugin-settings", "clear-chat");
+  fs.mkdirSync(settings, { recursive: true });
+  fs.writeFileSync(join(settings, "hermes-cc.json"), JSON.stringify({ version: 1, values: { enabled: setting } }));
+  const providers = [];
+  t.after(load("index.server.ts").default({ registerSettings() {}, handle() {}, registerProvider(provider) { providers.push(provider); } }));
+  assert.deepEqual(providers.map(provider => provider.id), setting ? ["hermes-cc"] : []);
+  const { runAcpProvider } = require("@getpaseo/plugin/server/acp");
+  const provider = runAcpProvider({ id: "hermes", label: "Hermes", command: [join(f.root, "hermes"), "acp"] });
+  const connection = await provider.connect({ versions: [1], capabilities: ["prompt.message", "session.persistence"] });
+  t.after(() => connection.close());
+  await f.open({ connection });
+  await f.prompt({ connection });
+  await connection.close();
+  assert.equal(fs.existsSync(join(f.root, "plugin-data")), false, "neither journal nor image storage was written");
+});
 
 test("session close releases its recorder, preserves the journal, and forwards the SDK acknowledgement", async () => {
   const h = queuedHarness(); seed(h.store); await h.open("boundary", persistence); await becomeReady(h);
