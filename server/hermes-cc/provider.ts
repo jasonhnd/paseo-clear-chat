@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { hermesCcTransport } from "./transport";
+import type { HermesCcLaunch } from "./transport";
 import { nativeKey } from "./session-key";
 export { nativeSessionKeyFromPersistence } from "./session-key";
 import { runAcpProvider } from "@getpaseo/plugin/server/acp";
@@ -108,14 +109,14 @@ export function hermesCcProvidersFromConfig(
     // registration; no manifest provider entry or host config mutation is needed.
     // The connector runs asynchronously after send() returns. AsyncLocalStorage
     // keeps launch context isolated across concurrent sessions and discovery.
-    const context = new AsyncLocalStorage<{ cwd?: string; env?: Readonly<Record<string, string>> }>();
+    const context = new AsyncLocalStorage<HermesCcLaunch & { env?: Readonly<Record<string, string>> }>();
     const provider = runAcpProvider({
       id, label: `${typeof source.label === "string" && source.label.trim() ? source.label : sourceId}·CC`,
       connector: () => {
         const launch = context.getStore();
         // Rebuild from the worker's inherited daemon env, not the -cc launch
         // env, whose overrides belong to a different provider ID.
-        return hermesCcTransport(command, hermesCcSourceEnv(process.env, { ...env, ...launch?.env }), launch?.cwd);
+        return hermesCcTransport(command, hermesCcSourceEnv(process.env, { ...env, ...launch?.env }), launch);
       },
     });
     registrations.push({
@@ -125,7 +126,10 @@ export function hermesCcProvidersFromConfig(
         return {
           ...connection,
           send(input) {
-            const launch = input.type === "session.open" ? { cwd: input.config.cwd, env: input.config.env }
+            const launch = input.type === "session.open" ? {
+              cwd: input.config.cwd, env: input.config.env, history: input.history,
+              existingSession: nativeKey(input.persistence) !== null,
+            }
               : input.type === "catalog" || input.type === "sessions" ? { cwd: input.cwd } : {};
             return context.run(launch, () => connection.send(input));
           },
