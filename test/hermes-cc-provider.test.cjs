@@ -347,3 +347,15 @@ test("model configuration drops only invalid rows and preserves host merge/defau
   assert.deepEqual(h.logs, Array.from({ length: 2 }, () => ["[clear-chat] hermes_cc: configured_model_invalid"]));
   assert.deepEqual(source, before);
 });
+
+test("discovery preserves the host default mode even when a legacy remembered catalog has one", () => {
+  const h = harness();
+  const remembered = { modes: [{ id: "first", label: "First" }, { id: "second", label: "Second" }],
+    models: [], defaultMode: "second" };
+  h.hermesCcProvidersFromConfig({ source: { extends: "acp", command: ["hermes", "acp"] } },
+    true, async () => {}, undefined, { read: () => structuredClone(remembered) });
+  for (const host of [{ modes: [], models: [] }, { modes: [], models: [], defaultMode: "host-default" }]) {
+    const actual = h.commands[0].transformers[0].discover(host);
+    assert.deepEqual(actual, { ...host, modes: remembered.modes });
+  }
+});

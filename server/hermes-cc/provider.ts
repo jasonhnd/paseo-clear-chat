@@ -135,7 +135,6 @@ export function hermesCcProvidersFromConfig(
         const defaultModel = models.find((model) => model.isDefault)?.id;
         return {
           ...catalog, models, modes: remembered?.modes ?? [],
-          ...(remembered?.defaultMode !== undefined ? { defaultMode: remembered.defaultMode } : {}),
           ...(defaultModel !== undefined ? { defaultModel } : {}),
         };
       } }],

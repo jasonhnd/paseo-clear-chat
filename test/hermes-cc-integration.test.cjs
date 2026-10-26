@@ -197,7 +197,6 @@ test("Hermes·CC registration, startup probes, catalogs and session listings cre
   assert.notEqual(learnedKey, originalKey);
   const expected = {
     modes: fakeModes.availableModes.map(mode => ({ id: mode.id, label: mode.name, description: undefined })),
-    defaultMode: fakeModes.currentModeId,
     models: fakeModelOptions[0].options.map(option => ({ id: option.value, label: option.name,
       description: undefined, isDefault: option.value === "fake-model", metadata: undefined })),
     defaultModel: "fake-model",
@@ -215,6 +214,55 @@ test("Hermes·CC registration, startup probes, catalogs and session listings cre
   const empty = waitEvent(other, event => event.type === "catalog");
   await other.send({ type: "catalog", requestId: "other" });
   assert.deepEqual((await empty).catalog, { models: [], modes: [] });
+  assert.equal(requests(root).filter(request => request.method === "session/new").length, 1);
+});
+
+for (const count of [2, 400]) test(`one real open remembers all ${count} native Hermes models and modes without configOptions`, async t => {
+  const { runAcpProvider } = await import("@getpaseo/plugin/server/acp");
+  const root = fs.mkdtempSync(join(tmpdir(), "cc-native-catalog-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const modes = { ...fakeModes, currentModeId: "dontAsk" };
+  const models = { currentModelId: `provider-${Math.floor((count - 1) / 200)}/model-${count - 1}`,
+    availableModels: Array.from({ length: count }, (_, index) => ({
+      modelId: `provider-${Math.floor(index / 200)}/model-${index}`, name: `Model ${index}`,
+      description: "Native model description ".repeat(10),
+    })),
+  };
+  fakeAgent(root, false, { modes, models });
+  fs.writeFileSync(join(root, "config.json"), JSON.stringify(paseoConfig({ PATH: `${root}${delimiter}${process.env.PATH}` })));
+  const h = loadServer(root, runAcpProvider);
+  t.after(h.cleanup);
+  const connection = await h.providers[0].connect({ versions: [1], capabilities: ["prompt.message"] });
+  t.after(() => connection.close());
+  const before = waitEvent(connection, event => event.type === "catalog");
+  await connection.send({ type: "catalog", requestId: "before", cwd: root });
+  assert.deepEqual((await before).catalog, { modes: [], models: [] });
+  assert.equal(requests(root).some(request => request.method === "session/new"), false);
+  const ready = waitEvent(connection, event => event.type === "session.ready");
+  await connection.send({ type: "session.open", requestId: "open", sessionId: "boundary",
+    config: { cwd: root, env: {}, mcpServers: {}, settings: {}, persist: true }, history: "skip" });
+  await ready;
+  const completed = waitEvent(connection, event => event.type === "session.turn" && event.state === "completed");
+  await connection.send({ type: "session.prompt", sessionId: "boundary", prompt: {
+    clientMessageId: "native-catalog", delivery: "auto", input: { type: "message", content: [{ type: "text", text: "Hello" }] },
+  } });
+  await completed;
+  await h.flushCatalogs();
+  const reloaded = loadServer(root, runAcpProvider);
+  t.after(reloaded.cleanup);
+  const fresh = await reloaded.providers[0].connect({ versions: [1], capabilities: [] });
+  t.after(() => fresh.close());
+  const expected = {
+    modes: modes.availableModes.map(mode => ({ id: mode.id, label: mode.name })),
+    models: models.availableModels.map(model => ({ id: model.modelId, label: model.name, description: model.description,
+      isDefault: model.modelId === models.currentModelId })),
+    defaultModel: models.currentModelId,
+  };
+  for (const current of [connection, fresh]) {
+    const listed = waitEvent(current, event => event.type === "catalog");
+    await current.send({ type: "catalog", requestId: "remembered", cwd: root });
+    assert.deepEqual(JSON.parse(JSON.stringify((await listed).catalog)), expected);
+  }
   assert.equal(requests(root).filter(request => request.method === "session/new").length, 1);
 });
 
@@ -288,7 +336,7 @@ test("CC catalogs mirror source model config before any session and mode/model c
   await connection.send({ type: "catalog", requestId: "after-open" });
   const catalog = (await refreshed).catalog;
   assert.deepEqual(catalog.modes.map(mode => [mode.id, mode.label]), fakeModes.availableModes.map(mode => [mode.id, mode.name]));
-  assert.equal(catalog.defaultMode, fakeModes.currentModeId);
+  assert.equal(catalog.defaultMode, undefined);
   assert.deepEqual(catalog.models, [
     { ...source.models[0], isDefault: false, defaultThinkingOptionId: "high" },
     { ...source.models[1], ...source.additionalModels[0] }, { ...source.additionalModels[1], isDefault: false },
@@ -338,7 +386,7 @@ for (const [kind, models] of [["new", undefined], ["load", []]]) test(`remembers
       // Normalize optional undefined properties as the host wire transport does.
       assert.deepEqual(JSON.parse(JSON.stringify((await refreshed).catalog)), {
         modes: fakeModes.availableModes.map(mode => ({ id: mode.id, label: mode.name })),
-        defaultMode: fakeModes.currentModeId, defaultModel: "other-model",
+        defaultModel: "other-model",
         models: [{ id: "fake-model", label: "Fake model", isDefault: false },
           { id: "other-model", label: "Override other", isDefault: true },
           { id: "extra", label: "Extra", isDefault: false }],
