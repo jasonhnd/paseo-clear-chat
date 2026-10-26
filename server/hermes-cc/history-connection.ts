@@ -1,6 +1,6 @@
 import { ProviderEventSchema } from "@getpaseo/plugin/server/provider";
 import type { ProviderConnection, ProviderEvent, ProviderInput } from "@getpaseo/plugin/server/provider";
-import type { HermesCcHistoryStore, HermesCcJournalKey } from "./history-store";
+import type { HermesCcHistoryStore, HermesCcJournalKey, HermesCcWriterLease } from "./history-store";
 import { nativeKey } from "./session-key";
 
 type Open = Extract<ProviderInput, { type: "session.open" }>;
@@ -10,7 +10,7 @@ interface Session {
   key: HermesCcJournalKey | null;
   recording: boolean;
   claimRefused: boolean;
-  lease: { release(): Promise<void> } | null;
+  lease: HermesCcWriterLease | null;
   namespaced: boolean;
   pendingPrompts: Set<string>;
   clientMessageIds: Set<string>;
@@ -132,6 +132,20 @@ export function journalHermesCcConnection(
       if (session.key && recorders.get(recorderId(session.key)) === session) recorders.delete(recorderId(session.key));
     }
   };
+  const mutate = async (session: Session, operation: () => Promise<void>): Promise<boolean> => {
+    try { await operation(); return true; }
+    catch (error) {
+      if (!(error instanceof Error) || error.message !== "writer_changed") throw error;
+      // The store has durably invalidated replay. Keep delivering the live
+      // session, but never record or settle anything else with this lease.
+      session.recording = false;
+      session.invalidated = true;
+      session.pendingPrompts.clear();
+      session.turns.clear();
+      try { await release(session); } catch { /* Recording has already stopped. */ }
+      return false;
+    }
+  };
   const invalidate = async (session: Session, reason: string, appending = false) => {
     // A refused claimant may only invalidate on a live history append. Merely
     // opening or sending a command says nothing about the owner's transcript.
@@ -196,9 +210,8 @@ export function journalHermesCcConnection(
           session.key = { providerId, nativeSessionId };
           if (await claim(session)) {
             // start() rejects existing journals: only own it after success.
-            await store.start(session.key);
-            session.recording = true;
-            session.namespaced = true;
+            session.recording = await mutate(session, () => store.start(session.key!, session.lease ?? undefined));
+            session.namespaced = session.recording;
           }
           if (session.openingHistory) await invalidate(session, "history arrived during session open");
         }
@@ -241,7 +254,10 @@ export function journalHermesCcConnection(
     const event = session.namespaced ? withRuntimeIds(original, session.generation) : original;
     if (session.recording && session.key) {
       if (isHistory(event)) {
-        await store.append(session.key, event);
+        if (!await mutate(session, () => store.append(session.key!, event, session.lease ?? undefined))) {
+          emit(event);
+          return;
+        }
         if (event.type === "timeline.item" && event.item.type === "user_message" && event.item.clientMessageId) {
           session.clientMessageIds.add(event.item.clientMessageId);
         }
@@ -262,14 +278,14 @@ export function journalHermesCcConnection(
         else {
           session.pendingPrompts.delete(clientMessageId);
           session.turns.delete(original.turnId);
-          if (!session.pendingPrompts.size) await store.turnSettled(session.key);
+          if (!session.pendingPrompts.size) await mutate(session, () => store.turnSettled(session.key!, session.lease ?? undefined));
         }
       }
     } else if (isHistory(event)) {
       // A second live session never records. Opening/replay alone is harmless;
       // only an actual live history event invalidates its key. A rejected send
       // that produces no history must leave a settled journal intact.
-      await invalidate(session, "history appended outside the recorder", true);
+      await invalidate(session, session.claimRefused ? "writer_changed" : "history appended outside the recorder", true);
     }
     emit(event);
   };
@@ -354,9 +370,11 @@ export function journalHermesCcConnection(
             else {
               // Persist the busy marker BEFORE the inner SDK can send anything
               // to Hermes. Keep it open across overlapping prompt admissions.
-              if (!session.pendingPrompts.size) await store.turnStarted(session.key);
-              session.pendingPrompts.add(id);
-              session.clientMessageIds.add(id);
+              if (!session.pendingPrompts.size) await mutate(session, () => store.turnStarted(session.key!, session.lease ?? undefined));
+              if (session.recording) {
+                session.pendingPrompts.add(id);
+                session.clientMessageIds.add(id);
+              }
             }
           }
         }

@@ -682,7 +682,7 @@ test("Hermes CC history recovers dirty cap accounting and counts manifest growth
   assert.deepEqual(await capped.read(recovered), { status: "complete", events: [{ kept: true }] });
 });
 
-test("Hermes CC history writer leases refuse duplicate recorders and safely expire", async t => {
+test("Hermes CC history writer leases refuse live owners even with expired heartbeats", async t => {
   const h = harness(t), k = key(), other = h.create(h.storeRoot);
   const lease = await h.store.claimWriter(k);
   assert.ok(lease);
@@ -696,11 +696,13 @@ test("Hermes CC history writer leases refuse duplicate recorders and safely expi
   await otherKey.release();
   const old = new Date(Date.now() - 31_000);
   fs.utimesSync(path, old, old);
+  assert.equal(await other.claimWriter(k), null);
+  assert.equal(JSON.parse(fs.readFileSync(path, "utf8")).token, owner.token);
+  await lease.release();
+  await lease.release();
   const replacement = await other.claimWriter(k);
   assert.ok(replacement);
-  assert.notEqual(JSON.parse(fs.readFileSync(path, "utf8")).token, owner.token);
-  await lease.release();
-  await lease.release();
+  assert.notEqual(replacement.token, owner.token);
   assert.equal(await h.store.claimWriter(k), null);
   await replacement.release();
   assert.equal(fs.existsSync(path), false);
@@ -789,4 +791,166 @@ test("Hermes CC history writer leases refuse a second process", async t => {
   assert.equal(await claimInChild(), false);
   await lease.release();
   assert.equal(await claimInChild(), true);
+});
+
+for (const method of ["start", "append", "turnStarted", "turnSettled"]) {
+  for (const credential of ["old lease", "wrong generation", "missing token"]) {
+    test(`Hermes CC history fences ${method} with ${credential} and invalidates replay`, async t => {
+      const h = harness(t), k = key();
+      const original = await h.store.claimWriter(k);
+      t.after(() => original.release());
+      await h.store.start(k, original);
+      await h.store.turnStarted(k, original);
+      await h.store.append(k, { clientMessageId: "A" }, original);
+      await original.release();
+      const replacement = await h.create(h.storeRoot).claimWriter(k);
+      t.after(() => replacement.release());
+      assert.ok(replacement.generation > original.generation);
+      assert.deepEqual(readManifest(h).writer, { token: replacement.token, generation: replacement.generation });
+      const before = readManifest(h), events = fs.readFileSync(eventsPath(h), "utf8");
+      const owner = credential === "old lease" ? original : credential === "missing token" ? undefined
+        : { token: replacement.token, generation: replacement.generation - 1 };
+      await assert.rejects(method === "append" ? h.store.append(k, { clientMessageId: "A" }, owner)
+        : h.store[method](k, owner), /^Error: writer_changed$/);
+      const after = readManifest(h);
+      for (const field of ["writer", "records", "bytes", "headHash", "openTurns"]) assert.deepEqual(after[field], before[field]);
+      assert.equal(fs.readFileSync(eventsPath(h), "utf8"), events);
+      assertUnusable(await h.create(h.storeRoot).read(k), "writer_changed");
+      await h.store.turnSettled(k, replacement);
+      assertUnusable(await h.create(h.storeRoot).read(k), "writer_changed");
+    });
+  }
+}
+
+test("Hermes CC history fences a stale start before the journal exists", async t => {
+  const h = harness(t), k = key();
+  const original = await h.store.claimWriter(k);
+  await original.release();
+  const current = await h.store.claimWriter(k);
+  t.after(() => current.release());
+  await assert.rejects(h.store.start(k, original), /^Error: writer_changed$/);
+  assert.deepEqual(readManifest(h).writer, { token: current.token, generation: current.generation });
+  assertUnusable(await h.create(h.storeRoot).read(k), "writer_changed");
+});
+
+// Real processes exercise OS liveness and paused heartbeat descriptors. Commands
+// use the connection wrapper so a refused recorder follows the production path.
+function processRecorder(t, h) {
+  const compiled = compileHistory(h);
+  const compiledDir = dirname(compiled);
+  for (const name of ["history-connection.ts", "session-key.ts"]) {
+    fs.writeFileSync(join(compiledDir, name.replace(/\.ts$/, ".js")), ts.transpileModule(
+      fs.readFileSync(resolve(__dirname, "../server/hermes-cc", name), "utf8"),
+      { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } },
+    ).outputText);
+  }
+  const worker = join(h.root, "recorder.cjs");
+  fs.writeFileSync(worker, `
+    const { createHermesCcHistoryStore } = require(process.argv[2]);
+    const { journalHermesCcConnection } = require(require("node:path").join(require("node:path").dirname(process.argv[2]), "history-connection.js"));
+    const store = createHermesCcHistoryStore(process.argv[3]);
+    let listener;
+    const connection = journalHermesCcConnection({ version: 1, capabilities: [],
+      async send() {}, async close() {}, onEvent(fn) { listener = fn; return () => {}; },
+    }, "hermes-cc", store);
+    let fence;
+    connection.onEvent(event => { if (event.type === "session.config") { fence(); fence = null; } });
+    async function drain() {
+      const done = new Promise(resolve => { fence = resolve; });
+      listener({ type: "session.config", sessionId: "live", config: { models: [], modes: [], thinkingOptions: [], settings: [] } });
+      await done;
+    }
+    process.on("message", async message => {
+      try {
+        if (message.type === "open") {
+          await connection.send({ type: "session.open", sessionId: "live", requestId: "open-live", history: "skip",
+            config: { cwd: "/unused", env: {}, settings: {}, mcpServers: {}, persist: true } });
+          listener({ type: "session.opened", sessionId: "live", requestId: "open-live",
+            persistence: { version: 1, data: { sessionId: "native-1" } }, capabilities: [], restoration: "core", cwd: "/unused" });
+          listener({ type: "session.ready", sessionId: "live", requestId: "open-live" });
+        } else if (message.type === "prompt") {
+          await connection.send({ type: "session.prompt", sessionId: "live", requestId: "prompt-A",
+            prompt: { clientMessageId: "A", input: { type: "text", content: [{ type: "text", text: "A" }] } } });
+        } else if (message.type === "append") {
+          for (const id of message.ids) listener({ type: "timeline.item", sessionId: "live",
+            item: { type: "user_message", id, clientMessageId: id, text: id } });
+        } else if (message.type === "settle") {
+          listener({ type: "session.prompt_result", sessionId: "live", clientMessageId: "A", result: { type: "turn", turnId: "turn" } });
+          listener({ type: "session.turn", sessionId: "live", turnId: "turn", state: "completed" });
+        }
+        await drain();
+        process.send({ ok: true });
+      } catch (error) { process.send({ error: String(error.stack || error) }); }
+    });
+    process.send({ ready: true });
+  `);
+  function spawn() {
+    const child = fork(worker, [compiled, h.storeRoot], { stdio: ["ignore", "ignore", "inherit", "ipc"],
+      env: { ...process.env, NODE_PATH: resolve(__dirname, "../node_modules") } });
+    t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); });
+    const ready = new Promise((resolve, reject) => {
+      child.once("message", message => message.ready ? resolve() : reject(new Error(JSON.stringify(message))));
+      child.once("error", reject);
+      child.once("exit", () => reject(new Error("recorder exited before ready")));
+    });
+    return { child, ready, async command(message) {
+      await ready;
+      return new Promise((resolve, reject) => {
+        const onExit = (code, signal) => reject(new Error(`recorder exited: ${code} ${signal}`));
+        child.once("exit", onExit);
+        child.once("message", reply => {
+          child.off("exit", onExit);
+          reply.ok ? resolve() : reject(new Error(reply.error || "recorder failed"));
+        });
+        child.send(message);
+      });
+    } };
+  }
+  return spawn;
+}
+
+test("Hermes CC history refuses takeover after SIGSTOP for 31 seconds and never replays A,B,A", { timeout: 45_000 }, async t => {
+  const h = harness(t), spawn = processRecorder(t, h);
+  const original = spawn(), contender = spawn();
+  await original.command({ type: "open" });
+  const path = join(h.storeRoot, `.writer-${digest(key().providerId, key().nativeSessionId)}`);
+  const owner = JSON.parse(fs.readFileSync(path, "utf8"));
+  await original.command({ type: "prompt" });
+  original.child.kill("SIGSTOP");
+  try {
+    await new Promise(resolve => setTimeout(resolve, 31_100));
+    assert.ok(Date.now() - fs.statSync(path).mtimeMs > 30_000);
+    await contender.command({ type: "open" });
+    assert.deepEqual(JSON.parse(fs.readFileSync(path, "utf8")), owner, "a stopped process is still alive and owns its lease");
+    await contender.command({ type: "append", ids: ["A", "B"] });
+    assertUnusable(await h.create(h.storeRoot).read(key()), "writer_changed");
+  } finally { original.child.kill("SIGCONT"); }
+  await original.command({ type: "append", ids: ["A"] });
+  await original.command({ type: "settle" });
+  const fresh = await h.create(h.storeRoot).read(key());
+  assert.equal(fresh.status, "unusable");
+  assert.equal(Object.hasOwn(fresh, "events"), false);
+  assert.deepEqual(fs.readFileSync(eventsPath(h), "utf8"), "", "neither recorder can append a duplicate prompt");
+});
+
+test("Hermes CC history invalidates a dead owner's journal on takeover", { timeout: 10_000 }, async t => {
+  const h = harness(t), spawn = processRecorder(t, h), original = spawn();
+  await original.command({ type: "open" });
+  await original.command({ type: "append", ids: ["A"] });
+  const before = readManifest(h);
+  assert.equal((await h.store.read(key())).status, "complete");
+  const exited = new Promise(resolve => original.child.once("exit", resolve));
+  original.child.kill("SIGKILL");
+  await exited;
+  const replacement = await h.store.claimWriter(key());
+  assert.ok(replacement);
+  t.after(() => replacement.release());
+  assert.ok(replacement.generation > before.writer.generation);
+  assert.notEqual(replacement.token, before.writer.token);
+  assertUnusable(await h.create(h.storeRoot).read(key()), "writer_changed");
+  await h.store.append(key(), { clientMessageId: "B" }, replacement);
+  await h.store.turnStarted(key(), replacement);
+  await h.store.turnSettled(key(), replacement);
+  assert.equal(readManifest(h).records, before.records);
+  assertUnusable(await h.create(h.storeRoot).read(key()), "writer_changed");
 });

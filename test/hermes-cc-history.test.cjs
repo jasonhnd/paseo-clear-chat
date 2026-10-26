@@ -995,3 +995,55 @@ test("session close releases its recorder, preserves the journal, and forwards t
   assert.equal(h.raw.sent.at(-1).history, "skip");
   await h.connection.close();
 });
+
+for (const rejected of ["start", "append", "turnStarted", "turnSettled"]) {
+  test(`a fenced ${rejected} stops recording and keeps the live session usable`, async t => {
+    const store = new FakeHistoryStore();
+    if (rejected !== "start") seed(store);
+    let releases = 0, fenced = false;
+    const lease = { token: "11111111-1111-1111-1111-111111111111", generation: 7, async release() { releases++; } };
+    store.claimWriter = async () => lease;
+    for (const method of ["start", "append", "turnStarted", "turnSettled"]) {
+      const original = store[method].bind(store);
+      store[method] = async (...args) => {
+        assert.equal(args[method === "append" ? 2 : 1], lease, `${method} presents the lease`);
+        if (method === rejected) {
+          fenced = true;
+          const row = store.rows.get(store.id(args[0]));
+          if (row) row.reason = "writer_changed";
+          throw new Error("writer_changed");
+        }
+        await original(...args);
+      };
+    }
+    const h = queuedHarness(store);
+    t.after(() => h.connection.close());
+    await h.open("boundary", rejected === "start" ? undefined : persistence);
+    await becomeReady(h);
+    if (rejected !== "start") {
+      await h.connection.send(promptInput());
+      if (rejected === "append") {
+        const shown = waitEvent(h.connection, event => event.type === "timeline.item" && event.item.text === "live answer");
+        h.raw.emit({ type: "timeline.item", sessionId: "boundary", item: { type: "assistant_message", id: "live", text: "live answer" } });
+        await shown;
+      } else if (rejected === "turnSettled") {
+        h.raw.emit({ type: "session.prompt_result", sessionId: "boundary", clientMessageId: "new-client", result: { type: "turn", turnId: "turn" } });
+        const settled = waitEvent(h.connection, event => event.type === "session.turn" && event.state === "completed");
+        h.raw.emit({ type: "session.turn", sessionId: "boundary", turnId: "turn", state: "completed" });
+        await settled;
+      }
+    }
+    assert.equal(fenced, true);
+    assert.equal(releases, 1, "a fenced recorder releases its lease");
+    const calls = store.calls.length;
+    await h.connection.send(promptInput("boundary", "after-fence"));
+    const shown = waitEvent(h.connection, event => event.type === "timeline.item" && event.item.text === "after fence");
+    h.raw.emit({ type: "timeline.item", sessionId: "boundary", item: { type: "assistant_message", id: "after-fence", text: "after fence" } });
+    await shown;
+    assert.equal(store.calls.length, calls, "the stopped recorder makes no further mutations");
+    assert.equal(h.raw.sent.at(-1).prompt.clientMessageId, "after-fence");
+    assert.equal(h.events.some(event => event.type === "request.failed" || event.type === "session.runtime_failed"), false);
+    await h.connection.close();
+    assert.equal(releases, 1);
+  });
+}
