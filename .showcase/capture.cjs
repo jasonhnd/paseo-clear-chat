@@ -5,7 +5,8 @@ const assert = require("node:assert/strict");
 const { build } = require("esbuild");
 const { chromium } = require("playwright-core");
 const { createServer } = require("node:http");
-const { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, readdirSync, copyFileSync, statSync } = require("node:fs");
+const { readFileSync, writeFileSync, mkdtempSync, rmSync, existsSync, readdirSync, copyFileSync, statSync } = require("node:fs");
+const { tmpdir } = require("node:os");
 const { execFileSync } = require("node:child_process");
 const { resolve, join, dirname } = require("node:path");
 const { readmeV2Groups, demoCapture, heroCapture } = require("./capture-plan.cjs");
@@ -13,12 +14,10 @@ const { captureDemo } = require("./capture-demo.cjs");
 const { rowMetrics } = require("./capture-row-metrics.cjs");
 
 const root = resolve(__dirname, "..");
-const work = join(__dirname, ".capture-temp");
+const work = mkdtempSync(join(tmpdir(), "clear-chat-capture-"));
 const selected = process.env.SHOWCASE_CAPTURE_ONLY;
 const plan = readmeV2Groups.filter(group => !selected || selected.split(",").some(id => group.id === id || group.id.startsWith(`${id}-`)));
 if (selected && selected !== "demo" && selected !== "settings" && !plan.length) throw new Error(`Unknown capture: ${selected}`);
-rmSync(work, { recursive: true, force: true });
-mkdirSync(work, { recursive: true });
 process.env.TMPDIR = work;
 process.env.TMP = work;
 process.env.TEMP = work;
@@ -27,7 +26,7 @@ const bundled = existsSync(chromium.executablePath()) ? chromium.executablePath(
   readdirSync(cache).filter(name => name.startsWith("chromium-")).map(name => join(cache, name, "chrome-linux64/chrome")).find(existsSync);
 const chrome = process.env.CHROME_PATH || bundled;
 assert.ok(chrome && !/edge/i.test(chrome), "Use Google Chrome or Playwright Chromium only");
-assert.ok(chrome === bundled || /(?:google\/chrome|google-chrome|chrome-for-testing)/.test(chrome), "CHROME_PATH must be Google Chrome");
+assert.ok(chrome === bundled || chrome === "/usr/bin/chromium" || /(?:google\/chrome|google-chrome|chrome-for-testing)/.test(chrome), "CHROME_PATH must be Google Chrome or Chromium");
 const freeze = "*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important}";
 
 async function settle(page) {
@@ -284,10 +283,13 @@ async function capture() {
           "Accent colour", "Interface font", "Code glyphs", "Code font", "Text size",
           "Fold finished steps", "When a collapsed step is pressed", "Fold long output after",
           "Frosted glass", "Pointer glow", "Enhanced prompt bubble", "Selection actions",
-          "Assistant markdown", "Markdown style", "Report a problem",
+          "Assistant markdown", "Markdown style", "Hermes·CC providers", "Report a problem",
         ]) {
           if (!text.includes(label)) throw new Error(`Settings capture is missing ${label}`);
         }
+        const english = JSON.parse(readFileSync(join(root, "client/locales/en.json"), "utf8"));
+        assert.ok(text.includes(english.settings.promptBubble.description), "The complete current prompt-bubble description must be visible");
+        assert.equal(await shot.getByRole("switch", { name: english.settings.hermesCc.label, exact: true }).getAttribute("aria-checked"), "true", "Hermes·CC providers must default to on");
         assert.deepEqual(errors, []);
         const file = `docs/images/settings-${theme}.png`;
         const raw = join(work, `settings-${theme}.png`);
