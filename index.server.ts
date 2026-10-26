@@ -8,6 +8,7 @@ import { type HighlightLine, type HighlightToken, highlightRpc } from "./shared/
 import { imageRpc } from "./shared/image-rpc";
 import { promptImageRpc, promptImagesRpc } from "./shared/prompt-images-rpc";
 import { createPromptImageHandlers } from "./server/prompt-images/registry";
+import { createHermesCcImageStore, hermesCcImageRoot } from "./server/hermes-cc/store";
 import { presentationSettings } from "./shared/settings";
 import { toolExpansionSettings } from "./shared/tool-expansion-settings";
 import { migrateHostSettings } from "./server/settings-migration";
@@ -532,7 +533,9 @@ function registerServer(server: PluginServerContext) {
     }
   });
 
-  const promptImages = createPromptImageHandlers();
+  const promptImages = createPromptImageHandlers({
+    hermesCcImageStore: createHermesCcImageStore(hermesCcImageRoot(server)),
+  });
   server.handle(promptImagesRpc, promptImages.images);
   server.handle(promptImageRpc, promptImages.image);
 
