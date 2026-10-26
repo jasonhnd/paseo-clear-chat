@@ -25,6 +25,7 @@ export function hermesCcPaseoHome(): string {
   return realpathSync(resolve(expanded));
 }
 export function hermesCcImageRoot(_server: PluginServerContext, home = hermesCcPaseoHome()): string {
+  // The SDK context has no plugin id; this path assumes the default "clear-chat" id.
   return join(home, "plugin-data", "clear-chat", "hermes-cc-images");
 }
 

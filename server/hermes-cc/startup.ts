@@ -4,12 +4,18 @@ import { join, resolve } from "node:path";
 import { hermesCcSettings } from "../../shared/settings";
 
 /**
- * SDK v0.13.0 server/contracts.ts:30-45 requires synchronous contribution and
- * exposes config only in later handler/hook contexts. plugin-process.ts:283-315
+ * SDK v0.13.0 packages/plugin/src/server/contracts.ts:30-45 requires synchronous
+ * contribution and exposes config only in later handler/hook contexts.
+ * server/plugins/plugin-process.ts:283-315
  * publishes the provider list immediately afterwards. Read a startup snapshot;
  * never register providers from an asynchronous settings.read() continuation.
- * Config: server/persisted-config.ts:369,438-456,509-512. Settings envelope:
+ * Agent config: server/persisted-config.ts:339-341 and
+ * server/daemon-config-store.ts:610-633; public-docs/custom-providers.md:161-176.
+ * Top-level providers is speech-only (persisted-config.ts:74-79,334).
+ * Settings envelope:
  * server/plugins/settings/index.ts:8,91-122; bootstrap.ts:648 and runtime.ts:758-760.
+ * Settings/store paths assume the default plugin id "clear-chat": the SDK
+ * PluginServerContext exposes neither the plugin id nor a data directory.
  * Changes to config or this setting take effect when the host reloads the plugin.
  */
 export function hermesCcStartupConfig(home?: string): { providers: Record<string, unknown>; enabled: boolean } {
@@ -26,7 +32,10 @@ export function hermesCcStartupConfig(home?: string): { providers: Record<string
   if (!enabled) return { providers: {}, enabled: false };
   try {
     const config = JSON.parse(readFileSync(join(home, "config.json"), "utf8").replace(/^\uFEFF/, ""));
-    const providers = config.providers;
+    const providers = config?.agents?.providers;
     return { enabled, providers: providers && typeof providers === "object" && !Array.isArray(providers) ? providers : {} };
-  } catch { return { enabled, providers: {} }; }
+  } catch {
+    console.debug("[clear-chat] hermes_cc: config_unavailable");
+    return { enabled: false, providers: {} };
+  }
 }
