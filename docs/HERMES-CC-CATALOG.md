@@ -9,11 +9,14 @@ A user-requested `session/new` or `session/load` response supplies the remembere
 catalog. Clear Chat ports the mappings from Paseo v0.13.1
 [`deriveModesFromACP` and `deriveModelDefinitionsFromACP`](https://github.com/getpaseo/paseo/blob/v0.13.1/packages/server/src/server/agent/providers/acp-agent.ts#L773),
 including native-list precedence, grouped config options, descriptions, current
-mode/model defaults, and thinking choices. No mode IDs or labels are supplied by
-Clear Chat. The host adds the provider identity when converting `ProviderCatalog`.
+model defaults, and thinking choices. A select that fails validation is skipped;
+`category: null` is accepted. No mode IDs or labels are supplied by Clear Chat.
+The host adds the provider identity when converting `ProviderCatalog`.
 
-Discovery returns the remembered modes and default mode. A nonempty source
-`models` list replaces agent models; absent or empty `models` retains them.
+Discovery returns the remembered modes without a remembered default mode;
+`defaultMode` stays whatever the host snapshot shows, like the source provider.
+A nonempty source `models` list replaces agent models; absent or empty `models`
+retains them.
 `additionalModels` merges by ID, preserving order and clearing prior defaults
 when an addition declares a default, following
 [Paseo's `mergeModels` / `mergeModelAdditions`](https://github.com/getpaseo/paseo/blob/v0.13.1/packages/server/src/server/agent/provider-registry.ts#L371).
@@ -22,15 +25,19 @@ Invalid configured model rows are dropped individually with a fixed reason log.
 The per-provider document lives in Clear Chat's own
 `plugin-data/clear-chat/hermes-cc-catalog/<sha256-provider-id>.json`. It contains a
 version, provider ID, and derived catalog only. Writes use a private temporary
-file and atomic rename, with a 64 KiB document limit. Reads validate the schema,
-version, identity, file type, and size; doubtful documents are ignored. Learning
+file and atomic rename, with a 1 MiB document limit. When a document would exceed
+the limit, the modes are kept and the model list is stored empty, never truncated.
+If the modes-only document still exceeds the limit, the update is ignored.
+Reads validate the schema, version, identity, file type, and size; doubtful
+documents are ignored. Learning
 updates memory immediately and queues persistence without awaiting disk I/O in
 the user's open or prompt. Journal and image handling are unchanged.
 
 ## FINDINGS
 
-After the first real open, the next catalog request includes the learned modes,
-default mode, and merged models. These survive a plugin restart. Paseo's SDK has
+After the first real open, the next catalog request includes the learned modes
+and merged models. The remembered catalog survives a plugin restart; discovery
+leaves `defaultMode` as supplied by the host snapshot. Paseo's SDK has
 no provider catalog-changed event or provider-refresh operation:
 [`ProviderRegistration` and `ProviderEvent`](https://github.com/getpaseo/paseo/blob/v0.13.1/packages/plugin/src/server/provider.ts).
 An unsolicited `catalog` event would not invalidate the host's provider snapshot.
