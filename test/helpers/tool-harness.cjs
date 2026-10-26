@@ -192,6 +192,10 @@ function createToolHarness(platform = "ios", options = {}) {
       if (id === "@getpaseo/plugin/client") return {
         defineTranslations: translations.defineTranslations,
         useTranslation: translations.useTranslation,
+        useSettings: definition => options.settingsHost?.(definition) ?? {
+          status: "ready", values: definition.schema.parse({}), revision: "0",
+          saving: false, saveError: null, save: async () => true, reload: async () => {}, reset: async () => true,
+        },
         useRpc: contract => {
           if (contract.name === "file.image") {
             if (!rpcFunctions.has(contract.name)) rpcFunctions.set(contract.name, async value => {

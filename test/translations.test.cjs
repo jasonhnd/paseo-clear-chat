@@ -240,9 +240,10 @@ const approvedResourceHashes = {
 };
 
 for (const locale of ["en", "zh-CN", "ja"]) {
-  test(`${locale}: preserves the prior baseline after removing the 5 inline-section keys and the 3 prompt-image keys`, () => {
+  test(`${locale}: preserves the prior baseline after removing the added inline-section, prompt-image and Hermes setting keys`, () => {
     const text = readFileSync(resolve(__dirname, `../client/locales/${locale}.json`), "utf8");
     const original = text
+      .replace(/    "hermesCc": \{\n(?:      ".*\n){3}    \},\n/, "")
       .replace(/    "imageThumbA11y": ".*",\n    "moreImages": ".*",\n    "closeImage": ".*",\n/, "")
       .replace(/    "sectionInline": \{\n(?:      ".*\n){5}    \},\n/, "");
     assert.notEqual(original, text);
