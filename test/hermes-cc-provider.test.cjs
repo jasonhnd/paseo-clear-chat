@@ -29,7 +29,7 @@ function harness(runAcpProvider) {
   }).outputText;
   runInThisContext(`(function(require,module,exports,console){${compiled}\n})`, { filename })(
     id => {
-      if (id === "node:async_hooks") return require(id);
+      if (id === "node:async_hooks" || id === "zod") return require(id);
       if (id === "./history-connection") {
         const history = { exports: {} };
         const source = ts.transpileModule(readFileSync(resolve(__dirname, "../server/hermes-cc/history-connection.ts"), "utf8"), {
