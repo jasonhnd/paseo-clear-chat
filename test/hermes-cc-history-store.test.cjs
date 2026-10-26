@@ -682,6 +682,68 @@ test("Hermes CC history recovers dirty cap accounting and counts manifest growth
   assert.deepEqual(await capped.read(recovered), { status: "complete", events: [{ kept: true }] });
 });
 
+for (const failedWrite of [false, true]) test(`Hermes CC history preserves a foreign fence before session creation${failedWrite ? " after a failed marker write" : ""}`, async t => {
+  const fsp = require("node:fs/promises");
+  let unavailable = failedWrite;
+  const h = harness(t, { "node:fs/promises": { ...fsp, async open(path, ...args) {
+    if (unavailable && String(path).includes("/.foreign-")) throw new Error("disk unavailable");
+    return fsp.open(path, ...args);
+  } } }), k = key();
+  assert.equal(fs.existsSync(h.storeRoot), false);
+  if (failedWrite) await assert.rejects(h.store.invalidate(k, "foreign_writer"), /history_store_failed/);
+  else await h.store.invalidate(k, "foreign_writer");
+  assert.equal(fs.existsSync(sessionDir(h)), false);
+  unavailable = false;
+  await h.create(h.storeRoot).start(k);
+  assert.equal(readManifest(h).invalid, "foreign_writer");
+  await assert.rejects(h.store.append(k, { omitted: true }), /^Error: writer_changed$/);
+  assert.equal(readManifest(h).records, 0);
+  assertUnusable(await h.create(h.storeRoot).read(k), "foreign_writer");
+  const marker = join(h.storeRoot, `.foreign-${digest(k.providerId, k.nativeSessionId)}`);
+  const old = new Date(Date.now() - 10 * 60_000);
+  fs.utimesSync(marker, old, old);
+  // Neither age-based cleanup nor cap eviction may resurrect the journal.
+  assertUnusable(await h.create(h.storeRoot, { maxBytesTotal: 0 }).read(k), "foreign_writer");
+  assert.equal(fs.statSync(marker).size, 0);
+});
+
+for (const contents of ["{not-json", "", "{}", JSON.stringify({ pid: 2147483647, token: "unknown" })]) {
+  test(`Hermes CC history refuses an unrecognized lease ${JSON.stringify(contents)} without changing the journal`, async t => {
+    const h = harness(t), k = key();
+    await h.store.start(k);
+    const before = fs.readFileSync(manifestPath(h), "utf8");
+    const path = join(h.storeRoot, `.writer-${digest(k.providerId, k.nativeSessionId)}`);
+    fs.writeFileSync(path, contents);
+    assert.equal(await h.store.claimWriter(k), null);
+    assert.equal(await h.create(h.storeRoot).claimWriter(k), null);
+    assert.equal(fs.readFileSync(path, "utf8"), contents, "unknown ownership must not be taken over");
+    assert.equal(fs.readFileSync(manifestPath(h), "utf8"), before);
+  });
+}
+
+test("Hermes CC history refuses live leases while utimes overlaps every lease read", async t => {
+  const fsp = require("node:fs/promises");
+  let overlaps = 0;
+  const h = harness(t, { "node:fs/promises": { ...fsp, async open(path, flags, mode) {
+    const handle = await fsp.open(path, flags, mode);
+    if (String(path).includes("/.writer-") && flags & fs.constants.O_NONBLOCK) {
+      const read = handle.read.bind(handle);
+      handle.read = async (...args) => {
+        const result = await read(...args);
+        // Force the heartbeat between the reader's initial and final stat.
+        const now = new Date(Date.now() + ++overlaps);
+        fs.utimesSync(path, now, now);
+        return result;
+      };
+    }
+    return handle;
+  } } }), k = key();
+  const lease = await h.store.claimWriter(k);
+  t.after(() => lease.release());
+  for (let i = 0; i < 50; i++) assert.equal(await h.create(h.storeRoot).claimWriter(k), null);
+  assert.ok(overlaps >= 50);
+});
+
 test("Hermes CC history writer leases refuse live owners even with expired heartbeats", async t => {
   const h = harness(t), k = key(), other = h.create(h.storeRoot);
   const lease = await h.store.claimWriter(k);
@@ -758,6 +820,47 @@ for (const recovery of ["read", "owner mutation"]) test(`Hermes CC history retri
   await assert.rejects(h.store.append(k, { text: "must not append" }, lease), /^Error: writer_changed$/);
   assertUnusable(await other.read(k), "foreign_writer");
   assert.equal(readManifest(h, k).records, 1);
+});
+
+test("Hermes CC history keeps a foreign fence across a contender process's live-lock timeout", { timeout: 10_000 }, async t => {
+  const h = harness(t), k = key(), compiled = compileHistory(h);
+  const lease = await h.store.claimWriter(k);
+  t.after(() => lease.release());
+  await h.store.start(k, lease);
+  await h.store.append(k, { text: "original" }, lease);
+  const lock = join(h.storeRoot, ".journal.lock");
+  fs.writeFileSync(lock, JSON.stringify({ pid: process.pid, token: "held-by-owner" }));
+  const old = new Date(Date.now() - 10 * 60_000);
+  fs.utimesSync(lock, old, old);
+  t.after(() => fs.rmSync(lock, { force: true }));
+  const worker = join(h.root, "foreign-contender.cjs");
+  fs.writeFileSync(worker, `
+    const { createHermesCcHistoryStore } = require(process.argv[2]);
+    // Exercise the real timeout and live-pid check without a 15-second sleep.
+    const now = Date.now(); let ticks = 0;
+    Date.now = () => now + 16_000 * ticks++;
+    createHermesCcHistoryStore(process.argv[3]).invalidate({ providerId: "hermes-cc", nativeSessionId: "native-1" }, "foreign_writer")
+      .then(() => process.send({ error: null }), error => process.send({ error: error.message }))
+      .finally(() => process.disconnect());
+  `);
+  const child = fork(worker, [compiled, h.storeRoot], { stdio: ["ignore", "ignore", "inherit", "ipc"] });
+  t.after(() => { if (child.connected) child.kill(); });
+  const result = await new Promise((resolve, reject) => {
+    let result;
+    child.once("message", message => { result = message; });
+    child.once("error", reject);
+    child.once("exit", code => code === 0 && result ? resolve(result) : reject(new Error(`contender exited ${code}`)));
+  });
+  assert.equal(result.error, "history_lock_timeout");
+  assert.equal(fs.existsSync(lock), true, "the live owner's journal lock is never reaped");
+  assert.equal(readManifest(h).invalid, undefined, "the contender could not publish the manifest");
+  assert.equal(fs.statSync(join(h.storeRoot, `.foreign-${digest(k.providerId, k.nativeSessionId)}`)).size, 0);
+  fs.unlinkSync(lock);
+  // The contender has exited: only its synced marker can inform this owner.
+  await assert.rejects(h.store.append(k, { text: "must not append" }, lease), /^Error: writer_changed$/);
+  assert.equal(readManifest(h).records, 1);
+  assert.equal(readManifest(h).invalid, "foreign_writer");
+  assertUnusable(await h.create(h.storeRoot).read(k), "foreign_writer");
 });
 
 test("Hermes CC history writer lease heartbeats renew the on-disk mtime", async t => {
