@@ -1,7 +1,9 @@
+import { nativeKey } from "./session-key";
+export { nativeSessionKeyFromPersistence } from "./session-key";
 import { runAcpProvider } from "@getpaseo/plugin/server/acp";
 import type {
   ProviderConnection,
-  ProviderPersistence,
+  ProviderContent,
   ProviderRegistration,
 } from "@getpaseo/plugin/server/provider";
 
@@ -18,44 +20,12 @@ export type HermesCcPromptHook = (info: {
 export function isHermesAcpCommand(command: unknown): command is [string, ...string[]] {
   if (!Array.isArray(command) || !command.every((part) => typeof part === "string")) return false;
   const executable = command[0]?.replace(/\\/g, "/").split("/").pop();
-  if (!/^(?:hermes|hermes\.exe|hermes\.cmd)$/.test(executable ?? "")) return false;
+  if (!/^(?:hermes|hermes\.exe|hermes\.cmd)$/i.test(executable ?? "")) return false;
   if (command[command.length - 1] !== "acp") return false;
   if (command.length === 2) return true;
-  if (command.length === 3) return /^--profile=\S.*$/.test(command[1] ?? "");
+  if (command.length === 3) return /^--profile=[^-\s].*$/.test(command[1] ?? "");
   return command.length === 4 && (command[1] === "-p" || command[1] === "--profile")
     && (command[2]?.trim().length ?? 0) > 0 && !command[2]?.startsWith("-");
-}
-
-function nativeKey(persistence: unknown): string | null {
-  if (!persistence || typeof persistence !== "object" || Array.isArray(persistence)) return null;
-  const { version, data } = persistence as Partial<ProviderPersistence>;
-  if (version !== 1 || !data || typeof data !== "object" || Array.isArray(data)) return null;
-  return typeof data.sessionId === "string" && data.sessionId.length > 0 ? data.sessionId : null;
-}
-
-/**
- * Paseo v0.13.0 packages/server/src/server/agent/plugin-provider.ts:1721-1760
- * stores sessionId as `plugin:${JSON.stringify(persistence)}`. The ACP adapter
- * writes { version: 1, data: { sessionId: nativeAcpId } } in
- * packages/plugin/src/server/acp-internal/connection.ts:1357-1369. This is the
- * same native ID captured from session.opened below, including restored sessions.
- * Decode only SDK handles; opaque IDs and conflicting handles select nothing.
- */
-export function nativeSessionKeyFromPersistence(
-  sessionId: string | null,
-  nativeHandle: string | null,
-): string | null {
-  let result: string | null = null;
-  for (const handle of [sessionId, nativeHandle]) {
-    if (handle === null) continue;
-    if (!handle.startsWith("plugin:")) return null;
-    let key: string | null;
-    try { key = nativeKey(JSON.parse(handle.slice("plugin:".length))); }
-    catch { return null; }
-    if (key === null || (result !== null && result !== key)) return null;
-    result = key;
-  }
-  return result;
 }
 
 /** Observe the provider boundary without rewriting any outgoing prompt. */
@@ -87,10 +57,10 @@ export function captureHermesCcPrompts(
             // image data is base64 and the client identity is on ProviderPrompt.
             // Empty-image and command prompts also call the hook with []. Buffers
             // are separate allocations so even a mutating hook cannot edit input.
+            // Malformed image parts are skipped individually, never decoded with
+            // Buffer's permissive base64 parser. No substitution or guessing.
             const images = input.prompt.input.type === "message"
-              ? input.prompt.input.content.flatMap((part) => part.type === "image"
-                ? [{ mime: part.mimeType, data: Buffer.from(part.data, "base64") }] : [])
-              : [];
+              ? input.prompt.input.content.flatMap(capturedImage) : [];
             await hook({ sessionKey, clientMessageId: input.prompt.clientMessageId ?? null, images });
           } catch {
             console.debug("[clear-chat] hermes_cc: capture_failed");
@@ -124,7 +94,7 @@ export function hermesCcProvidersFromConfig(
     const id = `${sourceId}-cc`;
     if (Object.hasOwn(providers, id) || !value || typeof value !== "object" || Array.isArray(value)) continue;
     const source = value as Record<string, unknown>;
-    if (source.extends !== "acp" || !isHermesAcpCommand(source.command)) continue;
+    if (source.enabled === false || source.extends !== "acp" || !isHermesAcpCommand(source.command)) continue;
     const command: [string, ...string[]] = [source.command[0], ...source.command.slice(1)];
     const env: Record<string, string> = {};
     if (source.env && typeof source.env === "object" && !Array.isArray(source.env)) {
@@ -137,19 +107,43 @@ export function hermesCcProvidersFromConfig(
     const provider = runAcpProvider({ id, label: `${typeof source.label === "string" && source.label.trim() ? source.label : sourceId}·CC`, command });
     registrations.push({
       ...provider,
+      // ProviderRegistration.command is optional (SDK server/provider.ts:33-36).
+      // Host resolution is keyed by the new -cc ID and cannot see source env/PATH.
+      // Keep the source command in the ACP adapter; supply its exact launch below.
+      command: undefined,
       async connect(request) {
-        // SDK v0.13.0 packages/server/src/server/agent/plugin-provider.ts:150-162
-        // resolves the executable and complete host env. The source provider's
-        // env is absent for a new ID, so copy its explicit overlay into launch.
-        // ACP connection.ts:405-413 consumes that launch without re-parsing args.
-        const launch = request.launch ?? {
-          command: command[0], args: command.slice(1),
-          env: Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined)),
-        };
-        const connection = await provider.connect({ ...request, launch: { ...launch, env: { ...launch.env, ...env } } });
+        // The worker inherits the daemon env (server/plugins/runtime.ts:233-238).
+        // Reproduce the source provider's env from that base, including stripping
+        // AFTER overlays: agent/provider-launch-config.ts:211-216,237-253 and
+        // server/paseo-env.ts:4-11,25-40. The SDK exports no env builder. Using the
+        // -cc launch env as a base would retain unrelated -cc overrides.
+        const launch = { command: command[0], args: command.slice(1), env: hermesCcSourceEnv(process.env, env) };
+        // ACP connection.ts:405-416 accepts an explicit launch. Its spawn uses
+        // source PATH, as GenericACPAgentClient.resolveLaunchCommand does in
+        // server/agent/providers/generic-acp-agent.ts:72-77.
+        const connection = await provider.connect({ ...request, launch });
         return captureHermesCcPrompts(connection, hook);
       },
     });
   }
   return registrations;
+}
+
+/** Exact Paseo 0.13 source-provider env policy; no daemon controls reach ACP. */
+export function hermesCcSourceEnv(base: NodeJS.ProcessEnv, overlay: Record<string, string>): Record<string, string> {
+  const env = { ...base, ...overlay };
+  for (const key of [
+    "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SSE_PORT", "CLAUDE_AGENT_SDK_VERSION",
+    "PASEO_NODE_ENV", "PASEO_DESKTOP_MANAGED", "PASEO_SUPERVISED", "ELECTRON_RUN_AS_NODE",
+    "ELECTRON_NO_ATTACH_CONSOLE", "ESBUILD_BINARY_PATH",
+  ]) delete env[key];
+  return Object.fromEntries(Object.entries(env).filter((entry): entry is [string, string] => entry[1] !== undefined));
+}
+
+function capturedImage(part: ProviderContent): HermesCcImageInput[] {
+  if (!part || part.type !== "image" || typeof part.mimeType !== "string" || typeof part.data !== "string" ||
+      part.data.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(part.data)) return [];
+  const bytes = Buffer.from(part.data, "base64");
+  if (bytes.toString("base64") !== part.data) return [];
+  return [{ mime: part.mimeType, data: bytes }];
 }

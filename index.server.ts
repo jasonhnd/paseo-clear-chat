@@ -8,7 +8,7 @@ import { type HighlightLine, type HighlightToken, highlightRpc } from "./shared/
 import { imageRpc } from "./shared/image-rpc";
 import { promptImageRpc, promptImagesRpc } from "./shared/prompt-images-rpc";
 import { createPromptImageHandlers } from "./server/prompt-images/registry";
-import { createHermesCcImageStore, hermesCcImageRoot } from "./server/hermes-cc/store";
+import { createHermesCcImageStore, hermesCcImageRoot, hermesCcPaseoHome, type HermesCcImageStore } from "./server/hermes-cc/store";
 import { hermesCcProvidersFromConfig } from "./server/hermes-cc/provider";
 import { hermesCcStartupConfig } from "./server/hermes-cc/startup";
 import { hermesCcSettings, presentationSettings } from "./shared/settings";
@@ -536,8 +536,13 @@ function registerServer(server: PluginServerContext) {
     }
   });
 
-  const hermesCcImageStore = createHermesCcImageStore(hermesCcImageRoot(server));
-  const startup = hermesCcStartupConfig();
+  let hermesCcImageStore: HermesCcImageStore | undefined;
+  let startup: ReturnType<typeof hermesCcStartupConfig> = { providers: {}, enabled: false };
+  try {
+    const home = hermesCcPaseoHome();
+    hermesCcImageStore = createHermesCcImageStore(hermesCcImageRoot(server, home), { trustedRoot: home });
+    startup = hermesCcStartupConfig(home);
+  } catch { console.debug?.("[clear-chat] hermes_cc: startup_unavailable"); }
   const providers = hermesCcProvidersFromConfig(startup.providers, startup.enabled, async ({ sessionKey, clientMessageId, images }) => {
     if (!clientMessageId) {
       console.debug("[clear-chat] hermes_cc: message_id_unavailable");
@@ -545,8 +550,10 @@ function registerServer(server: PluginServerContext) {
     }
     // Async capture is awaited by ProviderConnection.send(), whose SDK contract
     // permits Promise<void> (server/provider.ts:77-83). Contribution stays sync.
-    try { await hermesCcImageStore.save({ sessionKey, messageId: clientMessageId }, images); }
-    catch { console.debug("[clear-chat] hermes_cc: save_failed"); }
+    try {
+      const result = await hermesCcImageStore?.save({ sessionKey, messageId: clientMessageId }, images);
+      if (result === "conflict") console.debug("[clear-chat] hermes_cc: save_conflict");
+    } catch { console.debug("[clear-chat] hermes_cc: save_failed"); }
   });
   for (const provider of providers) server.registerProvider(provider);
   const promptImages = createPromptImageHandlers({

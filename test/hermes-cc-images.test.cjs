@@ -252,7 +252,7 @@ test("Hermes CC saves serialize across instances, including simultaneous conflic
   const h = harness(t), other = h.createHermesCcImageStore(h.storeRoot);
   await Promise.all([h.store.save(key(), [png()]), other.save(key(), [png(3)])]);
   assert.equal(await h.store.load(key()), null);
-  assert.equal(readMeta(h).conflict, true);
+  assert.ok(fs.existsSync(join(h.storeRoot, `.conflict-${require("node:path").basename(keyDirectory(h))}`)));
   const k = key("identical");
   await Promise.all(Array.from({ length: 8 }, () => other.save(k, [png()])));
   assert.deepEqual((await other.load(k))[0].bytes, png().data);
@@ -270,15 +270,25 @@ test("Hermes CC session helper decodes only supported plugin ACP persistence han
   }
 });
 
-test("Hermes CC root uses the daemon home and only the Clear Chat data subtree", t => {
+test("Hermes CC root canonicalizes a symlinked daemon home and only writes below its real Clear Chat subtree", async t => {
   const h = harness(t), previous = process.env.PASEO_HOME;
   t.after(() => { if (previous === undefined) delete process.env.PASEO_HOME; else process.env.PASEO_HOME = previous; });
-  process.env.PASEO_HOME = h.root;
-  assert.equal(h.hermesCcImageRoot({}), join(h.root, "plugin-data", "clear-chat", "hermes-cc", "images"));
-  process.env.PASEO_HOME = "~/daemon";
-  assert.equal(h.hermesCcImageRoot({}), join(require("node:os").homedir(), "daemon", "plugin-data", "clear-chat", "hermes-cc", "images"));
-  delete process.env.PASEO_HOME;
-  assert.equal(h.hermesCcImageRoot({}), join(require("node:os").homedir(), ".paseo", "plugin-data", "clear-chat", "hermes-cc", "images"));
+  const alias = join(h.root, "alias"), real = join(h.root, "real");
+  fs.mkdirSync(real); fs.symlinkSync(real, alias);
+  process.env.PASEO_HOME = alias;
+  assert.equal(h.hermesCcPaseoHome(), real);
+  const root = h.hermesCcImageRoot({});
+  assert.equal(root, join(real, "plugin-data", "clear-chat", "hermes-cc-images"));
+  const store = h.createHermesCcImageStore(root, { trustedRoot: real });
+  await store.save(key(), [png()]);
+  assert.deepEqual((await store.load(key()))[0].bytes, png().data);
+  assert.deepEqual(fs.readdirSync(real), ["plugin-data"]);
+  fs.renameSync(join(real, "plugin-data"), join(real, "moved"));
+  const outside = join(h.root, "outside"); fs.mkdirSync(outside);
+  fs.symlinkSync(outside, join(real, "plugin-data"));
+  await assert.rejects(store.save(key(), [png(3)]), /^Error: image_store_failed$/);
+  assert.equal(await store.load(key()), null);
+  assert.deepEqual(fs.readdirSync(outside), []);
 });
 
 test("Hermes CC resolver matches only enhanced Hermes provider IDs", t => {
@@ -410,7 +420,8 @@ test("Hermes CC failed atomic publication cleans up and never publishes a partia
   const h = harness(t, { "node:fs/promises": wrapped });
   await assert.rejects(h.store.save(key(), [png()]));
   assert.equal(await h.store.load(key()), null);
-  assert.deepEqual(fs.readdirSync(h.storeRoot), []);
+  assert.ok(fs.readdirSync(h.storeRoot).every(name => name.startsWith(".seen-")));
+  assert.equal(diskBytes(h.storeRoot), 0);
   failing = false;
   await h.store.save(key(), [png()]);
   assert.deepEqual((await h.store.load(key()))[0].bytes, png().data);
@@ -440,4 +451,149 @@ test("Hermes CC descriptor-based eviction cannot follow a substituted key direct
   assert.equal(attacked, true);
   assert.equal(fs.readFileSync(join(outside, file), "utf8"), "keep outside");
   assert.equal(await h.store.load(key()), null);
+});
+
+test("Hermes CC cross-process saves always poison different payloads for the same key", { timeout: 30_000 }, async t => {
+  const { fork } = require("node:child_process");
+  const h = harness(t), compiledFile = join(h.root, "store.cjs"), worker = join(h.root, "writer.cjs");
+  fs.writeFileSync(compiledFile, ts.transpileModule(fs.readFileSync(resolve(__dirname, "../server/hermes-cc/store.ts"), "utf8"), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+  }).outputText);
+  fs.writeFileSync(worker, `
+    const { createHermesCcImageStore } = require(process.argv[2]);
+    process.send({ ready: true });
+    process.once("message", async () => {
+      try {
+        const result = await createHermesCcImageStore(process.argv[3]).save(
+          { sessionKey: "shared-native", messageId: process.argv[4] },
+          [{ mime: "image/png", data: Buffer.from(process.argv[5]) }]);
+        process.send({ result }); process.disconnect();
+      } catch { process.send({ error: true }); process.exitCode = 1; process.disconnect(); }
+    });
+  `);
+  fs.mkdirSync(h.storeRoot);
+  const staleLock = join(h.storeRoot, ".save.lock");
+  fs.writeFileSync(staleLock, JSON.stringify({ pid: 2147483647, token: "abandoned" }));
+  const staleTime = new Date(Date.now() - 10 * 60_000); fs.utimesSync(staleLock, staleTime, staleTime);
+  for (let round = 0; round < 20; round++) {
+    const children = ["first-bytes", "other-bytes"].map(bytes => {
+      const child = fork(worker, [compiledFile, h.storeRoot, String(round), bytes], { stdio: ["ignore", "ignore", "pipe", "ipc"] });
+      t.after(() => { if (child.connected) child.kill(); });
+      const ready = new Promise((resolve, reject) => { child.once("message", message => message.ready ? resolve() : reject(new Error("writer not ready"))); child.once("error", reject); });
+      const result = new Promise((resolve, reject) => {
+        child.on("message", message => { if (message.result) resolve(message.result); if (message.error) reject(new Error("writer failed")); });
+        child.once("error", reject);
+        child.once("exit", code => { if (code !== 0) reject(new Error("writer exited")); });
+      });
+      return { child, ready, result };
+    });
+    await Promise.all(children.map(child => child.ready));
+    for (const { child } of children) child.send("save");
+    const results = await Promise.all(children.map(child => child.result));
+    assert.ok(results.includes("conflict"), `round ${round} must report a conflict`);
+    assert.equal(await h.createHermesCcImageStore(h.storeRoot).load({ sessionKey: "shared-native", messageId: String(round) }), null);
+  }
+});
+
+test("Hermes CC expires abandoned on-disk locks without allowing a stale reaper to remove a new lock", async t => {
+  const h = harness(t);
+  fs.mkdirSync(h.storeRoot);
+  const lock = join(h.storeRoot, ".save.lock");
+  fs.writeFileSync(lock, JSON.stringify({ pid: 2147483647, token: "abandoned" }));
+  const old = new Date(Date.now() - 10 * 60_000); fs.utimesSync(lock, old, old);
+  await h.store.save(key(), [png()]);
+  assert.deepEqual((await h.store.load(key()))[0].bytes, png().data);
+  assert.equal(fs.existsSync(lock), false);
+});
+
+test("Hermes CC eviction counts recent orphan trees/files and removes stale orphans without following links", async t => {
+  const h = harness(t);
+  fs.mkdirSync(h.storeRoot);
+  const outside = join(h.root, "outside"); fs.mkdirSync(outside);
+  fs.writeFileSync(join(outside, "keep"), "outside bytes");
+  const temp = join(h.storeRoot, ".orphan.tmp"); fs.mkdirSync(temp);
+  fs.mkdirSync(join(temp, "nested")); fs.writeFileSync(join(temp, "nested", "data"), Buffer.alloc(2048));
+  fs.symlinkSync(outside, join(temp, "link"));
+  const old = new Date(Date.now() - 10 * 60_000); fs.utimesSync(temp, old, old);
+  const oldFile = join(h.storeRoot, ".abandoned.tmp"); fs.writeFileSync(oldFile, Buffer.alloc(100)); fs.utimesSync(oldFile, old, old);
+  await h.store.save(key(), [png()]);
+  assert.equal(fs.existsSync(temp), false); assert.equal(fs.existsSync(oldFile), false);
+  assert.equal(fs.readFileSync(join(outside, "keep"), "utf8"), "outside bytes");
+  const recent = join(h.storeRoot, ".recent.tmp"); fs.mkdirSync(recent); fs.writeFileSync(join(recent, "data"), Buffer.alloc(4096));
+  const freshFile = join(h.storeRoot, ".recent-file.tmp"); fs.writeFileSync(freshFile, Buffer.alloc(4096));
+  const cap = diskBytes(keyDirectory(h));
+  const capped = h.createHermesCcImageStore(h.storeRoot, { maxBytes: cap });
+  await capped.save(key(), [png()]);
+  assert.ok(diskBytes(h.storeRoot) <= cap);
+  assert.equal(fs.existsSync(recent), false); assert.equal(fs.existsSync(freshFile), false);
+  assert.equal(fs.readFileSync(join(outside, "keep"), "utf8"), "outside bytes");
+});
+
+test("Hermes CC eviction tolerates malformed or unreadable metadata of other keys and fails closed", async t => {
+  const fsp = require("node:fs/promises");
+  let deny = false, deniedHash;
+  const h = harness(t, { "node:fs/promises": { ...fsp, async open(path, flags, mode) {
+    if (deny && String(path).endsWith("meta.json")) {
+      // Identify the directory through the pinned descriptor used for this read.
+      const parent = fs.realpathSync(require("node:path").dirname(path));
+      if (parent.endsWith(deniedHash)) throw Object.assign(new Error("private file path"), { code: "EACCES" });
+    }
+    return fsp.open(path, flags, mode);
+  } } });
+  const broken = key("broken"), unreadable = key("unreadable");
+  await h.store.save(broken, [png()]); await h.store.save(unreadable, [png()]);
+  fs.writeFileSync(metaFile(h, broken), "{");
+  deniedHash = require("node:path").basename(keyDirectory(h, unreadable)); deny = true;
+  await h.store.save(key(), [png()]);
+  assert.deepEqual((await h.store.load(key()))[0].bytes, png().data);
+  assert.equal(await h.store.load(broken), null); assert.equal(await h.store.load(unreadable), null);
+  const zero = h.createHermesCcImageStore(h.storeRoot, { maxBytes: 0 });
+  await zero.save(key(), [png()]);
+  deny = false;
+  await h.store.save(broken, [png()]); await h.store.save(unreadable, [png()]);
+  assert.equal(await h.store.load(broken), null); assert.equal(await h.store.load(unreadable), null);
+  assert.equal(diskBytes(h.storeRoot), 0);
+});
+
+test("Hermes CC treats changed MIME for identical bytes as conflicting payloads", async t => {
+  const h = harness(t);
+  await h.store.save(key(), [png()]);
+  assert.equal(await h.store.save(key(), [{ ...png(), mime: "image/jpeg" }]), "conflict");
+  assert.equal(await h.store.load(key()), null);
+});
+
+test("Hermes CC resolver rejects differing persisted and native handles", async t => {
+  const h = harness(t);
+  await h.store.save(key(), [png()]);
+  const found = await h.resolver.find(context(h, { nativeHandle: handle("different-session") }));
+  assert.deepEqual(found, { matchedMessages: 0, images: [] });
+});
+
+
+test("Hermes CC never forgets a payload identity when its images are evicted", async t => {
+  const h = harness(t);
+  const zero = h.createHermesCcImageStore(h.storeRoot, { maxBytes: 0 });
+  await zero.save(key(), [png()]);
+  assert.equal(await h.store.load(key()), null);
+  assert.equal(await h.store.save(key(), [png(9)]), "conflict");
+  assert.equal(await h.store.load(key()), null);
+  await h.store.save(key(), [png()]);
+  assert.equal(await h.store.load(key()), null);
+});
+
+
+test("Hermes CC supports default symlinked ~/.paseo and expands an explicit ~/ home", async t => {
+  let home;
+  const h = harness(t, { "node:os": { homedir: () => home } }); home = h.root;
+  const previous = process.env.PASEO_HOME;
+  t.after(() => { if (previous === undefined) delete process.env.PASEO_HOME; else process.env.PASEO_HOME = previous; });
+  const real = join(h.root, "real-home"); fs.mkdirSync(real);
+  fs.symlinkSync(real, join(h.root, ".paseo"));
+  delete process.env.PASEO_HOME;
+  assert.equal(h.hermesCcPaseoHome(), real);
+  const root = h.hermesCcImageRoot({});
+  await h.createHermesCcImageStore(root, { trustedRoot: real }).save(key(), [png()]);
+  assert.deepEqual((await h.createHermesCcImageStore(root, { trustedRoot: real }).load(key()))[0].bytes, png().data);
+  process.env.PASEO_HOME = "~/.paseo";
+  assert.equal(h.hermesCcPaseoHome(), real);
 });

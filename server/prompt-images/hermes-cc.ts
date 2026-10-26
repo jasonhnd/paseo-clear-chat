@@ -14,7 +14,7 @@ export const hermesCcPromptImageResolver: PromptImageResolver = {
   matches: provider => provider.startsWith("hermes") && provider.endsWith("-cc"),
   async find(context) {
     if (context.signal.aborted || !context.hermesCcImageStore) return empty();
-    const sessionKey = nativeSessionKeyFromPersistence(context.sessionId);
+    const sessionKey = nativeSessionKeyFromPersistence(context.sessionId, context.nativeHandle);
     if (!sessionKey) return empty();
     // Paseo v0.13.0 packages/plugin/src/server/acp-internal/connection.ts:594-604
     // emits the prompt's clientMessageId as both live user-message identifiers.

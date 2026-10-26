@@ -1,27 +1,31 @@
 import { createHash, randomUUID } from "node:crypto";
-import { constants } from "node:fs";
+import { constants, realpathSync } from "node:fs";
 import { lstat, mkdir, open, readdir, rename, rmdir, unlink, type FileHandle } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, parse, resolve, sep } from "node:path";
+import { join, parse, relative, resolve, sep } from "node:path";
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 
 export interface HermesCcImageKey { sessionKey: string; messageId: string }
 export interface HermesCcImageInput { mime: string; data: Buffer }
 export interface HermesCcStoredImage { mime: string; bytes: Buffer; sha256: string }
 export interface HermesCcImageStore {
-  save(key: HermesCcImageKey, images: readonly HermesCcImageInput[]): Promise<void>;
+  save(key: HermesCcImageKey, images: readonly HermesCcImageInput[]): Promise<"saved" | "conflict">;
   load(key: HermesCcImageKey): Promise<HermesCcStoredImage[] | null>;
 }
 
 /**
- * Paseo v0.13.0 has no data-directory API: packages/plugin/src/server/contracts.ts:30-43.
- * The worker inherits the daemon environment (packages/server/src/server/plugins/runtime.ts:233-238).
- * Follow packages/server/src/server/paseo-home.ts:14-17; only Clear Chat owns this subtree.
+ * SDK v0.13.0 packages/plugin/src/server/contracts.ts:30-43 has no plugin data
+ * directory API. Expand the daemon home like server/paseo-home.ts:4-17, then
+ * canonicalize it once at contribution. A symlinked ~/.paseo is supported; only
+ * descendants of this real root undergo component-by-component NOFOLLOW checks.
  */
-export function hermesCcImageRoot(_server: PluginServerContext): string {
+export function hermesCcPaseoHome(): string {
   const home = process.env.PASEO_HOME ?? "~/.paseo";
   const expanded = home === "~" ? homedir() : home.startsWith("~/") ? join(homedir(), home.slice(2)) : home;
-  return join(resolve(expanded), "plugin-data", "clear-chat", "hermes-cc", "images");
+  return realpathSync(resolve(expanded));
+}
+export function hermesCcImageRoot(_server: PluginServerContext, home = hermesCcPaseoHome()): string {
+  return join(home, "plugin-data", "clear-chat", "hermes-cc-images");
 }
 
 const MIMES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
@@ -52,11 +56,12 @@ function record(value: unknown): value is Record<string, unknown> {
 function child(directory: Directory, name: string): string {
   return join(process.platform === "linux" ? `/proc/self/fd/${directory.handle.fd}` : directory.path, name);
 }
-async function directory(path: string, create = false): Promise<Directory> {
-  const absolute = resolve(path), root = parse(absolute).root;
-  let current: Directory = { path: root, handle: await open(root, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW) };
+async function directory(path: string, create = false, trustedRoot = parse(resolve(path)).root): Promise<Directory> {
+  const absolute = resolve(path), root = resolve(trustedRoot), tail = relative(root, absolute);
+  if (tail === ".." || tail.startsWith(`..${sep}`)) throw new Error("unsafe_image_directory");
+  let current: Directory = { path: root, handle: await open(root, constants.O_RDONLY | constants.O_DIRECTORY) };
   try {
-    for (const name of absolute.slice(root.length).split(sep).filter(Boolean)) {
+    for (const name of tail.split(sep).filter(Boolean)) {
       const target = child(current, name);
       if (create) {
         try { await mkdir(target, { mode: 0o700 }); }
@@ -155,22 +160,116 @@ async function conflicted(root: Directory, name: string): Promise<boolean> {
   }
 }
 
-/** Never recurse through untrusted directories or follow a linked file while deleting. */
-async function removeFiles(directory: Directory): Promise<void> {
-  const names = await readdir(child(directory, "."));
-  for (const name of names) {
-    const entry = await lstat(child(directory, name));
-    if (!entry.isFile() || entry.isSymbolicLink() || entry.nlink !== 1) throw new Error("unsafe_image_file");
+function payloadHash(images: readonly ImageMeta[]): string {
+  return hash(JSON.stringify(images.map(image => [image.mime, image.sha256, image.size])));
+}
+async function rememberPayload(root: Directory, name: string, payload: string): Promise<void> {
+  const marker = `.seen-${name}-${payload}`;
+  try {
+    const handle = await open(child(root, marker), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+    await handle.close();
+  } catch (error) { if (!hasCode(error, "EEXIST")) throw error; }
+  await readFile(root, marker, 0);
+}
+async function payloadConflict(root: Directory, name: string, payload: string): Promise<boolean> {
+  const names = (await readdir(child(root, "."))).filter(entry => entry.startsWith(`.seen-${name}-`));
+  if (names.length !== 1 || names[0] !== `.seen-${name}-${payload}`) return true;
+  await readFile(root, names[0], 0);
+  return false;
+}
+
+const LOCK_NAME = ".save.lock";
+const STALE_MS = 5 * 60_000;
+
+/** Cross-process root lock also serializes eviction and reads against publication. */
+async function withDiskLock<T>(root: Directory, run: () => Promise<T>): Promise<T> {
+  const target = child(root, LOCK_NAME), deadline = Date.now() + 15_000;
+  let handle: FileHandle;
+  for (;;) {
+    try {
+      handle = await open(target, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+      try { await handle.writeFile(JSON.stringify({ pid: process.pid, token: randomUUID() })); }
+      catch (error) { await handle.close(); await unlink(target); throw error; }
+      break;
+    } catch (error) {
+      if (!hasCode(error, "EEXIST")) throw error;
+      let stat;
+      try { stat = await lstat(target); }
+      catch (error) { if (hasCode(error, "ENOENT")) continue; throw error; }
+      if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1) throw new Error("unsafe_image_lock");
+      if (Date.now() - stat.mtimeMs > STALE_MS) {
+        let alive = false;
+        try {
+          const owner: unknown = JSON.parse((await readFile(root, LOCK_NAME, 4096)).toString("utf8"));
+          if (record(owner) && Number.isSafeInteger(owner.pid) && Number(owner.pid) > 0) {
+            try { process.kill(Number(owner.pid), 0); alive = true; }
+            catch (error) { alive = !hasCode(error, "ESRCH"); }
+          }
+        } catch { /* An abandoned, incomplete lock can expire too. */ }
+        if (!alive) {
+          // Claim this specific stale inode once. The zero-byte claim survives
+          // a reaper crash, so competing reapers can never unlink a newer lock.
+          const claim = `.reaped-${hash(`${stat.dev}:${stat.ino}:${stat.mtimeMs}`)}`;
+          let claimed: FileHandle | undefined;
+          try {
+            claimed = await open(child(root, claim), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+            const current = await lstat(target);
+            if (current.dev === stat.dev && current.ino === stat.ino && current.mtimeMs === stat.mtimeMs) await unlink(target);
+          } catch (error) { if (!hasCode(error, "EEXIST") && !hasCode(error, "ENOENT")) throw error; }
+          finally { await claimed?.close(); }
+        }
+      }
+      if (Date.now() >= deadline) throw new Error("image_lock_timeout");
+      await new Promise(resolve => setTimeout(resolve, 15));
+    }
   }
-  for (const name of names) await unlink(child(directory, name));
+  const heartbeat = setInterval(() => { const now = new Date(); void handle.utimes(now, now).catch(() => {}); }, STALE_MS / 3);
+  heartbeat.unref();
+  try { return await run(); }
+  finally {
+    clearInterval(heartbeat);
+    try {
+      const held = await handle.stat(), current = await lstat(target);
+      if (held.dev === current.dev && held.ino === current.ino) await unlink(target);
+    } finally { await handle.close(); }
+  }
+}
+
+/** Descriptor-relative recursion never follows symlinks, even for orphan cleanup. */
+async function removeFiles(directory: Directory): Promise<void> {
+  for (const name of await readdir(child(directory, "."))) {
+    const entry = await lstat(child(directory, name));
+    if (entry.isDirectory() && !entry.isSymbolicLink()) {
+      const nested = await openDirectory(child(directory, name));
+      try { await removeFiles(nested); } finally { await nested.handle.close(); }
+      await rmdir(child(directory, name));
+    } else {
+      await unlink(child(directory, name));
+    }
+  }
+}
+async function directoryBytes(directory: Directory): Promise<number> {
+  let size = 0;
+  for (const name of await readdir(child(directory, "."))) {
+    const entry = await lstat(child(directory, name));
+    if (entry.isDirectory() && !entry.isSymbolicLink()) {
+      try {
+        const nested = await openDirectory(child(directory, name));
+        try { size += await directoryBytes(nested); } finally { await nested.handle.close(); }
+      } catch { size += entry.size; }
+    } else size += entry.size;
+  }
+  return size;
 }
 
 /**
- * The cap counts metadata and image files. A zero-byte conflict marker survives
- * eviction: removing it would let a later save make a conflicted ID resolve again.
- * Operations sharing a root serialize across store instances in this worker.
+ * The cap counts metadata, images and orphans. Zero-byte conflict and payload
+ * fingerprints survive eviction: forgetting an identity could allow a later
+ * different payload to silently win. Intents use O_EXCL before taking the root
+ * lock, so even a writer that times out cannot leave an old image selectable.
+ * All operations serialize across workers under the on-disk root lock.
  */
-export function createHermesCcImageStore(rootDir: string, options: { maxBytes?: number } = {}): HermesCcImageStore {
+export function createHermesCcImageStore(rootDir: string, options: { maxBytes?: number; trustedRoot?: string } = {}): HermesCcImageStore {
   const root = resolve(rootDir), maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) throw new Error("invalid_image_cap");
   function serialized<T>(operation: () => Promise<T>): Promise<T> {
@@ -180,35 +279,68 @@ export function createHermesCcImageStore(rootDir: string, options: { maxBytes?: 
     return pending;
   }
   async function evict(root: Directory): Promise<void> {
-    const keys: { name: string; createdAt: number; size: number }[] = [];
+    const entries: { name: string; createdAt: number; size: number; directory: boolean; orphan: boolean }[] = [];
     let total = 0;
     for (const name of await readdir(child(root, "."))) {
-      if (!HASH.test(name)) continue;
-      const dir = await openDirectory(child(root, name));
-      try {
-        const meta = await metadata(dir);
-        if (keyHash(meta) !== name) throw new Error("invalid_image_metadata");
-        let size = 0;
-        for (const file of await readdir(child(dir, "."))) {
-          const stat = await lstat(child(dir, file));
-          if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1) throw new Error("unsafe_image_file");
-          size += stat.size;
-        }
-        if (meta.conflict && !await conflicted(root, name)) {
-          await atomicWrite(root, `.conflict-${name}`, Buffer.alloc(0));
-        }
-        total += size;
-        keys.push({ name, createdAt: meta.createdAt, size });
-      } finally { await dir.handle.close(); }
+      if (name === LOCK_NAME) continue;
+      const stat = await lstat(child(root, name));
+      const marker = /^\.(?:conflict|reaped)-[a-f0-9]{64}$/.test(name) || /^\.seen-[a-f0-9]{64}-[a-f0-9]{64}$/.test(name);
+      if (marker && stat.isFile() && !stat.isSymbolicLink() && stat.nlink === 1 && stat.size === 0) continue;
+      const damagedIdentity = /^\.seen-([a-f0-9]{64})-/.exec(name)?.[1];
+      if (damagedIdentity) await atomicWrite(root, `.conflict-${damagedIdentity}`, Buffer.alloc(0));
+      if (/^\.conflict-[a-f0-9]{64}$/.test(name)) {
+        // Repair a damaged marker without following any target. Its identity
+        // stays poisoned and nonzero marker contents cannot bypass the cap.
+        if (stat.isDirectory() && !stat.isSymbolicLink()) {
+          const damaged = await openDirectory(child(root, name));
+          try { await removeFiles(damaged); } finally { await damaged.handle.close(); }
+          await rmdir(child(root, name));
+        } else await unlink(child(root, name));
+        await atomicWrite(root, name, Buffer.alloc(0));
+        continue;
+      }
+      let size = stat.size, createdAt = stat.mtimeMs, orphan = true;
+      const isDirectory = stat.isDirectory() && !stat.isSymbolicLink();
+      if (HASH.test(name) && !isDirectory) await atomicWrite(root, `.conflict-${name}`, Buffer.alloc(0));
+      if (isDirectory) {
+        let dir: Directory | undefined;
+        try {
+          dir = await openDirectory(child(root, name));
+          size = await directoryBytes(dir);
+          if (HASH.test(name)) {
+            const meta = await metadata(dir);
+            if (keyHash(meta) !== name) throw new Error("invalid_image_metadata");
+            createdAt = meta.createdAt;
+            orphan = false;
+            if (meta.conflict && !await conflicted(root, name)) await atomicWrite(root, `.conflict-${name}`, Buffer.alloc(0));
+          }
+        } catch {
+          // Invalid/unreadable metadata never aborts a different prompt's save.
+          // Poison a malformed key before reclaiming it; it cannot be healed by
+          // a later save with unrelated bytes under that same identity.
+          if (HASH.test(name)) await atomicWrite(root, `.conflict-${name}`, Buffer.alloc(0));
+        } finally { await dir?.handle.close(); }
+      }
+      total += size;
+      entries.push({ name, createdAt, size, directory: isDirectory, orphan });
     }
-    keys.sort((a, b) => a.createdAt - b.createdAt || a.name.localeCompare(b.name));
-    for (const key of keys) {
-      if (total <= maxBytes) break;
-      const dir = await openDirectory(child(root, key.name));
-      try { await removeFiles(dir); }
-      finally { await dir.handle.close(); }
-      await rmdir(child(root, key.name));
-      total -= key.size;
+    entries.sort((a, b) => a.createdAt - b.createdAt || a.name.localeCompare(b.name));
+    for (const entry of entries) {
+      // Stale temporary trees/files are reclaimed even below the cap. Recent
+      // orphans still count towards it and may be evicted to enforce the cap.
+      if (total <= maxBytes && !(entry.orphan && Date.now() - entry.createdAt > STALE_MS)) continue;
+      if (entry.directory) {
+        let dir: Directory | undefined;
+        try {
+          dir = await openDirectory(child(root, entry.name));
+          await removeFiles(dir);
+        } catch (error) {
+          if (!hasCode(error, "EACCES") && !hasCode(error, "EPERM")) throw error;
+          continue; // Count unreadable entries; never escape the root to remove them.
+        } finally { await dir?.handle.close(); }
+        await rmdir(child(root, entry.name));
+      } else await unlink(child(root, entry.name));
+      total -= entry.size;
     }
   }
   return {
@@ -221,38 +353,54 @@ export function createHermesCcImageStore(rootDir: string, options: { maxBytes?: 
         return { mime: image.mime, sha256, size: image.bytes.length, file: `${index}-${sha256}.bin` };
       });
       return serialized(async () => {
-        const rootDirectory = await directory(root, true);
+        const rootDirectory = await directory(root, true, options.trustedRoot).catch(() => { throw new Error("image_store_failed"); });
         try {
-          if (await conflicted(rootDirectory, name)) { await evict(rootDirectory); return; }
-          let existing: Directory | undefined;
-          try { existing = await openDirectory(child(rootDirectory, name)); }
-          catch (error) { if (!hasCode(error, "ENOENT")) throw error; }
-          if (existing) {
-            try {
-              const meta = await metadata(existing, savedKey);
-              if (!meta.conflict && (meta.images.length !== entries.length || meta.images.some((image, i) => image.sha256 !== entries[i]!.sha256))) {
-                await atomicWrite(rootDirectory, `.conflict-${name}`, Buffer.alloc(0));
-                await writeMeta(existing, { ...meta, conflict: true });
+          const payload = payloadHash(entries);
+          await rememberPayload(rootDirectory, name, payload);
+          return await withDiskLock(rootDirectory, async () => {
+            if (await conflicted(rootDirectory, name)) { await evict(rootDirectory); return "conflict"; }
+            let conflict = await payloadConflict(rootDirectory, name, payload);
+            let existing: Directory | undefined;
+            try { existing = await openDirectory(child(rootDirectory, name)); }
+            catch (error) { if (!hasCode(error, "ENOENT")) throw error; }
+            if (existing) {
+              try {
+                const meta = await metadata(existing, savedKey);
+                conflict = conflict || !!meta.conflict || meta.images.length !== entries.length || meta.images.some((image, i) => image.sha256 !== entries[i]!.sha256 || image.mime !== entries[i]!.mime);
+                for (const image of meta.images) {
+                  const bytes = await readFile(existing, image.file, image.size);
+                  if (bytes.length !== image.size || hash(bytes) !== image.sha256) conflict = true;
+                }
+                if (conflict) {
+                  await atomicWrite(rootDirectory, `.conflict-${name}`, Buffer.alloc(0));
+                  await writeMeta(existing, { ...meta, conflict: true });
+                }
+              } finally { await existing.handle.close(); }
+            } else if (!conflict) {
+              const temporaryName = `.${name}.${randomUUID()}.tmp`;
+              await mkdir(child(rootDirectory, temporaryName), { mode: 0o700 });
+              const temporary = await openDirectory(child(rootDirectory, temporaryName));
+              let published = false;
+              try {
+                for (const [index, image] of accepted.entries()) await atomicWrite(temporary, entries[index]!.file, image.bytes);
+                await writeMeta(temporary, { ...savedKey, createdAt: Date.now(), images: entries });
+                await rename(child(rootDirectory, temporaryName), child(rootDirectory, name));
+                published = true;
+              } finally {
+                try { if (!published) await removeFiles(temporary); }
+                finally { await temporary.handle.close(); }
+                if (!published) await rmdir(child(rootDirectory, temporaryName));
               }
-            } finally { await existing.handle.close(); }
-          } else {
-            const temporaryName = `.${name}.${randomUUID()}.tmp`;
-            await mkdir(child(rootDirectory, temporaryName), { mode: 0o700 });
-            const temporary = await openDirectory(child(rootDirectory, temporaryName));
-            let published = false;
-            try {
-              for (const [index, image] of accepted.entries()) await atomicWrite(temporary, entries[index]!.file, image.bytes);
-              await writeMeta(temporary, { ...savedKey, createdAt: Date.now(), images: entries });
-              await rename(child(rootDirectory, temporaryName), child(rootDirectory, name));
-              published = true;
-            } finally {
-              try { if (!published) await removeFiles(temporary); }
-              finally { await temporary.handle.close(); }
-              if (!published) await rmdir(child(rootDirectory, temporaryName));
             }
-          }
-          await evict(rootDirectory);
-        } finally { await rootDirectory.handle.close(); }
+            // Another process may record its intent while this writer holds the
+            // lock. Recheck before reporting success; readers check fingerprints too.
+            conflict = conflict || await payloadConflict(rootDirectory, name, payload);
+            if (conflict) await atomicWrite(rootDirectory, `.conflict-${name}`, Buffer.alloc(0));
+            await evict(rootDirectory);
+            return conflict ? "conflict" : "saved";
+          });
+        } catch { throw new Error("image_store_failed"); }
+        finally { await rootDirectory.handle.close(); }
       });
     },
     async load(key) {
@@ -260,18 +408,20 @@ export function createHermesCcImageStore(rootDir: string, options: { maxBytes?: 
       return serialized(async () => {
         let rootDirectory: Directory | undefined, keyDirectory: Directory | undefined;
         try {
-          rootDirectory = await directory(root);
-          if (await conflicted(rootDirectory, name)) return null;
-          keyDirectory = await openDirectory(child(rootDirectory, name));
-          const meta = await metadata(keyDirectory, savedKey);
-          if (meta.conflict || !meta.images.length) return null;
-          const images: HermesCcStoredImage[] = [];
-          for (const image of meta.images) {
-            const bytes = await readFile(keyDirectory, image.file, image.size);
-            if (bytes.length !== image.size || hash(bytes) !== image.sha256) return null;
-            images.push({ mime: image.mime, bytes, sha256: image.sha256 });
-          }
-          return images;
+          rootDirectory = await directory(root, false, options.trustedRoot);
+          return await withDiskLock(rootDirectory, async () => {
+            if (await conflicted(rootDirectory!, name)) return null;
+            keyDirectory = await openDirectory(child(rootDirectory!, name));
+            const meta = await metadata(keyDirectory, savedKey);
+            if (meta.conflict || !meta.images.length || await payloadConflict(rootDirectory!, name, payloadHash(meta.images))) return null;
+            const images: HermesCcStoredImage[] = [];
+            for (const image of meta.images) {
+              const bytes = await readFile(keyDirectory, image.file, image.size);
+              if (bytes.length !== image.size || hash(bytes) !== image.sha256) return null;
+              images.push({ mime: image.mime, bytes, sha256: image.sha256 });
+            }
+            return images;
+          });
         } catch { return null; }
         finally { await keyDirectory?.handle.close(); await rootDirectory?.handle.close(); }
       });

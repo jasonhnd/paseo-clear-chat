@@ -7,11 +7,13 @@ const test = require("node:test");
 const ts = require("typescript");
 
 function harness(runAcpProvider) {
-  const logs = [], launches = [];
+  const logs = [], launches = [], commands = [];
   runAcpProvider ??= options => ({ ...options, connect: async request => {
     launches.push(request);
     return fakeConnection();
   } });
+  const factory = runAcpProvider;
+  runAcpProvider = options => { commands.push(options); return factory(options); };
   const module = { exports: {} };
   const filename = resolve(__dirname, "../server/hermes-cc/provider.ts");
   const compiled = ts.transpileModule(readFileSync(filename, "utf8"), {
@@ -19,11 +21,19 @@ function harness(runAcpProvider) {
   }).outputText;
   runInThisContext(`(function(require,module,exports,console){${compiled}\n})`, { filename })(
     id => {
+      if (id === "./session-key") {
+        const keys = { exports: {} };
+        const source = ts.transpileModule(readFileSync(resolve(__dirname, "../server/hermes-cc/session-key.ts"), "utf8"), {
+          compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+        }).outputText;
+        runInThisContext(`(function(module,exports){${source}\n})`)(keys, keys.exports);
+        return keys.exports;
+      }
       assert.equal(id, "@getpaseo/plugin/server/acp");
       return { runAcpProvider };
     }, module, module.exports, { debug: (...args) => logs.push(args) },
   );
-  return { ...module.exports, launches, logs };
+  return { ...module.exports, launches, logs, commands };
 }
 
 function fakeConnection() {
@@ -48,13 +58,13 @@ const prompt = (sessionId, id = "client-1", content = [{ type: "text", text: " u
 const matches = [
   ["hermes", "acp"], ["hermes", "-p", "zksc-ops", "acp"],
   ["/usr/local/bin/hermes", "--profile", "x", "acp"],
-  ["hermes", "--profile=x", "acp"], ["hermes.exe", "acp"],
+  ["hermes", "--profile=x", "acp"], ["hermes.exe", "acp"], ["HeRmEs.ExE", "acp"], ["HERMES.CMD", "acp"], ["HERMES", "acp"],
   ["C:\\bin\\hermes.cmd", "--profile", "two words", "acp"],
 ];
 const misses = [
   ["gemini", "--acp"], ["hermes", "chat"], ["hermes", "acp", "--extra"],
   ["hermes-wrapper", "acp"], ["hermes", "--profile", "x", "-p", "y", "acp"],
-  ["hermes", "--profile=", "acp"], ["hermes", "-p", "", "acp"],
+  ["hermes", "--profile=", "acp"], ["hermes", "--profile=-x", "acp"], ["hermes", "--profile=--flag", "acp"], ["hermes", "-p", "", "acp"],
   ["hermes", "-p", "--profile=x", "acp"], ["hermes", "--debug", "acp"],
   ["hermes", "-p=x", "acp"], ["hermes", "--profile", "x", "extra", "acp"],
   ["hermes", "acp", "acp"], ["hermes", "acp", 1], [], null, "hermes acp",
@@ -69,12 +79,13 @@ for (const command of matches) test(`mirrors ${JSON.stringify(command)} without 
   const [provider] = providers;
   assert.equal(provider.id, "arbitrary-cc");
   assert.equal(provider.label, "My assistant·CC");
-  assert.deepEqual(provider.command, command);
+  assert.equal(provider.command, undefined);
+  assert.deepEqual(h.commands[0].command, command);
   assert.equal(provider.secret, undefined);
   assert.equal(provider.extends, undefined);
   assert.equal(provider.env, undefined);
   await provider.connect({ versions: [1], capabilities: [], launch: { command: "/resolved/hermes", args: command.slice(1), env: { HOST: "kept", A: "old" } } });
-  assert.deepEqual(h.launches[0].launch, { command: "/resolved/hermes", args: command.slice(1), env: { HOST: "kept", A: "exact value", EMPTY: "" } });
+  assert.deepEqual(h.launches[0].launch, { command: command[0], args: command.slice(1), env: h.hermesCcSourceEnv(process.env, { A: "exact value", EMPTY: "" }) });
   assert.deepEqual(config, before);
 });
 for (const command of misses) test(`ignores ${JSON.stringify(command)}`, () => {
@@ -84,6 +95,7 @@ for (const command of misses) test(`ignores ${JSON.stringify(command)}`, () => {
 test("setting OFF, non-ACP configs and existing target IDs register nothing", () => {
   const h = harness(), source = { extends: "acp", command: ["hermes", "acp"] };
   assert.deepEqual(h.hermesCcProvidersFromConfig({ x: source }, false, async () => {}), []);
+  assert.deepEqual(h.hermesCcProvidersFromConfig({ x: { ...source, enabled: false } }, true, async () => {}), []);
   assert.deepEqual(h.hermesCcProvidersFromConfig({ x: source, "x-cc": {} }, true, async () => {}), []);
   assert.deepEqual(h.hermesCcProvidersFromConfig({ x: { ...source, extends: "custom" } }, true, async () => {}), []);
   assert.deepEqual(h.hermesCcProvidersFromConfig({ x: { command: source.command }, y: null, z: [] }, true, async () => {}), []);
@@ -230,4 +242,39 @@ test("real SDK ACP adapter forwards exact image content to a fake ACP process an
     assert.deepEqual(captured.at(-1), { sessionKey: restored ? "restored-native" : "native-from-agent", clientMessageId: sessionId, images: [{ mime: "image/png", data: bytes }] });
     assert.equal(h.nativeSessionKeyFromPersistence(handle(captured.at(-1).sessionKey), null), captured.at(-1).sessionKey);
   }
+});
+
+
+test("source env follows Paseo stripping after explicit overrides, for daemon and standalone connections", async () => {
+  const h = harness();
+  const stripped = ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SSE_PORT", "CLAUDE_AGENT_SDK_VERSION",
+    "PASEO_NODE_ENV", "PASEO_DESKTOP_MANAGED", "PASEO_SUPERVISED", "ELECTRON_RUN_AS_NODE", "ELECTRON_NO_ATTACH_CONSOLE", "ESBUILD_BINARY_PATH"];
+  const overlay = Object.fromEntries(stripped.map(key => [key, "must disappear"]));
+  overlay.KEEP = "source";
+  assert.deepEqual(h.hermesCcSourceEnv({ ...overlay, KEEP: "daemon", UNDEFINED: undefined, EMPTY: "" }, overlay), { KEEP: "source", EMPTY: "" });
+  const [provider] = h.hermesCcProvidersFromConfig({ x: { extends: "acp", command: ["hermes", "acp"], env: overlay } }, true, async () => {});
+  for (const launch of [undefined, { command: "/resolved/hermes", args: ["acp"], env: { ...overlay, CC_ONLY: "discard" } }]) {
+    await provider.connect({ versions: [1], capabilities: [], ...(launch ? { launch } : {}) });
+    assert.deepEqual(h.launches.at(-1).launch.env, h.hermesCcSourceEnv(process.env, overlay));
+    for (const key of stripped) assert.equal(h.launches.at(-1).launch.env[key], undefined);
+    assert.equal(h.launches.at(-1).launch.env.CC_ONLY, undefined);
+  }
+});
+
+test("malformed image parts are skipped individually and never change the forwarded prompt", async () => {
+  const h = harness(), raw = fakeConnection(), captured = [];
+  const wrapped = h.captureHermesCcPrompts(raw, async info => captured.push(info));
+  raw.emit(opened("boundary", "native"));
+  const good = { type: "image", mimeType: "image/png", data: Buffer.from("good").toString("base64") };
+  const input = prompt("boundary", "exact", [good, { type: "image", mimeType: "image/png", data: {} },
+    { type: "image", mimeType: "image/png", data: "!!!!" }, null, { type: "image", data: "Zg==" }, good]);
+  const before = structuredClone(input);
+  await wrapped.send(input);
+  assert.deepEqual(captured[0].images, [1, 2].map(() => ({ mime: "image/png", data: Buffer.from("good") })));
+  assert.strictEqual(raw.sent[0], input);
+  assert.deepEqual(input, before);
+  assert.deepEqual(h.logs, []);
+  const large = Buffer.alloc(3 * 1024 ** 2, 42);
+  await wrapped.send(prompt("boundary", "large", [{ ...good, data: large.toString("base64") }]));
+  assert.deepEqual(captured.at(-1).images, [{ mime: "image/png", data: large }]);
 });
