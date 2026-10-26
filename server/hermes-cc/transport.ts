@@ -16,7 +16,9 @@ export async function hermesCcTransport(
 ): Promise<AcpStream> {
   // Paseo v0.13.0 acp-agent.ts:2864-2872 keeps the session's original cwd in
   // session/load but spawns archived history from home if that directory is gone.
-  const processCwd = cwd && await stat(cwd).then(entry => entry.isDirectory(), () => false) ? cwd : homedir();
+  // Probes/discovery match the built-in provider (acp-agent.ts:1412-1413).
+  const processCwd = cwd === undefined ? process.cwd()
+    : await stat(cwd).then(entry => entry.isDirectory(), () => false) ? cwd : homedir();
   // Match SDK process.ts Windows command-script handling and argument quoting.
   const shell = process.platform === "win32" && (!extname(command[0]) || /\.(cmd|bat)$/i.test(command[0]));
   const argv = shell ? command.map(quoteWindowsArgument) : [...command];
