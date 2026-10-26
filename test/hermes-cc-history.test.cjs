@@ -772,6 +772,52 @@ test("a foreign prompt during the creator's in-flight claim fences creation and 
   assert.deepEqual(historyOnly(next.events), [], "no journal identities are restored for image lookup");
 });
 
+test("a foreign fence synced during a resume's events read keeps that open on Hermes replay", async t => {
+  const root = fs.mkdtempSync(join(tmpdir(), "cc-foreign-read-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const { createHermesCcHistoryStore } = load("server/hermes-cc/history-store.ts");
+  const store = createHermesCcHistoryStore(root);
+  await store.start(key);
+  for (const event of savedTranscript()) await store.append(key, event);
+  const h = queuedHarness(store);
+  t.after(() => h.connection.close());
+  const readState = store.read.bind(store);
+  let state;
+  store.read = async k => state = await readState(k);
+
+  const fsp = require("node:fs/promises"), open = fsp.open, synced = deferred();
+  let invalidating;
+  t.mock.method(fsp, "open", async (path, ...args) => {
+    const handle = await open(path, ...args);
+    if (String(path).includes("/.foreign-")) {
+      const close = handle.close.bind(handle);
+      handle.close = async () => { await close(); synced.resolve(); };
+    }
+    if (String(path).endsWith("/events.jsonl")) {
+      const read = handle.read.bind(handle);
+      handle.read = async (...args) => {
+        const result = await read(...args);
+        if (!invalidating) {
+          invalidating = store.invalidate(key, "foreign_writer");
+          // Marker close follows both file and directory fsync. Invalidation
+          // cannot publish its manifest until this read leaves the key's lane.
+          await synced.promise;
+        }
+        return result;
+      };
+    }
+    return handle;
+  });
+
+  await h.open("boundary", persistence);
+  assert.ok(invalidating, "invalidation started inside the events-file read");
+  await invalidating;
+  await becomeReady(h);
+  assert.deepEqual(state, { status: "unusable", reason: "foreign_writer" });
+  assert.equal(h.raw.sent[0].history, "replay");
+  assert.deepEqual(historyOnly(h.events), [], "no journal user message IDs are restored for image lookup");
+});
+
 test("a truncated writer lease keeps the open on Hermes replay", async t => {
   const root = fs.mkdtempSync(join(tmpdir(), "cc-bad-lease-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
