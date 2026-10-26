@@ -5,8 +5,8 @@ import { homedir } from "node:os";
 import { extname } from "node:path";
 import { Readable, Writable } from "node:stream";
 import { promisify } from "node:util";
-import { ndJsonStream } from "@agentclientprotocol/sdk";
 import type { AcpStream } from "@getpaseo/plugin/server/acp";
+import { ndJsonStream } from "./ndjson";
 
 /** The SDK's command adapter has no spawn cwd option (connection.ts:412-416). */
 export async function hermesCcTransport(
