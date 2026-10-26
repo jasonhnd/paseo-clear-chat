@@ -37,12 +37,26 @@ function loadServer(root, runAcpProvider, workerEnv = {}) {
   return { providers, handlers, cleanup, logs, startup: () => load("server/hermes-cc/startup.ts").hermesCcStartupConfig(root) };
 }
 
+const fakeModes = {
+  currentModeId: "default",
+  availableModes: [
+    { id: "default", name: "Default" },
+    { id: "acceptEdits", name: "Accept Edits" },
+    { id: "dontAsk", name: "Don't Ask" },
+  ],
+};
+const fakeModelOptions = [{ id: "model", name: "Model", category: "model", type: "select",
+  currentValue: "fake-model", options: [
+    { value: "fake-model", name: "Fake model" }, { value: "other-model", name: "Other model" },
+  ] }];
+
 function fakeAgent(root, failInitialize = false) {
   const filename = join(root, "hermes");
   fs.writeFileSync(filename, `#!/usr/bin/env node
     const readline = require("node:readline");
     require("node:fs").appendFileSync(${JSON.stringify(join(root, "pids.log"))}, process.pid + "\\n");
     let sessionCwd;
+    const modes = ${JSON.stringify(fakeModes)}, configOptions = ${JSON.stringify(fakeModelOptions)};
     readline.createInterface({ input: process.stdin }).on("line", line => {
       const request = JSON.parse(line);
       require("node:fs").appendFileSync(${JSON.stringify(join(root, "requests.log"))}, JSON.stringify({ method: request.method, cwd: process.cwd(), params: request.params }) + "\\n");
@@ -52,7 +66,12 @@ function fakeAgent(root, failInitialize = false) {
         return;
       }
       if (request.method === "initialize") reply({ protocolVersion: 1, agentCapabilities: { loadSession: true, promptCapabilities: { image: true }, sessionCapabilities: { list: {} } } });
-      else if (request.method === "session/new") { sessionCwd = request.params.cwd; reply({ sessionId: "native-session", configOptions: [{ id: "model", name: "Model", category: "model", type: "select", currentValue: "fake-model", options: [{ value: "fake-model", name: "Fake model" }] }] }); }
+      else if (request.method === "session/new") { sessionCwd = request.params.cwd; reply({ sessionId: "native-session", modes, configOptions }); }
+      else if (request.method === "session/set_mode") { modes.currentModeId = request.params.modeId; reply({}); }
+      else if (request.method === "session/set_config_option") {
+        configOptions.find(option => option.id === request.params.configId).currentValue = request.params.value;
+        reply({ configOptions });
+      }
       else if (request.method === "session/list") reply({ sessions: [{ sessionId: "existing-session", cwd: ${JSON.stringify(root)}, title: "Existing session" }] });
       else if (request.method === "session/load") { sessionCwd = request.params.cwd; reply({}); }
       else if (request.method === "session/prompt") {
@@ -102,7 +121,9 @@ test("SDK v0.13.0 opens sessions for catalog discovery, but not capability probe
   for (const cwd of [undefined, root]) {
     const catalog = waitEvent(connection, event => event.type === "catalog");
     await connection.send({ type: "catalog", requestId: "models", ...(cwd ? { cwd } : {}) });
-    assert.deepEqual((await catalog).catalog.models, [{ id: "fake-model", label: "Fake model" }]);
+    assert.deepEqual((await catalog).catalog.models, [
+      { id: "fake-model", label: "Fake model" }, { id: "other-model", label: "Other model" },
+    ]);
   }
   assert.equal(requests(root).filter(request => request.method === "session/new").length, 2);
   const listed = waitEvent(connection, event => event.type === "sessions");
@@ -159,6 +180,75 @@ test("Hermes·CC registration, startup probes, catalogs and session listings cre
   }
 });
 
+test("CC catalogs mirror source model config before any session and mode/model changes reach ACP", async t => {
+  const { runAcpProvider } = await import("@getpaseo/plugin/server/acp");
+  const root = fs.mkdtempSync(join(tmpdir(), "cc-controls-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const executable = fakeAgent(root);
+  const config = paseoConfig({ PATH: `${root}${delimiter}${process.env.PATH}` });
+  const source = config.agents.providers.hermes;
+  source.models = [
+    { id: "fake-model", label: "Curated model", isDefault: true, description: "Source description",
+      thinkingOptions: [{ id: "high", label: "High", isDefault: true }] },
+    { id: "other-model", label: "Source other" },
+  ];
+  source.additionalModels = [
+    { id: "other-model", label: "Preferred other", isDefault: true },
+    { id: "configured-only", label: "Configured only" },
+  ];
+  const before = structuredClone(config);
+  fs.writeFileSync(join(root, "config.json"), JSON.stringify(config));
+  const h = loadServer(root, runAcpProvider);
+  t.after(h.cleanup);
+  const connection = await h.providers[0].connect({ versions: [1], capabilities: ["session.configure"] });
+  t.after(() => connection.close());
+  for (const cwd of [undefined, root, join(root, "removed")]) {
+    const listed = waitEvent(connection, event => event.type === "catalog");
+    await connection.send({ type: "catalog", requestId: "catalog", ...(cwd ? { cwd } : {}) });
+    assert.deepEqual((await listed).catalog.models, [
+      { ...source.models[0], isDefault: false, defaultThinkingOptionId: "high" },
+      { ...source.models[1], ...source.additionalModels[0] }, { ...source.additionalModels[1], isDefault: false },
+    ]);
+    assert.equal(requests(root).some(request => request.method === "session/new"), false);
+  }
+  const directSdk = await runAcpProvider({ id: "source", label: "Source", command: [executable, "acp"] })
+    .connect({ versions: [1], capabilities: ["session.configure"] });
+  t.after(() => directSdk.close());
+  const rpcSequences = [];
+  for (const current of [directSdk, connection]) {
+    const start = requests(root).length;
+    const initial = waitEvent(current, event => event.type === "session.config");
+    const ready = waitEvent(current, event => event.type === "session.ready");
+    await current.send({ type: "session.open", requestId: "open", sessionId: "boundary",
+      config: { cwd: root, env: {}, mcpServers: {}, settings: {}, persist: true,
+        mode: "dontAsk", model: "other-model" }, history: "skip" });
+    await ready;
+    const opened = (await initial).config;
+    assert.deepEqual(opened.modes.map(mode => [mode.id, mode.label]),
+      fakeModes.availableModes.map(mode => [mode.id, mode.name]));
+    assert.equal(opened.mode, "dontAsk");
+    assert.equal(opened.model, "other-model");
+    for (const mode of ["acceptEdits", "dontAsk"]) {
+      const configured = waitEvent(current, event => event.type === "session.config" && event.config.mode === mode);
+      await current.send({ type: "session.configure", requestId: mode, sessionId: "boundary", changes: { mode } });
+      await configured;
+    }
+    const configured = waitEvent(current, event => event.type === "session.config" && event.config.model === "fake-model");
+    await current.send({ type: "session.configure", requestId: "model", sessionId: "boundary", changes: { model: "fake-model" } });
+    await configured;
+    rpcSequences.push(requests(root).slice(start).filter(request =>
+      ["session/set_mode", "session/set_config_option"].includes(request.method))
+      .map(({ method, params }) => ({ method, params })));
+  }
+  assert.deepEqual(rpcSequences[1], rpcSequences[0]);
+  assert.deepEqual(rpcSequences[1], [
+    { method: "session/set_config_option", params: { sessionId: "native-session", configId: "model", value: "other-model" } },
+    ...["dontAsk", "acceptEdits", "dontAsk"].map(modeId => ({ method: "session/set_mode", params: { sessionId: "native-session", modeId } })),
+    { method: "session/set_config_option", params: { sessionId: "native-session", configId: "model", value: "fake-model" } },
+  ]);
+  assert.deepEqual(config, before);
+});
+
 test("v0.13.0 agents.providers mirrors only enabled Hermes sources and captures exact-ID PNGs through real ACP and RPC", async t => {
   const { runAcpProvider } = await import("@getpaseo/plugin/server/acp");
   const root = fs.mkdtempSync(join(tmpdir(), "cc-integration-"));
@@ -186,7 +276,9 @@ test("v0.13.0 agents.providers mirrors only enabled Hermes sources and captures 
   await connection.send({ type: "session.open", requestId: "open", sessionId: "boundary-session",
     config: { cwd: root, env: {}, mcpServers: {}, settings: {}, persist: true }, history: "skip" });
   await ready;
-  assert.deepEqual((await configured).config.models, [{ id: "fake-model", label: "Fake model" }]);
+  assert.deepEqual((await configured).config.models, [
+    { id: "fake-model", label: "Fake model" }, { id: "other-model", label: "Other model" },
+  ]);
   assert.equal(requests(root).filter(request => request.method === "session/new").length, 1);
   const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=", "base64");
   const input = { type: "session.prompt", sessionId: "boundary-session", prompt: {

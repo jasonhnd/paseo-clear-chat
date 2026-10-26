@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { z } from "zod";
 import { hermesCcTransport } from "./transport";
 import type { HermesCcLaunch } from "./transport";
 import { nativeKey } from "./session-key";
@@ -9,6 +10,7 @@ import { runAcpProvider } from "@getpaseo/plugin/server/acp";
 import type {
   ProviderConnection,
   ProviderContent,
+  ProviderModel,
   ProviderRegistration,
 } from "@getpaseo/plugin/server/provider";
 
@@ -113,13 +115,20 @@ export function hermesCcProvidersFromConfig(
     // The connector runs asynchronously after send() returns. AsyncLocalStorage
     // keeps launch context isolated across concurrent sessions and discovery.
     const context = new AsyncLocalStorage<HermesCcLaunch & { env?: Readonly<Record<string, string>> }>();
+    const models = hermesCcConfiguredModels(source);
+    const defaultModel = models.find((model) => model.isDefault)?.id;
     const provider = runAcpProvider({
       id, label: `${typeof source.label === "string" && source.label.trim() ? source.label : sourceId}·CC`,
       // SDK v0.13.0 acp-internal/connection.ts:72-89 probes with initialize
       // only. discover():564-574 otherwise creates a persistent session/new.
       // acp.ts:47-48 supports an initialization-only global catalog; route all
-      // catalogs through it below and defer models/config to a real session.
+      // catalogs through it below; configured models need no ACP session.
       acpOptions: { workspaceOnlyCatalog: true },
+      transformers: [{ discover: (catalog) => ({
+        ...catalog,
+        models,
+        ...(defaultModel ? { defaultModel } : {}),
+      }) }],
       connector: () => {
         const launch = context.getStore();
         // Rebuild from the worker's inherited daemon env, not the -cc launch
@@ -149,6 +158,40 @@ export function hermesCcProvidersFromConfig(
     });
   }
   return registrations;
+}
+
+// Paseo v0.13.1 protocol/provider-config.ts:35-49 defines these config fields.
+const configuredModelSchema = z.object({
+  id: z.string().min(1), label: z.string().min(1),
+  description: z.string().optional(), isDefault: z.boolean().optional(),
+  thinkingOptions: z.array(z.object({
+    id: z.string(), label: z.string(), description: z.string().optional(),
+    isDefault: z.boolean().optional(),
+  })).optional(),
+});
+
+/** Match source model replacement/addition semantics without probing Hermes. */
+function hermesCcConfiguredModels(source: Record<string, unknown>): ProviderModel[] {
+  const read = (value: unknown): ProviderModel[] => {
+    const parsed = z.array(configuredModelSchema).safeParse(value);
+    return parsed.success ? parsed.data.map((model) => ({
+      ...model,
+      ...(model.thinkingOptions?.some((option) => option.isDefault) ? {
+        defaultThinkingOptionId: model.thinkingOptions.find((option) => option.isDefault)!.id,
+      } : {}),
+    })) : [];
+  };
+  const models = read(source.models), additions = read(source.additionalModels);
+  // provider-registry.ts:390-435 merges additions by ID, preserving order, and
+  // clears previous defaults when an addition declares a new default.
+  for (const model of additions) {
+    const index = models.findIndex((candidate) => candidate.id === model.id);
+    if (index < 0) models.push(model);
+    else models[index] = { ...models[index]!, ...model };
+  }
+  if (!additions.some((model) => model.isDefault)) return models;
+  const defaults = new Set(additions.filter((model) => model.isDefault).map((model) => model.id));
+  return models.map((model) => defaults.has(model.id) ? model : { ...model, isDefault: false });
 }
 
 /** Paseo 0.13 provider-launch-config.ts:238-252 and paseo-env.ts:21-34. */
