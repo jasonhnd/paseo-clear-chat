@@ -9,21 +9,25 @@ export interface HermesCcJournalKey { providerId: string; nativeSessionId: strin
 export type HermesCcJournalState =
   | { status: "complete"; events: readonly unknown[] }
   | { status: "unusable"; reason: string };
+export interface HermesCcWriterOwner { token: string; generation: number }
+export interface HermesCcWriterLease extends HermesCcWriterOwner { release(): Promise<void> }
+/** Mutation owners are required once a journal has been leased; a mismatch throws writer_changed after invalidation. */
 export interface HermesCcHistoryStore {
   /** Start a journal for a session Clear Chat saw being CREATED (history "skip" on a brand-new session). Fails if one exists. */
-  start(key: HermesCcJournalKey): Promise<void>;
+  start(key: HermesCcJournalKey, owner?: HermesCcWriterOwner): Promise<void>;
   /** Durably append one provider event (already in final, emitted form). Ordered; serialised per key; resolves only after fsync. No-op if the key has no journal or is invalidated. */
-  append(key: HermesCcJournalKey, event: unknown): Promise<void>;
+  append(key: HermesCcJournalKey, event: unknown, owner?: HermesCcWriterOwner): Promise<void>;
   /** Mark prompt admission / terminal ACP response after notifications drain (not the SDK session.prompt_result). Open turns are unusable. */
-  turnStarted(key: HermesCcJournalKey): Promise<void>;
-  turnSettled(key: HermesCcJournalKey): Promise<void>;
+  turnStarted(key: HermesCcJournalKey, owner?: HermesCcWriterOwner): Promise<void>;
+  turnSettled(key: HermesCcJournalKey, owner?: HermesCcWriterOwner): Promise<void>;
   /** Permanently mark unusable (history-mutating commands, load failure mismatch, etc.). */
   invalidate(key: HermesCcJournalKey, reason: string): Promise<void>;
   read(key: HermesCcJournalKey): Promise<HermesCcJournalState>;
   /** Optional recorder ownership. Refuses a second live claimant, including in this process.
-   * Heartbeats expire after 30 seconds; release when recording ends. This does not replace journal operation locks.
+   * Only a dead process may be replaced. Present the returned owner on every mutation;
+   * writer_changed rejects stale owners and permanently disables replay.
    */
-  claimWriter?(key: HermesCcJournalKey): Promise<{ release(): Promise<void> } | null>;
+  claimWriter?(key: HermesCcJournalKey): Promise<HermesCcWriterLease | null>;
 }
 
 /**
@@ -49,7 +53,7 @@ const REASON = /^[a-z][a-z0-9_]{0,63}$/;
 const ERRORS = new Set([
   "invalid_journal_key", "invalid_history_cap", "journal_exists", "invalid_event",
   "unsafe_history_directory", "unsafe_history_file", "unsafe_history_lock",
-  "history_lock_timeout", "history_store_failed",
+  "history_lock_timeout", "history_store_failed", "writer_changed",
 ]);
 interface Manifest {
   version: 1;
@@ -64,6 +68,7 @@ interface Manifest {
   headHash: string;
   manifestHash: string;
   invalid?: string;
+  writer?: HermesCcWriterOwner;
 }
 interface Directory { path: string; handle: FileHandle }
 interface Entry { name: string; createdAt: number; size: number; eventsBytes: number; kind: "session" | "orphan" | "link" }
@@ -92,6 +97,16 @@ function hasCode(error: unknown, code: string): boolean {
 }
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function writerOwner(value: unknown): value is HermesCcWriterOwner {
+  return record(value) && typeof value.token === "string" && /^[a-f0-9-]{36}$/.test(value.token) &&
+    typeof value.generation === "number" && Number.isSafeInteger(value.generation) && value.generation > 0;
+}
+function sameWriter(left: HermesCcWriterOwner | undefined, right: HermesCcWriterOwner | undefined): boolean {
+  return left?.token === right?.token && left?.generation === right?.generation;
+}
+function snapshotOwner(owner: HermesCcWriterOwner | undefined): HermesCcWriterOwner | undefined {
+  return owner === undefined ? undefined : { token: owner.token, generation: owner.generation };
 }
 function fail(error: unknown): never {
   if (error instanceof Error && ERRORS.has(error.message)) throw error;
@@ -201,6 +216,7 @@ function parseManifest(value: unknown, key: HermesCcJournalKey, dirName: string)
   if (!record(value) || value.version !== VERSION) return "schema_mismatch";
   if (value.providerId !== key.providerId || value.nativeSessionId !== key.nativeSessionId) return "schema_mismatch";
   if (!HASH.test(dirName) || keyHash(key) !== dirName) return "schema_mismatch";
+  if (value.writer !== undefined && !writerOwner(value.writer)) return "schema_mismatch";
   if (typeof value.startedFromCreation !== "boolean") return "schema_mismatch";
   for (const field of ["openTurns", "bytes", "records"]) {
     if (typeof value[field] !== "number" || !Number.isSafeInteger(value[field]) || Number(value[field]) < 0) return "schema_mismatch";
@@ -685,21 +701,49 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
     catch (error) { if (hasCode(error, "ENOENT")) return "missing"; throw error; }
   }
 
-  async function claimWriter(key: HermesCcJournalKey): Promise<{ release(): Promise<void> } | null> {
-    const rootDirectory = await directory(root, true, trustedRoot);
+  async function checkWriter(session: Directory, manifest: Manifest, owner: HermesCcWriterOwner | undefined): Promise<void> {
+    if (sameWriter(manifest.writer, owner)) return;
+    await publish(session, { ...manifest, invalid: "writer_changed" });
+    throw new Error("writer_changed");
+  }
+  async function readWriter(rootDirectory: Directory, name: string): Promise<(HermesCcWriterOwner & { pid: number; changed?: boolean }) | null> {
+    try {
+      const value: unknown = JSON.parse((await readFile(rootDirectory, name, LOCK_BYTES)).toString("utf8"));
+      // Unknown ownership cannot authorize a takeover.
+      if (!record(value) || !Number.isSafeInteger(value.pid) || Number(value.pid) <= 0 ||
+          typeof value.token !== "string" || (value.generation !== undefined && !writerOwner(value))) {
+        throw new Error("unsafe_history_lock");
+      }
+      return { token: value.token, generation: Number(value.generation ?? 0), pid: Number(value.pid), changed: value.changed === true };
+    } catch (error) { if (hasCode(error, "ENOENT")) return null; throw error; }
+  }
+  async function claimWriter(key: HermesCcJournalKey): Promise<HermesCcWriterLease | null> {
     const name = `.writer-${keyHash(key)}`;
     const token = randomUUID();
+    let generation = 0;
     let held: FileHandle | undefined;
     try {
-      const acquired = await withDiskLock(rootDirectory, async () => {
+      const acquired = await locked(true, key, async rootDirectory => {
+        const previous = await readWriter(rootDirectory, name);
+        if (previous) {
+          try { process.kill(previous.pid, 0); return false; }
+          catch (error) { if (!hasCode(error, "ESRCH")) return false; }
+        }
+        const session = await openSession(rootDirectory, keyHash(key));
         try {
-          const stat = await lstat(child(rootDirectory, name));
-          if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1) throw new Error("unsafe_history_lock");
-          if (Date.now() - stat.mtimeMs <= WRITER_MS) return false;
-          await unlink(child(rootDirectory, name));
-        } catch (error) { if (!hasCode(error, "ENOENT")) throw error; }
+          const loaded = session === "missing" ? "missing" : await loadManifest(session, key, keyHash(key));
+          generation = Math.max(previous?.generation ?? 0, typeof loaded === "string" ? 0 : loaded.writer?.generation ?? 0) + 1;
+          if (!Number.isSafeInteger(generation)) throw new Error("history_store_failed");
+          // Publish the fence (and uncertainty) before replacing the lease file,
+          // using the same operation lock as every journal mutation.
+          if (typeof loaded !== "string" && session !== "missing") {
+            await writeManifest(session, { ...loaded, writer: { token, generation }, ...(previous ? { invalid: "writer_changed" } : {}) });
+            verified.delete(keyHash(key));
+          }
+        } finally { if (session !== "missing") await session.handle.close(); }
+        if (previous) await unlink(child(rootDirectory, name));
         held = await open(child(rootDirectory, name), constants.O_RDWR | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
-        await held.writeFile(JSON.stringify({ pid: process.pid, token }));
+        await held.writeFile(JSON.stringify({ pid: process.pid, token, generation, changed: !!previous }));
         await held.sync();
         await syncDirectory(rootDirectory);
         return true;
@@ -708,7 +752,7 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
     } catch (error) {
       await held?.close();
       throw error;
-    } finally { await rootDirectory.handle.close(); }
+    }
     const handle = held;
     const heartbeat = setInterval(() => {
       const now = new Date();
@@ -716,7 +760,7 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
     }, WRITER_MS / 3);
     heartbeat.unref();
     let released = false;
-    return { async release() {
+    return { token, generation, async release() {
       if (released) return;
       released = true;
       clearInterval(heartbeat);
@@ -745,17 +789,24 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
       try { return await serialized(key, () => claimWriter(key)); }
       catch (error) { fail(error); }
     },
-    async start(key) {
+    async start(key, owner) {
       key = snapshotKey(key);
+      owner = snapshotOwner(owner);
       try {
         await serialized(key, () => locked(true, key, async rootDirectory => {
           const name = keyHash(key);
           const existing = await openSession(rootDirectory, name);
           if (existing !== "missing") {
-            await existing.handle.close();
+            try {
+              const loaded = await loadManifest(existing, key, name);
+              if (typeof loaded !== "string") await checkWriter(existing, loaded, owner);
+            } finally { await existing.handle.close(); }
             throw new Error("journal_exists");
           }
           if (await markerExists(rootDirectory, name)) throw new Error("journal_exists");
+          const lease = await readWriter(rootDirectory, `.writer-${name}`);
+          const writer = lease ? { token: lease.token, generation: lease.generation } : undefined;
+          const rejected = !sameWriter(writer, owner);
           await mkdir(child(rootDirectory, name), { mode: 0o700 });
           await syncDirectory(rootDirectory);
           const session = await openDirectory(child(rootDirectory, name));
@@ -775,13 +826,17 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
               bytes: 0,
               records: 0,
               createdAt: Date.now(),
+              ...(writer ? { writer } : {}),
+              ...(rejected || lease?.changed ? { invalid: "writer_changed" } : {}),
             });
+            if (rejected) throw new Error("writer_changed");
           } finally { await session.handle.close(); }
         }));
       } catch (error) { fail(error); }
     },
-    async append(key, event) {
+    async append(key, event, owner) {
       key = snapshotKey(key);
+      owner = snapshotOwner(owner);
       let line: string | undefined;
       try { line = encodeEvent(event); }
       catch (error) {
@@ -796,7 +851,9 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
           if (session === "missing") return;
           try {
             const loaded = await loadManifest(session, key, name);
-            if (typeof loaded === "string" || loaded.invalid) return;
+            if (typeof loaded === "string") return;
+            await checkWriter(session, loaded, owner);
+            if (loaded.invalid) return;
             if (encoded === undefined) {
               await publish(session, { ...loaded, invalid: "invalid_event" });
               rejectInvalid = true;
@@ -823,15 +880,18 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
       } catch (error) { fail(error); }
       if (rejectInvalid) throw new Error("invalid_event");
     },
-    async turnStarted(key) {
+    async turnStarted(key, owner) {
       key = snapshotKey(key);
+      owner = snapshotOwner(owner);
       try {
         await serialized(key, () => locked(false, key, async rootDirectory => {
           const session = await openSession(rootDirectory, keyHash(key));
           if (session === "missing") return;
           try {
             const loaded = await loadManifest(session, key, keyHash(key));
-            if (typeof loaded === "string" || loaded.invalid) return;
+            if (typeof loaded === "string") return;
+            await checkWriter(session, loaded, owner);
+            if (loaded.invalid) return;
             const viewed = await verifyForWrite(session, loaded);
             if (viewed.status !== "ok") {
               if (viewed.status === "unsafe") throw new Error("unsafe_history_file");
@@ -847,15 +907,18 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
         }).catch(error => { if (hasCode(error, "ENOENT")) return; throw error; }));
       } catch (error) { fail(error); }
     },
-    async turnSettled(key) {
+    async turnSettled(key, owner) {
       key = snapshotKey(key);
+      owner = snapshotOwner(owner);
       try {
         await serialized(key, () => locked(false, key, async rootDirectory => {
           const session = await openSession(rootDirectory, keyHash(key));
           if (session === "missing") return;
           try {
             const loaded = await loadManifest(session, key, keyHash(key));
-            if (typeof loaded === "string" || loaded.invalid) return;
+            if (typeof loaded === "string") return;
+            await checkWriter(session, loaded, owner);
+            if (loaded.invalid) return;
             const viewed = await verifyForWrite(session, loaded);
             if (viewed.status !== "ok") {
               if (viewed.status === "unsafe") throw new Error("unsafe_history_file");
