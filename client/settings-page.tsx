@@ -1,10 +1,10 @@
-import { useTranslation } from "@getpaseo/plugin/client";
+import { useSettings, useTranslation } from "@getpaseo/plugin/client";
 import { messages } from "./messages";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { TextInput } from "@getpaseo/plugin/client/ui";
-import { customAccentSchema } from "../shared/settings";
+import { customAccentSchema, hermesCcSettings } from "../shared/settings";
 import { hostFontEscape } from "./components/host-font-escape";
 import { SettingsFailureNotice } from "./components/settings-failure-notice";
 import { openLink } from "./components/open-link";
@@ -313,6 +313,7 @@ function ChoiceRow<T extends string>({
 /** Settings content mounted by Paseo under the selected host's Plugin settings. */
 export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
   const { t } = useTranslation(messages);
+  const hermesCc = useSettings(hermesCcSettings);
   const preferences = useEnhancerPreferences();
   const storageError = useEnhancerPreferencesError();
   const tokens = useMemo(
@@ -455,6 +456,23 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
           onChange={(textScale) => updateEnhancerPreferences({ textScale: Number(textScale) })}
           tokens={tokens}
         />
+
+        {hermesCc.status === "ready" ? (
+          <ToggleRow
+            title={t("settings.hermesCc.label")}
+            description={t("settings.hermesCc.description")}
+            value={hermesCc.values.enabled}
+            onChange={(enabled) => { void hermesCc.save({ enabled }, hermesCc.revision); }}
+            tokens={tokens}
+          />
+        ) : null}
+        {hermesCc.status === "error" || hermesCc.status === "invalid" || hermesCc.saveError ? (
+          <SettingsFailureNotice
+            message={t("settings.hermesCc.error")}
+            onRetry={() => { void hermesCc.reload(); }}
+            tokens={tokens}
+          />
+        ) : null}
 
         <ToggleRow
           title={t("settings.foldSteps.label")}
