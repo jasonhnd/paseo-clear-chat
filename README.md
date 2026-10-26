@@ -46,7 +46,7 @@
 ## Install
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.0.2
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.1.1
 ```
 
 Clear Chat needs Paseo 0.13.0 or later. Then open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
@@ -139,7 +139,7 @@ Search, fetch and web search, plans and checklists, plain text, skills and any o
 - **Find in chat.** Ctrl/Cmd+F opens a find bar that also searches tool cards.
 - **Open files.** File names in cards and paths in replies show the file in Finder, Explorer or your file manager on the host computer. Put a file name or path that contains spaces in inline code, or use a Markdown link.
 - **Highlight text.** `==marked text==` highlights text in replies. Inside code, the equals signs stay as they are.
-- **Pasted images.** With **Enhanced prompt bubble** on, images you paste into a prompt show as thumbnails in the prompt bubble, for Codex and Claude agents. Tap one to see it full size. Images larger than 1.5 MB or 24 megapixels are not shown.
+- **Pasted images.** With **Enhanced prompt bubble** on, images you paste into a prompt show as thumbnails in the prompt bubble, for Codex and Claude agents. Tap one to see it full size. Images larger than 1.5 MB or 24 megapixels are not shown. For Hermes agents, choose the **·CC** version of the provider when you create the agent; see [Pasted images in Hermes agents](#pasted-images-in-hermes-agents).
 
 ## Settings
 
@@ -152,6 +152,7 @@ Search, fetch and web search, plans and checklists, plain text, skills and any o
 | Code glyphs | Iosevka with ligatures, or plain glyphs. |
 | Code font | Default (Iosevka) (default), Iosevka, Menlo, Consolas, Fira Code or Cascadia Code. Applies to code blocks, inline code, terminal output and diffs. |
 | Text size | Small (90%), Default (100%), Large (115%) or XL (130%). Icons keep their size. |
+| Hermes·CC providers | On by default. Adds a **·CC** version of each Hermes provider you set up in Paseo, so images pasted into Hermes agents can show in the prompt bubble. Changes apply after you reload the host. |
 | Fold finished steps | On by default. Off opens every step unless you chose otherwise for that call. |
 | When a collapsed step is pressed | Open details (default) shows the step in a sheet, popover or side panel. Expand inline opens it inside the conversation. |
 | Fold long output after | 10, 15 (default) or 30 lines, or Never. Applies to tool output, code blocks in replies and prompts. Lines are counted in the source text, so wrapped lines do not count extra. |
@@ -166,11 +167,28 @@ Search, fetch and web search, plans and checklists, plain text, skills and any o
 
 Settings are saved on the host, so every device connected to that host shares them. Accent colours, folding and step-click settings apply at once, including to rows already shown. Other changes apply to new messages; reload the chat to update older ones.
 
+## Pasted images in Hermes agents
+
+Paseo 0.13 removes pasted images before a plugin sees the message, and Hermes does not keep what Clear Chat would need to find them later. So Clear Chat adds its own copy of each Hermes provider you have set up, named with **·CC**, for example **Hermes·PP·CC**. It covers every Hermes provider whose command is `hermes acp`, with or without `-p <profile>`, and starts the same Hermes with the same command, profile and environment. Before it passes your prompt on, unchanged, it saves the pasted images in its own folder. The prompt bubble shows an image only when it matches the exact message, and shows nothing otherwise.
+
+To use it, choose the **·CC** version when you create a new agent in Paseo. The images and your original prompt text are still there after Paseo's background service restarts, your Mac restarts or you upgrade Paseo. Your original Hermes agents do not change.
+
+What to know:
+
+- Only prompts you send in a **·CC** agent with this version or later show images. Agents you started before, and their old messages, do not.
+- A prompt that is only an image, with no text, does not show the image.
+- Errors and notices from the system are not saved, so they are not shown after a restart.
+- If the saved record does not match, has been changed, or you used a slash command or a revert such as `/undo`, Clear Chat falls back to Hermes's own text for that conversation and shows no images.
+- Use one conversation from one window at a time. If a second window sends a prompt to the same conversation, the record is discarded and both windows fall back to Hermes's own text.
+- The images are saved in the `plugin-data/clear-chat/hermes-cc-images` folder in your Paseo home (`~/.paseo` by default), up to 2 GB. When it is full, the oldest are deleted first. The saved records are in `hermes-cc-history` next to it, up to 64 MB for each conversation and 1 GB in all; past that, the conversation falls back to Hermes's own text.
+- To clear them, quit Paseo first. Deleting the images folder keeps your conversations and text but removes the images. Deleting the records folder makes the conversations fall back to Hermes's own text, with no images.
+- To stop adding the **·CC** versions, turn off **Hermes·CC providers** in the settings and reload the host. The **·CC** agents you already created stop working for now; turn the setting back on and they come back. Nothing saved is deleted.
+
 ## What a plugin cannot do
 
 Clear Chat changes only how Paseo shows a conversation. Some things are up to Paseo and are not open to plugins:
 
-- **Pasted images for Hermes agents.** Paseo 0.13 removes pasted images before a plugin sees the message. Clear Chat finds them again in the agent's own history for Codex and Claude agents, but not yet for Hermes agents. For Hermes, the images are still sent to the agent; turn **Enhanced prompt bubble** off to see them in Paseo's own bubble.
+- **Pasted images in the original Hermes agents.** Paseo 0.13 removes pasted images before a plugin sees the message, and Hermes does not keep what Clear Chat would need to find them later. Use the **·CC** version of the agent instead (see [Pasted images in Hermes agents](#pasted-images-in-hermes-agents)). In an original Hermes agent the images are still sent to the agent; turn **Enhanced prompt bubble** off to see them in Paseo's own bubble.
 - **Paseo's own Markdown.** Clear Chat cannot use Paseo's Markdown pipeline, so **Assistant markdown** supports a subset. Turn it off for mermaid diagrams, images and the host's file-path links.
 - **Hardware keys in the native apps.** Keyboard navigation works in a browser and the desktop app. The native iPhone, iPad and Android apps keep touch controls only.
 - **Fonts in the native apps.** Plugins cannot read Paseo's code font setting or add fonts to the native apps. On iOS and iPadOS, code uses Menlo; on Android, the system monospace font.
@@ -219,7 +237,7 @@ If the `beautiful-chat` settings folder does not exist, you never changed Beauti
 **2. Install**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.0.2
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.1.1
 ```
 
 **3. Check, then remove the old plugin**

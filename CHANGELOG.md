@@ -4,6 +4,24 @@ All notable changes to Clear Chat are listed here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and each version is the Paseo version it is built and tested for plus one number that counts Clear Chat's releases for that Paseo version, for example 0.12.0.1 for the first release for Paseo 0.12.0. Releases 1.0.0 and 1.0.1 came out before this rule.
 
+## [0.13.1.1] - Unreleased
+
+Built and tested on Paseo 0.13.1. Needs Paseo 0.13.0 or later.
+
+### Added
+
+- Images pasted into a prompt now also show in the prompt bubble for Hermes agents, with **Enhanced prompt bubble** on. When you create a new agent in Paseo, choose the **·CC** version of your Hermes provider, for example **Hermes·PP·CC**. Clear Chat saves the pasted images in its own folder before it passes your prompt to Hermes, unchanged, and shows an image only when it matches the exact message. After Paseo's background service restarts, the images and your original prompt text are still there.
+  - Only prompts sent in a **·CC** agent with this version or later show images. Agents you started before, and their old messages, do not.
+  - A prompt that is only an image, with no text, does not show the image.
+  - If the saved record does not match, has been changed, or you used a slash command or a revert such as `/undo`, Clear Chat falls back to Hermes's own text for that conversation and shows no images.
+  - Use one conversation from one window at a time. If a second window sends a prompt to the same conversation, both windows fall back to Hermes's own text.
+  - The images take up to 2 GB in Clear Chat's own folder; when it is full, the oldest are deleted first.
+- New setting **Hermes·CC providers**, on by default, controls whether the **·CC** versions are added. Changes apply after you reload the host. The **·CC** agents you already created stop working for now, and come back when you turn it on again.
+
+### Changed
+
+- The README now explains pasted images in Hermes agents, and no longer lists Hermes as unsupported.
+
 ## [0.13.0.2] - 2026-10-26
 
 ### Added
@@ -110,6 +128,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.13.1.1]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.13.1.1
 [0.13.0.2]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.13.0.2
 [0.13.0.1]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.13.0.1
 [0.12.0.1]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.12.0.1

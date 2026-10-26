@@ -46,7 +46,7 @@
 ## 安装
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.0.2
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.1.1
 ```
 
 Clear Chat 需要 Paseo 0.13.0 或更新的版本。装好后打开 **Settings → Plugins → Clear Chat**，可以选颜色、字体和折叠方式。
@@ -139,7 +139,7 @@ Paseo 在桌面、网页、iPhone 和 iPad 上运行同一个插件。Clear Chat
 - **对话内查找。** Ctrl/Cmd+F 打开查找栏，工具卡片里的内容也能搜到。
 - **打开文件。** 点卡片里的文件名或回复里的路径，会在主机上的 Finder、资源管理器或文件管理器里显示这个文件。文件名或路径里有空格时，请写成行内代码，或用 Markdown 链接。
 - **高亮文字。** 回复里写 `==要标出的文字==` 会加上高亮。代码里的等号照原样显示。
-- **粘贴的图片。** 开着 **增强提问气泡**（Enhanced prompt bubble）时，提问里粘贴的图片会以缩略图显示在气泡里，支持 Codex 和 Claude 的 Agent。点一下看大图。超过 1.5 MB 或 2400 万像素的图不显示。
+- **粘贴的图片。** 开着 **增强提问气泡**（Enhanced prompt bubble）时，提问里粘贴的图片会以缩略图显示在气泡里，支持 Codex 和 Claude 的 Agent。点一下看大图。超过 1.5 MB 或 2400 万像素的图不显示。Hermes 的 Agent 要在新建时选 **·CC** 版本的提供商，见[在 Hermes Agent 里粘贴图片](#在-hermes-agent-里粘贴图片)。
 
 ## 设置
 
@@ -152,6 +152,7 @@ Paseo 在桌面、网页、iPhone 和 iPad 上运行同一个插件。Clear Chat
 | 代码字形（Code glyphs） | 带连字（Ligatures）的 Iosevka，或原样（Literal）字形。 |
 | 代码字体（Code font） | 「默认（Iosevka）」（Default (Iosevka)，默认）、Iosevka、Menlo、Consolas、Fira Code 或 Cascadia Code。对代码块、行内代码、终端输出和差异对比生效。 |
 | 文字大小（Text size） | 小（Small，90%）、默认（Default，100%）、大（Large，115%）、特大（XL，130%）。图标大小不变。 |
+| Hermes·CC 提供商（Hermes·CC providers） | 默认开。为你在 Paseo 里配置的每个 Hermes 提供商加一个 **·CC** 版本，这样粘贴到 Hermes Agent 里的图片就能显示在气泡里。改动在重新加载主机后生效。 |
 | 折叠已完成的步骤（Fold finished steps） | 默认开。关掉后所有步骤都展开，你单独设过的调用除外。 |
 | 点按收起的步骤时（When a collapsed step is pressed） | 打开详情（Open details，默认）：在底部弹窗、浮出小窗或侧边面板里显示步骤详情。原地展开（Expand inline）：在对话里直接展开。 |
 | 长输出折叠行数（Fold long output after） | 10、15（默认）、30 行，或不折叠（Never）。对工具输出、回复里的代码块和提问生效。按原文的行数算，自动换行不多算。 |
@@ -166,11 +167,28 @@ Paseo 在桌面、网页、iPhone 和 iPad 上运行同一个插件。Clear Chat
 
 设置保存在主机上，连到同一台主机的设备都共用。强调色、折叠和点击步骤相关的设置马上生效，已经显示的行也会跟着变；其他改动对新消息生效，要更新之前的消息请重新加载对话。
 
+## 在 Hermes Agent 里粘贴图片
+
+Paseo 0.13 会在插件拿到消息前去掉粘贴的图片，Hermes 也没有留下 Clear Chat 以后用来找图的凭据。所以 Clear Chat 为你配置的每个 Hermes 提供商加了一个自己的版本，名字带 **·CC**，例如 **Hermes·PP·CC**。凡是命令为 `hermes acp` 的 Hermes 提供商都支持，带不带 `-p <profile>` 都行；它用同样的命令、Profile 和环境启动同一个 Hermes。把提问原样转给 Hermes 之前，它先把粘贴的图片存在自己的文件夹里。气泡只在图片和这条消息完全对得上时才显示图，对不上就什么也不显示。
+
+要用的话，在 Paseo 里新建 Agent 时选 **·CC** 版本。Paseo 的后台服务重启、Mac 重启或升级 Paseo 以后，图片和你当时的原文都还在。你原来的 Hermes Agent 不受影响。
+
+要知道的事：
+
+- 只有装了这个版本之后，在 **·CC** Agent 里新发的提问才显示图。以前建的 Agent 和它们的旧消息不显示。
+- 只有图片、没有文字的提问，显示不了图。
+- 错误、通知这类系统消息不会保存，重启后看不到。
+- 保存的记录对不上、被改过，或用过斜杠命令、回退（例如 `/undo`）时，这段对话会退回 Hermes 自己的原文，不显示图。
+- 同一段对话一次只从一个窗口用。要是第二个窗口也向同一段对话发了提问，记录会作废，两个窗口都退回 Hermes 自己的原文。
+- 图片存在你的 Paseo 主目录（默认 `~/.paseo`）下的 `plugin-data/clear-chat/hermes-cc-images` 文件夹里，最多 2 GB，满了先删最旧的。保存的记录在它旁边的 `hermes-cc-history` 里，每段对话最多 64 MB，全部合计最多 1 GB，超过就退回 Hermes 自己的原文。
+- 想清理的话，先退出 Paseo。删掉图片文件夹，对话和文字都还在，只是图没了；删掉记录文件夹，对话会退回 Hermes 自己的原文，不显示图。
+- 不想再加 **·CC** 版本，就在设置里关掉 **Hermes·CC 提供商**（Hermes·CC providers），再重新加载主机。已经建好的 **·CC** Agent 暂时不能用，把开关打开又能用了。保存的内容不会被删。
+
 ## 插件做不到的事
 
 Clear Chat 只改变 Paseo 显示对话的方式。有些事由 Paseo 决定，不开放给插件：
 
-- **Hermes Agent 的粘贴图片。** Paseo 0.13 会在插件拿到消息前去掉粘贴的图片。对 Codex 和 Claude 的 Agent，Clear Chat 会到它自己的记录里把图找回来显示，Hermes 的 Agent 暂不支持。Hermes 的图片照常发给了 Agent；关掉 **增强提问气泡**（Enhanced prompt bubble），就能在 Paseo 自带的气泡里看到。
+- **原来的 Hermes Agent 里粘贴的图片。** Paseo 0.13 会在插件拿到消息前去掉粘贴的图片，Hermes 也没有留下 Clear Chat 以后用来找图的凭据。请改用这个 Agent 的 **·CC** 版本（见[在 Hermes Agent 里粘贴图片](#在-hermes-agent-里粘贴图片)）。在原来的 Hermes Agent 里，图片照常发给了 Agent；关掉 **增强提问气泡**（Enhanced prompt bubble），就能在 Paseo 自带的气泡里看到。
 - **Paseo 自己的 Markdown。** Clear Chat 用不了 Paseo 的 Markdown 处理流程，所以 **助手回复 Markdown**（Assistant markdown）只支持其中一部分。要看 mermaid 图、图片和主机自带的文件路径链接，请关掉这项。
 - **原生应用里的实体按键。** 键盘操作在浏览器和桌面应用里能用。iPhone、iPad 和 Android 的原生应用只能用触屏操作。
 - **原生应用里的字体。** 插件读不到 Paseo 的代码字体设置，也不能往原生应用里加字体。在 iOS 和 iPadOS 上代码一律用 Menlo，在 Android 上用系统的等宽字体。
@@ -219,7 +237,7 @@ cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_back
 **2. 安装**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.0.2
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.1.1
 ```
 
 **3. 确认后卸载旧插件**
