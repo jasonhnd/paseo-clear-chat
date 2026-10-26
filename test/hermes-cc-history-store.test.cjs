@@ -34,7 +34,7 @@ function harness(t, overrides = {}) {
   const images = load("server/hermes-cc/store.ts");
   const storeRoot = join(root, "history");
   return {
-    root, storeRoot, ...history, ...images,
+    root, storeRoot, load, ...history, ...images,
     create: (dir, options) => history.createHermesCcHistoryStore(dir, options),
     store: history.createHermesCcHistoryStore(storeRoot),
   };
@@ -1061,24 +1061,137 @@ test("Hermes CC history refuses takeover after SIGSTOP for 31 seconds and never 
   assert.deepEqual(fs.readFileSync(eventsPath(h), "utf8"), "", "neither recorder can append a duplicate prompt");
 });
 
-test("Hermes CC history invalidates a dead owner's journal on takeover", { timeout: 10_000 }, async t => {
-  const h = harness(t), spawn = processRecorder(t, h), original = spawn();
+test("Hermes CC history preserves a settled dead owner's journal and images on takeover", { timeout: 10_000 }, async t => {
+  const fsp = require("node:fs/promises");
+  let onEventRead;
+  const h = harness(t, { "node:fs/promises": { ...fsp, async open(path, flags, mode) {
+    if (String(path).endsWith("/events.jsonl") && flags & fs.constants.O_NONBLOCK) onEventRead?.();
+    return fsp.open(path, flags, mode);
+  } } }), spawn = processRecorder(t, h), original = spawn();
   await original.command({ type: "open" });
+  await original.command({ type: "prompt" });
   await original.command({ type: "append", ids: ["A"] });
+  await original.command({ type: "settle" });
+  const images = h.createHermesCcImageStore(join(h.root, "images"));
+  const image = Buffer.from("saved image");
+  await images.save({ sessionKey: key().nativeSessionId, messageId: "A" }, [{ mime: "image/png", data: image }]);
   const before = readManifest(h);
-  assert.equal((await h.store.read(key())).status, "complete");
+  const saved = await h.store.read(key());
+  assert.equal(saved.status, "complete");
   const exited = new Promise(resolve => original.child.once("exit", resolve));
   original.child.kill("SIGKILL");
   await exited;
+  let verifiedReads = 0;
+  const leasePath = join(h.storeRoot, `.writer-${digest(key().providerId, key().nativeSessionId)}`);
+  const deadLease = JSON.parse(fs.readFileSync(leasePath, "utf8"));
+  onEventRead = () => {
+    assert.equal(fs.existsSync(join(h.storeRoot, ".journal.lock")), true);
+    assert.deepEqual(JSON.parse(fs.readFileSync(leasePath, "utf8")), deadLease);
+    verifiedReads++;
+  };
   const replacement = await h.store.claimWriter(key());
+  onEventRead = undefined;
+  assert.ok(verifiedReads > 0, "the full journal is verified under the lock before replacing the lease");
   assert.ok(replacement);
   t.after(() => replacement.release());
-  assert.ok(replacement.generation > before.writer.generation);
+  assert.equal(replacement.generation, before.writer.generation + 1);
   assert.notEqual(replacement.token, before.writer.token);
-  assertUnusable(await h.create(h.storeRoot).read(key()), "writer_changed");
+  assert.deepEqual(readManifest(h).writer, { token: replacement.token, generation: replacement.generation });
+  assert.equal(Object.hasOwn(readManifest(h), "invalid"), false);
+  const replayed = await h.create(h.storeRoot).read(key());
+  assert.deepEqual(replayed, saved);
+  const message = replayed.events.find(event => event.type === "timeline.item").item;
+  const resolver = h.load("server/prompt-images/hermes-cc.ts").hermesCcPromptImageResolver;
+  const found = await resolver.find({
+    sessionId: `plugin:${JSON.stringify({ version: 1, data: { sessionId: key().nativeSessionId } })}`,
+    messageId: message.id, clientMessageId: message.clientMessageId,
+    signal: new AbortController().signal, hermesCcImageStore: images,
+  });
+  assert.equal(found.matchedMessages, 1);
+  assert.equal(found.images.length, 1);
+  assert.deepEqual(await found.images[0].readBytes(), image);
   await h.store.append(key(), { clientMessageId: "B" }, replacement);
   await h.store.turnStarted(key(), replacement);
   await h.store.turnSettled(key(), replacement);
-  assert.equal(readManifest(h).records, before.records);
+  assert.equal((await h.store.read(key())).status, "complete");
+  const events = fs.readFileSync(eventsPath(h));
+  await assert.rejects(h.store.append(key(), { clientMessageId: "stale" }, before.writer), /^Error: writer_changed$/);
+  assert.deepEqual(fs.readFileSync(eventsPath(h)), events);
   assertUnusable(await h.create(h.storeRoot).read(key()), "writer_changed");
+});
+
+for (const failure of ["open turn", "corrupt byte", "record count", "size", "manifest checksum", "invalid",
+  "started mid-session", "writer token", "writer generation", "foreign mark", "unreadable events"]) {
+  test(`Hermes CC history invalidates a dead owner's journal with ${failure} on takeover`, { timeout: 10_000 }, async t => {
+    const fsp = require("node:fs/promises");
+    let unreadable = false;
+    const h = harness(t, { "node:fs/promises": { ...fsp, async open(path, flags, mode) {
+      if (unreadable && String(path).endsWith("/events.jsonl") && flags & fs.constants.O_NONBLOCK) {
+        throw Object.assign(new Error("unreadable"), { code: "EACCES" });
+      }
+      return fsp.open(path, flags, mode);
+    } } }), k = key(), spawn = processRecorder(t, h), original = spawn();
+    await original.command({ type: "open" });
+    await original.command({ type: "prompt" });
+    await original.command({ type: "append", ids: ["A"] });
+    if (failure !== "open turn") await original.command({ type: "settle" });
+    const before = readManifest(h);
+    const exited = new Promise(resolve => original.child.once("exit", resolve));
+    original.child.kill("SIGKILL");
+    await exited;
+    if (failure === "corrupt byte") {
+      const bytes = fs.readFileSync(eventsPath(h));
+      const index = bytes.indexOf(Buffer.from('"text":"A"'));
+      assert.ok(index >= 0);
+      bytes[index + 8] = "B".charCodeAt(0);
+      fs.writeFileSync(eventsPath(h), bytes);
+    } else if (failure === "record count") editManifest(h, k, { records: before.records + 1 }, true);
+    else if (failure === "size") editManifest(h, k, { bytes: before.bytes + 1 }, true);
+    else if (failure === "manifest checksum") editManifest(h, k, { records: before.records + 1 });
+    else if (failure === "invalid") editManifest(h, k, { invalid: "history_mutated" }, true);
+    else if (failure === "started mid-session") editManifest(h, k, { startedFromCreation: false }, true);
+    else if (failure === "writer token") editManifest(h, k, { writer: { ...before.writer, token: "0".repeat(36) } }, true);
+    else if (failure === "writer generation") editManifest(h, k, { writer: { ...before.writer, generation: before.writer.generation + 1 } }, true);
+    else if (failure === "foreign mark") fs.writeFileSync(join(h.storeRoot, `.foreign-${digest(k.providerId, k.nativeSessionId)}`), "");
+    else if (failure === "unreadable events") unreadable = true;
+    const replacement = await h.store.claimWriter(k);
+    assert.ok(replacement);
+    t.after(() => replacement.release());
+    unreadable = false;
+    if (failure !== "manifest checksum") assert.equal(readManifest(h).invalid, "writer_changed");
+    const state = await h.create(h.storeRoot).read(k);
+    assertUnusable(state, failure === "foreign mark" ? "foreign_writer" : failure === "manifest checksum" ? "corrupt" : "writer_changed");
+    if (failure === "foreign mark") {
+      await assert.rejects(h.store.append(k, { clientMessageId: "B" }, replacement), /^Error: writer_changed$/);
+      await assert.rejects(h.store.turnSettled(k, replacement), /^Error: writer_changed$/);
+    } else {
+      await h.store.append(k, { clientMessageId: "B" }, replacement);
+      await h.store.turnSettled(k, replacement);
+    }
+    assert.equal(readManifest(h).records, failure === "record count" || failure === "manifest checksum" ? before.records + 1 : before.records);
+    assert.equal((await h.create(h.storeRoot).read(k)).status, "unusable");
+  });
+}
+
+test("Hermes CC history stays complete across two clean writer restarts", async t => {
+  const h = harness(t), k = key();
+  let store = h.store, owner = await store.claimWriter(k);
+  t.after(() => owner.release());
+  await store.start(k, owner);
+  await store.turnStarted(k, owner);
+  await store.append(k, { clientMessageId: "A" }, owner);
+  await store.turnSettled(k, owner);
+  const before = readManifest(h), saved = await store.read(k);
+  for (let restart = 1; restart <= 2; restart++) {
+    await owner.release();
+    store = h.create(h.storeRoot);
+    const previous = owner;
+    owner = await store.claimWriter(k);
+    assert.ok(owner);
+    assert.notEqual(owner.token, previous.token);
+    assert.equal(owner.generation, before.writer.generation + restart);
+    assert.equal(Object.hasOwn(readManifest(h), "invalid"), false);
+    assert.deepEqual(await store.read(k), saved);
+  }
+  assert.equal(readManifest(h).records, before.records);
 });

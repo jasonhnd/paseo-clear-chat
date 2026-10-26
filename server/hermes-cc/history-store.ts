@@ -783,7 +783,19 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
           // Publish the fence (and uncertainty) before replacing the lease file,
           // using the same operation lock as every journal mutation.
           if (typeof loaded !== "string" && session !== "missing") {
-            await writeManifest(session, { ...loaded, writer: { token, generation }, ...(previous ? { invalid: "writer_changed" } : {}) });
+            let replayable = false;
+            if (previous && !Object.hasOwn(loaded, "invalid") && sameWriter(loaded.writer, previous)) {
+              try {
+                // A dead writer is safe to replace only after the full read checks,
+                // never the incremental write cache. Any uncertainty keeps the fence.
+                const viewed = await viewEvents(session, loaded, maxBytesPerSession);
+                replayable = judge(loaded, viewed).status === "complete" &&
+                  (await listEntries(rootDirectory)).total + USAGE_BYTES <= maxBytesTotal &&
+                  !await hasForeignMarker(rootDirectory, keyHash(key));
+              } catch { /* Failed verification must not preserve replay. */ }
+            }
+            await writeManifest(session, { ...loaded, writer: { token, generation },
+              ...(previous && !replayable ? { invalid: "writer_changed" } : {}) });
             verified.delete(keyHash(key));
           }
         } finally { if (session !== "missing") await session.handle.close(); }
