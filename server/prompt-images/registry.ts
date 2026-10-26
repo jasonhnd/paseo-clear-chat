@@ -5,6 +5,8 @@ import { codexPromptImages } from "./codex";
 import { readLocalImageReadOnly } from "./read-only";
 import { readImageHeader } from "./image-header";
 import { claudePromptImageResolver } from "./claude";
+import { hermesCcPromptImageResolver } from "./hermes-cc";
+import type { HermesCcImageStore } from "../hermes-cc/store";
 
 type LookupInput = RpcInput<typeof promptImagesRpc>;
 type ImagesResult = RpcOutput<typeof promptImagesRpc>;
@@ -24,6 +26,8 @@ export interface ResolverContext extends LookupInput {
   nativeHandle: string | null;
   /** Only resolver-specific storage variables, never the full provider env. */
   providerEnv?: Readonly<Record<string, string>>;
+  /** Only Clear Chat's own exact-ID image store, bound at server registration. */
+  hermesCcImageStore?: HermesCcImageStore;
   /** Resolvers should stop streaming/scanning when the lookup expires. */
   signal: AbortSignal;
 }
@@ -45,13 +49,14 @@ export function localFileImage(id: string, mime: string, path: string, allowedRo
 
 export interface PromptImageResolver {
   matches(provider: string, command?: readonly string[]): boolean;
-  /** Prefer matching IDs; otherwise count every message matching the text. */
+  /** Select a unique message; only adapters that support text fallback may use it. */
   find(context: ResolverContext): Promise<FoundImages>;
 }
 
 export const promptImageResolvers: readonly PromptImageResolver[] = [
   codexPromptImages,
   claudePromptImageResolver,
+  hermesCcPromptImageResolver,
 ];
 
 const MAX_THUMBNAILS = 3;
@@ -97,6 +102,7 @@ function headerImage(bytes: Buffer, mime: string) {
 export function createPromptImageHandlers(options: {
   resolvers?: readonly PromptImageResolver[];
   timeoutMs?: number;
+  hermesCcImageStore?: HermesCcImageStore;
 } = {}) {
   const resolvers = options.resolvers ?? promptImageResolvers;
   const timeoutMs = options.timeoutMs ?? 3000;
@@ -168,6 +174,7 @@ export function createPromptImageHandlers(options: {
       provider, cwd: agent.cwd, sessionId: persistence?.sessionId ?? null,
       nativeHandle: persistence?.nativeHandle ?? null, signal,
       ...(config ? { providerEnv } : {}),
+      ...(options.hermesCcImageStore ? { hermesCcImageStore: options.hermesCcImageStore } : {}),
     });
     check();
     if (found.matchedMessages === 0) throw new LookupError("no_match");
