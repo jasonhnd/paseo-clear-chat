@@ -20,8 +20,8 @@ export function useRpc() {
   return async () => ({}) as never;
 }
 
-export function useSettings() {
-  return { status: "ready" } as never;
+export function useSettings(definition: { schema: { parse(value: unknown): unknown } }) {
+  return { status: "ready", values: definition.schema.parse({}) } as never;
 }
 
 export { defineTranslations, useTranslation, PluginTranslationProvider, PluginTranslationRuntime } from "../../node_modules/@getpaseo/plugin/dist/client/translations.js";
