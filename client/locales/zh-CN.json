@@ -85,7 +85,7 @@
     },
     "promptBubble": {
       "label": "增强提问气泡",
-      "description": "给你的提问加样式。Codex 和 Claude 的 Agent 粘贴的图片会显示成缩略图；Hermes 的 Agent 想看图片，请关掉这项，改用 Paseo 自带的气泡。新的提问按改动后的设置显示。开着这项时，在 iOS 上不能拖动选择文字，请用复制按钮复制。"
+      "description": "给你的提问加样式。Codex、Claude 和 Hermes·CC 的 Agent 粘贴的图片会显示成缩略图；其他 Hermes 的 Agent 想看图片，请关掉这项，改用 Paseo 自带的气泡。新的提问按改动后的设置显示。开着这项时，在 iOS 上不能拖动选择文字，请用复制按钮复制。"
     },
     "selection": {
       "label": "选中文字后的操作",

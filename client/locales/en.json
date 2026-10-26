@@ -85,7 +85,7 @@
     },
     "promptBubble": {
       "label": "Enhanced prompt bubble",
-      "description": "Styles your prompts. Pasted images show as thumbnails for Codex and Claude agents; for Hermes agents, turn this off to see them in Paseo's own bubble. New prompts follow the change. On iOS, text cannot be selected by dragging when this is enabled. Use the Copy button to copy text."
+      "description": "Styles your prompts. Pasted images show as thumbnails for Codex, Claude and Hermes·CC agents; for other Hermes agents, turn this off to see them in Paseo's own bubble. New prompts follow the change. On iOS, text cannot be selected by dragging when this is enabled. Use the Copy button to copy text."
     },
     "selection": {
       "label": "Selection actions",
