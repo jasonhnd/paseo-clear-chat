@@ -2,6 +2,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { hermesCcTransport } from "./transport";
 import type { HermesCcLaunch } from "./transport";
 import { nativeKey } from "./session-key";
+import { journalHermesCcConnection } from "./history-connection";
+import type { HermesCcHistoryStore } from "./history-store";
 export { nativeSessionKeyFromPersistence } from "./session-key";
 import { runAcpProvider } from "@getpaseo/plugin/server/acp";
 import type {
@@ -90,6 +92,7 @@ export function hermesCcProvidersFromConfig(
   providers: Readonly<Record<string, unknown>>,
   enabled: boolean,
   hook: HermesCcPromptHook,
+  historyStore?: HermesCcHistoryStore,
 ): ProviderRegistration[] {
   if (!enabled) return [];
   const registrations: ProviderRegistration[] = [];
@@ -127,7 +130,8 @@ export function hermesCcProvidersFromConfig(
     registrations.push({
       ...provider,
       async connect(request) {
-        const connection = captureHermesCcPrompts(await provider.connect(request), hook);
+        const captured = captureHermesCcPrompts(await provider.connect(request), hook);
+        const connection = historyStore ? journalHermesCcConnection(captured, id, historyStore) : captured;
         return {
           ...connection,
           send(input) {
