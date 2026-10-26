@@ -732,6 +732,68 @@ test("failed foreign invalidation forwards prompts but poisons every local recor
   assert.equal(store.calls.filter(call => call.method === "append" || call.method === "turnSettled").length, 0);
 });
 
+test("a foreign prompt during the creator's in-flight claim fences creation and the next open", async t => {
+  const root = fs.mkdtempSync(join(tmpdir(), "cc-foreign-creation-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const { createHermesCcHistoryStore } = load("server/hermes-cc/history-store.ts");
+  const journal = load("server/hermes-cc/history-connection.ts").journalHermesCcConnection;
+  const store = createHermesCcHistoryStore(root), entered = deferred(), claimed = deferred();
+  const claim = store.claimWriter.bind(store);
+  store.claimWriter = async k => {
+    const lease = await claim(k);
+    entered.resolve(); await claimed.promise;
+    return lease;
+  };
+  t.after(() => claimed.resolve());
+  const a = queuedHarness(store, journal), b = queuedHarness(createHermesCcHistoryStore(root), journal);
+  t.after(() => a.connection.close()); t.after(() => b.connection.close());
+  await a.open("a");
+  const ready = waitEvent(a.connection, event => event.type === "session.ready");
+  a.opened("a"); a.ready("a"); await entered.promise;
+  await b.open("b", persistence); await becomeReady(b, "b");
+  assert.equal(b.raw.sent[0].history, "replay");
+  const send = b.raw.send;
+  b.raw.send = async input => {
+    if (input.type === "session.prompt") {
+      assert.deepEqual(await createHermesCcHistoryStore(root).read(key), { status: "unusable", reason: "foreign_writer" });
+    }
+    return send(input);
+  };
+  await b.connection.send(promptInput("b", "foreign"));
+  claimed.resolve(); await ready;
+  const shown = waitEvent(a.connection, event => event.type === "timeline.item");
+  a.raw.emit({ ...savedTranscript()[1], sessionId: "a" }); await shown;
+  assert.deepEqual(await store.read(key), { status: "unusable", reason: "foreign_writer" });
+  await a.connection.close(); await b.connection.close();
+  const next = queuedHarness(createHermesCcHistoryStore(root), journal);
+  t.after(() => next.connection.close());
+  await next.open("next", persistence); await becomeReady(next, "next");
+  assert.equal(next.raw.sent[0].history, "replay");
+  assert.deepEqual(historyOnly(next.events), [], "no journal identities are restored for image lookup");
+});
+
+test("a truncated writer lease keeps the open on Hermes replay", async t => {
+  const root = fs.mkdtempSync(join(tmpdir(), "cc-bad-lease-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const { createHermesCcHistoryStore } = load("server/hermes-cc/history-store.ts");
+  const store = createHermesCcHistoryStore(root);
+  await store.start(key);
+  for (const event of savedTranscript()) await store.append(key, event);
+  const name = require("node:crypto").createHash("sha256").update(`${key.providerId}\0${key.nativeSessionId}`).digest("hex");
+  const path = join(root, `.writer-${name}`);
+  fs.writeFileSync(path, "{not-json");
+  const h = queuedHarness(store);
+  t.after(() => h.connection.close());
+  await h.open("boundary", persistence); await becomeReady(h);
+  assert.equal(h.raw.sent.length, 1);
+  assert.equal(h.raw.sent[0].history, "replay");
+  assert.deepEqual(historyOnly(h.events), []);
+  assert.equal(fs.readFileSync(path, "utf8"), "{not-json");
+  await h.connection.send(promptInput());
+  assert.equal(h.raw.sent.at(-1).type, "session.prompt");
+  assert.deepEqual(await store.read(key), { status: "unusable", reason: "foreign_writer" });
+});
+
 test("a crash at the foreign prompt fence reopens durable rows using Hermes replay without images", async t => {
   const entered = deferred(), persist = deferred(), persisted = deferred(), forward = deferred();
   t.after(() => { persist.resolve(); forward.resolve(); });

@@ -21,8 +21,8 @@ export interface HermesCcHistoryStore {
   turnStarted(key: HermesCcJournalKey, owner?: HermesCcWriterOwner): Promise<void>;
   turnSettled(key: HermesCcJournalKey, owner?: HermesCcWriterOwner): Promise<void>;
   /** Permanently mark unusable (history-mutating commands, load failure mismatch, etc.).
-   * Failed foreign_writer invalidation is retained across local store instances
-   * and retried before the next read/mutation. Storage must recover to persist it.
+   * A foreign_writer marker is synced outside the journal lock, including before
+   * session creation. Failed marker writes are retried before local access.
    */
   invalidate(key: HermesCcJournalKey, reason: string): Promise<void>;
   read(key: HermesCcJournalKey): Promise<HermesCcJournalState>;
@@ -76,9 +76,8 @@ interface Manifest {
 interface Directory { path: string; handle: FileHandle }
 interface Entry { name: string; createdAt: number; size: number; eventsBytes: number; kind: "session" | "orphan" | "link" }
 const lanes = new Map<string, Promise<unknown>>();
-// Shared across store instances for one root. Failed foreign-writer fences are
-// retried under the disk lock before any subsequent read or mutation. Until
-// persistence recovers, reads fail closed; prompts can still reach Hermes.
+// Shared across store instances for one root. Keep failed marker writes pending
+// until they are durable. Until storage recovers, local reads fail closed.
 const pendingInvalidations = new Map<string, string>();
 
 export function hermesCcHistoryRoot(_server: PluginServerContext, home = hermesCcPaseoHome()): string {
@@ -123,6 +122,8 @@ function reasonCode(reason: string): string { return REASON.test(reason) ? reaso
 function unusable(reason: string): HermesCcJournalState { return { status: "unusable", reason }; }
 function evictedMarker(name: string): string { return `.evicted-${name}`; }
 function isEvictedMarker(name: string): boolean { return /^\.evicted-[a-f0-9]{64}$/.test(name); }
+function foreignMarker(name: string): string { return `.foreign-${name}`; }
+function isForeignMarker(name: string): boolean { return /^\.foreign-[a-f0-9]{64}$/.test(name); }
 function isReapedMarker(name: string): boolean { return /^\.reaped-[a-f0-9]{64}$/.test(name); }
 function isTemp(name: string): boolean { return name.endsWith(".tmp"); }
 
@@ -161,7 +162,7 @@ async function openDirectory(target: string, path = target): Promise<Directory> 
     return { path, handle };
   } catch (error) { await handle.close(); throw error; }
 }
-async function readFile(directory: Directory, name: string, limit: number): Promise<Buffer> {
+async function readFile(directory: Directory, name: string, limit: number, stableTimes = true): Promise<Buffer> {
   const target = child(directory, name);
   const before = await lstat(target);
   if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1) throw new Error("unsafe_history_file");
@@ -179,7 +180,8 @@ async function readFile(directory: Directory, name: string, limit: number): Prom
       length += bytesRead;
     }
     const after = await handle.stat({ bigint: true });
-    if (BigInt(length) !== stat.size || stat.size !== after.size || stat.mtimeNs !== after.mtimeNs || stat.ctimeNs !== after.ctimeNs) {
+    if (BigInt(length) !== stat.size || stat.size !== after.size ||
+        (stableTimes && (stat.mtimeNs !== after.mtimeNs || stat.ctimeNs !== after.ctimeNs))) {
       throw new Error("unsafe_history_file");
     }
     return bytes.subarray(0, length);
@@ -420,7 +422,7 @@ async function withDiskLock<T>(root: Directory, run: () => Promise<T>): Promise<
 
 async function cleanTemps(root: Directory): Promise<void> {
   for (const name of await readdir(child(root, "."))) {
-    if (name === LOCK || name === USAGE || name.startsWith(".writer-") || isEvictedMarker(name) || isReapedMarker(name)) continue;
+    if (name === LOCK || name === USAGE || name.startsWith(".writer-") || isEvictedMarker(name) || isReapedMarker(name) || isForeignMarker(name)) continue;
     const entry = await lstat(child(root, name));
     if (entry.isSymbolicLink()) {
       if (isTemp(name) || Date.now() - entry.mtimeMs > STALE_MS) await unlink(child(root, name));
@@ -455,7 +457,7 @@ async function listEntries(root: Directory): Promise<{ total: number; entries: E
   for (const name of await readdir(child(root, "."))) {
     if (name === LOCK || name === USAGE || name.startsWith(".writer-")) continue;
     const entry = await lstat(child(root, name));
-    if ((isEvictedMarker(name) || isReapedMarker(name)) && entry.isFile() && !entry.isSymbolicLink() && entry.nlink === 1 && entry.size === 0) continue;
+    if ((isEvictedMarker(name) || isReapedMarker(name) || isForeignMarker(name)) && entry.isFile() && !entry.isSymbolicLink() && entry.nlink === 1 && entry.size === 0) continue;
     if (entry.isSymbolicLink()) {
       total += entry.size;
       entries.push({ name, createdAt: entry.mtimeMs, size: entry.size, eventsBytes: 0, kind: "link" });
@@ -602,6 +604,23 @@ async function markerExists(root: Directory, name: string): Promise<boolean> {
   }
 }
 
+// Permanent, zero-byte markers are excluded from cleanup and caps, like eviction
+// tombstones. No journal lock: even a paused owner must observe a foreign prompt.
+async function writeForeignMarker(root: Directory, name: string): Promise<void> {
+  const handle = await open(child(root, foreignMarker(name)),
+    constants.O_WRONLY | constants.O_CREAT | constants.O_NOFOLLOW | constants.O_NONBLOCK, 0o600);
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.nlink !== 1 || stat.size !== 0) throw new Error("unsafe_history_file");
+    await handle.sync();
+    await syncDirectory(root);
+  } finally { await handle.close(); }
+}
+async function hasForeignMarker(root: Directory, name: string): Promise<boolean> {
+  try { await lstat(child(root, foreignMarker(name))); return true; }
+  catch (error) { if (hasCode(error, "ENOENT")) return false; throw error; }
+}
+
 function judge(manifest: Manifest, viewed: EventsView): HermesCcJournalState {
   if (manifest.invalid) return unusable(manifest.invalid);
   if (!manifest.startedFromCreation) return unusable("started_mid_session");
@@ -648,6 +667,10 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
     // Walk from the trusted root. lstat of the full path would follow an ancestor symlink and hide it.
     const rootDirectory = await directory(root, create, trustedRoot);
     try {
+      if (pendingInvalidations.has(lane(key))) {
+        await writeForeignMarker(rootDirectory, keyHash(key));
+        pendingInvalidations.delete(lane(key));
+      }
       return await withDiskLock(rootDirectory, async () => {
         let total: number | undefined;
         if (!create && !refresh) {
@@ -662,16 +685,16 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
         }
         const before = await sessionBytes(rootDirectory, key);
         await usageWrite(rootDirectory, null);
-        const pending = pendingInvalidations.get(lane(key));
-        if (pending) {
+        if (await hasForeignMarker(rootDirectory, keyHash(key))) {
           const session = await openSession(rootDirectory, keyHash(key));
           if (session !== "missing") {
             try {
               const loaded = await loadManifest(session, key, keyHash(key));
-              if (typeof loaded !== "string" && !loaded.invalid) await publish(session, { ...loaded, invalid: pending });
+              if (typeof loaded !== "string" && loaded.invalid !== "foreign_writer") {
+                await publish(session, { ...loaded, invalid: "foreign_writer" });
+              }
             } finally { await session.handle.close(); }
           }
-          pendingInvalidations.delete(lane(key));
         }
         const result = await run(rootDirectory);
         total += await sessionBytes(rootDirectory, key) - before;
@@ -727,14 +750,11 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
   }
   async function readWriter(rootDirectory: Directory, name: string): Promise<(HermesCcWriterOwner & { pid: number; changed?: boolean }) | null> {
     try {
-      const value: unknown = JSON.parse((await readFile(rootDirectory, name, LOCK_BYTES)).toString("utf8"));
-      // Unknown ownership cannot authorize a takeover.
-      if (!record(value) || !Number.isSafeInteger(value.pid) || Number(value.pid) <= 0 ||
-          typeof value.token !== "string" || (value.generation !== undefined && !writerOwner(value))) {
-        throw new Error("unsafe_history_lock");
-      }
-      return { token: value.token, generation: Number(value.generation ?? 0), pid: Number(value.pid), changed: value.changed === true };
-    } catch (error) { if (hasCode(error, "ENOENT")) return null; throw error; }
+      // Heartbeats change timestamps, never lease contents. Keep path/size checks.
+      const value: unknown = JSON.parse((await readFile(rootDirectory, name, LOCK_BYTES, false)).toString("utf8"));
+      if (!record(value) || !writerOwner(value) || !Number.isSafeInteger(value.pid) || Number(value.pid) <= 0) return null;
+      return { token: value.token, generation: value.generation, pid: Number(value.pid), changed: value.changed === true };
+    } catch { return null; } // Missing, torn or unknown ownership never authorizes replacement.
   }
   async function claimWriter(key: HermesCcJournalKey): Promise<HermesCcWriterLease | null> {
     const name = `.writer-${keyHash(key)}`;
@@ -747,6 +767,13 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
         if (previous) {
           try { process.kill(previous.pid, 0); return false; }
           catch (error) { if (!hasCode(error, "ESRCH")) return false; }
+        }
+        if (!previous) {
+          // Distinguish an absent lease from unreadable ownership with O_EXCL,
+          // before touching the manifest. Unknown leases must stay in place.
+          try {
+            held = await open(child(rootDirectory, name), constants.O_RDWR | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+          } catch (error) { if (hasCode(error, "EEXIST")) return false; throw error; }
         }
         const session = await openSession(rootDirectory, keyHash(key));
         try {
@@ -761,7 +788,7 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
           }
         } finally { if (session !== "missing") await session.handle.close(); }
         if (previous) await unlink(child(rootDirectory, name));
-        held = await open(child(rootDirectory, name), constants.O_RDWR | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+        held ??= await open(child(rootDirectory, name), constants.O_RDWR | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
         await held.writeFile(JSON.stringify({ pid: process.pid, token, generation, changed: !!previous }));
         await held.sync();
         await syncDirectory(rootDirectory);
@@ -790,7 +817,7 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
         await withDiskLock(openedRoot, async () => {
           try {
             const stat = await lstat(child(openedRoot, name)), original = await handle.stat();
-            const owner: unknown = JSON.parse((await readFile(openedRoot, name, LOCK_BYTES)).toString("utf8"));
+            const owner: unknown = JSON.parse((await readFile(openedRoot, name, LOCK_BYTES, false)).toString("utf8"));
             if (stat.dev === original.dev && stat.ino === original.ino && record(owner) && owner.token === token) {
               await unlink(child(openedRoot, name));
               await syncDirectory(openedRoot);
@@ -846,7 +873,8 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
               records: 0,
               createdAt: Date.now(),
               ...(writer ? { writer } : {}),
-              ...(rejected || lease?.changed ? { invalid: "writer_changed" } : {}),
+              ...(await hasForeignMarker(rootDirectory, name) ? { invalid: "foreign_writer" }
+                : rejected || lease?.changed ? { invalid: "writer_changed" } : {}),
             });
             if (rejected) throw new Error("writer_changed");
           } finally { await session.handle.close(); }
@@ -956,6 +984,14 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
       const code = reasonCode(reason);
       if (code === "foreign_writer") pendingInvalidations.set(lane(key), code);
       try {
+        if (code === "foreign_writer") {
+          // Persist before waiting for either serialization or the journal lock.
+          const rootDirectory = await directory(root, true, trustedRoot);
+          try {
+            await writeForeignMarker(rootDirectory, keyHash(key));
+            pendingInvalidations.delete(lane(key));
+          } finally { await rootDirectory.handle.close(); }
+        }
         await serialized(key, () => locked(false, key, async rootDirectory => {
           const session = await openSession(rootDirectory, keyHash(key));
           if (session === "missing") return;
@@ -972,6 +1008,7 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
       try {
         return await serialized(key, () => locked(false, key, async rootDirectory => {
           const name = keyHash(key);
+          if (await hasForeignMarker(rootDirectory, name)) return unusable("foreign_writer");
           const session = await openSession(rootDirectory, name);
           if (session === "missing") return await markerExists(rootDirectory, name) ? unusable("evicted") : unusable("missing");
           try {

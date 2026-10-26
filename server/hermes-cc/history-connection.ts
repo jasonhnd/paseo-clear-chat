@@ -176,9 +176,10 @@ export function journalHermesCcConnection(
       await store.invalidate(session.key, "foreign_writer");
     } catch {
       failedInvalidations.add(recorderId(session.key));
-      // Keep live prompts usable. The disk store retains this failed fence and
-      // persists it before its next read/mutation once storage recovers. A crash
-      // while all writes remain unavailable cannot guarantee a durable marker.
+      // Keep live prompts usable. The disk store syncs an independent marker
+      // before attempting the journal lock/manifest, so the owner sees failures
+      // there too. If even marker writes fail, retry locally as storage recovers;
+      // a crash while all writes are unavailable cannot preserve a new fence.
     }
     try { await release(session); } catch { /* The key is already unusable. */ }
   };
