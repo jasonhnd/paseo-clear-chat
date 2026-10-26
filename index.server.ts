@@ -11,6 +11,7 @@ import { createPromptImageHandlers } from "./server/prompt-images/registry";
 import { createHermesCcImageStore, hermesCcImageRoot, hermesCcPaseoHome, type HermesCcImageStore } from "./server/hermes-cc/store";
 import { hermesCcProvidersFromConfig } from "./server/hermes-cc/provider";
 import type { HermesCcHistoryStore } from "./server/hermes-cc/history-store";
+import * as hermesCcHistory from "./server/hermes-cc/history-store";
 import { hermesCcStartupConfig } from "./server/hermes-cc/startup";
 import { hermesCcSettings, presentationSettings } from "./shared/settings";
 import { toolExpansionSettings } from "./shared/tool-expansion-settings";
@@ -456,7 +457,20 @@ function tokenize(
 }
 
 export default function contribute(server: PluginServerContext) {
-  return contributeWithHermesCcHistory(server);
+  // The store implementation can land independently of the connection wrapper.
+  // Resolve its exports dynamically so an interface-only module keeps working.
+  const { createHermesCcHistoryStore, hermesCcHistoryRoot } = hermesCcHistory as {
+    createHermesCcHistoryStore?: (root: string, options: { trustedRoot: string }) => HermesCcHistoryStore;
+    hermesCcHistoryRoot?: (server: PluginServerContext, home: string) => string;
+  };
+  let historyStore: HermesCcHistoryStore | undefined;
+  if (typeof createHermesCcHistoryStore === "function" && typeof hermesCcHistoryRoot === "function") {
+    try {
+      const home = hermesCcPaseoHome();
+      historyStore = createHermesCcHistoryStore(hermesCcHistoryRoot(server, home), { trustedRoot: home });
+    } catch { console.debug?.("[clear-chat] hermes_cc: history_unavailable"); }
+  }
+  return contributeWithHermesCcHistory(server, historyStore);
 }
 
 /** Injection point for the durable journal store supplied by the server host. */
