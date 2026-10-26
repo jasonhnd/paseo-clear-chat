@@ -112,14 +112,7 @@ export function captureHermesCcPrompts(
   };
 }
 
-/**
- * Build registrations from an SDK config snapshot; never retain other fields.
- * Startup wiring is blocked in Paseo v0.13.0: server/contracts.ts:30-45 exposes
- * no startup Paseo API and requires synchronous contribution. In the host,
- * packages/server/src/server/plugins/plugin-process.ts:283-315 publishes the
- * provider list immediately after contribution. A later RPC/lifecycle context
- * can read config, but cannot publish additional picker entries through this SDK.
- */
+/** Build registrations synchronously from the startup config snapshot. */
 export function hermesCcProvidersFromConfig(
   providers: Readonly<Record<string, unknown>>,
   enabled: boolean,

@@ -103,6 +103,7 @@ export function createPromptImageHandlers(options: {
   resolvers?: readonly PromptImageResolver[];
   timeoutMs?: number;
   hermesCcImageStore?: HermesCcImageStore;
+  hermesCcProviderIds?: ReadonlySet<string>;
 } = {}) {
   const resolvers = options.resolvers ?? promptImageResolvers;
   const timeoutMs = options.timeoutMs ?? 3000;
@@ -164,7 +165,8 @@ export function createPromptImageHandlers(options: {
         if (typeof value === "string") providerEnv[key] = value;
       }
     }
-    const resolver = resolvers.find(candidate => candidate.matches(provider, command));
+    const resolver = resolvers.find(candidate => candidate === hermesCcPromptImageResolver && options.hermesCcProviderIds
+      ? options.hermesCcProviderIds.has(provider) : candidate.matches(provider, command));
     if (!resolver) throw new LookupError("unknown_provider");
     const persistence = agent.persistence;
     if (persistence && persistence.provider !== provider) throw new LookupError("provider_mismatch");

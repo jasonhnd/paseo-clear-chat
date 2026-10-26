@@ -9,6 +9,8 @@ import { imageRpc } from "./shared/image-rpc";
 import { promptImageRpc, promptImagesRpc } from "./shared/prompt-images-rpc";
 import { createPromptImageHandlers } from "./server/prompt-images/registry";
 import { createHermesCcImageStore, hermesCcImageRoot } from "./server/hermes-cc/store";
+import { hermesCcProvidersFromConfig } from "./server/hermes-cc/provider";
+import { hermesCcStartupConfig } from "./server/hermes-cc/startup";
 import { hermesCcSettings, presentationSettings } from "./shared/settings";
 import { toolExpansionSettings } from "./shared/tool-expansion-settings";
 import { migrateHostSettings } from "./server/settings-migration";
@@ -534,8 +536,22 @@ function registerServer(server: PluginServerContext) {
     }
   });
 
+  const hermesCcImageStore = createHermesCcImageStore(hermesCcImageRoot(server));
+  const startup = hermesCcStartupConfig();
+  const providers = hermesCcProvidersFromConfig(startup.providers, startup.enabled, async ({ sessionKey, clientMessageId, images }) => {
+    if (!clientMessageId) {
+      console.debug("[clear-chat] hermes_cc: message_id_unavailable");
+      return;
+    }
+    // Async capture is awaited by ProviderConnection.send(), whose SDK contract
+    // permits Promise<void> (server/provider.ts:77-83). Contribution stays sync.
+    try { await hermesCcImageStore.save({ sessionKey, messageId: clientMessageId }, images); }
+    catch { console.debug("[clear-chat] hermes_cc: save_failed"); }
+  });
+  for (const provider of providers) server.registerProvider(provider);
   const promptImages = createPromptImageHandlers({
-    hermesCcImageStore: createHermesCcImageStore(hermesCcImageRoot(server)),
+    hermesCcImageStore,
+    hermesCcProviderIds: new Set(providers.map(provider => provider.id)),
   });
   server.handle(promptImagesRpc, promptImages.images);
   server.handle(promptImageRpc, promptImages.image);
