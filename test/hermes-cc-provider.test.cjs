@@ -113,6 +113,17 @@ for (const command of misses) test(`ignores ${JSON.stringify(command)}`, () => {
   assert.deepEqual(harness().hermesCcProvidersFromConfig({ hermes: { extends: "acp", label: "Hermes", command } }, true, async () => {}), []);
 });
 
+for (const description of ["Runs Hermes with the source profile", undefined]) {
+  test(`CC registration ${description === undefined ? "has no description when the source has none" : "carries the source description"}`, async () => {
+    const { runAcpProvider } = await import("@getpaseo/plugin/server/acp");
+    const h = harness(runAcpProvider);
+    const source = { extends: "acp", command: ["hermes", "acp"],
+      ...(description !== undefined ? { description } : {}) };
+    const [provider] = h.hermesCcProvidersFromConfig({ hermes: source }, true, async () => {});
+    assert.equal(provider.description, description);
+  });
+}
+
 test("setting OFF, non-ACP configs and existing target IDs register nothing", () => {
   const h = harness(), source = { extends: "acp", command: ["hermes", "acp"] };
   assert.deepEqual(h.hermesCcProvidersFromConfig({ x: source }, false, async () => {}), []);

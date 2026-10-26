@@ -123,6 +123,7 @@ export function hermesCcProvidersFromConfig(
     const context = new AsyncLocalStorage<HermesCcLaunch & { env?: Readonly<Record<string, string>>; userOpen?: boolean }>();
     const provider = runAcpProvider({
       id, label: `${typeof source.label === "string" && source.label.trim() ? source.label : sourceId}·CC`,
+      ...(typeof source.description === "string" ? { description: source.description } : {}),
       // SDK v0.13.0 acp-internal/connection.ts:72-89 probes with initialize
       // only. discover():564-574 otherwise creates a persistent session/new.
       // acp.ts:47-48 supports an initialization-only global catalog; route all
