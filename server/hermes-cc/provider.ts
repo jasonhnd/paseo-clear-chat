@@ -122,6 +122,7 @@ export function hermesCcProvidersFromConfig(
     const catalogIdentity = JSON.stringify([command, hermesCcSourceEnv(process.env, env), source.models, source.additionalModels]);
     const context = new AsyncLocalStorage<HermesCcLaunch & { env?: Readonly<Record<string, string>>; userOpen?: boolean }>();
     const provider = runAcpProvider({
+      icon: "server/hermes-cc/hermes.svg",
       id, label: `${typeof source.label === "string" && source.label.trim() ? source.label : sourceId}·CC`,
       ...(typeof source.description === "string" ? { description: source.description } : {}),
       // SDK v0.13.0 acp-internal/connection.ts:72-89 probes with initialize
