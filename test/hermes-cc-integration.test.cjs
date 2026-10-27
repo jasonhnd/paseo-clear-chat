@@ -115,6 +115,50 @@ function requests(root) {
   return fs.existsSync(path) ? fs.readFileSync(path, "utf8").trim().split("\n").map(JSON.parse) : [];
 }
 
+test("Hermes artwork reaches server registrations through the real SDK for every eligible source", async t => {
+  const { runAcpProvider } = await import("@getpaseo/plugin/server/acp");
+  const root = fs.mkdtempSync(join(tmpdir(), "cc-artwork-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const source = { extends: "acp", command: ["hermes", "acp"] };
+  const providers = {
+    hermes: { ...source, label: "Hermes" },
+    "hermes-zk": { ...source, command: ["hermes", "-p", "zk", "acp"] },
+    "hermes-pp": { ...source, command: ["hermes", "--profile", "pp", "acp"] },
+    "hermes-gpt": { ...source, command: ["hermes", "--profile=gpt", "acp"] },
+    arbitrary: { ...source, command: ["/opt/bin/hermes", "acp"] },
+    windows: { ...source, command: ["C:\\bin\\HERMES.CMD", "acp"] },
+    executable: { ...source, command: ["hermes.exe", "acp"] },
+    disabled: { ...source, enabled: false },
+    conflicting: source,
+    "conflicting-cc": { extends: "acp", command: ["gemini", "--acp"] },
+    "hermes-impostor": { extends: "acp", command: ["gemini", "--acp"] },
+    "hermes-native": { ...source, extends: "custom" },
+  };
+  const config = { version: 1, agents: { providers } };
+  const configPath = join(root, "config.json");
+  const original = JSON.stringify(config);
+  fs.writeFileSync(configPath, original);
+  const h = loadServer(root, runAcpProvider);
+  t.after(h.cleanup);
+  const expected = ["hermes", "hermes-zk", "hermes-pp", "hermes-gpt", "arbitrary", "windows", "executable"];
+  assert.deepEqual(h.providers.map(provider => provider.id), expected.map(id => `${id}-cc`));
+  for (const [index, provider] of h.providers.entries()) {
+    const id = expected[index];
+    assert.equal(provider.label, `${providers[id].label ?? id}·CC`);
+    assert.equal(provider.icon, "server/hermes-cc/hermes.svg");
+    assert.ok(fs.statSync(resolve(__dirname, "..", provider.icon)).isFile());
+  }
+  assert.equal(fs.readFileSync(configPath, "utf8"), original);
+  assert.deepEqual(requests(root), []);
+  const settings = join(root, "plugin-settings", "clear-chat");
+  fs.mkdirSync(settings, { recursive: true });
+  fs.writeFileSync(join(settings, "hermes-cc.json"), JSON.stringify({ version: 1, values: { enabled: false } }));
+  const disabled = loadServer(root, runAcpProvider);
+  t.after(disabled.cleanup);
+  assert.deepEqual(disabled.providers, []);
+  assert.deepEqual(requests(root), []);
+});
+
 test("SDK v0.13.0 opens sessions for catalog discovery, but not capability probes or session listing", async t => {
   const { runAcpProvider } = await import("@getpaseo/plugin/server/acp");
   const root = fs.mkdtempSync(join(tmpdir(), "cc-sdk-discovery-"));
