@@ -46,7 +46,7 @@
 ## Install
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.1.2
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.1
 ```
 
 Clear Chat needs Paseo 0.13.0 or later. Then open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
@@ -239,7 +239,7 @@ If the `beautiful-chat` settings folder does not exist, you never changed Beauti
 **2. Install**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.1.2
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.1
 ```
 
 **3. Check, then remove the old plugin**
