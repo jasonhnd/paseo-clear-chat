@@ -1,0 +1,104 @@
+#!/usr/bin/env node
+"use strict";
+
+// Synthetic ACP only: no authentication, network, tools, or model execution.
+const fs = require("node:fs");
+const { randomUUID } = require("node:crypto");
+const { isAbsolute, join, dirname } = require("node:path");
+const readline = require("node:readline");
+const stateDir = process.env.HERMES_CC_FIXTURE_STATE_DIR;
+const logFile = process.env.HERMES_CC_FIXTURE_LOG;
+if (process.argv.length !== 3 || process.argv[2] !== "acp" ||
+    !stateDir || !isAbsolute(stateDir) || !logFile || !isAbsolute(logFile)) {
+  process.stderr.write("Expected hermes acp and explicit absolute HERMES_CC_FIXTURE_STATE_DIR and HERMES_CC_FIXTURE_LOG\n");
+  process.exit(1);
+}
+fs.mkdirSync(stateDir, { recursive: true });
+fs.mkdirSync(dirname(logFile), { recursive: true });
+const send = message => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...message }) + "\n");
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+function read(sessionId) {
+  if (typeof sessionId !== "string" || !uuid.test(sessionId)) throw new Error("Unknown native session ID");
+  try {
+    const stored = JSON.parse(fs.readFileSync(join(stateDir, sessionId + ".json"), "utf8"));
+    if (stored.sessionId !== sessionId || !Array.isArray(stored.transcript)) throw new Error();
+    return stored;
+  } catch { throw new Error("Unknown or unreadable native session ID"); }
+}
+function persist(stored) {
+  const temporary = join(stateDir, `.${randomUUID()}.tmp`);
+  let fd;
+  try {
+    fd = fs.openSync(temporary, "wx", 0o600);
+    fs.writeFileSync(fd, JSON.stringify(stored));
+    fs.fsyncSync(fd);
+    fs.closeSync(fd);
+    fd = undefined;
+    fs.renameSync(temporary, join(stateDir, stored.sessionId + ".json"));
+    const directory = fs.openSync(stateDir, "r");
+    try { fs.fsyncSync(directory); } finally { fs.closeSync(directory); }
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+    fs.rmSync(temporary, { force: true });
+  }
+}
+function log(method, nativeId, lifecycle) {
+  fs.appendFileSync(logFile, JSON.stringify({ timestamp: new Date().toISOString(),
+    pid: process.pid, method, nativeId, lifecycle }) + "\n");
+}
+const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+input.on("line", line => {
+  let request;
+  try { request = JSON.parse(line); }
+  catch { send({ id: null, error: { code: -32700, message: "Parse error" } }); return; }
+  if (!request || request.jsonrpc !== "2.0" || typeof request.method !== "string") {
+    send({ id: request?.id ?? null, error: { code: -32600, message: "Invalid request" } });
+    return;
+  }
+  const { method, params = {} } = request;
+  const reply = result => { if (request.id !== undefined) send({ id: request.id, result }); };
+  try {
+    if (method === "initialize") {
+      log(method, null, "initialize");
+      reply({ protocolVersion: 1, agentInfo: { name: "synthetic-no-model", version: "1" },
+        agentCapabilities: { loadSession: true, promptCapabilities: { image: true } }, authMethods: [] });
+    } else if (method === "session/new") {
+      const sessionId = randomUUID();
+      persist({ sessionId, transcript: [] });
+      log(method, sessionId, "create");
+      reply({ sessionId });
+    } else if (method === "session/load") {
+      log(method, params.sessionId ?? null, "replay");
+      const stored = read(params.sessionId);
+      for (const message of stored.transcript) send(message);
+      reply({});
+    } else if (method === "session/prompt") {
+      log(method, params.sessionId ?? null, "prompt");
+      const stored = read(params.sessionId);
+      if (!Array.isArray(params.prompt) || !params.prompt.every(block => block && typeof block === "object" && typeof block.type === "string")) {
+        throw new Error("Expected ACP prompt content blocks");
+      }
+      const update = value => ({ jsonrpc: "2.0", method: "session/update", params: { sessionId: stored.sessionId, update: value } });
+      const turn = [
+        ...params.prompt.map(content => update({ sessionUpdate: "user_message_chunk", content })),
+        update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Synthetic/no-model turn COMPLETED." } }),
+      ];
+      stored.transcript.push(...turn);
+      // Commit the original transcript before any notification or completion reply.
+      persist(stored);
+      for (const message of turn) send(message);
+      reply({ stopReason: "end_turn" });
+    } else if (method === "session/cancel") {
+      log(method, params.sessionId ?? null, "cancel");
+      reply({});
+    } else {
+      log(method, params?.sessionId ?? null, "unsupported");
+      if (request.id !== undefined) send({ id: request.id, error: { code: -32601, message: "Method not found" } });
+    }
+  } catch (error) {
+    if (request.id !== undefined) send({ id: request.id, error: { code: -32602, message: error.message } });
+  }
+});
+// All persistence is synchronous; EOF and SIGTERM have no pending work to abandon.
+input.on("close", () => process.stdout.end());
+process.on("SIGTERM", () => { input.close(); process.stdin.destroy(); });

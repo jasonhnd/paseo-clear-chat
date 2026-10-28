@@ -46,7 +46,7 @@
 ## インストール
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.1
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.2
 ```
 
 Clear Chat には Paseo 0.13.0 以降が必要です。インストール後、**Settings → Plugins → Clear Chat** で色、フォント、折りたたみを選べます。
@@ -177,6 +177,8 @@ Paseo 0.13 はプラグインがメッセージを受け取る前に貼り付け
 
 **·CC** の項目には Hermes のアイコンが表示されます。**·CC** エージェントを作成するときは、Hermes がネイティブのインターフェースで提供するモデルも含め、対応するモデルを選べます。Hermes がモデルの選択を拒否した場合、Clear Chat は別のモデルへ黙って切り替えず、エラーを表示します。
 
+**すでに影響を受けた会話。** Clear Chat 0.13.2.2 は、一部のツール呼び出しが失敗してエラーメッセージがないときに、**·CC** の会話履歴を開けなくなる互換性の問題を今後防ぎます。すでにこの問題の影響を受けた会話は、アップグレード後も開けない場合があります。現在、それらの会話を自動で修復する方法はありません。
+
 知っておいてほしいこと：
 
 - このバージョン以降に **·CC** エージェントで送ったプロンプトだけ画像が表示されます。以前に作ったエージェントと、その古いメッセージには表示されません。
@@ -241,7 +243,7 @@ cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_back
 **2. インストール**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.1
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.2
 ```
 
 **3. 確認してから古いプラグインを削除**

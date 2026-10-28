@@ -3,6 +3,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { z } from "zod";
 import { hermesCcTransport } from "./transport";
 import type { HermesCcLaunch } from "./transport";
+import type { AcpToolRuntime } from "./acp-tool-compat";
 import { nativeKey } from "./session-key";
 import { hermesCcCatalogObserver, type HermesCcCatalogStore } from "./catalog";
 import { journalHermesCcConnection } from "./history-connection";
@@ -120,7 +121,8 @@ export function hermesCcProvidersFromConfig(
     // Read the bounded document at registration, outside all user opens/prompts.
     catalogStore?.read(id);
     const catalogIdentity = JSON.stringify([command, hermesCcSourceEnv(process.env, env), source.models, source.additionalModels]);
-    const context = new AsyncLocalStorage<HermesCcLaunch & { env?: Readonly<Record<string, string>>; userOpen?: boolean }>();
+    const context = new AsyncLocalStorage<HermesCcLaunch & { env?: Readonly<Record<string, string>>; userOpen?: boolean; tools?: AcpToolRuntime }>();
+    let toolCompat: typeof import("./acp-tool-compat") | undefined;
     const provider = runAcpProvider({
       icon: "server/hermes-cc/hermes.svg",
       id, label: `${typeof source.label === "string" && source.label.trim() ? source.label : sourceId}·CC`,
@@ -139,13 +141,17 @@ export function hermesCcProvidersFromConfig(
           ...(defaultModel !== undefined ? { defaultModel } : {}),
         };
       } }],
-      connector: () => {
+      connector: async () => {
         const launch = context.getStore();
         // Rebuild from the worker's inherited daemon env, not the -cc launch
         // env, whose overrides belong to a different provider ID.
         const observer = launch?.userOpen && catalogStore
           ? hermesCcCatalogObserver((response) => catalogStore.capture(id, response)) : undefined;
-        return hermesCcTransport(command, hermesCcSourceEnv(process.env, { ...env, ...launch?.env }), launch, observer);
+        const stream = await hermesCcTransport(command, hermesCcSourceEnv(process.env, { ...env, ...launch?.env }), launch, observer);
+        // Initialize with the first real stream (including the SDK probe). Leave
+        // invalid connector results to the SDK's own validation.
+        if (stream?.readable && stream?.writable) toolCompat ??= await import("./acp-tool-compat");
+        return launch?.tools ? launch.tools.observe(stream) : stream;
       },
     });
     // SDK 0.13 exposes no catalog-changed event or provider refresh operation.
@@ -160,7 +166,10 @@ export function hermesCcProvidersFromConfig(
       getCatalogCacheKey: async () => createHash("sha256")
         .update(catalogIdentity).update(JSON.stringify(catalogStore?.read(id) ?? null)).digest("hex"),
       async connect(request) {
-        const captured = captureHermesCcPrompts(await provider.connect(request), hook);
+        const raw = await provider.connect(request);
+        const adapted = toolCompat ? toolCompat.adaptAcpToolConnection(raw, (tools, operation) =>
+          context.run({ ...context.getStore(), tools }, operation)) : raw;
+        const captured = captureHermesCcPrompts(adapted, hook);
         const connection = historyStore ? journalHermesCcConnection(captured, id, historyStore) : captured;
         return {
           ...connection,
