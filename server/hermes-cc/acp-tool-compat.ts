@@ -29,6 +29,8 @@ class ToolRuntime {
     this.active = false;
     this.calls.clear();
     this.newRequests.clear();
+    this.native = undefined;
+    this.loading = undefined;
   }
 
   private sent(message: AcpStreamMessage) {
@@ -67,7 +69,7 @@ class ToolRuntime {
     const next: Tool = { ...current?.latest, status: current?.latest.status ?? "pending" };
     if (typeof update.kind === "string") next.kind = update.kind;
     if (["pending", "in_progress", "completed", "failed"].includes(String(update.status))) next.status = String(update.status);
-    // Nullish optional fields in ACP sparse updates mean no replacement.
+    // Absent fields keep their values; explicit null raw values replace them.
     if (update.rawInput !== undefined) next.input = structuredClone(update.rawInput);
     if (update.rawOutput !== undefined) next.output = structuredClone(update.rawOutput);
     if (Array.isArray(update.content)) next.content = structuredClone(update.content);
@@ -144,10 +146,9 @@ class ToolRuntime {
       detail = { ...detail, output: text };
     }
     if (event.item.status !== "failed") return { ...event, item: { ...event.item, detail, metadata } };
-    // rawOutput and textual tool content are output, not an error description.
-    // Only an explicit error field carries an actual error; otherwise use the
-    // same generic fallback as the native ACP mapping.
-    const explicit = tool.error ?? record(tool.output)?.error ?? (!queued ? event.item.error : undefined);
+    // Preserve supplied errors and the boundary's existing non-null error.
+    // Textual content is output: never derive an error description from it.
+    const explicit = tool.error ?? event.item.error;
     const parsed = json(explicit);
     const error = parsed.success && parsed.data !== null ? parsed.data : { message: "Tool call failed" };
     return { ...event, item: { ...event.item, detail, metadata, error } };
