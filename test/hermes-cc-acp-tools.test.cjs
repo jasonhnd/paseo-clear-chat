@@ -190,23 +190,23 @@ for (const mode of ["history", "live"]) test(`actual composed provider preserves
   for (const { message, before } of f.originals) assert.deepEqual(message, before);
 });
 
-test("explicit actual string/object errors stay errors; ordinary raw output stays output", async t => {
+test("explicit actual string/object errors remain unchanged; content never becomes an error", async t => {
   const cases = [
-    { id: "string", rawOutput: { error: "EXPLICIT_ERROR" }, error: "EXPLICIT_ERROR" },
-    { id: "object", rawOutput: { error: { message: "EXPLICIT_ERROR", code: "E_SYNTHETIC" } }, error: { message: "EXPLICIT_ERROR", code: "E_SYNTHETIC" } },
+    { id: "string", rawOutput: "EXPLICIT_ERROR", error: "EXPLICIT_ERROR" },
+    { id: "object", rawOutput: { message: "EXPLICIT_ERROR", code: "E_SYNTHETIC" }, error: { message: "EXPLICIT_ERROR", code: "E_SYNTHETIC" } },
     { id: "extension-string", explicit: "EXPLICIT_EXTENSION", error: "EXPLICIT_EXTENSION" },
     { id: "extension-object", explicit: { message: "EXPLICIT_EXTENSION" }, error: { message: "EXPLICIT_EXTENSION" } },
-    { id: "ordinary", rawOutput: "ORDINARY_OUTPUT", error: { message: "Tool call failed" } },
+    { id: "content-only", error: { message: "Tool call failed" } },
     { id: "null", rawOutput: null, error: { message: "Tool call failed" } },
   ];
-  const f = fixture(() => cases.flatMap(row => [call(row.id), update(row.id, { status: "failed", ...(row.rawOutput !== undefined ? { rawOutput: row.rawOutput } : {}), ...(row.explicit !== undefined ? { error: row.explicit } : {}) })]));
+  const f = fixture(() => cases.flatMap(row => [call(row.id), update(row.id, { status: "failed", content: content("ORDINARY_OUTPUT"), ...(row.rawOutput !== undefined ? { rawOutput: row.rawOutput } : {}), ...(row.explicit !== undefined ? { error: row.explicit } : {}) })]));
   const h = await connect(t, f.create()[0]); await open(h, "boundary");
   for (const row of cases) {
     const item = tools(h).find(item => item.callId === row.id && item.status === "failed");
     assert.deepEqual(item.error, row.error);
     assert.deepEqual(item.metadata.acp.rawOutput, row.rawOutput);
   }
-  assert.equal(tools(h).find(item => item.callId === "ordinary" && item.status === "failed").detail.content, "ORDINARY_OUTPUT");
+  assert.equal(tools(h).find(item => item.callId === "content-only" && item.status === "failed").detail.content, "ORDINARY_OUTPUT");
   validate(h);
 });
 
