@@ -502,6 +502,68 @@ async function becomeReady(h, sessionId = "boundary") {
   h.opened(sessionId); h.ready(sessionId); await ready;
 }
 
+function toolTranscript(status = "failed", error = null) {
+  const events = savedTranscript();
+  events.splice(1, 0, { type: "timeline.item", sessionId: "original", item: {
+    type: "tool_call", id: "hermes-cc:0:tool:1", callId: "hermes-cc:0:call:1", name: "Read fixture.txt",
+    detail: { type: "unknown", input: { path: "fixture.txt" }, output: null }, status, error,
+  } });
+  return events;
+}
+
+test("a complete legacy failed-null tool journal releases its lease before forwarding the original native replay", async t => {
+  const h = queuedHarness(); t.after(() => h.connection.close());
+  const saved = toolTranscript(); seed(h.store, saved);
+  const order = [];
+  h.store.claimWriter = async k => {
+    assert.deepEqual(k, key); order.push("claim");
+    return { token: "11111111-1111-1111-1111-111111111111", generation: 0,
+      async release() { order.push("release"); } };
+  };
+  h.store.before = async (method, k) => { assert.deepEqual(k, key); order.push(method); };
+  const input = { type: "session.open", requestId: "open-boundary", sessionId: "boundary", history: "replay", persistence,
+    config: { cwd: "/unused", env: {}, settings: {}, mcpServers: {}, persist: true } };
+  const send = h.raw.send;
+  h.raw.send = async value => { order.push("send"); await send(value); };
+  await h.connection.send(input);
+  assert.strictEqual(h.raw.sent[0], input, "native replay retains the entire original open and persistence identity");
+  assert.deepEqual(order, ["claim", "read", "invalidate", "release", "send"]);
+  assert.equal(h.store.rows.get(h.store.id(key)).reason, "journal projection is invalid");
+  assert.deepEqual(h.store.rows.get(h.store.id(key)).events, saved, "invalidation never rewrites journal events");
+  const native = { type: "timeline.item", sessionId: "boundary", item: {
+    type: "assistant_message", id: "native-answer", text: "Native history has no image content available",
+  } };
+  h.raw.emit(native);
+  await becomeReady(h);
+  assert.deepEqual(historyOnly(h.events), [native], "only available native history is forwarded, without image reconstruction");
+  assert.deepEqual(h.raw.sent, [input], "recovery sends no new-session request or prompt");
+});
+
+for (const [status, error] of [["failed", { message: "Actual failure" }], ["completed", null], ["running", null]]) {
+  test(`a complete healthy ${status} tool journal keeps exact local replay`, async t => {
+    const h = queuedHarness(); t.after(() => h.connection.close());
+    const saved = toolTranscript(status, error); seed(h.store, saved);
+    await h.open("boundary", persistence); await becomeReady(h);
+    assert.equal(h.raw.sent[0].history, "skip");
+    assert.deepEqual(h.raw.sent[0].persistence, persistence);
+    assert.deepEqual(historyOnly(h.events), saved.map(event => ({ ...event, sessionId: "boundary" })));
+    assert.deepEqual(h.store.calls.map(call => call.method), ["read"]);
+    assert.deepEqual(h.store.rows.get(h.store.id(key)), { events: saved, open: false });
+  });
+}
+
+test("caller skip never touches a complete legacy failed-null tool journal", async () => {
+  const h = queuedHarness(); const saved = toolTranscript(); seed(h.store, saved);
+  h.store.claimWriter = async () => { assert.fail("caller skip must not claim a writer"); };
+  const input = { type: "session.open", requestId: "open-boundary", sessionId: "boundary", history: "skip", persistence,
+    config: { cwd: "/unused", env: {}, settings: {}, mcpServers: {}, persist: true } };
+  await h.connection.send(input); await becomeReady(h); await h.connection.close();
+  assert.strictEqual(h.raw.sent[0], input);
+  assert.deepEqual(h.store.calls, []);
+  assert.deepEqual(h.store.rows.get(h.store.id(key)), { events: saved, open: false });
+  assert.deepEqual(historyOnly(h.events), []);
+});
+
 test("an idle runtime failure preserves the exact journal for the next open", async () => {
   const h = queuedHarness(); seed(h.store);
   await h.open("boundary", persistence); await becomeReady(h);

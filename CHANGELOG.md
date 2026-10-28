@@ -4,6 +4,14 @@ All notable changes to Clear Chat are listed here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and each version is the Paseo version it is built and tested for plus one number that counts Clear Chat's releases for that Paseo version, for example 0.12.0.1 for the first release for Paseo 0.12.0. Releases 1.0.0 and 1.0.1 came out before this rule.
 
+## [0.13.2.2] - 2026-10-29
+
+Needs Paseo 0.13.0 or later.
+
+### Fixed
+
+- Prevents a compatibility issue in which certain failed tool calls with no error message could make a **·CC** conversation's history fail to open. Conversations already affected by this issue may still fail to open after upgrading; there is currently no automatic fix for those affected conversations.
+
 ## [0.13.2.1] - 2026-10-28
 
 Built and tested on Paseo 0.13.2. Needs Paseo 0.13.0 or later.
@@ -138,6 +146,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.13.2.2]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.13.2.2
 [0.13.2.1]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.13.2.1
 [0.13.1.1]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.13.1.1
 [0.13.0.2]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.13.0.2

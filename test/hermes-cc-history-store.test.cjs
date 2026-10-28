@@ -370,9 +370,10 @@ test("Hermes CC history fsyncs the journal line before the directory", async t =
   const syncs = [];
   const wrapped = { ...fsp, async open(path, flags, mode) {
     const handle = await fsp.open(path, flags, mode);
+    const openedPath = fs.realpathSync(path);
     const original = handle.sync.bind(handle);
     handle.sync = async () => {
-      syncs.push({ directory: (await handle.stat()).isDirectory(), path: fs.realpathSync(`/proc/self/fd/${handle.fd}`) });
+      syncs.push({ directory: (await handle.stat()).isDirectory(), path: openedPath });
       return original();
     };
     return handle;
@@ -605,8 +606,9 @@ test("Hermes CC history syncs every newly created directory's parent including t
     },
     async open(path, flags, mode) {
       const handle = await fsp.open(path, flags, mode), sync = handle.sync.bind(handle);
+      const openedPath = fs.realpathSync(path);
       handle.sync = async () => {
-        if ((await handle.stat()).isDirectory()) operations.push({ sync: fs.realpathSync(`/proc/self/fd/${handle.fd}`) });
+        if ((await handle.stat()).isDirectory()) operations.push({ sync: openedPath });
         return sync();
       };
       return handle;
