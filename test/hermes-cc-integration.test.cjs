@@ -73,7 +73,16 @@ function fakeAgent(root, failInitialize = false, sessionCatalog = { modes: fakeM
       }
       if (request.method === "initialize") reply({ protocolVersion: 1, agentCapabilities: { loadSession: true, promptCapabilities: { image: true }, sessionCapabilities: { list: {} } } });
       else if (request.method === "session/new") { sessionCwd = request.params.cwd; reply({ sessionId: "native-session", ...catalog }); }
-      else if (request.method === "session/set_mode") { modes.currentModeId = request.params.modeId; reply({}); }
+      else if (request.method === "session/set_model") {
+        if (!catalog.models?.availableModels.some(model => model.modelId === request.params.modelId) || request.params.modelId.endsWith(":rejected")) {
+          process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, error: { code: -32602, message: "Unsupported model fixture" } }) + "\\n");
+        } else { catalog.models.currentModelId = request.params.modelId; reply({}); }
+      }
+      else if (request.method === "session/set_mode") {
+        if (!modes.availableModes.some(mode => mode.id === request.params.modeId)) {
+          process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, error: { code: -32602, message: "Unsupported mode fixture" } }) + "\\n");
+        } else { modes.currentModeId = request.params.modeId; reply({}); }
+      }
       else if (request.method === "session/set_config_option") {
         configOptions.find(option => option.id === request.params.configId).currentValue = request.params.value;
         reply({ configOptions });
@@ -567,7 +576,7 @@ function waitEvent(connection, predicate) {
     const stop = connection.onEvent(event => {
       if (predicate(event)) { clearTimeout(timer); stop(); resolve(event); }
       else if (event.type === "request.failed" || event.type === "session.runtime_failed") {
-        clearTimeout(timer); stop(); reject(new Error("fake ACP operation failed"));
+        clearTimeout(timer); stop(); reject(new Error(`fake ACP operation failed: ${JSON.stringify(event)}`));
       }
     });
   });
@@ -684,4 +693,105 @@ for (const failure of ["spawn", "initialize"]) test(`SDK connector cleans up whe
     const pid = Number(fs.readFileSync(join(root, "pids.log"), "utf8").trim());
     assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
   }
+});
+
+for (const family of ["openai-codex", "anthropic"]) for (const load of [false, true])
+test(`native Hermes configured model ${family} ${load ? "load" : "open"} without configOptions`, async t => {
+  const { runAcpProvider } = await import("@getpaseo/plugin/server/acp");
+  const root = fs.mkdtempSync(join(tmpdir(), "cc-native-selection-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  // Qualified GPT and Claude catalogs are protocol fixtures, never vendor probes.
+  const model = family === "openai-codex" ? "openai-codex:gpt-6.1-sol-900k" : "anthropic:claude-sonnet-fixture";
+  const other = `${family}:other`, rejected = `${family}:rejected`;
+  fakeAgent(root, false, { modes: fakeModes, models: { currentModelId: model,
+    availableModels: [model, other, rejected].map(modelId => ({ modelId, name: modelId })) } });
+  fs.writeFileSync(join(root, "config.json"), JSON.stringify(paseoConfig({ PATH: `${root}${delimiter}${process.env.PATH}` })));
+  const h = loadServer(root, runAcpProvider);
+  t.after(h.cleanup);
+  const connection = await h.providers[0].connect({ versions: [1], capabilities: ["session.configure", "session.persistence"] });
+  t.after(() => connection.close());
+  assert.equal(requests(root).filter(request => request.method.startsWith("session/")).length, 0);
+  const initial = waitEvent(connection, event => event.type === "session.config");
+  const ready = waitEvent(connection, event => event.type === "session.ready");
+  const configuredModel = load ? other : model;
+  await connection.send({ type: "session.open", requestId: "open-native", sessionId: "boundary",
+    config: { cwd: root, env: {}, mcpServers: {}, settings: {}, persist: true, model: configuredModel }, history: "skip",
+    ...(load ? { persistence: { version: 1, data: { sessionId: "native-session" } } } : {}) });
+  await ready;
+  assert.equal((await initial).config.model, configuredModel);
+  const change = async (changes, requestId) => {
+    const configured = waitEvent(connection, event => event.type === "session.config");
+    await connection.send({ type: "session.configure", requestId, sessionId: "boundary", changes });
+    return (await configured).config;
+  };
+  assert.equal((await change({ model: other }, "other")).model, other);
+  for (const choice of [rejected, "unknown:missing"]) {
+    const failed = waitEvent(connection, event => event.type === "request.failed" && event.requestId === choice);
+    await connection.send({ type: "session.configure", requestId: choice, sessionId: "boundary", changes: { model: choice } });
+    assert.match((await failed).error.message, /Unsupported model fixture/);
+    assert.equal((await change({ mode: "acceptEdits" }, "report-after-error")).model, other);
+  }
+  const rolledBack = waitEvent(connection, event => event.type === "request.failed" && event.requestId === "rollback");
+  await connection.send({ type: "session.configure", requestId: "rollback", sessionId: "boundary",
+    changes: { model, mode: "unsupported-mode" } });
+  assert.match((await rolledBack).error.message, /Unsupported mode fixture/);
+  assert.equal((await change({}, "report-after-rollback")).model, other);
+  for (const mode of ["default", "acceptEdits", "dontAsk"]) assert.equal((await change({ mode }, mode)).mode, mode);
+  const selected = requests(root).filter(request => request.method === "session/set_model");
+  assert.deepEqual(selected.map(request => request.params.modelId), [configuredModel, other, rejected, "unknown:missing", model, other]);
+  assert.ok(selected.every(request => request.params.sessionId === "native-session"));
+  assert.equal(requests(root).filter(request => request.method === "session/set_config_option").length, 0);
+  await h.flushCatalogs();
+  const restarted = loadServer(root, runAcpProvider);
+  t.after(restarted.cleanup);
+  for (const provider of [h.providers[0], restarted.providers[0]]) {
+    const current = await provider.connect({ versions: [1], capabilities: ["session.list"] });
+    t.after(() => current.close());
+    for (const cwd of [undefined, root]) {
+      const refreshed = waitEvent(current, event => event.type === "catalog");
+      await current.send({ type: "catalog", requestId: "refresh", ...(cwd ? { cwd } : {}) });
+      const catalog = (await refreshed).catalog;
+      assert.equal(catalog.defaultModel, other);
+      assert.deepEqual(catalog.models.map(model => model.id), [model, other, rejected]);
+      assert.deepEqual(catalog.modes.map(mode => mode.id), ["default", "acceptEdits", "dontAsk"]);
+    }
+    const listed = waitEvent(current, event => event.type === "sessions");
+    await current.send({ type: "sessions", requestId: "list" });
+    await listed;
+  }
+  const counts = Object.fromEntries(["session/new", "session/load", "session/prompt"].map(method =>
+    [method, requests(root).filter(request => request.method === method).length]));
+  assert.deepEqual(counts, { "session/new": load ? 0 : 1, "session/load": load ? 1 : 0, "session/prompt": 0 });
+  assert.equal(requests(root).filter(request => request.method === "session/set_model").length, selected.length);
+  console.log(`native fixture ${family} ${load ? "load" : "open"} counters ${JSON.stringify(counts)}; set_model=${selected.length}`);
+});
+
+for (const family of ["openai-codex", "anthropic"]) test(`qualified ${family} configOptions model control remains working`, async t => {
+  const { runAcpProvider } = await import("@getpaseo/plugin/server/acp");
+  const root = fs.mkdtempSync(join(tmpdir(), "cc-config-selection-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const first = `${family}:first-fixture`, second = `${family}:second-fixture`;
+  fakeAgent(root, false, { modes: fakeModes, configOptions: [{ id: "vendor-model", name: "Model", category: "model",
+    type: "select", currentValue: first, options: [first, second].map(value => ({ value, name: value })) }] });
+  fs.writeFileSync(join(root, "config.json"), JSON.stringify(paseoConfig({ PATH: `${root}${delimiter}${process.env.PATH}` })));
+  const h = loadServer(root, runAcpProvider);
+  t.after(h.cleanup);
+  const connection = await h.providers[0].connect({ versions: [1], capabilities: ["session.configure"] });
+  t.after(() => connection.close());
+  const initial = waitEvent(connection, event => event.type === "session.config");
+  const ready = waitEvent(connection, event => event.type === "session.ready");
+  await connection.send({ type: "session.open", requestId: "open", sessionId: "boundary",
+    config: { cwd: root, env: {}, mcpServers: {}, settings: {}, persist: true, model: first }, history: "skip" });
+  await ready;
+  assert.equal((await initial).config.model, first);
+  const configured = waitEvent(connection, event => event.type === "session.config");
+  await connection.send({ type: "session.configure", requestId: "second", sessionId: "boundary", changes: { model: second } });
+  assert.equal((await configured).config.model, second);
+  assert.deepEqual(requests(root).filter(request => request.method === "session/set_config_option").map(request => request.params), [first, second].map(value =>
+    ({ sessionId: "native-session", configId: "vendor-model", value })));
+  assert.equal(requests(root).filter(request => request.method === "session/set_model").length, 0);
+  assert.equal(requests(root).filter(request => request.method === "session/prompt").length, 0);
+  const refreshed = waitEvent(connection, event => event.type === "catalog");
+  await connection.send({ type: "catalog", requestId: "refresh" });
+  assert.deepEqual((await refreshed).catalog.modes.map(mode => mode.id), ["default", "acceptEdits", "dontAsk"]);
 });
