@@ -4,13 +4,15 @@ All notable changes to Clear Chat are listed here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and each version is the Paseo version it is built and tested for plus one number that counts Clear Chat's releases for that Paseo version, for example 0.12.0.1 for the first release for Paseo 0.12.0. Releases 1.0.0 and 1.0.1 came out before this rule.
 
-## [0.13.2.1] - Unreleased
+## [0.13.2.1] - 2026-10-28
 
 Built and tested on Paseo 0.13.2. Needs Paseo 0.13.0 or later.
 
 ### Fixed
 
 - **·CC** agents can now choose a model and a permission mode, like the original Hermes agents. The permission modes appear in the list after you open a **·CC** window for the first time and Paseo refreshes its options (or after you reload); the models do too, unless your Hermes provider settings already list them.
+- **·CC** entries now use the Hermes icon.
+- Creating a **·CC** agent with a selected model now works when Hermes reports its models through its native interface. If Hermes rejects a model selection, Clear Chat reports the error instead of silently choosing another model.
 
 ## [0.13.1.1] - 2026-10-26
 
