@@ -80,3 +80,69 @@ test("existing model configOptions take precedence and pass through unchanged", 
     assert.deepEqual(protocol.received(incoming), incoming);
   }
 });
+
+const capturedClaude = require("./fixtures/hermes-claude-native.cjs");
+for (const method of ["session/new", "session/load"]) test(`captured Claude subset bridges ${method} without mutating source fields`, () => {
+  const source = structuredClone(capturedClaude);
+  const protocol = hermesCcModelProtocol();
+  protocol.sent(request(1, method, { sessionId: "native" }));
+  const initial = protocol.received(reply(1, { sessionId: "native", ...source })).result;
+  assert.equal(source.configOptions, null);
+  assert.deepEqual(source, capturedClaude);
+  assert.deepEqual(initial.modes, source.modes);
+  const selector = initial.configOptions[0];
+  assert.equal(selector.category, "model");
+  assert.equal(selector.currentValue, source.models.currentModelId);
+  assert.deepEqual(selector.options, source.models.availableModels.map(({ modelId, name, description }) => ({ value: modelId, name, description })));
+  const alternate = source.models.availableModels[1].modelId;
+  assert.deepEqual(protocol.sent(request(2, "session/set_config_option", {
+    sessionId: "native", configId: selector.id, value: alternate,
+  })), request(2, "session/set_model", { sessionId: "native", modelId: alternate }));
+  assert.equal(protocol.received(reply(2, {})).result.configOptions[0].currentValue, alternate);
+  protocol.sent(request(3, "session/set_config_option", { sessionId: "native", configId: selector.id, value: "unsupported:model" }));
+  const rejection = { jsonrpc: "2.0", id: 3, error: { code: -32602, message: "Unsupported model fixture" } };
+  assert.deepEqual(protocol.received(rejection), rejection);
+  for (const [index, mode] of source.modes.availableModes.entries()) {
+    const outgoing = request(4 + index, "session/set_mode", { sessionId: "native", modeId: mode.id });
+    assert.deepEqual(protocol.sent(outgoing), outgoing);
+    assert.equal(protocol.received(reply(4 + index, {})).result.configOptions[0].currentValue, alternate);
+  }
+  assert.equal(source.configOptions, null);
+});
+
+test("raw GPT current input retains confirmed provider context even with another provider offering the same model text", () => {
+  const protocol = hermesCcModelProtocol();
+  const current = "openai-codex:gpt-6.1-sol-900k";
+  protocol.sent(request(1, "session/new"));
+  const initial = protocol.received(reply(1, { sessionId: "native", configOptions: null, models: {
+    currentModelId: current, availableModels: [current, "different-provider:gpt-6.1-sol-900k"].map(modelId => ({ modelId, name: modelId })),
+  } })).result;
+  assert.deepEqual(protocol.sent(request(2, "session/set_config_option", {
+    sessionId: "native", configId: initial.configOptions[0].id, value: "gpt-6.1-sol-900k",
+  })), request(2, "session/set_model", { sessionId: "native", modelId: current }));
+  assert.equal(protocol.received(reply(2, {})).result.configOptions[0].currentValue, current);
+});
+
+test("native current context never replaces an exact bare catalog ID or guesses another provider alias", () => {
+  for (const exactBare of [false, true]) {
+    const protocol = hermesCcModelProtocol();
+    const current = "openai-codex:gpt-6.1-sol-900k", bare = "gpt-6.1-sol-900k";
+    protocol.sent(request(1, "session/new"));
+    const initial = protocol.received(reply(1, { sessionId: "native", configOptions: null, models: {
+      currentModelId: current,
+      availableModels: [current, "anthropic:other-model", ...(exactBare ? [bare] : [])].map(modelId => ({ modelId, name: modelId })),
+    } })).result;
+    const value = exactBare ? bare : "other-model";
+    assert.deepEqual(protocol.sent(request(2, "session/set_config_option", {
+      sessionId: "native", configId: initial.configOptions[0].id, value,
+    })), request(2, "session/set_model", { sessionId: "native", modelId: value }));
+    if (exactBare) {
+      assert.equal(protocol.received(reply(2, {})).result.configOptions[0].currentValue, bare);
+    } else {
+      const rejection = { jsonrpc: "2.0", id: 2, error: { code: -32602, message: "Unsupported raw model in current provider" } };
+      assert.deepEqual(protocol.received(rejection), rejection);
+      protocol.sent(request(3, "session/set_mode", { sessionId: "native", modeId: "default" }));
+      assert.equal(protocol.received(reply(3, {})).result.configOptions[0].currentValue, current);
+    }
+  }
+});

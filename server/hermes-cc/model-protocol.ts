@@ -26,8 +26,15 @@ export function hermesCcModelProtocol(capture?: (response: unknown) => void) {
       if (!("method" in message) || !("id" in message) || message.id === null) return message;
       const params = record(message.params) ?? {};
       const state = typeof params.sessionId === "string" ? sessions.get(params.sessionId) : undefined;
-      const model = message.method === "session/set_config_option" && state && params.configId === state.id
+      let model = message.method === "session/set_config_option" && state && params.configId === state.id
         && typeof params.value === "string" ? params.value : undefined;
+      // A bare configured current model can retain the provider confirmed by ACP.
+      // Do not infer aliases for other providers or override exact catalog IDs.
+      if (model !== undefined && state && !state.models.availableModels.some(entry => entry.modelId === model) &&
+          !model.includes(":") && state.models.currentModelId.endsWith(`:${model}`) &&
+          state.models.availableModels.some(entry => entry.modelId === state.models.currentModelId)) {
+        model = state.models.currentModelId;
+      }
       if (["session/new", "session/load", "session/set_config_option", "session/set_mode"].includes(message.method)) {
         pending.set(message.id, { method: message.method, params, model });
       }
