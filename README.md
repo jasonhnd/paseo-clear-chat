@@ -46,7 +46,7 @@
 ## Install
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.1
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.2
 ```
 
 Clear Chat needs Paseo 0.13.0 or later. Then open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
@@ -177,6 +177,8 @@ The **·CC** version's permission modes appear in the list after you open a **·
 
 The **·CC** entries use the Hermes icon. You can choose a supported model when creating a **·CC** agent, including when Hermes reports its models through its native interface. If Hermes rejects a model selection, Clear Chat reports the error instead of silently choosing another model.
 
+**Previously affected conversations.** Clear Chat 0.13.2.2 prevents a compatibility issue in which certain failed tool calls with no error message could make a **·CC** conversation's history fail to open. Conversations already affected by this issue may still fail to open after upgrading; there is currently no automatic fix for those affected conversations.
+
 What to know:
 
 - Only prompts you send in a **·CC** agent with this version or later show images. Agents you started before, and their old messages, do not.
@@ -241,7 +243,7 @@ If the `beautiful-chat` settings folder does not exist, you never changed Beauti
 **2. Install**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.1
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.2
 ```
 
 **3. Check, then remove the old plugin**

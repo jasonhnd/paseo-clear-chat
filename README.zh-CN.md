@@ -46,7 +46,7 @@
 ## 安装
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.1
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.2
 ```
 
 Clear Chat 需要 Paseo 0.13.0 或更新的版本。装好后打开 **Settings → Plugins → Clear Chat**，可以选颜色、字体和折叠方式。
@@ -177,6 +177,8 @@ Paseo 0.13 会在插件拿到消息前去掉粘贴的图片，Hermes 也没有�
 
 **·CC** 入口使用 Hermes 头像。新建 **·CC** Agent 时可以选择支持的模型，包括 Hermes 通过原生接口提供的模型。如果 Hermes 拒绝所选模型，Clear Chat 会报告错误，不会悄悄换成另一个模型。
 
+**已经受影响的旧对话。** Clear Chat 0.13.2.2 可以防止以后因某些工具调用失败且没有错误信息，导致 **·CC** 对话的历史打不开。已经受这个问题影响的旧对话升级后仍可能打不开，目前还没有自动修复这些对话的办法。
+
 要知道的事：
 
 - 只有装了这个版本之后，在 **·CC** Agent 里新发的提问才显示图。以前建的 Agent 和它们的旧消息不显示。
@@ -241,7 +243,7 @@ cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_back
 **2. 安装**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.1
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.2
 ```
 
 **3. 确认后卸载旧插件**
