@@ -16,6 +16,11 @@ const record = (value: unknown): Record<string, unknown> | undefined =>
     ? value as Record<string, unknown> : undefined;
 const status = (value: string) => value === "pending" || value === "in_progress" ? "running" : value;
 const json = (value: unknown) => z.json().safeParse(value);
+const normalizeUncorrelatedError = (event: ProviderEvent): ProviderEvent =>
+  event.type === "timeline.item" && event.item.type === "tool_call" &&
+  event.item.status === "failed" && event.item.error === null
+    ? { ...event, item: { ...event.item, error: { message: "Tool call failed" } } }
+    : event;
 
 /** One instance per public connector runtime, never per provider or tool title. */
 class ToolRuntime {
@@ -107,11 +112,11 @@ class ToolRuntime {
   adapt(event: ProviderEvent): ProviderEvent {
     if (event.type !== "timeline.item" || event.item.type !== "tool_call") return event;
     const call = this.calls.get(event.item.callId);
-    if (!call) return event;
+    if (!call) return normalizeUncorrelatedError(event);
     const queued = call.pending[0];
     // Wire reads can run ahead of the SDK's notification lane. Consume snapshots
     // in order, rather than projecting the last wire update onto earlier events.
-    if (queued && status(queued.status) !== event.item.status) return event;
+    if (queued && status(queued.status) !== event.item.status) return normalizeUncorrelatedError(event);
     const tool = queued ? call.pending.shift()! : call.latest;
     if (!queued && ["completed", "failed", "canceled"].includes(event.item.status)) {
       // The SDK also terminalizes pending calls at the end of a turn. Mirror
