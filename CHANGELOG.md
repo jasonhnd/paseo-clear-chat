@@ -11,6 +11,7 @@ Built and tested on Paseo 0.13.2. Needs Paseo 0.13.0 or later.
 ### Fixed
 
 - **·CC** agents can now choose a model and a permission mode, like the original Hermes agents. The permission modes appear in the list after you open a **·CC** window for the first time and Paseo refreshes its options (or after you reload); the models do too, unless your Hermes provider settings already list them.
+
 - **·CC** entries now use the Hermes icon.
 - Creating a **·CC** agent with a selected model now works when Hermes reports its models through its native interface. If Hermes rejects a model selection, Clear Chat reports the error instead of silently choosing another model.
 
