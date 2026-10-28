@@ -6,6 +6,7 @@ const { delimiter, dirname, join, resolve } = require("node:path");
 const test = require("node:test");
 const { runInThisContext } = require("node:vm");
 const ts = require("typescript");
+const capturedClaude = require("./fixtures/hermes-claude-native.cjs");
 
 function loadServer(root, runAcpProvider, workerEnv = {}) {
   const cache = new Map(), logs = [], catalogStores = [];
@@ -56,7 +57,7 @@ const fakeModelOptions = [{ id: "model", name: "Model", category: "model", type:
     { value: "fake-model", name: "Fake model" }, { value: "other-model", name: "Other model" },
   ] }];
 
-function fakeAgent(root, failInitialize = false, sessionCatalog = { modes: fakeModes, configOptions: fakeModelOptions }) {
+function fakeAgent(root, failInitialize = false, sessionCatalog = { modes: fakeModes, configOptions: fakeModelOptions }, rawModelInput = false) {
   const filename = join(root, "hermes");
   fs.writeFileSync(filename, `#!/usr/bin/env node
     const readline = require("node:readline");
@@ -74,9 +75,13 @@ function fakeAgent(root, failInitialize = false, sessionCatalog = { modes: fakeM
       if (request.method === "initialize") reply({ protocolVersion: 1, agentCapabilities: { loadSession: true, promptCapabilities: { image: true }, sessionCapabilities: { list: {} } } });
       else if (request.method === "session/new") { sessionCwd = request.params.cwd; reply({ sessionId: "native-session", ...catalog }); }
       else if (request.method === "session/set_model") {
-        if (!catalog.models?.availableModels.some(model => model.modelId === request.params.modelId) || request.params.modelId.endsWith(":rejected")) {
+        // Model the Hermes raw-input resolver in the confirmed current provider context.
+        const raw = request.params.modelId;
+        const modelId = ${JSON.stringify(rawModelInput)} && !raw.includes(":")
+          ? catalog.models.currentModelId.split(":")[0] + ":" + raw : raw;
+        if (!catalog.models?.availableModels.some(model => model.modelId === modelId) || request.params.modelId.endsWith(":rejected")) {
           process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: request.id, error: { code: -32602, message: "Unsupported model fixture" } }) + "\\n");
-        } else { catalog.models.currentModelId = request.params.modelId; reply({}); }
+        } else { catalog.models.currentModelId = modelId; reply({}); }
       }
       else if (request.method === "session/set_mode") {
         if (!modes.availableModes.some(mode => mode.id === request.params.modeId)) {
@@ -695,30 +700,51 @@ for (const failure of ["spawn", "initialize"]) test(`SDK connector cleans up whe
   }
 });
 
-for (const family of ["openai-codex", "anthropic"]) for (const load of [false, true])
-test(`native Hermes configured model ${family} ${load ? "load" : "open"} without configOptions`, async t => {
+const nativeCases = [
+  { family: "openai-codex" }, { family: "anthropic" },
+  { family: `captured Claude ${capturedClaude.labels.join("/")}`, captured: true },
+  { family: "GPT raw configured input", rawModelInput: true },
+];
+for (const scenario of nativeCases) for (const load of [false, true])
+test(`native Hermes configured model ${scenario.family} ${load ? "load" : "open"} without configOptions`, async t => {
   const { runAcpProvider } = await import("@getpaseo/plugin/server/acp");
   const root = fs.mkdtempSync(join(tmpdir(), "cc-native-selection-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const { family, captured, rawModelInput } = scenario;
   // Qualified GPT and Claude catalogs are protocol fixtures, never vendor probes.
-  const model = family === "openai-codex" ? "openai-codex:gpt-6.1-sol-900k" : "anthropic:claude-sonnet-fixture";
-  const other = `${family}:other`, rejected = `${family}:rejected`;
-  fakeAgent(root, false, { modes: fakeModes, models: { currentModelId: model,
-    availableModels: [model, other, rejected].map(modelId => ({ modelId, name: modelId })) } });
+  const model = captured ? capturedClaude.models.currentModelId : (rawModelInput || family === "openai-codex" ? "openai-codex:gpt-6.1-sol-900k" : "anthropic:claude-sonnet-fixture");
+  const other = captured ? capturedClaude.models.availableModels[1].modelId : `${rawModelInput ? "openai-codex" : family}:other`;
+  const rejected = captured || rawModelInput ? "fixture:rejected" : `${family}:rejected`;
+  const modes = captured ? capturedClaude.modes : fakeModes;
+  const modeIds = modes.availableModes.map(mode => mode.id);
+  const availableModels = captured ? capturedClaude.models.availableModels
+    : [model, other, rejected, ...(rawModelInput ? ["different-provider:gpt-6.1-sol-900k"] : [])].map(modelId => ({ modelId, name: modelId }));
+  const sourceCatalog = { modes, models: { currentModelId: model, availableModels }, configOptions: null };
+  fakeAgent(root, false, sourceCatalog, rawModelInput);
   fs.writeFileSync(join(root, "config.json"), JSON.stringify(paseoConfig({ PATH: `${root}${delimiter}${process.env.PATH}` })));
   const h = loadServer(root, runAcpProvider);
   t.after(h.cleanup);
   const connection = await h.providers[0].connect({ versions: [1], capabilities: ["session.configure", "session.persistence"] });
   t.after(() => connection.close());
-  assert.equal(requests(root).filter(request => request.method.startsWith("session/")).length, 0);
+  const counters = () => Object.fromEntries(["session/new", "session/load", "session/prompt", "session/set_model"].map(method =>
+    [method, requests(root).filter(request => request.method === method).length]));
+  assert.deepEqual(counters(), { "session/new": 0, "session/load": 0, "session/prompt": 0, "session/set_model": 0 });
+  console.log(`native fixture ${family} ${load ? "load" : "open"} startup ${JSON.stringify(counters())}`);
   const initial = waitEvent(connection, event => event.type === "session.config");
   const ready = waitEvent(connection, event => event.type === "session.ready");
-  const configuredModel = load ? other : model;
+  const configuredModel = rawModelInput ? "gpt-6.1-sol-900k" : load ? other : model;
+  const confirmedModel = rawModelInput ? model : configuredModel;
   await connection.send({ type: "session.open", requestId: "open-native", sessionId: "boundary",
     config: { cwd: root, env: {}, mcpServers: {}, settings: {}, persist: true, model: configuredModel }, history: "skip",
     ...(load ? { persistence: { version: 1, data: { sessionId: "native-session" } } } : {}) });
   await ready;
-  assert.equal((await initial).config.model, configuredModel);
+  const openedConfig = (await initial).config;
+  assert.equal(openedConfig.model, confirmedModel);
+  assert.deepEqual(openedConfig.models.map(entry => entry.id), availableModels.map(entry => entry.modelId));
+  assert.deepEqual(openedConfig.modes.map(entry => entry.id), modeIds);
+  assert.equal(sourceCatalog.configOptions, null);
+  assert.deepEqual(counters(), { "session/new": load ? 0 : 1, "session/load": load ? 1 : 0, "session/prompt": 0, "session/set_model": 1 });
+  console.log(`native fixture ${family} ${load ? "load" : "open"} opened ${JSON.stringify(counters())}`);
   const change = async (changes, requestId) => {
     const configured = waitEvent(connection, event => event.type === "session.config");
     await connection.send({ type: "session.configure", requestId, sessionId: "boundary", changes });
@@ -729,18 +755,20 @@ test(`native Hermes configured model ${family} ${load ? "load" : "open"} without
     const failed = waitEvent(connection, event => event.type === "request.failed" && event.requestId === choice);
     await connection.send({ type: "session.configure", requestId: choice, sessionId: "boundary", changes: { model: choice } });
     assert.match((await failed).error.message, /Unsupported model fixture/);
-    assert.equal((await change({ mode: "acceptEdits" }, "report-after-error")).model, other);
+    assert.equal((await change({ mode: modeIds[1] }, "report-after-error")).model, other);
   }
   const rolledBack = waitEvent(connection, event => event.type === "request.failed" && event.requestId === "rollback");
   await connection.send({ type: "session.configure", requestId: "rollback", sessionId: "boundary",
     changes: { model, mode: "unsupported-mode" } });
   assert.match((await rolledBack).error.message, /Unsupported mode fixture/);
   assert.equal((await change({}, "report-after-rollback")).model, other);
-  for (const mode of ["default", "acceptEdits", "dontAsk"]) assert.equal((await change({ mode }, mode)).mode, mode);
+  for (const mode of modeIds) assert.equal((await change({ mode }, mode)).mode, mode);
   const selected = requests(root).filter(request => request.method === "session/set_model");
-  assert.deepEqual(selected.map(request => request.params.modelId), [configuredModel, other, rejected, "unknown:missing", model, other]);
+  assert.deepEqual(selected.map(request => request.params.modelId), [confirmedModel, other, rejected, "unknown:missing", model, other]);
   assert.ok(selected.every(request => request.params.sessionId === "native-session"));
   assert.equal(requests(root).filter(request => request.method === "session/set_config_option").length, 0);
+  const beforeDiscovery = counters();
+  console.log(`native fixture ${family} ${load ? "load" : "open"} configured ${JSON.stringify(beforeDiscovery)}`);
   await h.flushCatalogs();
   const restarted = loadServer(root, runAcpProvider);
   t.after(restarted.cleanup);
@@ -752,12 +780,14 @@ test(`native Hermes configured model ${family} ${load ? "load" : "open"} without
       await current.send({ type: "catalog", requestId: "refresh", ...(cwd ? { cwd } : {}) });
       const catalog = (await refreshed).catalog;
       assert.equal(catalog.defaultModel, other);
-      assert.deepEqual(catalog.models.map(model => model.id), [model, other, rejected]);
-      assert.deepEqual(catalog.modes.map(mode => mode.id), ["default", "acceptEdits", "dontAsk"]);
+      assert.deepEqual(catalog.models.map(model => model.id), availableModels.map(entry => entry.modelId));
+      assert.deepEqual(catalog.modes.map(mode => mode.id), modeIds);
+      assert.deepEqual(counters(), beforeDiscovery);
     }
     const listed = waitEvent(current, event => event.type === "sessions");
     await current.send({ type: "sessions", requestId: "list" });
     await listed;
+    assert.deepEqual(counters(), beforeDiscovery);
   }
   const counts = Object.fromEntries(["session/new", "session/load", "session/prompt"].map(method =>
     [method, requests(root).filter(request => request.method === method).length]));
