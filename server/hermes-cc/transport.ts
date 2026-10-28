@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import type { AcpStream } from "@getpaseo/plugin/server/acp";
 import type { hermesCcCatalogObserver } from "./catalog";
 import { ndJsonStream } from "./ndjson";
+import { hermesCcModelProtocol } from "./model-protocol";
 
 export interface HermesCcLaunch {
   cwd?: string;
@@ -43,6 +44,7 @@ export async function hermesCcTransport(
     Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>,
   );
   const reader = stream.readable.getReader();
+  const models = hermesCcModelProtocol(catalogObserver?.capture);
   let closing: Promise<void> | undefined;
   const close = () => closing ??= (async () => {
     await reader.cancel().catch(() => undefined);
@@ -67,8 +69,9 @@ export async function hermesCcTransport(
           const next = await reader.read();
           if (next.done) controller.close();
           else {
-            catalogObserver?.received(next.value);
-            controller.enqueue(next.value);
+            const message = models.received(next.value);
+            catalogObserver?.received(message);
+            controller.enqueue(message);
           }
         } catch (error) { controller.error(error); }
       },
@@ -78,7 +81,7 @@ export async function hermesCcTransport(
       async write(message) {
         catalogObserver?.sent(message);
         const writer = stream.writable.getWriter();
-        try { await writer.write(message); } finally { writer.releaseLock(); }
+        try { await writer.write(models.sent(message)); } finally { writer.releaseLock(); }
       },
       close,
       abort: close,

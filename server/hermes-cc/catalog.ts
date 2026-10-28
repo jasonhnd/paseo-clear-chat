@@ -95,10 +95,14 @@ export function deriveHermesCcCatalog(response: unknown): ProviderCatalog | unde
   return modesOnly.success ? modesOnly.data : undefined;
 }
 
-/** Observe only replies to opens on a user-requested session transport. */
+/** Learn open replies and confirmed native model snapshots on user transports. */
 export function hermesCcCatalogObserver(capture: (result: unknown) => void) {
   const pending = new Set<string | number>();
+  const observe = (result: unknown) => {
+    try { capture(result); } catch { console.debug("[clear-chat] hermes_cc: catalog_capture_failed"); }
+  };
   return {
+    capture: observe,
     sent(message: AcpStreamMessage) {
       if ("method" in message && "id" in message && message.id !== null &&
           (message.method === "session/new" || message.method === "session/load")) pending.add(message.id);
@@ -107,7 +111,7 @@ export function hermesCcCatalogObserver(capture: (result: unknown) => void) {
       if (!("id" in message) || message.id === null || "method" in message || !pending.delete(message.id)) return;
       if ("result" in message) {
         // Learning is best effort and must never fail an open or prompt.
-        try { capture(message.result); } catch { console.debug("[clear-chat] hermes_cc: catalog_capture_failed"); }
+        observe(message.result);
       }
     },
   };
