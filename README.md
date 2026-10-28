@@ -175,6 +175,8 @@ To use it, choose the **·CC** version when you create a new agent in Paseo. The
 
 The **·CC** version's permission modes appear in the list after you open a **·CC** window for the first time and Paseo has refreshed its options (or after you reload). Its models do too, unless your Hermes provider settings already list them.
 
+The **·CC** entries use the Hermes icon. You can choose a supported model when creating a **·CC** agent, including when Hermes reports its models through its native interface. If Hermes rejects a model selection, Clear Chat reports the error instead of silently choosing another model.
+
 What to know:
 
 - Only prompts you send in a **·CC** agent with this version or later show images. Agents you started before, and their old messages, do not.
