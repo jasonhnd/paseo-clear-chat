@@ -160,6 +160,76 @@ function validate(h) {
   return response;
 }
 
+// Direct helper probes cover uncertain correlation; composed SDK coverage remains below.
+async function isolatedRuntime(updates = []) {
+  const { adaptAcpToolConnection } = load("server/hermes-cc/acp-tool-compat.ts");
+  let runtime;
+  const connection = adaptAcpToolConnection({ send: async () => {}, onEvent: () => () => {} },
+    async (tools, operation) => { runtime = tools; await operation(); });
+  await connection.send({ type: "session.open", requestId: "probe", sessionId: "probe", history: "replay" });
+  const stream = runtime.observe({
+    readable: new ReadableStream({ start(controller) {
+      for (const update of updates) controller.enqueue({ jsonrpc: "2.0", method: "session/update",
+        params: { sessionId: "probe-native", update } });
+      controller.close();
+    } }),
+    writable: new WritableStream(),
+  });
+  await stream.writable.getWriter().write({ jsonrpc: "2.0", id: "load", method: "session/load", params: { sessionId: "probe-native" } });
+  const reader = stream.readable.getReader();
+  while (!(await reader.read()).done) {}
+  return runtime;
+}
+function assertGenericFailure(actual, original) {
+  assert.deepEqual(actual, { ...original, item: { ...original.item, error: { message: "Tool call failed" } } });
+  assert.strictEqual(actual.item.detail, original.item.detail);
+  assert.strictEqual(actual.item.metadata, original.item.metadata);
+  const response = envelope([actual]);
+  FetchAgentTimelineResponseMessageSchema.parse(response);
+  if (betaSchema) betaSchema.parse(response);
+}
+
+test("uncorrelated failed/null normalizes only the error and preserves other event identities", async t => {
+  const f = fixture(() => [call("probe"), update("probe", { status: "failed" })]);
+  const h = await connect(t, f.create()[0]); await open(h, "boundary");
+  const original = freeze(f.rawEvents.find(event => event.type === "timeline.item" && event.item.status === "failed"));
+  assert.equal(original.item.error, null);
+  const runtime = await isolatedRuntime();
+  assertGenericFailure(runtime.adapt(original), original);
+  for (const error of ["EXPLICIT_ERROR", { message: "EXPLICIT_ERROR", code: 7 }, false, 0, ""]) {
+    const event = freeze({ ...original, item: { ...original.item, error } });
+    assert.strictEqual(runtime.adapt(event), event);
+    assert.equal(JSON.stringify(runtime.adapt(event).item.error), JSON.stringify(error));
+  }
+  for (const status of ["completed", "running", "canceled"]) {
+    const event = freeze({ ...original, item: { ...original.item, status } });
+    assert.strictEqual(runtime.adapt(event), event);
+  }
+  for (const event of f.rawEvents.filter(event => event.type !== "timeline.item" || event.item.type !== "tool_call")) {
+    assert.strictEqual(runtime.adapt(event), event);
+  }
+});
+
+test("mismatched failed/null leaves the queued snapshot for the next proper running match", async t => {
+  const f = fixture(() => [call("probe"), update("probe", { status: "failed" })]);
+  const h = await connect(t, f.create()[0]); await open(h, "boundary");
+  const original = freeze(f.rawEvents.find(event => event.type === "timeline.item" && event.item.status === "failed"));
+  const runtime = await isolatedRuntime([call("probe", { status: "pending", rawInput: { path: "QUEUED_PATH.txt" }, content: content("QUEUED_CONTENT") })]);
+  assertGenericFailure(runtime.adapt(original), original);
+  for (const error of ["EXPLICIT_ERROR", { message: "EXPLICIT_ERROR" }, false, 0, ""]) {
+    const event = freeze({ ...original, item: { ...original.item, error } });
+    assert.strictEqual(runtime.adapt(event), event);
+  }
+  const running = freeze({ ...original, item: { ...original.item, status: "running" } });
+  const matched = runtime.adapt(running);
+  assert.deepEqual(matched.item.detail, { type: "read", filePath: "QUEUED_PATH.txt", content: "QUEUED_CONTENT" });
+  assert.equal(matched.item.error, null);
+  // A subsequent failed event must now enrich from latest, proving the queue was consumed.
+  const terminal = runtime.adapt(original);
+  assert.equal(terminal.item.detail.content, "QUEUED_CONTENT");
+  assert.deepEqual(terminal.item.error, { message: "Tool call failed" });
+});
+
 for (const mode of ["history", "live"]) test(`actual composed provider preserves failed read content and final answer: ${mode}`, async t => {
   const id = "qa-tool-054-2";
   const f = fixture(() => [call(id, { title: "Read fixture-054.txt", rawInput: { path: "fixture-054.txt" } }), update(id, { status: "failed", content: content("SYNTHETIC_ERROR_054") })]);
@@ -259,7 +329,10 @@ test("close and runtime failure discard state before boundary/call identity reus
   await h.connection.send({ type: "session.close", requestId: "close", sessionId: "reused" });
   await h.wait(event => event.type === "session.closed");
   const old = f.rawEvents.find(event => event.type === "timeline.item" && event.item.status === "failed");
-  assert.strictEqual(f.runtimes[1].tools.adapt(old), old, "close must clear retained tool snapshots");
+  assertGenericFailure(f.runtimes[1].tools.adapt(old), old);
+  assert(!JSON.stringify(f.runtimes[1].tools.adapt(old)).includes("OLD_CONTENT"));
+  const unchanged = { ...old, item: { ...old.item, status: "completed" } };
+  assert.strictEqual(f.runtimes[1].tools.adapt(unchanged), unchanged);
   h.events.length = 0;
   await open(h, "reused");
   const row = tools(h).at(-1);
@@ -268,7 +341,9 @@ test("close and runtime failure discard state before boundary/call identity reus
   assert.deepEqual(row.error, { message: "Tool call failed" });
   f.runtimes.at(-1).finish();
   await h.wait(event => event.type === "session.runtime_failed");
-  assert.strictEqual(f.runtimes[2].tools.adapt(old), old, "runtime failure must clear retained tool snapshots");
+  assertGenericFailure(f.runtimes[2].tools.adapt(old), old);
+  assert(!JSON.stringify(f.runtimes[2].tools.adapt(old)).includes("OLD_CONTENT"));
+  assert.strictEqual(f.runtimes[2].tools.adapt(unchanged), unchanged);
   // Closing a failed runtime releases its SDK boundary before another open.
   await h.connection.send({ type: "session.close", requestId: "close-failed", sessionId: "reused" });
   await h.wait(event => event.type === "request.completed" && event.requestId === "close-failed");
@@ -330,7 +405,9 @@ test("failed asynchronous opens clear observations without affecting another ses
   await h.wait(event => event.type === "request.failed" && event.requestId === "failed-open");
   const raw = f.rawEvents.find(event => event.type === "timeline.item" && event.sessionId === "failed" && event.item.status === "failed");
   const failedRuntime = f.runtimes.find(runtime => runtime.native === "synthetic-fail-open");
-  assert.strictEqual(failedRuntime.tools.adapt(raw), raw);
+  assertGenericFailure(failedRuntime.tools.adapt(raw), raw);
+  const unchanged = { ...raw, item: { ...raw.item, status: "completed" } };
+  assert.strictEqual(failedRuntime.tools.adapt(unchanged), unchanged);
   await prompt(h, "healthy");
   assert.equal(tools(h).at(-1).detail.content, "OPEN_CONTENT");
   validate(h);
