@@ -770,7 +770,7 @@ describe("codex pasted images", { concurrency: false }, () => {
   });
 
   test("an in-place rewrite with a restored mtime returns no image", async t => {
-    const { execFileSync } = require("node:child_process");
+    const { execFileSync, spawnSync } = require("node:child_process");
     const root = fixture(t);
     const home = join(root, "codex-home");
     const rollout = writeRollout(home, THREAD, [sessionMeta(THREAD), userMessage("Exact text.", [dataUrl(png)])]);
@@ -786,11 +786,45 @@ describe("codex pasted images", { concurrency: false }, () => {
     assert.equal(replacement.includes(png.toString("base64")), false);
     assert.ok(original.length < 64 * 1024);
     const before = fs.statSync(real, { bigint: true });
+    // Python's integer ns API avoids the precision loss of fs.utimes. Probe on
+    // this filesystem before relying on it; neither Python nor ns support is assumed.
+    const setMtime = `
+import errno, os, sys
+path, mtime = sys.argv[1], int(sys.argv[2])
+try:
+    os.utime(path, ns=(os.stat(path).st_atime_ns, mtime))
+except NotImplementedError as error:
+    print(error, file=sys.stderr)
+    sys.exit(77)
+except OSError as error:
+    if error.errno not in (errno.ENOSYS, errno.ENOTSUP):
+        raise
+    print(error, file=sys.stderr)
+    sys.exit(77)
+`;
+    const probe = join(root, "mtime-probe");
+    fs.writeFileSync(probe, "probe");
+    fs.utimesSync(probe, 0, 0);
+    assert.notEqual(fs.statSync(probe, { bigint: true }).mtimeNs, before.mtimeNs);
+    const capability = spawnSync("python3", ["-c", setMtime, probe, before.mtimeNs.toString()], { encoding: "utf8" });
+    if (capability.error?.code === "ENOENT") {
+      t.skip("Exact mtime restoration requires python3 with os.utime(ns=...); python3 is unavailable");
+      return;
+    }
+    if (capability.error) throw capability.error;
+    if (capability.status === 77) {
+      t.skip(`Python os.utime(ns=...) is unsupported on this filesystem: ${capability.stderr.trim()}`);
+      return;
+    }
+    assert.equal(capability.status, 0, capability.stderr);
+    const probeMtime = fs.statSync(probe, { bigint: true }).mtimeNs;
+    if (probeMtime !== before.mtimeNs) {
+      t.skip(`Exact mtime restoration unsupported: requested ${before.mtimeNs}ns, read back ${probeMtime}ns`);
+      return;
+    }
     const restoreMtime = () => {
-      // fs.utimes cannot round-trip mtimeNs. touch -d writes the exact value.
-      const seconds = before.mtimeNs / 1000000000n;
-      const nanos = before.mtimeNs % 1000000000n;
-      execFileSync("touch", ["-m", "-d", `@${seconds}.${nanos.toString().padStart(9, "0")}`, real]);
+      execFileSync("python3", ["-c", setMtime, real, before.mtimeNs.toString()]);
+      assert.equal(fs.statSync(real, { bigint: true }).mtimeNs, before.mtimeNs);
     };
     const writeInPlace = bytes => {
       const fd = fs.openSync(real, "r+");
