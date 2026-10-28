@@ -43,6 +43,9 @@ function project(events: readonly unknown[]): { events: HistoryEvent[]; generati
     const parsed = ProviderEventSchema.safeParse(value);
     if (!parsed.success) return null;
     const event = parsed.data;
+    // Legacy SDK snapshots accept failed/null here but fail the host timeline projection.
+    if (event.type === "timeline.item" && event.item.type === "tool_call"
+      && event.item.status === "failed" && event.item.error === null) return null;
     if (!isHistory(event)) continue;
     const id = event.type === "session.turn" ? event.turnId : event.item.id;
     const match = /^hermes-cc:(\d+):/.exec(id);
