@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=date"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <a href="https://paseo.sh"><img alt="Paseo 0.13.0+" src="https://img.shields.io/badge/Paseo-%3E%3D0.13.0-5b5bd6"></a>
+  <a href="https://paseo.sh"><img alt="Paseo 0.14.0+" src="https://img.shields.io/badge/Paseo-%3E%3D0.14.0-5b5bd6"></a>
 </p>
 
 <p align="center">
@@ -45,11 +45,13 @@
 
 ## 安装
 
+> **未发布草稿：** Clear Chat 0.14.0.1 需要 Paseo 0.14.0 或更新的版本。下方命令仍安装已发布的 0.13.2.2；新版发布后再填入新版引用。
+
 ```bash
 paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.2
 ```
 
-Clear Chat 需要 Paseo 0.13.0 或更新的版本。装好后打开 **Settings → Plugins → Clear Chat**，可以选颜色、字体和折叠方式。
+Clear Chat 0.14.0.1 需要 Paseo 0.14.0 或更新的版本。打开 **Settings → Plugins → Clear Chat**，可以选颜色、字体和折叠方式。
 
 以后要更新：
 
@@ -57,10 +59,22 @@ Clear Chat 需要 Paseo 0.13.0 或更新的版本。装好后打开 **Settings �
 paseo plugin update clear-chat
 ```
 
-它会换到 `main` 分支上的最新一版，不会停在你当初装的那个版本，改动前会先问你一句。在脚本里运行请加 `--yes`。要换到某个指定版本，或退回以前的版本，加上 `--ref`，例如 `paseo plugin update clear-chat --ref v0.13.0.1`。更新不会删掉你的设置。
+它会换到 `main` 分支上的最新一版，不会停在你当初装的那个版本，改动前会先问你一句。在脚本里运行请加 `--yes`。要换到某个指定版本，或退回以前的版本，加上 `--ref`，例如 `paseo plugin update clear-chat --ref v0.13.0.1`。更新通常会保留设置，但不保证特定版本回退的结果或设置兼容；请看下方尚未实测的 Paseo 0.13 示例。
 
 > [!IMPORTANT]
 > 已经在用 Beautiful Chat？安装或卸载任何插件**之前**，请先看[从 Beautiful Chat 升级](#从-beautiful-chat-升级)。在 Paseo 里卸载插件，会连它的设置一起删掉。
+
+还在用 Paseo 0.13？Clear Chat 0.13.2.2 已经发布，并声明支持 Paseo 0.13.0 或更新版本。下面这条安装命令尚未在 Paseo 0.13 上实测：
+
+```bash
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.2
+```
+
+如果已经安装 Clear Chat，下方是拟使用的指定旧版命令。**这次切换及其对设置的影响尚未在 Paseo 0.13 上实测；从新版切回旧版也尚未验证。**
+
+```bash
+paseo plugin update clear-chat --ref v0.13.2.2 --yes
+```
 
 <details>
 <summary><b>还在用 Paseo 0.12，以及版本号怎么看</b></summary>
@@ -200,6 +214,8 @@ Clear Chat 只改变 Paseo 显示对话的方式。有些事由 Paseo 决定，�
 - **原生应用里的字体。** 插件读不到 Paseo 的代码字体设置，也不能往原生应用里加字体。在 iOS 和 iPadOS 上代码一律用 Menlo，在 Android 上用系统的等宽字体。
 - **在 iOS 和 iPadOS 上拖动选字。** 开着 **助手回复 Markdown**（Assistant markdown）或 **增强提问气泡**（Enhanced prompt bubble）时，不能拖动选择文字。请用回复、提问或代码块上的 **复制**（Copy）按钮。复制失败时，会弹出一个显示全文的窗口，可以手动选择复制。
 - **步骤耗时。** 只有 Agent 报告了耗时，步骤才会显示用了多久。
+- **Paseo 0.14 的整回合折叠。** Paseo 的整回合折叠不会作用于 Clear Chat 绘制的内容。
+- **文字大小。** Clear Chat 绘制的内容不跟随 Paseo 的文字大小设置；请使用 Clear Chat 自己的 **文字大小**（Text size）设置。
 - **对话内查找。** 查找栏只搜已经加载的消息，要搜更早的请先往上滚。
 - **卸载后的设置。** 在 Paseo 里卸载插件，会连它的设置一起删掉。请先备份。
 
@@ -208,7 +224,7 @@ Clear Chat 只改变 Paseo 显示对话的方式。有些事由 Paseo 决定，�
 | 问题 | 怎么办 |
 |---|---|
 | 用 Cafe 插件安装失败，或 Paseo 提示缺少 `@shikijs/core` 等 Shiki 依赖。 | 用[安装](#安装)里的 Paseo CLI 命令重试，仓库和版本标签保持不变。Clear Chat 用 `npm ci --include=dev` 安装依赖，所以运行 daemon 的主机上要有 Node.js 和 npm，网络也要能连到 npm 仓库。如果代码目录是你自己管理的，请先在那里运行 `npm ci --include=dev` 再重试。 |
-| 安装停下，提示 `Plugin "clear-chat" requires Paseo >=0.13.0. Your daemon is 0.12.x.`（或 `Your app is …`）。 | 把运行 daemon 的主机和所有连着的应用都升到 Paseo 0.13.0 或更新。想继续用 Paseo 0.12 的，请用 `--ref v0.12.0.1` 安装 Clear Chat 0.12.0.1。 |
+| 安装停止，提示插件需要更新的 Paseo 版本。 | 使用 Clear Chat 0.14.0.1 时，请把 daemon 主机和所有连接的应用升级到 Paseo 0.14.0 或更新。旧宿主请看[安装](#安装)中的 Paseo 0.13 命令及其未实测提示，以及单独的 Paseo 0.12 说明。 |
 | Paseo 拒绝这个插件版本，或 Clear Chat 提示缺少插件设置或时间线支持。 | 把运行 daemon 的主机和所有连着的应用都更新到新版 Paseo，再重新加载 Clear Chat。Clear Chat 需要的 Paseo 版本写在 `paseo-plugin.json` 里。 |
 | 插件注册失败，Clear Chat 启动不了。 | 更新 Paseo，再重新加载 Clear Chat。还不行的话，先备份插件设置，再用 CLI 重新安装。 |
 | Clear Chat 读不到主机上的设置。 | 重新连接主机，在 **Settings → Plugins → Clear Chat** 里点 **重试**（Retry）。还不行的话，检查 daemon 能不能访问插件设置文件夹。 |
@@ -241,6 +257,8 @@ cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_back
 如果没有 `beautiful-chat` 这个设置文件夹，说明你没改过 Beautiful Chat 的设置，这一步可以跳过。
 
 **2. 安装**
+
+> **未发布草稿：** 这条命令仍安装 0.13.2.2；0.14.0.1 的引用尚未发布。
 
 ```bash
 paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.2
