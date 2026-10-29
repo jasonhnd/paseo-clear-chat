@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=date"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <a href="https://paseo.sh"><img alt="Paseo 0.13.0+" src="https://img.shields.io/badge/Paseo-%3E%3D0.13.0-5b5bd6"></a>
+  <a href="https://paseo.sh"><img alt="Paseo 0.14.0+" src="https://img.shields.io/badge/Paseo-%3E%3D0.14.0-5b5bd6"></a>
 </p>
 
 <p align="center">
@@ -45,11 +45,13 @@
 
 ## インストール
 
+> **未公開の草稿：** Clear Chat 0.14.0.1 には Paseo 0.14.0 以降が必要です。以下のコマンドで入るのは公開済みの 0.13.2.2 です。新しいリリースの ref は公開後に記入します。
+
 ```bash
 paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.2
 ```
 
-Clear Chat には Paseo 0.13.0 以降が必要です。インストール後、**Settings → Plugins → Clear Chat** で色、フォント、折りたたみを選べます。
+Clear Chat 0.14.0.1 には Paseo 0.14.0 以降が必要です。**Settings → Plugins → Clear Chat** で色、フォント、折りたたみを選べます。
 
 あとで更新するには：
 
@@ -57,10 +59,22 @@ Clear Chat には Paseo 0.13.0 以降が必要です。インストール後、*
 paseo plugin update clear-chat
 ```
 
-最初にインストールしたリリースではなく、`main` ブランチの最新版に切り替わります。変更する前に確認が出ます。スクリプトで実行するときは `--yes` を付けてください。特定のリリースに切り替えたり前のリリースに戻したりするには、`--ref` を付けます（例：`paseo plugin update clear-chat --ref v0.13.0.1`）。更新しても設定は消えません。
+最初にインストールしたリリースではなく、`main` ブランチの最新版に切り替わります。変更する前に確認が出ます。スクリプトで実行するときは `--yes` を付けてください。特定のリリースに切り替えたり前のリリースに戻したりするには、`--ref` を付けます（例：`paseo plugin update clear-chat --ref v0.13.0.1`）。更新時は通常設定が残りますが、特定バージョンへの切り戻し結果や設定の互換性は保証されません。以下の未検証の Paseo 0.13 の例をご覧ください。
 
 > [!IMPORTANT]
 > すでに Beautiful Chat を使っていますか？プラグインのインストールや削除を**する前に**、[Beautiful Chat からのアップグレード](#beautiful-chat-からのアップグレード)をお読みください。Paseo ではプラグインを削除すると、その設定も一緒に消えます。
+
+Paseo 0.13 を使い続ける場合、公開済みの Clear Chat 0.13.2.2 は Paseo 0.13.0 以降への対応を明記しています。以下のインストールコマンドは Paseo 0.13 でまだ実機確認していません：
+
+```bash
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.2
+```
+
+すでに Clear Chat が入っている場合、下は旧リリースを指定するための候補コマンドです。**この切り替えと設定への影響は Paseo 0.13 でまだ実機確認していません。新しい版から古い版への切り替えも未検証です。**
+
+```bash
+paseo plugin update clear-chat --ref v0.13.2.2 --yes
+```
 
 <details>
 <summary><b>Paseo 0.12 を使っている場合と、バージョン番号について</b></summary>
@@ -200,6 +214,8 @@ Clear Chat が変えるのは、Paseo での会話の表示のしかただけで
 - **ネイティブアプリのフォント。** プラグインは Paseo のコードフォント設定を読めず、ネイティブアプリにフォントを追加することもできません。iOS と iPadOS ではコードは常に Menlo、Android ではシステムの等幅フォントになります。
 - **iOS と iPadOS でのドラッグ選択。** **アシスタントの Markdown**（Assistant markdown）または **プロンプトの吹き出しを強化**（Enhanced prompt bubble）がオンのとき、ドラッグで文字を選べません。返信、プロンプト、コードブロックの **コピー**（Copy）ボタンを使ってください。コピーに失敗したときは全文を表示する画面が出るので、そこから手で選んでコピーできます。
 - **ステップの時間。** ステップにかかった時間は、エージェントが伝えた場合だけ表示します。
+- **Paseo 0.14 のターン全体の折りたたみ。** Paseo のターン全体の折りたたみは、Clear Chat が描画する内容には適用されません。
+- **文字サイズ。** Clear Chat が描画する内容は Paseo の文字サイズ設定に連動しません。Clear Chat 自身の **文字サイズ**（Text size）設定を使ってください。
 - **会話内の検索。** 検索バーが検索するのは読み込み済みのメッセージだけです。古いものは先に上にスクロールしてください。
 - **削除したあとの設定。** Paseo ではプラグインを削除すると、その設定も一緒に消えます。先にバックアップしてください。
 
@@ -208,7 +224,7 @@ Clear Chat が変えるのは、Paseo での会話の表示のしかただけで
 | 症状 | 対処 |
 |---|---|
 | Cafe プラグインからのインストールに失敗する、または Paseo が `@shikijs/core` などの Shiki の依存パッケージが足りないと表示する。 | [インストール](#インストール)にある Paseo CLI のコマンドで、同じリポジトリとリリースの ref を指定してやり直してください。Clear Chat は `npm ci --include=dev` で依存パッケージを入れるので、daemon を動かすホストに Node.js と npm が必要で、ネットワークから npm レジストリにつながる必要があります。チェックアウトを自分で管理している場合は、先にそこで `npm ci --include=dev` を実行してからやり直してください。 |
-| インストールが止まり、`Plugin "clear-chat" requires Paseo >=0.13.0. Your daemon is 0.12.x.`（または `Your app is …`）と表示される。 | daemon のホストと、つないでいるすべてのアプリの Paseo を 0.13.0 以降に更新してください。Paseo 0.12 のまま使う場合は、`--ref v0.12.0.1` で Clear Chat 0.12.0.1 をインストールしてください。 |
+| プラグインに新しい Paseo が必要なため、インストールが止まる。 | Clear Chat 0.14.0.1 を使うには、daemon のホストと接続するすべてのアプリを Paseo 0.14.0 以降に更新してください。古いホストについては、[インストール](#インストール)の Paseo 0.13 のコマンドと未検証の注意、および別記の Paseo 0.12 の説明をご覧ください。 |
 | Paseo がプラグインのバージョンを受け付けない、または Clear Chat がプラグインの設定やタイムラインの対応がないと表示する。 | daemon のホストと、つないでいるすべてのアプリの Paseo を更新してから、Clear Chat を再読み込みしてください。Clear Chat に必要な Paseo のバージョンは `paseo-plugin.json` に書いてあります。 |
 | プラグインの登録に失敗し、Clear Chat が起動しない。 | Paseo を更新して Clear Chat を再読み込みしてください。それでも直らない場合は、プラグインの設定をバックアップしてから CLI で入れ直してください。 |
 | Clear Chat がホストの設定を読み込めない。 | ホストにつなぎ直し、**Settings → Plugins → Clear Chat** で **再試行**（Retry）を選んでください。それでも直らない場合は、daemon がプラグインの設定フォルダーにアクセスできるか確認してください。 |
@@ -241,6 +257,8 @@ cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_back
 `beautiful-chat` の設定フォルダーがない場合は、Beautiful Chat の設定を変えたことがないので、この手順は飛ばしてかまいません。
 
 **2. インストール**
+
+> **未公開の草稿：** このコマンドで入るのは 0.13.2.2 です。0.14.0.1 の ref はまだ公開されていません。
 
 ```bash
 paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.2
