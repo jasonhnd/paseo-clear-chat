@@ -5,6 +5,7 @@
       "description": "为已配置的 Hermes ACP 提供商添加 Hermes·CC 版本，将粘贴到提示中的图片保存在 Clear Chat 中。重新加载主机后生效。",
       "error": "无法加载或保存 Hermes·CC 设置。"
     },
+    "version": "Clear Chat 版本：{{version}}",
     "title": "聊天显示",
     "intro": "改动会保存在所选主机上，连到这台主机的客户端都共用。显示方面的改动对新消息生效；要更新已有消息，请重新加载聊天。强调色会马上更新。",
     "accent": {

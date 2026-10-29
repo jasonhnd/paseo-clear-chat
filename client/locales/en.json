@@ -5,6 +5,7 @@
       "description": "Add Hermes·CC versions of configured Hermes ACP providers to save pasted prompt images in Clear Chat. Reload the host to apply.",
       "error": "Could not load or save the Hermes·CC setting."
     },
+    "version": "Clear Chat version: {{version}}",
     "title": "Chat presentation",
     "intro": "Changes are saved on the selected host and shared by its clients. New messages follow rendering changes; reload the chat to update existing messages. Accent colours update immediately.",
     "accent": {

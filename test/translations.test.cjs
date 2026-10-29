@@ -20,7 +20,7 @@ for (const locale of ["en", "zh-CN", "ja"]) {
     await new Promise(setImmediate);
     const Page = h.load("client/settings-page.tsx").ClearChatSettingsPage;
     const tree = h.draw({ type: Page, props: { theme: { colors: {} } } });
-    for (const text of [r.settings.title, r.settings.intro, r.settings.accent.host, r.settings.foldSteps.label, r.settings.codeFont.default, r.settings.textSize.large, r.settings.foldOutput.lines15, r.settings.report]) hasText(h, tree, text);
+    for (const text of [r.settings.title, r.settings.intro, interpolate(r.settings.version, { version: require("../package.json").version }), r.settings.accent.host, r.settings.foldSteps.label, r.settings.codeFont.default, r.settings.textSize.large, r.settings.foldOutput.lines15, r.settings.report]) hasText(h, tree, text);
     hasLabel(h, tree, interpolate(r.settings.accent.optionA11y, { label: r.settings.accent.jade }));
     h.unmount();
   });
@@ -244,6 +244,7 @@ for (const locale of ["en", "zh-CN", "ja"]) {
   test(`${locale}: preserves the prior baseline after removing the added inline-section, prompt-image and Hermes setting keys`, () => {
     const text = readFileSync(resolve(__dirname, `../client/locales/${locale}.json`), "utf8");
     const original = text
+      .replace(/    "version": ".*",\n/, "")
       .replace(/    "hermesCc": \{\n(?:      ".*\n){3}    \},\n/, "")
       .replace(/    "imageThumbA11y": ".*",\n    "moreImages": ".*",\n    "closeImage": ".*",\n/, "")
       .replace(/    "sectionInline": \{\n(?:      ".*\n){5}    \},\n/, "");

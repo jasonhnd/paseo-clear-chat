@@ -179,6 +179,7 @@ function createToolHarness(platform = "ios", options = {}) {
     if (!existsSync(filename)) filename += existsSync(filename + ".ts") ? ".ts" : ".tsx";
     if (filename.endsWith(".json")) return options.localeResources?.[filename.split("/").pop().replace(/\.json$/, "")] ?? JSON.parse(readFileSync(filename, "utf8"));
     const key = relative(root, filename).replace(/\.tsx?$/, "");
+    if (key in (options.fileModules ?? {})) return options.fileModules[key];
     if (key in stubs) return stubs[key];
     if (cache.has(filename)) return cache.get(filename).exports;
     const mod = { exports: {} }; cache.set(filename, mod);
