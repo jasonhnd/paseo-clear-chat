@@ -3,7 +3,7 @@
   "name": "Clear Chat",
   "description": "Makes agent conversations easy to read: one-line steps, a card for every tool and step details.",
   "requirements": {
-    "paseo": ">=0.13.0"
+    "paseo": ">=0.14.0"
   },
   "build": [
     [
