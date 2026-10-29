@@ -7,8 +7,9 @@ document remained version 2. No presentation setting or renderer changed for thi
 upgrade. This document records that historical migration; see the
 [current manifest](../paseo-plugin.json) for the current host requirement.
 
-The minimum host version is an explicit compatibility policy: this revision is
-checked against the 0.12.0 SDK and host compiler. The package itself declares exact
+At the 0.12 migration, the minimum host version was an explicit compatibility
+policy, and this revision was checked against the 0.12.0 SDK and host
+compiler. The package itself declares exact
 client/protocol peers, but does not declare a minimum daemon version. Raising the
 manifest requirement prevents this revision from being installed on older,
 unverified hosts; it does not imply that every existing renderer needs a new API.
