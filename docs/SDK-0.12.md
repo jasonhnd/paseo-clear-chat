@@ -1,10 +1,11 @@
 # Paseo plugin SDK 0.12.0 compatibility
 
-Clear Chat now builds against `@getpaseo/plugin` **0.12.0** and requires Paseo
+At the 0.12 migration, Clear Chat built against `@getpaseo/plugin` **0.12.0** and required Paseo
 **0.12.0 or later**. The SDK's exact client/protocol peers, and their relay
 dependency, also resolve to 0.12.0. The plugin version remains 1.0.1; the settings
 document remains version 2. No presentation setting or renderer changed for this
-upgrade.
+upgrade. This document records that historical migration; see the
+[current manifest](../paseo-plugin.json) for the current host requirement.
 
 The minimum host version is an explicit compatibility policy: this revision is
 checked against the 0.12.0 SDK and host compiler. The package itself declares exact
