@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=date"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <a href="https://paseo.sh"><img alt="Paseo 0.13.0+" src="https://img.shields.io/badge/Paseo-%3E%3D0.13.0-5b5bd6"></a>
+  <a href="https://paseo.sh"><img alt="Paseo 0.14.0+" src="https://img.shields.io/badge/Paseo-%3E%3D0.14.0-5b5bd6"></a>
 </p>
 
 <p align="center">
@@ -45,11 +45,13 @@
 
 ## Install
 
+> **Unreleased draft:** Clear Chat 0.14.0.1 needs Paseo 0.14.0 or later. The commands below still install the released 0.13.2.2; the new release ref will be added after it is published.
+
 ```bash
 paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.2
 ```
 
-Clear Chat needs Paseo 0.13.0 or later. Then open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
+Clear Chat 0.14.0.1 needs Paseo 0.14.0 or later. Open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
 
 To update later:
 
@@ -57,10 +59,22 @@ To update later:
 paseo plugin update clear-chat
 ```
 
-This moves Clear Chat to the latest version on the `main` branch, not the release you first installed, and asks before it changes anything. In a script, add `--yes`. To move to a specific release, or back to an earlier one, add `--ref`, for example `paseo plugin update clear-chat --ref v0.13.0.1`. Updating keeps your settings.
+This moves Clear Chat to the latest version on the `main` branch, not the release you first installed, and asks before it changes anything. In a script, add `--yes`. To move to a specific release, or back to an earlier one, add `--ref`, for example `paseo plugin update clear-chat --ref v0.13.0.1`. Updates normally keep settings, but the outcome and settings compatibility of a specific rollback are not guaranteed; see the untested Paseo 0.13 example below.
 
 > [!IMPORTANT]
 > Already using Beautiful Chat? Read [Upgrading from Beautiful Chat](#upgrading-from-beautiful-chat) **before** you install or remove anything. Removing a plugin in Paseo also deletes its settings.
+
+Still on Paseo 0.13? Clear Chat 0.13.2.2 is already released and declares support for Paseo 0.13.0 or later. The exact installation command below has not yet been tested on Paseo 0.13:
+
+```bash
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.2
+```
+
+If Clear Chat is already installed, the proposed way to select that release is shown below. **This exact switch and its effect on settings have not yet been verified on Paseo 0.13; switching from the new version to the old one is also untested.**
+
+```bash
+paseo plugin update clear-chat --ref v0.13.2.2 --yes
+```
 
 <details>
 <summary><b>Still on Paseo 0.12, and how version numbers work</b></summary>
@@ -200,6 +214,8 @@ Clear Chat changes only how Paseo shows a conversation. Some things are up to Pa
 - **Fonts in the native apps.** Plugins cannot read Paseo's code font setting or add fonts to the native apps. On iOS and iPadOS, code uses Menlo; on Android, the system monospace font.
 - **Drag to select on iOS and iPadOS.** While **Assistant markdown** or **Enhanced prompt bubble** is on, you cannot select text by dragging. Use the **Copy** button on the reply, prompt or code block. If copying fails, a dialog shows the full text for you to select by hand.
 - **Step times.** A step shows how long it took only when the agent reports it.
+- **Turn folding in Paseo 0.14.** Paseo’s whole-turn folding does not apply to content drawn by Clear Chat.
+- **Text size.** Content drawn by Clear Chat does not follow Paseo’s text-size setting. Use Clear Chat’s own **Text size** setting instead.
 - **Find in chat.** The find bar searches the messages that are loaded, so scroll up to include older ones.
 - **Settings after removal.** Removing a plugin in Paseo also deletes its settings. Back them up first.
 
@@ -208,7 +224,7 @@ Clear Chat changes only how Paseo shows a conversation. Some things are up to Pa
 | Problem | What to do |
 |---|---|
 | Installing through the Cafe plugin fails, or Paseo reports a missing Shiki dependency such as `@shikijs/core`. | Retry with the Paseo CLI command in [Install](#install), using the same repository and release ref. Clear Chat installs its dependencies with `npm ci --include=dev`, so Node.js and npm must be available on the daemon host, and its network must reach the npm registry. If you manage the checkout yourself, run `npm ci --include=dev` there before retrying. |
-| Installation stops with `Plugin "clear-chat" requires Paseo >=0.13.0. Your daemon is 0.12.x.` (or `Your app is …`). | Update Paseo on the daemon host and in every connected app to 0.13.0 or later. To stay on Paseo 0.12, install Clear Chat 0.12.0.1 with `--ref v0.12.0.1`. |
+| Installation stops because the plugin needs a newer Paseo version. | For Clear Chat 0.14.0.1, update Paseo on the daemon host and all connected apps to 0.14.0 or later. For older hosts, see the [Install](#install) section for the Paseo 0.13 commands and their untested-status warning, and the separate Paseo 0.12 instructions. |
 | Paseo rejects the plugin version, or Clear Chat says plugin settings or timeline support is missing. | Update Paseo on the daemon host and in every connected app, then reload Clear Chat. The Paseo version Clear Chat needs is declared in `paseo-plugin.json`. |
 | Clear Chat cannot start because plugin registration failed. | Update Paseo and reload Clear Chat. If it still fails, back up the plugin settings before you reinstall from the CLI. |
 | Clear Chat cannot read its settings from the host. | Reconnect to the host and choose **Retry** in **Settings → Plugins → Clear Chat**. If it still fails, check that the daemon can access the plugin settings folder. |
@@ -241,6 +257,8 @@ cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_back
 If the `beautiful-chat` settings folder does not exist, you never changed Beautiful Chat's settings, and you can skip this step.
 
 **2. Install**
+
+> **Unreleased draft:** This command still installs 0.13.2.2; the 0.14.0.1 ref is not published.
 
 ```bash
 paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.2
