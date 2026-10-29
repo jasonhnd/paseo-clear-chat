@@ -323,7 +323,8 @@ export function LiveReasoningRenderer({
       <ReasoningTrace
         data={reasoningData}
         tokens={tokens}
-        defaultExpanded={data.phase === "streaming"}
+        // A newly mounted history row should reveal reasoning when a turn opens.
+        defaultExpanded
         streaming={data.phase === "streaming"}
       />
     </View>

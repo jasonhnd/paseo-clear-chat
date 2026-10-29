@@ -242,7 +242,13 @@ export function ReasoningTrace({ data, tokens, defaultExpanded = false, streamin
       {...surfaceProps(frosted, glowing(tokens.isDark), selectionSurface)}
       style={styles.wrapper}
     >
-      <Pressable onPress={() => setIsExpanded((prev) => !prev)} style={styles.header}>
+      <Pressable
+        onPress={() => setIsExpanded((prev) => !prev)}
+        accessibilityRole="button"
+        accessibilityLabel={t(isThinking ? "reasoning.thinking" : "reasoning.summary")}
+        accessibilityState={{ expanded: isExpanded }}
+        style={styles.header}
+      >
         <View style={styles.headerLeft}>
           <View style={styles.iconBubble}>
             <Breathe active={isThinking}>
