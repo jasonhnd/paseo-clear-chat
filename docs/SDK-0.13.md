@@ -55,7 +55,7 @@ itself remains valid for workspace panels; its agent-context overload is depreca
 
 ## Paseo 0.12.0 compatibility
 
-**The plugin migrated to SDK 0.13 cannot fully load and work on a 0.12.0 host.**
+**At the time of the 0.13 migration, the migrated plugin could not fully load and work on a 0.12.0 host.**
 At the migration, the manifest required `>=0.13.0`; 0.12 compatibility was
 outside that release’s supported scope.
 
