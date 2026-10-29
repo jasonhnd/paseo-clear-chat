@@ -113,7 +113,7 @@ export function AssistantFooter({ text, at, tokens, durationMs }: AssistantFoote
         <Text style={styles.copyLabel}>{copied ? t("reply.copied") : t("reply.copy")}</Text>
       </Pressable>
       <Text style={styles.time}>{time}</Text>
-      {durationMs !== undefined && Number.isFinite(durationMs) && durationMs >= 0 ? (
+      {durationMs !== undefined && Number.isFinite(durationMs) && durationMs >= 1000 ? (
         <Text testID="reply-duration" style={styles.time}>{t("reply.workedFor", { duration: formatWorkedDuration(durationMs) })}</Text>
       ) : null}
     </View>

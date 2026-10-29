@@ -20,6 +20,110 @@ function timingHost(timeline = entries) {
   return { paseo, agent, requests };
 }
 
+for (const [form, item] of [["assistant", entries.at(-1).item], ["wrap-up", wrapUp]]) {
+  for (const [caseName, elapsed, expected] of [
+    ["zero", 0, null], ["1 ms", 1, null], ["999 ms", 999, null],
+    ["1000 ms", 1000, "1s"], ["multi-second", 21099, "21s"],
+    ["reversed", -1000, null], ["invalid prompt", "invalid", null],
+    ["missing prompt timestamp", undefined, null],
+  ]) {
+    test(`${form} rendered reply duration: ${caseName}`, async () => {
+      const prompt = structuredClone(entries[0]);
+      const final = structuredClone(entries.at(-1));
+      final.item = structuredClone(item);
+      const end = Date.parse(final.timestamp);
+      prompt.timestamp = typeof elapsed === "number" ? new Date(end - elapsed).toISOString() : elapsed;
+      const source = timingHost([prompt, final]);
+      const h = createToolHarness("web", { ...source, replyFooter: true });
+      try {
+        const mounted = h.mount(final.item, false, { timestamp: new Date(final.timestamp) });
+        await settle();
+        const tree = mounted.render();
+        const footers = h.nodes(tree, node => node.props.testID === "reply-footer");
+        assert.equal(footers.length, 1);
+        const labels = h.nodes(footers[0], node => node.props.testID === "reply-duration");
+        assert.equal(labels.length, expected === null ? 0 : 1, `${caseName}: unexpected duration label: ${h.text(labels)}`);
+        if (expected !== null) assert.equal(h.text(labels[0]), `Worked for ${expected}`);
+        const copy = h.nodes(footers[0], node => node.props.accessibilityLabel === "Copy reply");
+        assert.equal(copy.length, 1);
+        assert.equal(copy[0].props.accessibilityRole, "button");
+        assert.ok(h.nodes(footers[0], node => node.type === "Text").length >= 2, "copy label and timestamp remain");
+        await copy[0].props.onPress();
+        assert.equal(h.copies.length, 1);
+      } finally { h.unmount(); }
+    });
+  }
+
+  test(`${form} rendered reply omits duration on incomplete canonical pagination`, async () => {
+    const final = structuredClone(entries.at(-1));
+    final.item = structuredClone(item);
+    const source = timingHost([entries[0], final]);
+    source.paseo.agents.ref = () => ({ timeline: { refetch: async () => ({
+      entries: [entries[0], final], agent: source.agent, hasOlder: true, hasNewer: false, error: null,
+    }) } });
+    const h = createToolHarness("web", { ...source, replyFooter: true });
+    try {
+      const mounted = h.mount(final.item, false, { timestamp: new Date(final.timestamp) });
+      await settle();
+      const tree = mounted.render();
+      assert.equal(h.nodes(tree, node => node.props.testID === "reply-duration").length, 0);
+      assert.equal(h.nodes(tree, node => node.props.accessibilityLabel === "Copy reply").length, 1);
+    } finally { h.unmount(); }
+  });
+
+  test(`${form} running reply gains only a settled nonzero duration`, async () => {
+    const prompt = structuredClone(entries[0]);
+    const final = structuredClone(entries.at(-1));
+    final.item = structuredClone(item);
+    prompt.timestamp = new Date(Date.parse(final.timestamp) - 1000).toISOString();
+    const source = timingHost([prompt, final]);
+    source.agent.status = "running";
+    const h = createToolHarness("web", { ...source, replyFooter: true });
+    try {
+      const mounted = h.mount(final.item, false, { timestamp: new Date(final.timestamp) });
+      await settle();
+      assert.equal(h.nodes(mounted.render(), node => node.props.testID === "reply-duration").length, 0);
+      assert.equal(source.requests.length, 0);
+      source.agent.status = "idle";
+      source.agent.updatedAt = "2026-01-01T12:01:00Z";
+      mounted.render();
+      await settle();
+      const tree = mounted.render();
+      assert.equal(h.text(h.nodes(tree, node => node.props.testID === "reply-duration")), "Worked for 1s");
+      assert.equal(h.nodes(tree, node => node.props.accessibilityLabel === "Copy reply").length, 1);
+    } finally { h.unmount(); }
+  });
+
+  for (const timestamp of ["invalid", undefined]) {
+    test(`${form} reply omits duration for ${String(timestamp)} closing timestamp`, async () => {
+      const final = structuredClone(entries.at(-1));
+      final.item = structuredClone(item);
+      const trailing = { ...structuredClone(entries[3]), timestamp };
+      const source = timingHost([entries[0], final, trailing]);
+      const h = createToolHarness("web", { ...source, replyFooter: true });
+      try {
+        const mounted = h.mount(final.item, false, { timestamp: new Date(final.timestamp) });
+        await settle();
+        const tree = mounted.render();
+        assert.equal(h.nodes(tree, node => node.props.testID === "reply-duration").length, 0);
+        assert.equal(h.nodes(tree, node => node.props.accessibilityLabel === "Copy reply").length, 1);
+      } finally { h.unmount(); }
+    });
+  }
+}
+
+test("reply footer omits missing and invalid duration values", () => {
+  const h = createToolHarness("web", { replyFooter: true });
+  const { AssistantFooter } = h.load("client/components/turn-footer.tsx");
+  try {
+    for (const durationMs of [undefined, NaN, Infinity, -1]) {
+      const tree = h.draw({ type: AssistantFooter, props: { text: "Sample", at: new Date("2026-01-01T12:00:00Z"), tokens: h.tokens, durationMs } });
+      assert.equal(h.nodes(tree, node => node.props.testID === "reply-duration").length, 0);
+      assert.equal(h.nodes(tree, node => node.props.accessibilityLabel === "Copy reply").length, 1);
+    }
+  } finally { h.unmount(); }
+});
+
 for (const platform of ["web", "ios", "android"]) {
   test(`captured final reply retains exactly one Worked for label on ${platform}`, async () => {
     const source = timingHost();
