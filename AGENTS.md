@@ -32,4 +32,4 @@ Commit identity is `jasonhnd <3293256+jasonhnd@users.noreply.github.com>`. Do no
 
 ## Compatibility
 
-Requires Paseo >= 0.13.0. The plugin SDK is `@getpaseo/plugin` 0.13.
+Requires Paseo >= 0.14.0. The development SDK is `@getpaseo/plugin` 0.13.0.

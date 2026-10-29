@@ -1,8 +1,9 @@
 # SDK 0.13 migration evidence
 
-Development uses `@getpaseo/plugin@0.13.0` and its matching client/protocol peers.
-The package version remains unchanged. `paseo-plugin.json` requires Paseo
-`>=0.13.0`, matching the owner-approved minimum for this release.
+At the 0.13 migration, development used `@getpaseo/plugin@0.13.0` and its matching
+client/protocol peers. The package version remained unchanged. The manifest then
+required Paseo `>=0.13.0`, matching the owner-approved minimum for that release.
+For the current host requirement, see [`paseo-plugin.json`](../paseo-plugin.json).
 
 Sources: the installed npm packages and the upstream
 [0.13.0 release notes](https://github.com/getpaseo/paseo/releases/tag/v0.13.0),
@@ -54,8 +55,9 @@ itself remains valid for workspace panels; its agent-context overload is depreca
 
 ## Paseo 0.12.0 compatibility
 
-**This migrated plugin cannot fully load and work on a 0.12.0 host.** The manifest
-requires `>=0.13.0`; 0.12 compatibility is outside this release’s supported scope.
+**The plugin migrated to SDK 0.13 cannot fully load and work on a 0.12.0 host.**
+At the migration, the manifest required `>=0.13.0`; 0.12 compatibility was
+outside that release’s supported scope.
 
 A separate `npm install --prefix node_modules/.cc-sdk-compat --ignore-scripts
 @getpaseo/plugin@0.12.0` installed the old SDK inside this worktree. Comparing its
@@ -73,5 +75,6 @@ package exports and declarations with 0.13.0 shows:
 - SDK runtime UI modules are placeholders; Paseo injects their implementations.
   Upgrading the development dependency cannot add these APIs to an older host.
 
-The release requires Paseo `>=0.13.0`. No legacy UI or panel adapter is included,
-and panel registration directly uses the required `addAgentPanel` API.
+The 0.13 migration release required Paseo `>=0.13.0`. No legacy UI or panel
+adapter was included, and panel registration directly used the required
+`addAgentPanel` API.
