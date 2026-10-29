@@ -200,6 +200,8 @@ Clear Chat 只改变 Paseo 显示对话的方式。有些事由 Paseo 决定，�
 - **原生应用里的字体。** 插件读不到 Paseo 的代码字体设置，也不能往原生应用里加字体。在 iOS 和 iPadOS 上代码一律用 Menlo，在 Android 上用系统的等宽字体。
 - **在 iOS 和 iPadOS 上拖动选字。** 开着 **助手回复 Markdown**（Assistant markdown）或 **增强提问气泡**（Enhanced prompt bubble）时，不能拖动选择文字。请用回复、提问或代码块上的 **复制**（Copy）按钮。复制失败时，会弹出一个显示全文的窗口，可以手动选择复制。
 - **步骤耗时。** 只有 Agent 报告了耗时，步骤才会显示用了多久。
+- **Paseo 0.14 的整回合折叠。** Paseo 的整回合折叠不会作用于 Clear Chat 绘制的内容。
+- **文字大小。** Clear Chat 绘制的内容不跟随 Paseo 的文字大小设置；请使用 Clear Chat 自己的 **文字大小**（Text size）设置。
 - **对话内查找。** 查找栏只搜已经加载的消息，要搜更早的请先往上滚。
 - **卸载后的设置。** 在 Paseo 里卸载插件，会连它的设置一起删掉。请先备份。
 

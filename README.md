@@ -200,6 +200,8 @@ Clear Chat changes only how Paseo shows a conversation. Some things are up to Pa
 - **Fonts in the native apps.** Plugins cannot read Paseo's code font setting or add fonts to the native apps. On iOS and iPadOS, code uses Menlo; on Android, the system monospace font.
 - **Drag to select on iOS and iPadOS.** While **Assistant markdown** or **Enhanced prompt bubble** is on, you cannot select text by dragging. Use the **Copy** button on the reply, prompt or code block. If copying fails, a dialog shows the full text for you to select by hand.
 - **Step times.** A step shows how long it took only when the agent reports it.
+- **Turn folding in Paseo 0.14.** Paseo’s whole-turn folding does not apply to content drawn by Clear Chat.
+- **Text size.** Content drawn by Clear Chat does not follow Paseo’s text-size setting. Use Clear Chat’s own **Text size** setting instead.
 - **Find in chat.** The find bar searches the messages that are loaded, so scroll up to include older ones.
 - **Settings after removal.** Removing a plugin in Paseo also deletes its settings. Back them up first.
 
