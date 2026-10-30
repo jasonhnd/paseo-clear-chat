@@ -4,6 +4,15 @@ All notable changes to Clear Chat are listed here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and each version is the Paseo version it is built and tested for plus one number that counts Clear Chat's releases for that Paseo version, for example 0.12.0.1 for the first release for Paseo 0.12.0. Releases 1.0.0 and 1.0.1 came out before this rule.
 
+## [0.14.0.1] - 2026-10-30
+
+Needs Paseo 0.14.0 or later.
+
+### Changed
+
+- Clear Chat 0.14.0.1 needs Paseo 0.14.0 or later.
+- Added public automated checks for dependency installation, TypeScript and the existing tests on pushes to `pre` and `main`, and on pull requests.
+
 ## [0.13.2.2] - 2026-10-29
 
 Needs Paseo 0.13.0 or later.
@@ -146,6 +155,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.14.0.1]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.14.0.1
 [0.13.2.2]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.13.2.2
 [0.13.2.1]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.13.2.1
 [0.13.1.1]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.13.1.1
