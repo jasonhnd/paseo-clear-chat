@@ -1,12 +1,13 @@
 {
   "name": "clear-chat",
-  "version": "0.14.0.1",
+  "version": "0.14.0.2",
   "private": true,
   "description": "Makes agent conversations easy to read: one-line steps, a card for every tool and step details.",
   "license": "MIT",
   "scripts": {
     "test": "node --test test/*.test.cjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "manifest:version": "node scripts/manifest-version.cjs --write"
   },
   "dependencies": {
     "@shikijs/core": "^4.0.2",

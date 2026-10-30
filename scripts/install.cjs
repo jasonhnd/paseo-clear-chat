@@ -3,9 +3,16 @@
 const { spawnSync } = require("node:child_process");
 const { resolve } = require("node:path");
 const { stripVTControlCharacters } = require("node:util");
+const { manifestVersion } = require("./manifest-version.cjs");
 
 function install({ run = spawnSync, resolveDependency = require.resolve, report = console.error } = {}) {
   const checkout = resolve(__dirname, "..");
+  try {
+    manifestVersion(checkout, { allowStale: true });
+  } catch (error) {
+    report(`Clear Chat manifest version check failed: ${error.message}`);
+    return 1;
+  }
   let result;
   try {
     result = run(process.platform === "win32" ? "npm.cmd" : "npm", ["ci", "--include=dev"], {
@@ -41,6 +48,13 @@ function install({ run = spawnSync, resolveDependency = require.resolve, report 
       report(`Clear Chat could not find ${name}. Run npm ci --include=dev in the plugin checkout on the daemon host, then retry the installation with the Paseo CLI.`);
       return 1;
     }
+  }
+  try {
+    manifestVersion(checkout, { write: true });
+    manifestVersion(checkout);
+  } catch (error) {
+    report(`Clear Chat manifest version check failed: ${error.message}`);
+    return 1;
   }
   return 0;
 }
