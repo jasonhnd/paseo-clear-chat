@@ -8,7 +8,7 @@ const { manifestVersion } = require("./manifest-version.cjs");
 function install({ run = spawnSync, resolveDependency = require.resolve, report = console.error } = {}) {
   const checkout = resolve(__dirname, "..");
   try {
-    manifestVersion(checkout);
+    manifestVersion(checkout, { allowStale: true });
   } catch (error) {
     report(`Clear Chat manifest version check failed: ${error.message}`);
     return 1;
@@ -50,6 +50,7 @@ function install({ run = spawnSync, resolveDependency = require.resolve, report 
     }
   }
   try {
+    manifestVersion(checkout, { write: true });
     manifestVersion(checkout);
   } catch (error) {
     report(`Clear Chat manifest version check failed: ${error.message}`);
