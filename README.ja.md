@@ -45,10 +45,8 @@
 
 ## インストール
 
-> **未公開の草稿：** Clear Chat 0.14.0.1 には Paseo 0.14.0 以降が必要です。以下のコマンドで入るのは公開済みの 0.13.2.2 です。新しいリリースの ref は公開後に記入します。
-
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.2
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.14.0.1
 ```
 
 Clear Chat 0.14.0.1 には Paseo 0.14.0 以降が必要です。**Settings → Plugins → Clear Chat** で色、フォント、折りたたみを選べます。
@@ -258,10 +256,8 @@ cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_back
 
 **2. インストール**
 
-> **未公開の草稿：** このコマンドで入るのは 0.13.2.2 です。0.14.0.1 の ref はまだ公開されていません。
-
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.2
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.14.0.1
 ```
 
 **3. 確認してから古いプラグインを削除**
