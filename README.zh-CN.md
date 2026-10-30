@@ -45,10 +45,8 @@
 
 ## 安装
 
-> **未发布草稿：** Clear Chat 0.14.0.1 需要 Paseo 0.14.0 或更新的版本。下方命令仍安装已发布的 0.13.2.2；新版发布后再填入新版引用。
-
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.2
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.14.0.1
 ```
 
 Clear Chat 0.14.0.1 需要 Paseo 0.14.0 或更新的版本。打开 **Settings → Plugins → Clear Chat**，可以选颜色、字体和折叠方式。
@@ -258,10 +256,8 @@ cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_back
 
 **2. 安装**
 
-> **未发布草稿：** 这条命令仍安装 0.13.2.2；0.14.0.1 的引用尚未发布。
-
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.2
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.14.0.1
 ```
 
 **3. 确认后卸载旧插件**

@@ -45,10 +45,8 @@
 
 ## Install
 
-> **Unreleased draft:** Clear Chat 0.14.0.1 needs Paseo 0.14.0 or later. The commands below still install the released 0.13.2.2; the new release ref will be added after it is published.
-
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.2
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.14.0.1
 ```
 
 Clear Chat 0.14.0.1 needs Paseo 0.14.0 or later. Open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
@@ -258,10 +256,8 @@ If the `beautiful-chat` settings folder does not exist, you never changed Beauti
 
 **2. Install**
 
-> **Unreleased draft:** This command still installs 0.13.2.2; the 0.14.0.1 ref is not published.
-
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.2
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.14.0.1
 ```
 
 **3. Check, then remove the old plugin**
