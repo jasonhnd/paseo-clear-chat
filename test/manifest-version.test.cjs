@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
-const os = require("node:os");
+const crypto = require("node:crypto");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const test = require("node:test");
@@ -11,7 +11,7 @@ const read = file => JSON.parse(fs.readFileSync(file, "utf8"));
 const write = (file, value) => fs.writeFileSync(file, JSON.stringify(value, null, 2) + "\n");
 
 function fixture(t) {
-  const dir = fs.mkdtempSync(path.join(os.homedir(), "clear-chat-version-"));
+  const dir = fs.mkdtempSync(path.join(root, ".clear-chat-version-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   for (const file of ["package.json", "package-lock.json", "paseo-plugin.json"]) {
     fs.copyFileSync(path.join(root, file), path.join(dir, file));
@@ -26,10 +26,71 @@ function fixture(t) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, "module.exports = {};\n");
   }
-  const bin = path.join(dir, "bin");
-  fs.mkdirSync(bin);
-  fs.writeFileSync(path.join(bin, "npm"), "#!/bin/sh\nexit \"${FAKE_NPM_STATUS:-0}\"\n", { mode: 0o755 });
+  const bin = path.join(dir, "bin"), home = path.join(dir, "home");
+  for (const name of [bin, home, path.join(dir, "fallback"), path.join(home, "appdata"), path.join(home, "localappdata"), path.join(home, "tmp")]) fs.mkdirSync(name, { recursive: true });
+  // The installer still requests npm/npm.cmd; the preload confines that request
+  // to this verified fixture executable, including when it cannot be started.
+  const fake = fakePath(dir);
+  const runner = path.join(dir, "fake-npm.cjs");
+  fs.writeFileSync(runner, String.raw`const fs = require("node:fs");
+fs.appendFileSync(process.env.FAKE_MARKER, JSON.stringify({ executable: process.argv[2], args: process.argv.slice(3) }) + "\n");
+if (process.env.FAKE_NPM_MODE === "corrupt") fs.writeFileSync("package-lock.json", "{");
+process.exit(Number(process.env.FAKE_NPM_STATUS || 0));
+`);
+  const fakeContent = process.platform === "win32"
+    ? `@echo off\r\n"${process.execPath}" "${runner}" "${fake}" %*\r\n`
+    : `#!/bin/sh\nexec "${process.execPath}" "${runner}" "${fake}" "$@"\n`;
+  fs.writeFileSync(fake, fakeContent, { mode: 0o755 });
+  fs.writeFileSync(path.join(dir, "fake.sha256"), crypto.createHash("sha256").update(fakeContent).digest("hex"));
+  const guard = path.join(dir, "guard.cjs");
+  fs.writeFileSync(guard, String.raw`
+const fs = require("node:fs"), crypto = require("node:crypto"), child = require("node:child_process");
+const original = child.spawnSync;
+child.spawnSync = (command, args, options) => {
+  const expected = process.platform === "win32" ? "npm.cmd" : "npm";
+  const record = { command, args, shell: !!options.shell, executable: process.env.FAKE_PATH };
+  try {
+    if (command !== expected || JSON.stringify(args) !== JSON.stringify(["ci", "--include=dev"]) || !!options.shell !== (process.platform === "win32")) throw new Error("unexpected installer invocation");
+    const stat = fs.lstatSync(process.env.FAKE_PATH);
+    if (!stat.isFile() || (process.platform !== "win32" && !(stat.mode & 0o111))) throw new Error("fake is not executable");
+    const digest = crypto.createHash("sha256").update(fs.readFileSync(process.env.FAKE_PATH)).digest("hex");
+    if (digest !== process.env.FAKE_HASH) throw new Error("fake content changed");
+  } catch (error) {
+    record.rejected = true;
+    fs.appendFileSync(process.env.GUARD_MARKER, JSON.stringify(record) + "\n");
+    return { error: new Error("fixture npm rejected: " + error.message) };
+  }
+  record.rejected = false;
+  fs.appendFileSync(process.env.GUARD_MARKER, JSON.stringify(record) + "\n");
+  if (process.env.FAKE_NPM_MODE === "vanish") fs.unlinkSync(process.env.FAKE_PATH);
+  return original(process.platform === "win32" ? '"' + process.env.FAKE_PATH + '"' : process.env.FAKE_PATH, args, options);
+};
+`);
   return dir;
+}
+
+function fakePath(dir) {
+  return path.join(dir, "bin", process.platform === "win32" ? "npm.cmd" : "npm");
+}
+
+function markers(dir, name) {
+  const file = path.join(dir, name + ".jsonl");
+  return fs.existsSync(file) ? fs.readFileSync(file, "utf8").trim().split("\n").map(JSON.parse) : [];
+}
+
+function assertInvocation(dir, expected = "run") {
+  const guard = markers(dir, "guard"), fake = markers(dir, "fake");
+  if (expected === "none") {
+    assert.deepEqual(guard, []);
+    assert.deepEqual(fake, []);
+    return;
+  }
+  assert.deepEqual(guard, [{ command: process.platform === "win32" ? "npm.cmd" : "npm", args: ["ci", "--include=dev"], shell: process.platform === "win32", executable: fakePath(dir), rejected: expected === "rejected" }]);
+  assert.deepEqual(fake, expected === "run" ? [{ executable: fakePath(dir), args: ["ci", "--include=dev"] }] : []);
+}
+
+function clearMarkers(dir) {
+  for (const name of ["guard", "fake"]) fs.rmSync(path.join(dir, name + ".jsonl"), { force: true });
 }
 
 function setVersion(dir, version) {
@@ -39,12 +100,32 @@ function setVersion(dir, version) {
   write(pkgFile, pkg); write(lockFile, lock);
 }
 
-function build(dir, env = {}) {
+function build(dir, extra = {}) {
   const command = read(path.join(dir, "paseo-plugin.json")).build;
   assert.deepEqual(command, [["node", "scripts/install.cjs"]]);
-  return spawnSync(process.execPath, command[0].slice(1), {
-    cwd: dir, encoding: "utf8", env: { ...process.env, PATH: `${path.join(dir, "bin")}${path.delimiter}${process.env.PATH}`, ...env },
-  });
+  const home = path.join(dir, "home"), fake = fakePath(dir);
+  // The expected digest is saved before any fault is injected.
+  const hashFile = path.join(dir, "fake.sha256");
+  const env = {
+    PATH: [path.join(dir, "bin"), path.join(dir, "fallback")].join(path.delimiter),
+    HOME: home, USERPROFILE: home, APPDATA: path.join(home, "appdata"), LOCALAPPDATA: path.join(home, "localappdata"),
+    TMP: path.join(home, "tmp"), TEMP: path.join(home, "tmp"), TMPDIR: path.join(home, "tmp"),
+    npm_config_userconfig: path.join(home, ".npmrc"), npm_config_globalconfig: path.join(home, "global.npmrc"), npm_config_cache: path.join(home, "cache"),
+    FAKE_PATH: fake, FAKE_HASH: fs.readFileSync(hashFile, "utf8"), FAKE_MARKER: path.join(dir, "fake.jsonl"), GUARD_MARKER: path.join(dir, "guard.jsonl"),
+    NODE_OPTIONS: `--require=${JSON.stringify(path.join(dir, "guard.cjs"))}` + (extra.preload ? ` --require=${JSON.stringify(extra.preload)}` : ""),
+  };
+  if (process.platform === "win32") {
+    const systemRoot = process.env.SystemRoot || process.env.SYSTEMROOT;
+    assert.ok(systemRoot, "Windows SystemRoot is required to start cmd.exe");
+    env.SystemRoot = systemRoot;
+    env.ComSpec = path.join(systemRoot, "System32", "cmd.exe");
+    env.PATHEXT = ".COM;.EXE;.BAT;.CMD";
+    env.HOMEDRIVE = path.parse(home).root.slice(0, 2);
+    env.HOMEPATH = home.slice(env.HOMEDRIVE.length);
+  }
+  if (extra.status) env.FAKE_NPM_STATUS = extra.status;
+  if (extra.mode) env.FAKE_NPM_MODE = extra.mode;
+  return spawnSync(process.execPath, command[0].slice(1), { cwd: dir, encoding: "utf8", env });
 }
 
 test("managed build automatically generates both descriptions from the package version", async t => {
@@ -54,6 +135,7 @@ test("managed build automatically generates both descriptions from the package v
       const original = read(manifestFile);
       setVersion(dir, version);
       const result = build(dir);
+      assertInvocation(dir);
       const manifest = read(manifestFile);
       for (const [actual, before] of [[manifest.description, original.description], [manifest.translations["zh-CN"].description, original.translations["zh-CN"].description]]) {
         assert.equal(actual, `v${version} · ${before.replace(/^v\d+(?:\.\d+){3} · /, "")}`, "build must automatically generate the version prefix and preserve wording");
@@ -71,6 +153,7 @@ test("a stale prefix in either description is regenerated", async t => {
       entry.description = entry.description.replace("v0.14.0.2", "v1.2.3.4");
       write(file, manifest);
       const result = build(dir);
+      assertInvocation(dir);
       assert.equal(result.status, 0, result.stderr);
       const updated = read(file), actual = locale === "default" ? updated : updated.translations[locale];
       assert.equal(actual.description, entry.description.replace("v1.2.3.4", "v0.14.0.2"));
@@ -100,7 +183,8 @@ test("invalid metadata fails the install build before dependency installation", 
       write(pkgFile, pkg); write(lockFile, lock); write(manifestFile, manifest);
       if (problem === "malformed lock") fs.writeFileSync(lockFile, "{");
       const before = fs.readFileSync(manifestFile, "utf8");
-      const result = build(dir, { FAKE_NPM_STATUS: "42" });
+      const result = build(dir, { status: "42" });
+      assertInvocation(dir, "none");
       assert.equal(result.status, 1, result.stderr);
       assert.match(result.stderr, /manifest version check failed/);
       assert.equal(fs.readFileSync(manifestFile, "utf8"), before);
@@ -112,7 +196,8 @@ test("dependency and manifest write failures fail the build", async t => {
   await t.test("dependency installation", t => {
     const dir = fixture(t), file = path.join(dir, "paseo-plugin.json");
     setVersion(dir, "1.2.3.4");
-    const before = fs.readFileSync(file, "utf8"), result = build(dir, { FAKE_NPM_STATUS: "42" });
+    const before = fs.readFileSync(file, "utf8"), result = build(dir, { status: "42" });
+    assertInvocation(dir);
     assert.equal(result.status, 1);
     assert.match(result.stderr, /dependencies could not be installed/);
     assert.equal(fs.readFileSync(file, "utf8"), before);
@@ -121,7 +206,8 @@ test("dependency and manifest write failures fail the build", async t => {
     const dir = fixture(t), file = path.join(dir, "paseo-plugin.json"), preload = path.join(dir, "fail-write.cjs");
     setVersion(dir, "1.2.3.4");
     fs.writeFileSync(preload, 'const fs = require("node:fs"); const original = fs.writeFileSync; fs.writeFileSync = (file, ...args) => { if (String(file).endsWith("paseo-plugin.json")) throw new Error("simulated write failure"); return original(file, ...args); };\n');
-    const before = fs.readFileSync(file, "utf8"), result = build(dir, { NODE_OPTIONS: `--require=${preload}` });
+    const before = fs.readFileSync(file, "utf8"), result = build(dir, { preload });
+    assertInvocation(dir);
     assert.equal(result.status, 1);
     assert.match(result.stderr, /manifest version check failed.*simulated write failure/);
     assert.equal(fs.readFileSync(file, "utf8"), before);
@@ -131,6 +217,7 @@ test("dependency and manifest write failures fail the build", async t => {
     setVersion(dir, "1.2.3.4");
     fs.rmSync(path.join(dir, "node_modules", "zod"), { recursive: true });
     const before = fs.readFileSync(file, "utf8"), result = build(dir);
+    assertInvocation(dir);
     assert.equal(result.status, 1);
     assert.match(result.stderr, /could not find zod/);
     assert.equal(fs.readFileSync(file, "utf8"), before);
@@ -138,10 +225,54 @@ test("dependency and manifest write failures fail the build", async t => {
   await t.test("metadata changed by dependency installation", t => {
     const dir = fixture(t), file = path.join(dir, "paseo-plugin.json");
     setVersion(dir, "1.2.3.4");
-    fs.writeFileSync(path.join(dir, "bin", "npm"), "#!/bin/sh\nprintf '{' > package-lock.json\n", { mode: 0o755 });
-    const before = fs.readFileSync(file, "utf8"), result = build(dir);
+    const before = fs.readFileSync(file, "utf8"), result = build(dir, { mode: "corrupt" });
+    assertInvocation(dir);
     assert.equal(result.status, 1);
     assert.match(result.stderr, /manifest version check failed/);
     assert.equal(fs.readFileSync(file, "utf8"), before);
   });
+});
+
+test("unusable fake cannot fall back and restoration succeeds", t => {
+  const dir = fixture(t), fake = fakePath(dir);
+  setVersion(dir, "1.2.3.4");
+  const fakeContent = fs.readFileSync(fake);
+  // Verify the normal fake before injecting faults.
+  const positive = build(dir);
+  assert.equal(positive.status, 0, positive.stderr);
+  assertInvocation(dir);
+  clearMarkers(dir);
+  // The sentinel is a harmless controlled fallback, never a user or system npm.
+  const sentinel = path.join(dir, "sentinel.jsonl"), fallback = path.join(dir, "fallback", path.basename(fake));
+  const fallbackRunner = path.join(dir, "fallback.cjs");
+  fs.writeFileSync(fallbackRunner, `require("node:fs").writeFileSync(${JSON.stringify(sentinel)}, "fallback ran");\n`);
+  fs.writeFileSync(fallback, process.platform === "win32" ? `@echo off\r\n"${process.execPath}" "${fallbackRunner}"\r\n` : `#!/bin/sh\nexec "${process.execPath}" "${fallbackRunner}"\n`, { mode: 0o755 });
+  const relevant = ["package.json", "package-lock.json", "paseo-plugin.json"].map(name => path.join(dir, name));
+  const before = relevant.map(name => fs.readFileSync(name));
+  let failed;
+  for (const fault of ["missing", "malformed", "vanish"]) {
+    if (fault === "missing") fs.rmSync(fake);
+    if (fault === "malformed") fs.writeFileSync(fake, "not the fixture executable", { mode: 0o755 });
+    const result = build(dir, fault === "vanish" ? { mode: "vanish" } : {});
+    failed = result;
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, /dependencies could not be installed/);
+    if (fault !== "vanish") assert.match(result.stderr, /fixture npm rejected/);
+    assertInvocation(dir, fault === "vanish" ? "not-started" : "rejected");
+    assert.equal(fs.existsSync(sentinel), false);
+    assert.deepEqual(relevant.map(name => fs.readFileSync(name)), before);
+    console.log(`safety ${fault}: guard=${JSON.stringify(markers(dir, "guard"))}; fake=${JSON.stringify(markers(dir, "fake"))}; sentinel absent; fixture bytes unchanged`);
+    fs.writeFileSync(fake, fakeContent, { mode: 0o755 });
+    clearMarkers(dir);
+    const restored = build(dir);
+    assert.equal(restored.status, 0, restored.stderr);
+    assertInvocation(dir);
+    assert.equal(fs.existsSync(sentinel), false);
+    assert.deepEqual(relevant.map(name => fs.readFileSync(name)), before);
+    console.log(`restored after ${fault}: guard=${JSON.stringify(markers(dir, "guard"))}; fake=${JSON.stringify(markers(dir, "fake"))}; sentinel absent; fixture bytes unchanged`);
+    clearMarkers(dir);
+  }
+  if (process.env.CLEAR_CHAT_TEST_NEGATIVE_CONTROL === "1") {
+    assert.equal(failed.status, 0, "intentional safety control: unusable fake must not report build success");
+  }
 });
