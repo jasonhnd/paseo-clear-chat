@@ -6,66 +6,89 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to report this. English is preferred, but 中文、日本語でも OK.
+        Thanks for reporting this. Reports in English, 中文, or 日本語 are welcome.
 
-        Please remove anything private (names, file paths, keys, company data) from text and screenshots before you submit.
+        Before posting, remove personal information, sensitive log content, and keys from text, logs, and screenshots. Share only redacted evidence.
   - type: input
     id: paseo-version
     attributes:
-      label: Paseo version
-      description: Shown in Paseo's settings, or run `paseo --version`.
-      placeholder: "0.12.0"
+      label: Paseo version or versions
+      description: Shown in Paseo's settings, or run `paseo --version`. List all affected versions you know, or say unknown.
+      placeholder: "Version numbers, or unknown"
     validations:
       required: true
   - type: input
     id: clear-chat-version
     attributes:
-      label: Clear Chat version
-      description: Run `paseo plugin ls`, or see Settings → Plugins.
-      placeholder: "1.0.0"
+      label: Clear Chat version or Git revision
+      description: Give the installed Clear Chat product version if known. If the plugin description in Settings → Plugins starts with a `v...` version prefix, enter that displayed value. If no version is available, enter the Git REVISION (commit) from `paseo plugin ls`, or unknown.
+      placeholder: "Product version, Git revision, or unknown"
     validations:
       required: true
   - type: dropdown
     id: agent
     attributes:
       label: Agent
-      description: Which agent was the chat with? Choose all that apply.
+      description: Which agents were involved? Choose all that apply, or unknown if unsure.
       multiple: true
       options:
         - Claude
         - Codex
         - Hermes
         - Other
+        - Unknown
     validations:
       required: true
   - type: dropdown
     id: client
     attributes:
       label: Where did it happen?
-      description: Choose all that apply.
+      description: Choose all affected clients that you know of, or unknown if unsure.
       multiple: true
       options:
         - Desktop app
         - Web
         - iOS
         - Android
+        - Other
+        - Unknown
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Include the operating system and version, browser and version if applicable, and any other relevant details. Say unknown for anything you cannot find.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the steps starting from a known state. If you cannot reproduce it, describe what you did and say so.
+      placeholder: |
+        1. Open ...
+        2. ...
     validations:
       required: true
   - type: textarea
     id: what-happened
     attributes:
-      label: What happened?
-      description: What did you see, and what did you expect to see? Steps to make it happen again help a lot.
-      placeholder: |
-        1. Open a chat with ...
-        2. ...
-        I expected ..., but ...
+      label: Actual behavior
+      description: What happened? Include any error message after removing private information.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
     validations:
       required: true
   - type: textarea
     id: screenshots
     attributes:
-      label: Screenshots
-      description: Optional. Drag images here. Please hide any private content first.
+      label: Redacted evidence
+      description: For a UI issue, attach a redacted screenshot or video. If you cannot provide one, explain why; the report remains missing evidence until it is supplied. For a non-UI issue only, enter `N/A — not a UI issue` if no image is relevant. You may also include relevant redacted output. Remove personal information, sensitive log content, and keys first. Do not include evidence you cannot safely share.
     validations:
-      required: false
+      required: true
