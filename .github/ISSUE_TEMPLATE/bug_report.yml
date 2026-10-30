@@ -20,9 +20,9 @@ body:
   - type: input
     id: clear-chat-version
     attributes:
-      label: Clear Chat version or versions
-      description: Run `paseo plugin ls`, or see Settings → Plugins. List all affected versions you know, or say unknown.
-      placeholder: "Version numbers, or unknown"
+      label: Clear Chat version or Git revision
+      description: Give the installed Clear Chat product version if known. If the plugin description in Settings → Plugins starts with a `v...` version prefix, enter that displayed value. If no version is available, enter the Git REVISION (commit) from `paseo plugin ls`, or unknown.
+      placeholder: "Product version, Git revision, or unknown"
     validations:
       required: true
   - type: dropdown
