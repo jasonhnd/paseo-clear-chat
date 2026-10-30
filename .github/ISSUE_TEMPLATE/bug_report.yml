@@ -89,6 +89,6 @@ body:
     id: screenshots
     attributes:
       label: Redacted evidence
-      description: If available and applicable, paste relevant raw output or attach screenshots. Remove personal information, sensitive log content, and keys first. Do not include evidence you cannot safely share.
+      description: For a UI issue, attach a redacted screenshot or video. If you cannot provide one, explain why; the report remains missing evidence until it is supplied. For a non-UI issue only, enter `N/A — not a UI issue` if no image is relevant. You may also include relevant redacted output. Remove personal information, sensitive log content, and keys first. Do not include evidence you cannot safely share.
     validations:
-      required: false
+      required: true

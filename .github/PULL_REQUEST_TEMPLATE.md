@@ -1,8 +1,8 @@
 ## Linked issue
 
-<!-- Use `Closes #<number>` only when this PR resolves that issue. For related
-issues, use `Related to #<number>` instead. `pre` is the test branch, not the
-release branch; merging there does not mean a change has been released. -->
+<!-- For work PRs targeting `pre`, use `Refs #<number>`. Closing an issue is a
+separate decision after acceptance and release; merging into `pre` does not mean
+the change has been released. -->
 
 ## Type of change
 
@@ -25,6 +25,10 @@ release branch; merging there does not mean a change has been released. -->
 <!-- Summarize the changes. Preserve four-part release versions; releases move
 from pre to main only when explicitly authorized by the maintainer. -->
 
+## Risks and rollback
+
+<!-- Describe the risks and the approach to rolling back this change. -->
+
 ## QA
 
 - Exact base commit:
@@ -35,13 +39,13 @@ from pre to main only when explicitly authorized by the maintainer. -->
 - Commands and results:
 - Gaps or limitations:
 
-<!-- Mark each unrun test or QA activity NOT RUN / NOT TESTED and explain why. -->
+<!-- List each unverified item, mark it NOT RUN / NOT TESTED, and explain why. -->
 
 ## Checklist
 
 - [ ] I linked the issue accurately and described the scope.
 - [ ] I recorded actual reproduction and verification results, including any gaps.
-- [ ] I marked unrun tests and QA as NOT RUN / NOT TESTED.
+- [ ] I listed each unverified item as NOT RUN / NOT TESTED with its reason.
 - [ ] Independent review has passed (leave unchecked while pending; identify the reviewer and result below).
 
 Independent review status and reviewer:
