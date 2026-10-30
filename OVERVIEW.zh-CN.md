@@ -10,7 +10,7 @@ Clear Chat 改变 Paseo 里 Agent 对话的显示方式，让结论一眼就能�
 
 ## 安装前要知道
 
-Clear Chat 需要 Paseo 0.13.0 或更新的版本。还在用 Paseo 0.12 的，请装 Clear Chat 0.12.0.1。安装命令见 [README](https://github.com/jasonhnd/paseo-clear-chat/blob/main/README.zh-CN.md#安装)。
+Clear Chat 0.14.0.1 需要 Paseo 0.14.0 或更新的版本。旧版宿主请看 [README 安装说明](README.zh-CN.md#安装)，其中包括尚未实测的 Paseo 0.13 命令和单独的 Paseo 0.12 说明。
 
 安装时会在运行 daemon 的主机上执行 `npm ci`，所以那台主机上要有 Node.js 和 npm，并且能连上 npm 仓库。
 
