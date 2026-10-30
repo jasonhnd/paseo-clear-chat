@@ -46,10 +46,12 @@
 ## インストール
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.14.0.1
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.14.0.2
 ```
 
-Clear Chat 0.14.0.1 には Paseo 0.14.0 以降が必要です。**Settings → Plugins → Clear Chat** で色、フォント、折りたたみを選べます。
+Paseo のプラグイン画面を開き、Clear Chat の説明の先頭でバージョンを確認してください。Paseo 0.14.0 は、アプリの言語を切り替えても、ここに既定の英語の説明を表示します。
+
+Clear Chat 0.14.0.2 には Paseo 0.14.0 以降が必要です。**Settings → Plugins → Clear Chat** で色、フォント、折りたたみを選べます。
 
 あとで更新するには：
 
@@ -62,6 +64,9 @@ paseo plugin update clear-chat
 > [!IMPORTANT]
 > すでに Beautiful Chat を使っていますか？プラグインのインストールや削除を**する前に**、[Beautiful Chat からのアップグレード](#beautiful-chat-からのアップグレード)をお読みください。Paseo ではプラグインを削除すると、その設定も一緒に消えます。
 
+<details>
+<summary><b>以前の Paseo（0.13 / 0.12）とバージョン番号の見方</b></summary>
+
 Paseo 0.13 を使い続ける場合、公開済みの Clear Chat 0.13.2.2 は Paseo 0.13.0 以降への対応を明記しています。以下のインストールコマンドは Paseo 0.13 でまだ実機確認していません：
 
 ```bash
@@ -73,9 +78,6 @@ paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.13.2.2
 ```bash
 paseo plugin update clear-chat --ref v0.13.2.2 --yes
 ```
-
-<details>
-<summary><b>Paseo 0.12 を使っている場合と、バージョン番号について</b></summary>
 
 Paseo 0.12 では、代わりに Clear Chat 0.12.0.1 をインストールしてください：
 
@@ -148,7 +150,7 @@ Paseo は同じプラグインをデスクトップ、Web、iPhone、iPad で動
 - **ステップのメニュー。** **コマンドをコピー**（Copy command）、**パスをコピー**（Copy path）、**結果をコピー**（Copy result）、**ファイルマネージャーで開く**（Open in file manager）。使える項目だけが表示され、Write や Edit で書き込んだ内容が結果としてコピーされることはありません。
 - **まとめの返信。** `wrap_up` ツールで送られた返信は、まとめ・質問・記号付きの選択肢・**ブロック中**（Blocked）の警告を含む返信カードとして表示します。
 - **リンクを押せます。** 返信の中のリンク（そのまま書かれた URL や画像のアドレスも含む）は、デスクトップ、Web、iOS で開けます。`mailto:` リンクはメールアプリで開きます。
-- **会話内の検索。** Ctrl/Cmd+F で検索バーを開くと、ツールのカードの中も検索できます。
+- **会話内の検索。** Ctrl/Cmd+F で検索バーを開くと、ツールのカードの中も検索できます。検索対象は読み込み済みのメッセージだけです。
 - **ファイルを開く。** カードのファイル名や返信の中のパスを押すと、ホストのコンピューターの Finder やエクスプローラーなどのファイルマネージャーでそのファイルを表示します。空白を含むファイル名やパスは、インラインコードにするか Markdown のリンクにしてください。
 - **文字のハイライト。** 返信の中で `==強調したい文字==` と書くとハイライトされます。コードの中の等号はそのまま表示します。
 - **貼り付けた画像。** **プロンプトの吹き出しを強化**（Enhanced prompt bubble）がオンのとき、プロンプトに貼り付けた画像を吹き出しにサムネイルで表示します。Codex と Claude のエージェントに対応しています。押すと大きく表示します。1.5 MB または 2400 万画素を超える画像は表示しません。Hermes のエージェントは、作成するときにプロバイダーの **·CC** 版を選んでください。[Hermes のエージェントで貼り付けた画像](#hermes-のエージェントで貼り付けた画像)をご覧ください。
@@ -222,7 +224,7 @@ Clear Chat が変えるのは、Paseo での会話の表示のしかただけで
 | 症状 | 対処 |
 |---|---|
 | Cafe プラグインからのインストールに失敗する、または Paseo が `@shikijs/core` などの Shiki の依存パッケージが足りないと表示する。 | [インストール](#インストール)にある Paseo CLI のコマンドで、同じリポジトリとリリースの ref を指定してやり直してください。Clear Chat は `npm ci --include=dev` で依存パッケージを入れるので、daemon を動かすホストに Node.js と npm が必要で、ネットワークから npm レジストリにつながる必要があります。チェックアウトを自分で管理している場合は、先にそこで `npm ci --include=dev` を実行してからやり直してください。 |
-| プラグインに新しい Paseo が必要なため、インストールが止まる。 | Clear Chat 0.14.0.1 を使うには、daemon のホストと接続するすべてのアプリを Paseo 0.14.0 以降に更新してください。古いホストについては、[インストール](#インストール)の Paseo 0.13 のコマンドと未検証の注意、および別記の Paseo 0.12 の説明をご覧ください。 |
+| プラグインに新しい Paseo が必要なため、インストールが止まる。 | Clear Chat 0.14.0.2 を使うには、daemon のホストと接続するすべてのアプリを Paseo 0.14.0 以降に更新してください。古いホストについては、[インストール](#インストール)の Paseo 0.13 のコマンドと未検証の注意、および別記の Paseo 0.12 の説明をご覧ください。 |
 | Paseo がプラグインのバージョンを受け付けない、または Clear Chat がプラグインの設定やタイムラインの対応がないと表示する。 | daemon のホストと、つないでいるすべてのアプリの Paseo を更新してから、Clear Chat を再読み込みしてください。Clear Chat に必要な Paseo のバージョンは `paseo-plugin.json` に書いてあります。 |
 | プラグインの登録に失敗し、Clear Chat が起動しない。 | Paseo を更新して Clear Chat を再読み込みしてください。それでも直らない場合は、プラグインの設定をバックアップしてから CLI で入れ直してください。 |
 | Clear Chat がホストの設定を読み込めない。 | ホストにつなぎ直し、**Settings → Plugins → Clear Chat** で **再試行**（Retry）を選んでください。それでも直らない場合は、daemon がプラグインの設定フォルダーにアクセスできるか確認してください。 |
@@ -257,7 +259,7 @@ cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_back
 **2. インストール**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.14.0.1
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.14.0.2
 ```
 
 **3. 確認してから古いプラグインを削除**
@@ -310,6 +312,8 @@ Clear Chat で変えた設定は Beautiful Chat には戻りません。バッ�
 ## 問題の報告
 
 不具合やご要望は [GitHub の Issue](https://github.com/jasonhnd/paseo-clear-chat/issues/new/choose) でお知らせください。設定画面のいちばん下にある **問題を報告**（Report a problem）からも開けます。日本語や中国語でも大丈夫です。リリースごとの変更は [CHANGELOG](CHANGELOG.md) にまとめています。
+
+不具合フォームでは、画面の問題について、個人情報を除いたスクリーンショットか動画の提出をお願いしています。提出できない場合は理由を記入してください。画面以外の問題で画像が不要な場合は `N/A — not a UI issue` と記入してください。インストール済みの製品バージョンが分かる場合は記入してください。Git revision はコミットであり、製品バージョンではありません。機能の要望フォームでは、使う場面と期待する結果を尋ねます。GitHub フォームの実際の表示と送信は未検証です。
 
 ## クレジット
 
