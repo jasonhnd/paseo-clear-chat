@@ -46,10 +46,12 @@
 ## Install
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.14.0.1
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.14.0.2
 ```
 
-Clear Chat 0.14.0.1 needs Paseo 0.14.0 or later. Open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
+Open Paseo’s plugins page and look for the version at the start of the Clear Chat description. Paseo 0.14.0 displays the default English description there even when the app language is changed.
+
+Clear Chat 0.14.0.2 needs Paseo 0.14.0 or later. Open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
 
 To update later:
 
@@ -62,6 +64,9 @@ This moves Clear Chat to the latest version on the `main` branch, not the releas
 > [!IMPORTANT]
 > Already using Beautiful Chat? Read [Upgrading from Beautiful Chat](#upgrading-from-beautiful-chat) **before** you install or remove anything. Removing a plugin in Paseo also deletes its settings.
 
+<details>
+<summary><b>Older Paseo versions (0.13 / 0.12), and how version numbers work</b></summary>
+
 Still on Paseo 0.13? Clear Chat 0.13.2.2 is already released and declares support for Paseo 0.13.0 or later. The exact installation command below has not yet been tested on Paseo 0.13:
 
 ```bash
@@ -73,9 +78,6 @@ If Clear Chat is already installed, the proposed way to select that release is s
 ```bash
 paseo plugin update clear-chat --ref v0.13.2.2 --yes
 ```
-
-<details>
-<summary><b>Still on Paseo 0.12, and how version numbers work</b></summary>
 
 On Paseo 0.12, install Clear Chat 0.12.0.1 instead:
 
@@ -148,7 +150,7 @@ Search, fetch and web search, plans and checklists, plain text, skills and any o
 - **Step menu.** **Copy command**, **Copy path**, **Copy result** and **Open in file manager**. Each item appears only when it applies; the text written by Write and Edit is not copied as a result.
 - **Wrap-up replies.** Replies sent through a `wrap_up` tool show as a full reply card, with recap, question, lettered options and a **Blocked** alert.
 - **Clickable links.** Links in replies, including bare web addresses and image addresses, open on desktop, web and iOS, and `mailto:` links open your mail app.
-- **Find in chat.** Ctrl/Cmd+F opens a find bar that also searches tool cards.
+- **Find in chat.** Ctrl/Cmd+F opens a find bar that also searches tool cards. It searches only messages already loaded.
 - **Open files.** File names in cards and paths in replies show the file in Finder, Explorer or your file manager on the host computer. Put a file name or path that contains spaces in inline code, or use a Markdown link.
 - **Highlight text.** `==marked text==` highlights text in replies. Inside code, the equals signs stay as they are.
 - **Pasted images.** With **Enhanced prompt bubble** on, images you paste into a prompt show as thumbnails in the prompt bubble, for Codex and Claude agents. Tap one to see it full size. Images larger than 1.5 MB or 24 megapixels are not shown. For Hermes agents, choose the **·CC** version of the provider when you create the agent; see [Pasted images in Hermes agents](#pasted-images-in-hermes-agents).
@@ -222,7 +224,7 @@ Clear Chat changes only how Paseo shows a conversation. Some things are up to Pa
 | Problem | What to do |
 |---|---|
 | Installing through the Cafe plugin fails, or Paseo reports a missing Shiki dependency such as `@shikijs/core`. | Retry with the Paseo CLI command in [Install](#install), using the same repository and release ref. Clear Chat installs its dependencies with `npm ci --include=dev`, so Node.js and npm must be available on the daemon host, and its network must reach the npm registry. If you manage the checkout yourself, run `npm ci --include=dev` there before retrying. |
-| Installation stops because the plugin needs a newer Paseo version. | For Clear Chat 0.14.0.1, update Paseo on the daemon host and all connected apps to 0.14.0 or later. For older hosts, see the [Install](#install) section for the Paseo 0.13 commands and their untested-status warning, and the separate Paseo 0.12 instructions. |
+| Installation stops because the plugin needs a newer Paseo version. | For Clear Chat 0.14.0.2, update Paseo on the daemon host and all connected apps to 0.14.0 or later. For older hosts, see the [Install](#install) section for the Paseo 0.13 commands and their untested-status warning, and the separate Paseo 0.12 instructions. |
 | Paseo rejects the plugin version, or Clear Chat says plugin settings or timeline support is missing. | Update Paseo on the daemon host and in every connected app, then reload Clear Chat. The Paseo version Clear Chat needs is declared in `paseo-plugin.json`. |
 | Clear Chat cannot start because plugin registration failed. | Update Paseo and reload Clear Chat. If it still fails, back up the plugin settings before you reinstall from the CLI. |
 | Clear Chat cannot read its settings from the host. | Reconnect to the host and choose **Retry** in **Settings → Plugins → Clear Chat**. If it still fails, check that the daemon can access the plugin settings folder. |
@@ -257,7 +259,7 @@ If the `beautiful-chat` settings folder does not exist, you never changed Beauti
 **2. Install**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.14.0.1
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.14.0.2
 ```
 
 **3. Check, then remove the old plugin**
@@ -310,6 +312,8 @@ Changes made in Clear Chat do not sync back to Beautiful Chat. Keep both backups
 ## Reporting problems
 
 Something wrong, or an idea? [Open an issue on GitHub](https://github.com/jasonhnd/paseo-clear-chat/issues/new/choose). You can also use **Report a problem** at the bottom of the settings page. Chinese and Japanese are welcome too. Every release is listed in the [changelog](CHANGELOG.md).
+
+The bug form asks for a redacted screenshot or video for a UI problem; if you cannot provide one, say why. For a non-UI problem, enter `N/A — not a UI issue` if no image is relevant. Give the installed product version if known; an installed Git revision is a commit, not a product version. The feature form asks for the use case and the expected result. The forms' live GitHub rendering and submission have not been tested.
 
 ## Credits
 

@@ -4,6 +4,30 @@ All notable changes to Clear Chat are listed here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and each version is the Paseo version it is built and tested for plus one number that counts Clear Chat's releases for that Paseo version, for example 0.12.0.1 for the first release for Paseo 0.12.0. Releases 1.0.0 and 1.0.1 came out before this rule.
 
+## [0.14.0.2] - 2026-10-31
+
+Needs Paseo 0.14.0 or later.
+
+### Added
+
+- The Clear Chat description shows the installed version on Paseo’s plugins page, so you can identify it at a glance ([issue #99](https://github.com/jasonhnd/paseo-clear-chat/issues/99), [PR #100](https://github.com/jasonhnd/paseo-clear-chat/pull/100)).
+- Added a pull request template for linking the issue and documenting scope, risks, rollback and verification ([issue #101](https://github.com/jasonhnd/paseo-clear-chat/issues/101), [PR #102](https://github.com/jasonhnd/paseo-clear-chat/pull/102)).
+
+### Changed
+
+- Improved the existing bug and feature report forms; UI reports request redacted visual evidence, and Chinese and Japanese reports remain welcome ([issue #101](https://github.com/jasonhnd/paseo-clear-chat/issues/101), [PR #102](https://github.com/jasonhnd/paseo-clear-chat/pull/102)). Live GitHub form rendering and submission have not been tested.
+
+### Known limitations
+
+- Paseo 0.14.0 displays the default English description in the plugin list even when the app language is changed; translated listing metadata does not change that display.
+- Windows and the production desktop client have not been tested for this change. The isolated host check covered an existing Git installation update and one synthetic setting, not a fresh installation or all settings.
+- Paseo’s whole-turn folding and text-size settings do not apply to Clear Chat-drawn content; use Clear Chat’s own text-size setting. Find searches loaded messages only; scroll up to load older ones.
+- The documented Paseo 0.13 install and switch commands, their effect on settings and switching from a newer release to the older one have not been tested on Paseo 0.13.
+
+### Upgrading
+
+- Update an existing installation with `paseo plugin update clear-chat --ref v0.14.0.2`; review the README before changing versions. Removing a plugin also removes its settings.
+
 ## [0.14.0.1] - 2026-10-30
 
 Needs Paseo 0.14.0 or later.
@@ -155,6 +179,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.14.0.2]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.14.0.2
 [0.14.0.1]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.14.0.1
 [0.13.2.2]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.13.2.2
 [0.13.2.1]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.13.2.1
