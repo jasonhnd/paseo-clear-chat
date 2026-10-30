@@ -1,7 +1,7 @@
 {
   "id": "clear-chat",
   "name": "Clear Chat",
-  "description": "Makes agent conversations easy to read: one-line steps, a card for every tool and step details.",
+  "description": "v0.14.0.2 · Makes agent conversations easy to read: one-line steps, a card for every tool and step details.",
   "requirements": {
     "paseo": ">=0.14.0"
   },
@@ -14,7 +14,7 @@
   "translations": {
     "zh-CN": {
       "name": "Clear Chat",
-      "description": "让 Agent 对话一眼看懂：步骤收成一行，每种工具都有卡片，点开看详情。"
+      "description": "v0.14.0.2 · 让 Agent 对话一眼看懂：步骤收成一行，每种工具都有卡片，点开看详情。"
     }
   }
 }
