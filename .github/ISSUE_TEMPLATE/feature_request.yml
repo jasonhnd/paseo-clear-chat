@@ -6,18 +6,34 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for the idea. English is preferred, but 中文、日本語でも OK.
-  - type: textarea
-    id: what
-    attributes:
-      label: What would you like?
-      description: Describe what you would like Clear Chat to show or do.
-    validations:
-      required: true
+        Thanks for the idea. Reports in English, 中文, or 日本語 are welcome.
+
+        Before posting, remove personal information, sensitive log content, and keys from text, logs, and screenshots. Share only redacted evidence.
   - type: textarea
     id: why
     attributes:
-      label: Why do you want it?
+      label: Scenario
       description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: Intended result
+      description: What would you like Clear Chat to show or do in this scenario?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and non-goals
+      description: If you have ideas about scope, describe what should be included and what should be left out. It is fine to say you are unsure.
+    validations:
+      required: false
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: How could someone tell the request is satisfied? Give observable or measurable examples; say if any details are still undecided.
     validations:
       required: true
