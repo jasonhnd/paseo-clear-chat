@@ -1,0 +1,4 @@
+[User] Reply with exactly READY.
+READY
+[User] Calculate 17 times 23. Reply with only the number, followed by the word MARIGOLD.
+391 MARIGOLD

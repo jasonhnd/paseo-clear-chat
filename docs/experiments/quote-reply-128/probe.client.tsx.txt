@@ -1,0 +1,18 @@
+import type { PluginClientContext } from "@getpaseo/plugin/client";
+
+export default function contribute(client: PluginClientContext) {
+  return client.addCommandCenterItem({
+    id: "send-probe",
+    title: "Run quote capability probe",
+    icon: "MessageCircle",
+    context: "agent",
+    async onSelect(context) {
+      const handle = context.paseo.agents.ref(context.agent.id);
+      console.log("QUOTE_PROBE_API", JSON.stringify({ agentId: context.agent.id, apiKeys: Object.keys(context.paseo), agentsKeys: Object.keys(context.paseo.agents), handleKeys: Object.keys(handle), timelineKeys: Object.keys(handle.timeline), send: typeof handle.send, run: typeof handle.run, prompt: typeof (handle as any).prompt, sendMessage: typeof (handle as any).sendMessage }));
+      try {
+        await handle.send("Calculate 17 times 23. Reply with only the number, followed by the word MARIGOLD.");
+        console.log("QUOTE_PROBE_SEND resolved");
+      } catch (e) { console.log("QUOTE_PROBE_SEND rejected", String(e)); }
+    },
+  });
+}
