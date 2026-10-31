@@ -84,6 +84,23 @@ function assertUnusable(state, reason) {
   assert.equal(Object.hasOwn(state, "events"), false);
 }
 
+for (const conflict of ["foreign token", "newer generation"]) {
+  test(`journal rejects a record with a ${conflict}`, async t => {
+    const h = harness(t), k = key();
+    const initial = await h.store.claimWriter(k);
+    await h.store.start(k, initial);
+    await initial.release();
+    const owner = await h.store.claimWriter(k);
+    await h.store.append(k, { text: "owned" }, owner);
+    const writer = conflict === "foreign token"
+      ? { ...owner, token: "22222222-2222-2222-2222-222222222222" }
+      : { ...owner, generation: owner.generation - 1 };
+    editManifest(h, k, { writer: { token: writer.token, generation: writer.generation } }, true);
+    assertUnusable(await h.create(h.storeRoot).read(k), "foreign_writer");
+    await owner.release();
+  });
+}
+
 test("Hermes CC history journal round-trips events recorded from creation", async t => {
   const h = harness(t), k = key();
   await h.store.start(k);
