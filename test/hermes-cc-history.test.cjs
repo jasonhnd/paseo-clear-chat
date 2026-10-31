@@ -80,7 +80,7 @@ function waitEvent(connection, predicate) {
 }
 
 function fixture(t, store = new FakeHistoryStore()) {
-  const root = fs.mkdtempSync(join(tmpdir(), "cc-history-"));
+  const root = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "cc-history-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const command = join(root, "hermes"), log = join(root, "requests.jsonl");
   fs.writeFileSync(command, `#!/usr/bin/env node
@@ -398,7 +398,7 @@ test("a failed prompt journal write leaves the session open and permits a retry 
 });
 
 test("a failed retry cannot leave a stale saved disk journal after reopening", async t => {
-  const root = fs.mkdtempSync(join(tmpdir(), "cc-retry-disk-"));
+  const root = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "cc-retry-disk-"));
   const { createHermesCcHistoryStore } = load("server/hermes-cc/history-store.ts");
   const store = createHermesCcHistoryStore(root);
   await store.start(key);
@@ -850,6 +850,57 @@ test("a lost lease fences the triggering prompt before it reaches Hermes", async
   assert.deepEqual(await h.store.read(key), { status: "unusable", reason: "foreign_writer" });
 });
 
+
+test("a prompt detecting a foreign record fences storage before forwarding", async t => {
+  const root = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "cc-foreign-mutation-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const { createHash } = require("node:crypto");
+  const hash = text => createHash("sha256").update(text).digest("hex");
+  const canonical = value => Array.isArray(value) ? `[${value.map(canonical).join(",")}]`
+    : value && typeof value === "object" ? `{${Object.keys(value).sort().map(k => `${JSON.stringify(k)}:${canonical(value[k])}`).join(",")}}`
+      : JSON.stringify(value);
+  const store = load("server/hermes-cc/history-store.ts").createHermesCcHistoryStore(root);
+  await store.start(key);
+  const name = hash(`${key.providerId}\0${key.nativeSessionId}`);
+  const manifestPath = join(root, name, "manifest.json"), eventsPath = join(root, name, "events.jsonl");
+  const initialHead = JSON.parse(fs.readFileSync(manifestPath, "utf8")).headHash;
+  for (const event of savedTranscript()) await store.append(key, event);
+  const h = queuedHarness(store);
+  t.after(() => h.connection.close());
+  await h.open("boundary", persistence); await becomeReady(h);
+  assert.equal(h.raw.sent[0].history, "skip");
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  let head = initialHead;
+  const lines = fs.readFileSync(eventsPath, "utf8").trim().split("\n").map((line, index) => {
+    const record = JSON.parse(line);
+    if (index === 0) record.writer = { ...manifest.writer, token: "22222222-2222-2222-2222-222222222222" };
+    head = hash(head + canonical(record.writer ? { event: record.event, writer: record.writer } : record.event));
+    record.hash = head;
+    return canonical(record);
+  });
+  const bytes = `${lines.join("\n")}\n`;
+  fs.writeFileSync(eventsPath, bytes);
+  manifest.headHash = head; manifest.bytes = Buffer.byteLength(bytes);
+  delete manifest.manifestHash;
+  manifest.manifestHash = hash(name + canonical(manifest));
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+  const send = h.raw.send;
+  h.raw.send = async input => {
+    if (input.type === "session.prompt") {
+      assert.equal(fs.existsSync(join(root, `.foreign-${name}`)), true, "foreign marker is durable before forwarding");
+      assert.equal(fs.existsSync(join(root, `.writer-${name}`)), false, "the recording lease is released");
+      assert.deepEqual(await store.read(key), { status: "unusable", reason: "foreign_writer" });
+    }
+    await send(input);
+  };
+  await h.connection.send(promptInput());
+  assert.equal(h.raw.sent.at(-1).type, "session.prompt");
+  const shown = waitEvent(h.connection, event => event.type === "timeline.item" && event.item.text === "live after fence");
+  h.raw.emit({ type: "timeline.item", sessionId: "boundary", item: { type: "assistant_message", id: "live", text: "live after fence" } });
+  await shown;
+  assert.equal(fs.readFileSync(eventsPath, "utf8"), bytes, "later live events are not recorded");
+});
+
 test("failed foreign invalidation blocks prompts and poisons every local recorder and future open", async t => {
   const journal = load("server/hermes-cc/history-connection.ts").journalHermesCcConnection;
   const store = new FakeHistoryStore(); seed(store);
@@ -880,7 +931,7 @@ test("failed foreign invalidation blocks prompts and poisons every local recorde
 });
 
 test("a foreign prompt during the creator's in-flight claim fences creation and the next open", async t => {
-  const root = fs.mkdtempSync(join(tmpdir(), "cc-foreign-creation-"));
+  const root = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "cc-foreign-creation-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const { createHermesCcHistoryStore } = load("server/hermes-cc/history-store.ts");
   const journal = load("server/hermes-cc/history-connection.ts").journalHermesCcConnection;
@@ -920,7 +971,7 @@ test("a foreign prompt during the creator's in-flight claim fences creation and 
 });
 
 test("a foreign fence synced during a resume's events read keeps that open on Hermes replay", async t => {
-  const root = fs.mkdtempSync(join(tmpdir(), "cc-foreign-read-"));
+  const root = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "cc-foreign-read-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const { createHermesCcHistoryStore } = load("server/hermes-cc/history-store.ts");
   const store = createHermesCcHistoryStore(root);
@@ -966,7 +1017,7 @@ test("a foreign fence synced during a resume's events read keeps that open on He
 });
 
 test("a truncated writer lease keeps the open on Hermes replay", async t => {
-  const root = fs.mkdtempSync(join(tmpdir(), "cc-bad-lease-"));
+  const root = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "cc-bad-lease-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const { createHermesCcHistoryStore } = load("server/hermes-cc/history-store.ts");
   const store = createHermesCcHistoryStore(root);
@@ -990,7 +1041,7 @@ test("a truncated writer lease keeps the open on Hermes replay", async t => {
 test("a crash at the foreign prompt fence reopens durable rows using Hermes replay without images", async t => {
   const entered = deferred(), persist = deferred(), persisted = deferred(), forward = deferred();
   t.after(() => { persist.resolve(); forward.resolve(); });
-  const root = fs.mkdtempSync(join(tmpdir(), "cc-foreign-crash-"));
+  const root = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "cc-foreign-crash-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const { createHermesCcHistoryStore } = load("server/hermes-cc/history-store.ts");
   const store = createHermesCcHistoryStore(root), observer = createHermesCcHistoryStore(root);
