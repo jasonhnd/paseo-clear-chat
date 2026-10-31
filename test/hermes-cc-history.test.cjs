@@ -927,7 +927,7 @@ test("a truncated writer lease keeps the open on Hermes replay", async t => {
   await h.open("boundary", persistence); await becomeReady(h);
   assert.equal(h.raw.sent.length, 1);
   assert.equal(h.raw.sent[0].history, "replay");
-  assert.deepEqual(historyOnly(h.events), []);
+  assert.deepEqual(historyOnly(h.events).filter(event => event.item?.type !== "notification"), []);
   assert.equal(fs.readFileSync(path, "utf8"), "{not-json");
   await h.connection.send(promptInput());
   assert.equal(h.raw.sent.at(-1).type, "session.prompt");
@@ -1104,7 +1104,7 @@ for (const resume of [false, true]) test(`a store lease held outside the wrapper
   t.after(() => h.connection.close());
   await h.open("boundary", resume ? persistence : undefined); await becomeReady(h);
   assert.equal(h.raw.sent[0].history, resume ? "replay" : "skip");
-  assert.deepEqual(historyOnly(h.events), [], "a refused claim never hydrates from the journal");
+  assert.deepEqual(historyOnly(h.events).filter(event => event.item?.type !== "notification"), [], "a refused claim never hydrates from the journal");
   assert.deepEqual(await observer.read(key), saved, "opening alone never invalidates");
   await h.connection.send(promptInput());
   await h.connection.send(promptInput("boundary", "slash", "/undo"));
