@@ -1292,7 +1292,7 @@ for (const failure of ["open turn", "corrupt byte", "record count", "size", "man
     assert.ok(replacement);
     t.after(() => replacement.release());
     unreadable = false;
-    if (failure !== "manifest checksum") assert.equal(readManifest(h).invalid, failure === "writer token" ? "foreign_writer" : "writer_changed");
+    if (failure !== "manifest checksum") assert.equal(readManifest(h).invalid, failure === "writer token" || failure === "foreign mark" ? "foreign_writer" : "writer_changed");
     const state = await h.create(h.storeRoot).read(k);
     assertUnusable(state, failure === "foreign mark" || failure === "writer token" ? "foreign_writer" : failure === "manifest checksum" ? "corrupt" : "writer_changed");
     if (failure === "foreign mark" || failure === "writer token") {

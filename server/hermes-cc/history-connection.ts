@@ -147,13 +147,9 @@ export function journalHermesCcConnection(
     try { await operation(); return true; }
     catch (error) {
       if (!(error instanceof Error) || error.message !== "writer_changed") throw error;
-      // The store has durably invalidated replay. Keep delivering the live
-      // session, but never record or settle anything else with this lease.
-      session.recording = false;
-      session.invalidated = true;
-      session.pendingPrompts.clear();
-      session.turns.clear();
-      try { await release(session); } catch { /* Recording has already stopped. */ }
+      // Persist the foreign fence and stop recording before delivering live
+      // events or allowing a history-changing send to proceed.
+      await invalidateForeignWriter(session);
       return false;
     }
   };
@@ -430,7 +426,7 @@ export function journalHermesCcConnection(
                   }
                 }
                 // A fenced mutation relinquishes ownership before this send.
-                if (!session.recording && !await invalidateForeignWriter(session)) {
+                if (!session.recording && failedInvalidations.has(recorderId(session.key))) {
                   sendFailed = true;
                   sendError = new Error("Hermes·CC session journal unavailable");
                   return;
