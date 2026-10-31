@@ -364,15 +364,14 @@ test("the durable busy marker precedes SDK admission; admission ACKs cannot sett
   assert.equal((await f.store.read(key)).status, "complete");
 });
 
-test("append failures fail closed and invalidate instead of emitting a partial timeline", async () => {
+test("append failures stop recording without terminating the live session", async () => {
   const h = queuedHarness(); await h.open();
   const ready = waitEvent(h.connection, event => event.type === "session.ready"); h.opened(); h.ready(); await ready;
   h.store.before = async method => { if (method === "append") throw new Error("fixture fsync failed"); };
-  const failed = waitEvent(h.connection, event => event.type === "session.runtime_failed");
-  h.raw.emit({ type: "timeline.item", sessionId: "boundary", item: { type: "assistant_message", id: "reply", text: "lost" } });
-  h.raw.emit({ type: "session.config", sessionId: "boundary", config: { models: [], modes: [], thinkingOptions: [], settings: [] } });
-  await failed; await tick();
-  assert.deepEqual(h.events.map(event => event.type), ["session.opened", "session.ready", "session.runtime_failed"]);
+  const shown = waitEvent(h.connection, event => event.type === "timeline.item" && event.item.id.endsWith("reply"));
+  h.raw.emit({ type: "timeline.item", sessionId: "boundary", item: { type: "assistant_message", id: "reply", text: "live" } });
+  await shown;
+  assert.equal(h.events.some(event => event.type === "session.runtime_failed"), false);
   assert.equal((await h.store.read(key)).status, "unusable");
   await h.connection.close();
 });
@@ -389,9 +388,36 @@ test("a failed prompt journal write leaves the session open and permits a retry 
   await tick();
   assert.equal(h.raw.sent.some(input => input.prompt?.clientMessageId === "not-sent"), false);
   assert.equal(h.events.some(event => event.type === "session.runtime_failed"), false);
+  await assert.rejects(h.connection.send(promptInput("boundary", "retry-unavailable")), /journal unavailable/);
+  assert.equal(h.raw.sent.some(input => input.prompt?.clientMessageId === "retry-unavailable"), false);
+  assert.equal((await h.store.read(key)).status, "complete", "the unchanged journal contains no forwarded prompt");
   unavailable = false;
   await h.connection.send(promptInput("boundary", "retry"));
   assert.equal(h.raw.sent.at(-1).prompt.clientMessageId, "retry");
+  assert.equal((await h.store.read(key)).status, "unusable");
+});
+
+test("an overlapping prompt survives an append failure and fences subsequent sends", async t => {
+  const h = queuedHarness(); seed(h.store);
+  t.after(() => h.connection.close());
+  await h.open("boundary", persistence); await becomeReady(h);
+  await h.connection.send(promptInput("boundary", "first"));
+  await h.connection.send(promptInput("boundary", "overlap"));
+  assert.equal(h.store.calls.filter(call => call.method === "turnStarted").length, 1);
+  let unavailable = true;
+  h.store.before = async method => {
+    if (unavailable && (method === "append" || method === "invalidate")) throw new Error("fixture storage unavailable");
+  };
+  const shown = waitEvent(h.connection, event => event.type === "timeline.item" && event.item.text === "live overlap");
+  h.raw.emit({ type: "timeline.item", sessionId: "boundary", item: { type: "assistant_message", id: "overlap-reply", text: "live overlap" } });
+  await shown;
+  assert.equal(h.events.some(event => event.type === "session.runtime_failed"), false);
+  assert.equal((await h.store.read(key)).reason, "unsettled turn");
+  await assert.rejects(h.connection.send(promptInput("boundary", "blocked")), /journal unavailable/);
+  assert.equal(h.raw.sent.some(input => input.prompt?.clientMessageId === "blocked"), false);
+  unavailable = false;
+  await h.connection.send(promptInput("boundary", "after-recovery"));
+  assert.equal(h.raw.sent.at(-1).prompt.clientMessageId, "after-recovery");
   assert.equal((await h.store.read(key)).status, "unusable");
 });
 
