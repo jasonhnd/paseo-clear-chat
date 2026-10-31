@@ -278,6 +278,9 @@ export function journalHermesCcConnection(
       for (const event of session.opening) emit(session.namespaced ? withRuntimeIds(event, session.generation) : event);
       session.opening = [];
       emit(original);
+      if (session.claimRefused) emit({ type: "timeline.item", sessionId: original.sessionId,
+        item: { type: "notification", id: "hermes-cc:recording-refused", level: "warning",
+          message: "Clear Chat could not record this conversation because another writer is active." } });
       return;
     }
     const event = session.namespaced ? withRuntimeIds(original, session.generation) : original;
@@ -404,7 +407,17 @@ export function journalHermesCcConnection(
             else {
               // Persist the busy marker BEFORE the inner SDK can send anything
               // to Hermes. Keep it open across overlapping prompt admissions.
-              if (!session.pendingPrompts.size) await mutate(session, () => store.turnStarted(session.key!, session.lease ?? undefined));
+              if (!session.pendingPrompts.size) {
+                try { await mutate(session, () => store.turnStarted(session.key!, session.lease ?? undefined)); }
+                catch (error) {
+                  // The prompt has not reached the provider. Fence any uncertain
+                  // journal write and let the caller report this send as failed.
+                  await invalidateForeignWriter(session);
+                  sendFailed = true;
+                  sendError = error;
+                  return;
+                }
+              }
               // A fenced mutation relinquishes ownership before this send.
               if (!session.recording) await invalidateForeignWriter(session);
               if (session.recording) {

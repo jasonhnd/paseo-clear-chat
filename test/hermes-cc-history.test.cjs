@@ -377,6 +377,24 @@ test("append failures fail closed and invalidate instead of emitting a partial t
   await h.connection.close();
 });
 
+test("a failed prompt journal write leaves the session open and permits a retry after recovery", async t => {
+  const h = queuedHarness(); seed(h.store);
+  t.after(() => h.connection.close());
+  await h.open("boundary", persistence); await becomeReady(h);
+  let unavailable = true;
+  h.store.before = async method => {
+    if (unavailable && (method === "turnStarted" || method === "invalidate")) throw new Error("fixture storage unavailable");
+  };
+  await assert.rejects(h.connection.send(promptInput("boundary", "not-sent")), /fixture storage unavailable/);
+  await tick();
+  assert.equal(h.raw.sent.some(input => input.prompt?.clientMessageId === "not-sent"), false);
+  assert.equal(h.events.some(event => event.type === "session.runtime_failed"), false);
+  unavailable = false;
+  await h.connection.send(promptInput("boundary", "retry"));
+  assert.equal(h.raw.sent.at(-1).prompt.clientMessageId, "retry");
+  assert.equal((await h.store.read(key)).status, "unusable");
+});
+
 test("request replies, permissions and errors stay ordered behind appends and stay out of the journal", async () => {
   const h = queuedHarness(); await h.open();
   const ready = waitEvent(h.connection, event => event.type === "session.ready"); h.opened(); h.ready(); await ready;
@@ -664,6 +682,20 @@ test("two connections cannot record one native key, and an idle second reader do
   const c = queuedHarness(store, journal); await c.open("c", persistence); await becomeReady(c, "c");
   assert.equal(c.raw.sent[0].history, "skip", "closing the owner releases its local claim");
   await c.connection.close();
+});
+
+test("a refused claimant presents a recording failure rather than a saved message", async t => {
+  const store = new FakeHistoryStore(); seed(store);
+  const journal = load("server/hermes-cc/history-connection.ts").journalHermesCcConnection;
+  const a = queuedHarness(store, journal), b = queuedHarness(store, journal);
+  t.after(() => a.connection.close()); t.after(() => b.connection.close());
+  await a.open("a", persistence); await becomeReady(a, "a");
+  await b.open("b", persistence); await becomeReady(b, "b");
+  await tick();
+  const notices = b.events.filter(event => event.type === "timeline.item" && event.item.type === "notification");
+  assert.equal(notices.length, 1);
+  assert.match(notices[0].item.message, /could not record/i);
+  assert.doesNotMatch(notices[0].item.message, /\brecorded\b/i);
 });
 
 for (const mutation of ["prompt", "live update"]) {
