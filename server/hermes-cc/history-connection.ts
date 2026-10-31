@@ -95,7 +95,7 @@ const recorders = new Map<string, Session>();
 const recorderId = (key: HermesCcJournalKey) => JSON.stringify([key.providerId, key.nativeSessionId]);
 // An invalidation failure must never let another local connection certify this
 // key again. Retry persistence on its next open or mutation, without blocking
-// the user's prompt if storage remains unavailable.
+// a history-changing send until invalidation can be persisted.
 const failedInvalidations = new Set<string>();
 
 /** Journal final provider events before Paseo observes them, including readiness. */
@@ -169,22 +169,22 @@ export function journalHermesCcConnection(
     await release(session);
   };
   const invalidateForeignWriter = async (session: Session) => {
-    if (!session.key) return;
+    if (!session.key) return true;
     session.recording = false;
     session.invalidated = true;
     session.pendingPrompts.clear();
     session.turns.clear();
+    let durable = true;
     try {
       // Always await this fence, even after losing a lease or the owner closing.
       await store.invalidate(session.key, "foreign_writer");
     } catch {
       failedInvalidations.add(recorderId(session.key));
-      // Keep live prompts usable. The disk store syncs an independent marker
-      // before attempting the journal lock/manifest, so the owner sees failures
-      // there too. If even marker writes fail, retry locally as storage recovers;
-      // a crash while all writes are unavailable cannot preserve a new fence.
+      // A failed fence cannot justify forwarding another history-changing send.
+      durable = false;
     }
-    try { await release(session); } catch { /* The key is already unusable. */ }
+    try { await release(session); } catch { /* Recording has already stopped. */ }
+    return durable;
   };
   const fail = async (session: Session) => {
     session.failed = true;
@@ -284,6 +284,7 @@ export function journalHermesCcConnection(
       return;
     }
     const event = session.namespaced ? withRuntimeIds(original, session.generation) : original;
+    try {
     if (session.recording && session.key) {
       if (isHistory(event)) {
         if (!await mutate(session, () => store.append(session.key!, event, session.lease ?? undefined))) {
@@ -316,6 +317,11 @@ export function journalHermesCcConnection(
     } else if (isHistory(event)) {
       // Also cover unsolicited history that did not follow a local send.
       await invalidate(session, session.claimRefused ? "writer_changed" : "history appended outside the recorder", true);
+    }
+    } catch {
+      // The provider has already produced this event. Stop recording, preserve
+      // live delivery, and refuse later sends until the fence is durable.
+      await invalidateForeignWriter(session);
     }
     emit(event);
   };
@@ -397,7 +403,11 @@ export function journalHermesCcConnection(
         const changesHistory = input.type === "session.prompt" || input.type === "session.revert";
         if (changesHistory && session.key && (!session.recording || recorders.get(recorderId(session.key)) !== session
           || failedInvalidations.has(recorderId(session.key)))) {
-          await invalidateForeignWriter(session);
+          if (!await invalidateForeignWriter(session)) {
+            sendFailed = true;
+            sendError = new Error("Hermes·CC session journal unavailable");
+            return;
+          }
         } else if (input.type === "session.revert" || (input.type === "session.prompt" && isCommand(input))) {
           await invalidate(session, "history-mutating command");
         } else if (input.type === "session.prompt") {
@@ -419,7 +429,11 @@ export function journalHermesCcConnection(
                 }
               }
               // A fenced mutation relinquishes ownership before this send.
-              if (!session.recording) await invalidateForeignWriter(session);
+              if (!session.recording && !await invalidateForeignWriter(session)) {
+                sendFailed = true;
+                sendError = new Error("Hermes·CC session journal unavailable");
+                return;
+              }
               if (session.recording) {
                 session.pendingPrompts.add(id);
                 session.clientMessageIds.add(id);
