@@ -203,17 +203,28 @@ test("managed build automatically generates both descriptions from the package v
 });
 
 test("a stale prefix in either description is regenerated", async t => {
-  for (const locale of ["default", "zh-CN"]) {
-    await t.test(locale, t => {
+  for (const fixtureVersion of ["0.14.0.3", "10.20.30.40"]) {
+    for (const locale of ["default", "zh-CN"]) await t.test(`${fixtureVersion} ${locale}`, t => {
       const dir = fixture(t), file = path.join(dir, "paseo-plugin.json");
+      setVersion(dir, fixtureVersion);
+      const version = read(path.join(dir, "package.json")).version, stale = "1.2.3.4";
+      assert.match(version, /^(?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*)){3}$/);
+      assert.notEqual(stale, version, "the stale prefix must differ from the fixture package version");
       const manifest = read(file), entry = locale === "default" ? manifest : manifest.translations[locale];
-      entry.description = entry.description.replace("v0.14.0.2", "v1.2.3.4");
+      const descriptions = [manifest.description, manifest.translations["zh-CN"].description];
+      const wording = descriptions.map(description => {
+        const match = /^v\d+(?:\.\d+){3} · ([\s\S]+)$/.exec(description);
+        assert.ok(match, "the fixture description must have a four-part prefix");
+        return match[1];
+      });
+      entry.description = `v${stale} · ${wording[locale === "default" ? 0 : 1]}`;
       write(file, manifest);
       const result = build(dir);
       assertInvocation(dir);
       assert.equal(result.status, 0, result.stderr);
-      const updated = read(file), actual = locale === "default" ? updated : updated.translations[locale];
-      assert.equal(actual.description, entry.description.replace("v1.2.3.4", "v0.14.0.2"));
+      const updated = read(file);
+      assert.equal(updated.description, `v${version} · ${wording[0]}`);
+      assert.equal(updated.translations["zh-CN"].description, `v${version} · ${wording[1]}`);
     });
   }
 });
