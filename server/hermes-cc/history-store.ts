@@ -792,8 +792,8 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
             let replayable = false;
             // Check against the old owner before advancing the generation, or a
             // same-generation foreign record could be mistaken for old history.
-            const foreign = !loaded.invalid &&
-              (await viewEvents(session, loaded, maxBytesPerSession)).status === "foreign_writer";
+            const foreign = loaded.invalid === "foreign_writer" || (!loaded.invalid &&
+              (await viewEvents(session, loaded, maxBytesPerSession)).status === "foreign_writer");
             if (previous && !Object.hasOwn(loaded, "invalid") && sameWriter(loaded.writer, previous)) {
               try {
                 // A dead writer is safe to replace only after the full read checks,
@@ -937,6 +937,7 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
             if (viewed.status === "unsafe") throw new Error("unsafe_history_file");
             if (viewed.status === "corrupt" || viewed.status === "foreign_writer") {
               await publish(session, { ...loaded, invalid: viewed.status });
+              if (viewed.status === "foreign_writer") throw new Error("writer_changed");
               return;
             }
             if (viewed.status === "over_cap" || loaded.bytes + added > maxBytesPerSession) {
@@ -967,6 +968,7 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
             if (viewed.status !== "ok") {
               if (viewed.status === "unsafe") throw new Error("unsafe_history_file");
               await publish(session, { ...loaded, invalid: viewed.status });
+              if (viewed.status === "foreign_writer") throw new Error("writer_changed");
               return;
             }
             if (loaded.openTurns === Number.MAX_SAFE_INTEGER) {
@@ -994,6 +996,7 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
             if (viewed.status !== "ok") {
               if (viewed.status === "unsafe") throw new Error("unsafe_history_file");
               await publish(session, { ...loaded, invalid: viewed.status });
+              if (viewed.status === "foreign_writer") throw new Error("writer_changed");
               return;
             }
             // A duplicate settle must not destroy a journal that has already settled.
