@@ -143,6 +143,16 @@
     "dialogBody": "Automatic copying failed. Touch and hold the text, choose Select All, then Copy.",
     "dialogFieldA11y": "Text to copy"
   },
+  "quote": {
+    "action": "Quote reply",
+    "title": "Reply with quote",
+    "quoted": "Quoted message",
+    "reply": "Your reply",
+    "busy": "Wait for the agent to finish before sending.",
+    "failed": "Could not send the reply. Check that the agent is idle and try again.",
+    "cancel": "Cancel",
+    "send": "Send"
+  },
   "prompt": {
     "you": "You",
     "copyA11y": "Copy prompt",

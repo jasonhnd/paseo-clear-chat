@@ -405,7 +405,7 @@ export function LiveAssistantRenderer({
           expansionIdentity={{ hostId: host.id, agentId, callId: item.data.messageId, name: "assistant-message", timestamp: timestamp.getTime() }} />
       )}
       {!envelope ? (
-        <AssistantFooter text={item.data.text} at={timestamp} tokens={tokens} durationMs={durationMs} />
+        <AssistantFooter text={item.data.text} at={timestamp} tokens={tokens} durationMs={durationMs} agentId={agentId} />
       ) : null}
       <TimelineTailHub
         agentId={agentId}
