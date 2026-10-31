@@ -271,7 +271,7 @@ function parseLines(bytes: Buffer): string[] | null {
   if (lines.some(line => line.length === 0)) return null;
   return lines;
 }
-type EventsView = { status: "ok"; events: unknown[] } | { status: "corrupt" } | { status: "over_cap" } | { status: "unsafe" };
+type EventsView = { status: "ok"; events: unknown[] } | { status: "corrupt" } | { status: "foreign_writer" } | { status: "over_cap" } | { status: "unsafe" };
 async function viewEvents(session: Directory, manifest: Manifest, maxBytesPerSession: number): Promise<EventsView> {
   let size = 0n;
   const target = child(session, EVENTS);
@@ -305,6 +305,8 @@ async function viewEvents(session: Directory, manifest: Manifest, maxBytesPerSes
       if (writer !== undefined && !writerOwner(writer)) return { status: "corrupt" };
       head = hash(head + canonical(writer === undefined ? value.event : { event: value.event, writer }));
       if (value.hash !== head || canonical({ event: value.event, hash: head, ...(writer === undefined ? {} : { writer }) }) !== line) return { status: "corrupt" };
+      if (writer && (!manifest.writer || writer.generation > manifest.writer.generation ||
+          (writer.generation === manifest.writer.generation && writer.token !== manifest.writer.token))) return { status: "foreign_writer" };
       events.push(value.event);
     } catch { return { status: "corrupt" }; }
   }
@@ -628,6 +630,7 @@ function judge(manifest: Manifest, viewed: EventsView): HermesCcJournalState {
   if (!manifest.startedFromCreation) return unusable("started_mid_session");
   if (viewed.status === "unsafe") throw new Error("unsafe_history_file");
   if (viewed.status === "corrupt") return unusable("corrupt");
+  if (viewed.status === "foreign_writer") return unusable("foreign_writer");
   if (viewed.status === "over_cap") return unusable("over_cap");
   if (manifest.openTurns !== 0) return unusable("unsettled_turn");
   return { status: "complete", events: viewed.events };
@@ -927,8 +930,8 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
             const added = Buffer.byteLength(`${line}\n`, "utf8");
             const viewed = await verifyForWrite(session, loaded);
             if (viewed.status === "unsafe") throw new Error("unsafe_history_file");
-            if (viewed.status === "corrupt") {
-              await publish(session, { ...loaded, invalid: "corrupt" });
+            if (viewed.status === "corrupt" || viewed.status === "foreign_writer") {
+              await publish(session, { ...loaded, invalid: viewed.status });
               return;
             }
             if (viewed.status === "over_cap" || loaded.bytes + added > maxBytesPerSession) {
@@ -958,7 +961,7 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
             const viewed = await verifyForWrite(session, loaded);
             if (viewed.status !== "ok") {
               if (viewed.status === "unsafe") throw new Error("unsafe_history_file");
-              await publish(session, { ...loaded, invalid: viewed.status === "over_cap" ? "over_cap" : "corrupt" });
+              await publish(session, { ...loaded, invalid: viewed.status });
               return;
             }
             if (loaded.openTurns === Number.MAX_SAFE_INTEGER) {
@@ -985,7 +988,7 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
             const viewed = await verifyForWrite(session, loaded);
             if (viewed.status !== "ok") {
               if (viewed.status === "unsafe") throw new Error("unsafe_history_file");
-              await publish(session, { ...loaded, invalid: viewed.status === "over_cap" ? "over_cap" : "corrupt" });
+              await publish(session, { ...loaded, invalid: viewed.status });
               return;
             }
             // A duplicate settle must not destroy a journal that has already settled.
