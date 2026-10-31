@@ -4,6 +4,27 @@ All notable changes to Clear Chat are listed here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and each version is the Paseo version it is built and tested for plus one number that counts Clear Chat's releases for that Paseo version, for example 0.12.0.1 for the first release for Paseo 0.12.0. Releases 1.0.0 and 1.0.1 came out before this rule.
 
+## [0.14.0.3] - 2026-10-31
+
+### Fixed
+
+- Clear Chat now notices when two writers that both carry the new identity information record the same conversation. Instead of mixing their records, that conversation is shown with Hermes’s own text ([issue #110](https://github.com/jasonhnd/paseo-clear-chat/issues/110), [PR #114](https://github.com/jasonhnd/paseo-clear-chat/pull/114)). Records written by earlier versions carry no such identity and replay as ordinary history.
+- When a message cannot be written to the saved copy, the window no longer ends. Clear Chat reports that message as not sent, and sending it again works once the storage is available.
+
+### Changed
+
+- Repository text no longer uses a personal name: the contributor guidelines and the licence attribution now use the project’s public account handle ([issue #112](https://github.com/jasonhnd/paseo-clear-chat/issues/112), [PR #118](https://github.com/jasonhnd/paseo-clear-chat/pull/118)).
+
+### Known limitations
+
+- **A storage location Clear Chat cannot write to.** Your conversation is not damaged and nothing has been deleted. When Clear Chat cannot read or update its saved copy of a conversation, it shows that conversation with Hermes's own text instead; a location that is read-only and cannot be written to gives the same result. This is a fallback, not a sign that the record was damaged or that data was lost.
+- **What “saved” means.** Clear Chat counts a message as saved only after the storage confirms that the whole message was written. When that confirmation does not arrive, the window stays open and Clear Chat reports the message as not sent, so you can send it again. The exact wording shown at that moment has not been verified on a real host yet. Clear Chat does not promise that content is never lost.
+- The read-only case was measured on macOS and on a full volume. The equivalent on Linux has not been tested.
+
+### Upgrading
+
+- Update an existing installation with `paseo plugin update clear-chat --ref v0.14.0.3`; review the README before changing versions. Removing a plugin also removes its settings.
+
 ## [0.14.0.2] - 2026-10-31
 
 Needs Paseo 0.14.0 or later.
@@ -179,6 +200,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.14.0.3]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.14.0.2...v0.14.0.3
 [0.14.0.2]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.14.0.2
 [0.14.0.1]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.14.0.1
 [0.13.2.2]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.13.2.2
