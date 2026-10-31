@@ -397,6 +397,28 @@ test("a failed prompt journal write leaves the session open and permits a retry 
   assert.equal((await h.store.read(key)).status, "unusable");
 });
 
+test("a failed retry cannot leave a stale saved disk journal after reopening", async t => {
+  const root = fs.mkdtempSync(join(tmpdir(), "cc-retry-disk-"));
+  const { createHermesCcHistoryStore } = load("server/hermes-cc/history-store.ts");
+  const store = createHermesCcHistoryStore(root);
+  await store.start(key);
+  const h = queuedHarness(store);
+  t.after(async () => { await h.connection.close(); fs.rmSync(root, { recursive: true, force: true }); });
+  await h.open("boundary", persistence); await becomeReady(h);
+  const turnStarted = store.turnStarted.bind(store), invalidate = store.invalidate.bind(store);
+  let unavailable = true;
+  store.turnStarted = async (...args) => { if (unavailable) throw new Error("disk unavailable"); return turnStarted(...args); };
+  store.invalidate = async (...args) => { if (unavailable) throw new Error("disk unavailable"); return invalidate(...args); };
+  await assert.rejects(h.connection.send(promptInput("boundary", "first")), /disk unavailable/);
+  await assert.rejects(h.connection.send(promptInput("boundary", "retry")), /journal unavailable/);
+  assert.equal(h.raw.sent.filter(input => input.type === "session.prompt").length, 0);
+  assert.equal((await createHermesCcHistoryStore(root).read(key)).status, "complete", "the disk snapshot contains every forwarded prompt");
+  unavailable = false;
+  await h.connection.send(promptInput("boundary", "recovered"));
+  assert.equal(h.raw.sent.at(-1).prompt.clientMessageId, "recovered");
+  assert.equal((await createHermesCcHistoryStore(root).read(key)).status, "unusable");
+});
+
 test("an overlapping prompt survives an append failure and fences subsequent sends", async t => {
   const h = queuedHarness(); seed(h.store);
   t.after(() => h.connection.close());
@@ -823,7 +845,7 @@ test("a lost lease fences the triggering prompt before it reaches Hermes", async
   assert.deepEqual(await h.store.read(key), { status: "unusable", reason: "foreign_writer" });
 });
 
-test("failed foreign invalidation forwards prompts but poisons every local recorder and future open", async t => {
+test("failed foreign invalidation blocks prompts and poisons every local recorder and future open", async t => {
   const journal = load("server/hermes-cc/history-connection.ts").journalHermesCcConnection;
   const store = new FakeHistoryStore(); seed(store);
   const a = queuedHarness(store, journal), b = queuedHarness(store, journal);
@@ -831,16 +853,16 @@ test("failed foreign invalidation forwards prompts but poisons every local recor
   await a.open("a", persistence); await becomeReady(a, "a");
   await b.open("b", persistence); await becomeReady(b, "b");
   store.before = async method => { if (method === "invalidate") throw new Error("disk unavailable"); };
-  await b.connection.send(promptInput("b", "foreign"));
+  await assert.rejects(b.connection.send(promptInput("b", "foreign")), /journal unavailable/);
   for (const [h, sessionId] of [[a, "a"], [b, "b"]]) {
     const shown = waitEvent(h.connection, event => event.type === "timeline.item");
     h.raw.emit({ type: "timeline.item", sessionId, item: { type: "assistant_message", id: "live", text: "live answer" } });
     await shown;
     assert.equal(h.events.some(event => event.type === "session.runtime_failed"), false);
   }
-  await a.connection.send(promptInput("a", "owner-after-failure"));
-  assert.equal(b.raw.sent.at(-1).prompt.clientMessageId, "foreign");
-  assert.equal(a.raw.sent.at(-1).prompt.clientMessageId, "owner-after-failure");
+  await assert.rejects(a.connection.send(promptInput("a", "owner-after-failure")), /journal unavailable/);
+  assert.equal(b.raw.sent.some(input => input.prompt?.clientMessageId === "foreign"), false);
+  assert.equal(a.raw.sent.some(input => input.prompt?.clientMessageId === "owner-after-failure"), false);
   assert.equal(store.calls.filter(call => call.method === "turnStarted").length, 0);
   const c = queuedHarness(store, journal); t.after(() => c.connection.close());
   await c.open("c", persistence); await becomeReady(c, "c");
