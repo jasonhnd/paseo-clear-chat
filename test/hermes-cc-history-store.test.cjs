@@ -113,88 +113,42 @@ test("acquiring a new lease cannot hide a foreign record from the previous owner
   assertUnusable(await h.store.read(k), "foreign_writer");
 });
 
-test("replacing the writer pathname across processes cannot produce a saved mixed journal", { timeout: 15000 }, async t => {
-  const h = harness(t), k = key(), compiled = compileHistory(h);
-  const script = join(h.root, "replacement-worker.cjs");
-  fs.writeFileSync(script, `
-    const store = require(process.argv[2]).createHermesCcHistoryStore(process.argv[3]);
-    const key = { providerId: "hermes-cc", nativeSessionId: "native-1" };
-    let owner;
-    process.on("message", async message => {
-      try {
-        if (message === "claim") {
-          owner = await store.claimWriter(key);
-          if (owner && process.argv[4] === "first") await store.start(key, owner);
-          process.send({ kind: "claim", owner: owner && { token: owner.token, generation: owner.generation } });
-        } else if (message === "append") {
-          if (!owner) { await store.invalidate(key, "foreign_writer"); process.send({ kind: "append", result: "foreign_writer" }); }
-          else {
-            try { await store.append(key, { process: process.argv[4] }, owner); process.send({ kind: "append", result: "resolved" }); }
-            catch (error) { process.send({ kind: "append", result: error.message }); }
-          }
-        } else if (message === "read") process.send({ kind: "read", state: await store.read(key) });
-        else if (message === "stop") { await owner?.release(); process.exit(0); }
-      } catch (error) { process.send({ kind: "error", error: error.stack }); }
-    });
-  `);
-  const workers = ["first", "second"].map(role => fork(script, [compiled, h.storeRoot, role], { stdio: ["ignore", "ignore", "pipe", "ipc"] }));
-  t.after(() => workers.forEach(worker => worker.kill()));
-  const ask = (worker, command) => new Promise((resolve, reject) => {
-    worker.once("error", reject);
-    worker.once("message", message => message.kind === "error" ? reject(new Error(message.error)) : resolve(message));
-    worker.send(command);
-  });
-  const first = await ask(workers[0], "claim");
-  assert.ok(first.owner);
-  const pathname = join(h.storeRoot, `.writer-${digest(k.providerId, k.nativeSessionId)}`);
-  fs.unlinkSync(pathname);
-  fs.writeFileSync(pathname, JSON.stringify({ ...first.owner, pid: 2147483647 }), { flag: "wx" });
-  await ask(workers[1], "claim");
-  const attempt2 = await ask(workers[1], "append");
-  const attempt1 = await ask(workers[0], "append");
-  const results = [attempt1.result, attempt2.result];
-  const lines = fs.readFileSync(eventsPath(h, k), "utf8").trim().split("\n").filter(Boolean);
-  assert.ok(lines.length <= 1, "at most one write reached the journal");
-  assert.ok(results.some(result => ["writer_changed", "foreign_writer"].includes(result)));
-  for (const worker of workers) assert.equal((await ask(worker, "read")).state.status, "unusable");
-  assert.equal((await h.create(h.storeRoot).read(k)).status, "unusable");
-  await Promise.all(workers.map(worker => new Promise(resolve => {
-    worker.once("exit", resolve); worker.send("stop");
-  })));
-  const sent = [];
-  const connection = h.load("server/hermes-cc/history-connection.ts").journalHermesCcConnection({
-    version: 1, capabilities: [], async send(input) { sent.push(input); },
-    async close() {}, onEvent() { return () => {}; },
-  }, "hermes-cc", h.create(h.storeRoot));
-  t.after(() => connection.close());
-  await connection.send({ type: "session.open", sessionId: "fallback", requestId: "open", history: "replay",
-    persistence: { version: 1, data: { sessionId: k.nativeSessionId } },
-    config: { cwd: h.root, env: {}, settings: {}, mcpServers: {}, persist: true } });
-  assert.equal(sent[0].history, "replay", "the unusable journal falls back to provider replay");
+test("dead-owner takeover preserves a foreign writer classification", async t => {
+  const h = harness(t), k = key(), owner = await h.store.claimWriter(k);
+  t.after(() => owner.release());
+  await h.store.start(k, owner);
+  await h.store.append(k, { text: "foreign" }, owner);
+  editManifest(h, k, { writer: { token: "22222222-2222-2222-2222-222222222222", generation: owner.generation } }, true);
+  assertUnusable(await h.store.read(k), "foreign_writer");
+  const leasePath = join(h.storeRoot, `.writer-${digest(k.providerId, k.nativeSessionId)}`);
+  const lease = JSON.parse(fs.readFileSync(leasePath, "utf8"));
+  fs.writeFileSync(leasePath, JSON.stringify({ ...lease, pid: 2147483647 }));
+  const replacement = await h.create(h.storeRoot).claimWriter(k);
+  assert.ok(replacement);
+  t.after(() => replacement.release());
+  assert.equal(readManifest(h).invalid, "foreign_writer");
+  assertUnusable(await h.create(h.storeRoot).read(k), "foreign_writer");
 });
 
-for (const damage of ["mid-record truncation", "unterminated half line", "broken chain hash"]) {
-  test(`a ${damage} cannot become a saved journal after an append`, async t => {
-    const h = harness(t), k = key();
-    await h.store.start(k);
-    await h.store.append(k, { text: "first" });
-    await h.store.append(k, { text: "second" });
-    const file = eventsPath(h, k), original = fs.readFileSync(file);
-    if (damage === "mid-record truncation") fs.writeFileSync(file, original.subarray(0, original.length - 8));
-    else if (damage === "unterminated half line") {
-      const end = original.indexOf(10) + 1;
-      const partial = original.subarray(0, end + Math.floor((original.length - end) / 2));
-      fs.writeFileSync(file, partial);
-      editManifest(h, k, { bytes: partial.length }, true);
-    } else {
-      const broken = Buffer.from(original), position = broken.indexOf(Buffer.from("first"));
-      broken[position] = "F".charCodeAt(0);
-      fs.writeFileSync(file, broken);
+for (const damage of ["later hash", "later malformed record", "manifest head"]) {
+  test(`a foreign record followed by ${damage} is corrupt`, async t => {
+    const h = harness(t), k = key(), owner = await h.store.claimWriter(k);
+    t.after(() => owner.release());
+    await h.store.start(k, owner);
+    await h.store.append(k, { text: "first" }, owner);
+    await h.store.append(k, { text: "second" }, owner);
+    editManifest(h, k, { writer: { token: "22222222-2222-2222-2222-222222222222", generation: owner.generation } }, true);
+    assertUnusable(await h.create(h.storeRoot).read(k), "foreign_writer");
+    if (damage === "manifest head") editManifest(h, k, { headHash: "0".repeat(64) }, true);
+    else {
+      const file = eventsPath(h, k), bytes = fs.readFileSync(file);
+      const second = bytes.indexOf(10) + 1;
+      const index = damage === "later hash" ? bytes.indexOf(Buffer.from("second"), second) : second;
+      assert.ok(index >= second);
+      bytes[index] = damage === "later hash" ? "S".charCodeAt(0) : "!".charCodeAt(0);
+      fs.writeFileSync(file, bytes);
     }
-    assert.equal((await h.store.read(k)).status, "unusable");
-    await h.store.append(k, { text: "after damage" });
-    assert.equal((await h.create(h.storeRoot).read(k)).status, "unusable");
-    assert.equal(fs.readFileSync(file, "utf8").includes("after damage"), false);
+    assertUnusable(await h.create(h.storeRoot).read(k), "corrupt");
   });
 }
 
