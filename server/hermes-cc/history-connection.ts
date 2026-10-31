@@ -285,39 +285,39 @@ export function journalHermesCcConnection(
     }
     const event = session.namespaced ? withRuntimeIds(original, session.generation) : original;
     try {
-    if (session.recording && session.key) {
-      if (isHistory(event)) {
-        if (!await mutate(session, () => store.append(session.key!, event, session.lease ?? undefined))) {
-          emit(event);
-          return;
+      if (session.recording && session.key) {
+        if (isHistory(event)) {
+          if (!await mutate(session, () => store.append(session.key!, event, session.lease ?? undefined))) {
+            emit(event);
+            return;
+          }
+          if (event.type === "timeline.item" && event.item.type === "user_message" && event.item.clientMessageId) {
+            session.clientMessageIds.add(event.item.clientMessageId);
+          }
         }
-        if (event.type === "timeline.item" && event.item.type === "user_message" && event.item.clientMessageId) {
-          session.clientMessageIds.add(event.item.clientMessageId);
+        // prompt_result {type:turn} is an admission ACK, not the ACP result.
+        // SDK connection.ts:623-647 emits the terminal boundary after draining it.
+        if (original.type === "session.prompt_result") {
+          if (original.result.type === "turn" || original.result.type === "steer") {
+            session.turns.set(original.result.turnId, original.clientMessageId);
+          } else {
+            // No terminal turn means we cannot certify this admission as settled.
+            await invalidate(session, "prompt ended without a terminal turn");
+          }
         }
+        if (original.type === "session.turn" && original.state !== "started") {
+          const clientMessageId = session.turns.get(original.turnId);
+          if (clientMessageId === undefined) await invalidate(session, "unrecognized terminal turn");
+          else {
+            session.pendingPrompts.delete(clientMessageId);
+            session.turns.delete(original.turnId);
+            if (!session.pendingPrompts.size) await mutate(session, () => store.turnSettled(session.key!, session.lease ?? undefined));
+          }
+        }
+      } else if (isHistory(event)) {
+        // Also cover unsolicited history that did not follow a local send.
+        await invalidate(session, session.claimRefused ? "writer_changed" : "history appended outside the recorder", true);
       }
-      // prompt_result {type:turn} is an admission ACK, not the ACP result.
-      // SDK connection.ts:623-647 emits the terminal boundary after draining it.
-      if (original.type === "session.prompt_result") {
-        if (original.result.type === "turn" || original.result.type === "steer") {
-          session.turns.set(original.result.turnId, original.clientMessageId);
-        } else {
-          // No terminal turn means we cannot certify this admission as settled.
-          await invalidate(session, "prompt ended without a terminal turn");
-        }
-      }
-      if (original.type === "session.turn" && original.state !== "started") {
-        const clientMessageId = session.turns.get(original.turnId);
-        if (clientMessageId === undefined) await invalidate(session, "unrecognized terminal turn");
-        else {
-          session.pendingPrompts.delete(clientMessageId);
-          session.turns.delete(original.turnId);
-          if (!session.pendingPrompts.size) await mutate(session, () => store.turnSettled(session.key!, session.lease ?? undefined));
-        }
-      }
-    } else if (isHistory(event)) {
-      // Also cover unsolicited history that did not follow a local send.
-      await invalidate(session, session.claimRefused ? "writer_changed" : "history appended outside the recorder", true);
-    }
     } catch {
       // The provider has already produced this event. Stop recording, preserve
       // live delivery, and refuse later sends until the fence is durable.
@@ -401,45 +401,52 @@ export function journalHermesCcConnection(
       await enqueue(session, async () => {
         if (session.failed) throw new Error("Hermes·CC session journal failed");
         const changesHistory = input.type === "session.prompt" || input.type === "session.revert";
-        if (changesHistory && session.key && (!session.recording || recorders.get(recorderId(session.key)) !== session
-          || failedInvalidations.has(recorderId(session.key)))) {
-          if (!await invalidateForeignWriter(session)) {
-            sendFailed = true;
-            sendError = new Error("Hermes·CC session journal unavailable");
-            return;
-          }
-        } else if (input.type === "session.revert" || (input.type === "session.prompt" && isCommand(input))) {
-          await invalidate(session, "history-mutating command");
-        } else if (input.type === "session.prompt") {
-          if (session.recording && session.key) {
-            const id = input.prompt.clientMessageId;
-            if (session.clientMessageIds.has(id)) await invalidate(session, "duplicate prompt identity");
-            else {
-              // Persist the busy marker BEFORE the inner SDK can send anything
-              // to Hermes. Keep it open across overlapping prompt admissions.
-              if (!session.pendingPrompts.size) {
-                try { await mutate(session, () => store.turnStarted(session.key!, session.lease ?? undefined)); }
-                catch (error) {
-                  // The prompt has not reached the provider. Fence any uncertain
-                  // journal write and let the caller report this send as failed.
-                  await invalidateForeignWriter(session);
+        try {
+          if (changesHistory && session.key && (!session.recording || recorders.get(recorderId(session.key)) !== session
+            || failedInvalidations.has(recorderId(session.key)))) {
+            if (!await invalidateForeignWriter(session)) {
+              sendFailed = true;
+              sendError = new Error("Hermes·CC session journal unavailable");
+              return;
+            }
+          } else if (input.type === "session.revert" || (input.type === "session.prompt" && isCommand(input))) {
+            await invalidate(session, "history-mutating command");
+          } else if (input.type === "session.prompt") {
+            if (session.recording && session.key) {
+              const id = input.prompt.clientMessageId;
+              if (session.clientMessageIds.has(id)) await invalidate(session, "duplicate prompt identity");
+              else {
+                // Persist the busy marker BEFORE the inner SDK can send anything
+                // to Hermes. Keep it open across overlapping prompt admissions.
+                if (!session.pendingPrompts.size) {
+                  try { await mutate(session, () => store.turnStarted(session.key!, session.lease ?? undefined)); }
+                  catch (error) {
+                    // The prompt has not reached the provider. Fence any uncertain
+                    // journal write and let the caller report this send as failed.
+                    await invalidateForeignWriter(session);
+                    sendFailed = true;
+                    sendError = error;
+                    return;
+                  }
+                }
+                // A fenced mutation relinquishes ownership before this send.
+                if (!session.recording && !await invalidateForeignWriter(session)) {
                   sendFailed = true;
-                  sendError = error;
+                  sendError = new Error("Hermes·CC session journal unavailable");
                   return;
                 }
-              }
-              // A fenced mutation relinquishes ownership before this send.
-              if (!session.recording && !await invalidateForeignWriter(session)) {
-                sendFailed = true;
-                sendError = new Error("Hermes·CC session journal unavailable");
-                return;
-              }
-              if (session.recording) {
-                session.pendingPrompts.add(id);
-                session.clientMessageIds.add(id);
+                if (session.recording) {
+                  session.pendingPrompts.add(id);
+                  session.clientMessageIds.add(id);
+                }
               }
             }
           }
+        } catch (error) {
+          await invalidateForeignWriter(session);
+          sendFailed = true;
+          sendError = error;
+          return;
         }
         // Forward every session send on the lane, including interrupts. Otherwise
         // an interrupt could overtake a prompt still waiting for turnStarted fsync.
