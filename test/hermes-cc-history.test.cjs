@@ -851,7 +851,7 @@ test("a lost lease fences the triggering prompt before it reaches Hermes", async
 });
 
 
-test("a prompt detecting a foreign record fences storage before forwarding", async t => {
+for (const detection of ["prompt", "live event"]) test(`a ${detection} detecting a foreign record fences storage before delivery`, async t => {
   const root = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "cc-foreign-mutation-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const { createHash } = require("node:crypto");
@@ -893,8 +893,17 @@ test("a prompt detecting a foreign record fences storage before forwarding", asy
     }
     await send(input);
   };
-  await h.connection.send(promptInput());
-  assert.equal(h.raw.sent.at(-1).type, "session.prompt");
+  if (detection === "prompt") {
+    await h.connection.send(promptInput());
+    assert.equal(h.raw.sent.at(-1).type, "session.prompt");
+  } else {
+    const detected = waitEvent(h.connection, event => event.type === "timeline.item" && event.item.text === "detect foreign");
+    h.raw.emit({ type: "timeline.item", sessionId: "boundary", item: { type: "assistant_message", id: "detect", text: "detect foreign" } });
+    await detected;
+    assert.equal(fs.existsSync(join(root, `.foreign-${name}`)), true, "foreign marker is durable before delivery");
+    assert.equal(fs.existsSync(join(root, `.writer-${name}`)), false, "the recording lease is released");
+    assert.deepEqual(await store.read(key), { status: "unusable", reason: "foreign_writer" });
+  }
   const shown = waitEvent(h.connection, event => event.type === "timeline.item" && event.item.text === "live after fence");
   h.raw.emit({ type: "timeline.item", sessionId: "boundary", item: { type: "assistant_message", id: "live", text: "live after fence" } });
   await shown;
