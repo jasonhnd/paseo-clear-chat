@@ -789,6 +789,10 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
           // using the same operation lock as every journal mutation.
           if (typeof loaded !== "string" && session !== "missing") {
             let replayable = false;
+            // Check against the old owner before advancing the generation, or a
+            // same-generation foreign record could be mistaken for old history.
+            const foreign = !previous && !loaded.invalid &&
+              (await viewEvents(session, loaded, maxBytesPerSession)).status === "foreign_writer";
             if (previous && !Object.hasOwn(loaded, "invalid") && sameWriter(loaded.writer, previous)) {
               try {
                 // A dead writer is safe to replace only after the full read checks,
@@ -800,7 +804,7 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
               } catch { /* Failed verification must not preserve replay. */ }
             }
             await writeManifest(session, { ...loaded, writer: { token, generation },
-              ...(previous && !replayable ? { invalid: "writer_changed" } : {}) });
+              ...(foreign ? { invalid: "foreign_writer" } : previous && !replayable ? { invalid: "writer_changed" } : {}) });
             verified.delete(keyHash(key));
           }
         } finally { if (session !== "missing") await session.handle.close(); }

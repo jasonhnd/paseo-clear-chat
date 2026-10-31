@@ -101,6 +101,18 @@ for (const conflict of ["foreign token", "newer generation"]) {
   });
 }
 
+test("acquiring a new lease cannot hide a foreign record from the previous owner", async t => {
+  const h = harness(t), k = key(), owner = await h.store.claimWriter(k);
+  await h.store.start(k, owner);
+  await h.store.append(k, { text: "foreign to manifest" }, owner);
+  editManifest(h, k, { writer: { token: "22222222-2222-2222-2222-222222222222", generation: owner.generation } }, true);
+  assertUnusable(await h.store.read(k), "foreign_writer");
+  await owner.release();
+  const next = await h.store.claimWriter(k);
+  t.after(() => next.release());
+  assertUnusable(await h.store.read(k), "foreign_writer");
+});
+
 test("replacing the writer pathname across processes cannot produce a saved mixed journal", { timeout: 15000 }, async t => {
   const h = harness(t), k = key(), compiled = compileHistory(h);
   const script = join(h.root, "replacement-worker.cjs");
@@ -148,6 +160,16 @@ test("replacing the writer pathname across processes cannot produce a saved mixe
   await Promise.all(workers.map(worker => new Promise(resolve => {
     worker.once("exit", resolve); worker.send("stop");
   })));
+  const sent = [];
+  const connection = h.load("server/hermes-cc/history-connection.ts").journalHermesCcConnection({
+    version: 1, capabilities: [], async send(input) { sent.push(input); },
+    async close() {}, onEvent() { return () => {}; },
+  }, "hermes-cc", h.create(h.storeRoot));
+  t.after(() => connection.close());
+  await connection.send({ type: "session.open", sessionId: "fallback", requestId: "open", history: "replay",
+    persistence: { version: 1, data: { sessionId: k.nativeSessionId } },
+    config: { cwd: h.root, env: {}, settings: {}, mcpServers: {}, persist: true } });
+  assert.equal(sent[0].history, "replay", "the unusable journal falls back to provider replay");
 });
 
 for (const damage of ["mid-record truncation", "unterminated half line", "broken chain hash"]) {
