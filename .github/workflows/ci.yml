@@ -11,7 +11,7 @@ permissions:
 jobs:
   checks:
     name: Install, typecheck, and test
-    runs-on: ubuntu-latest
+    runs-on: instabox-medium
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
