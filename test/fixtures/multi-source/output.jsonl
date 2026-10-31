@@ -1,0 +1,13 @@
+{"event":{"sequence":1,"type":"task_started","source":"source-a"}}
+{"event":{"sequence":2,"type":"task_started","source":"source-b"}}
+{"id":1,"result":{"pending":["source-a","source-b"]}}
+{"event":{"sequence":3,"type":"human_message","messageId":"message-human","text":"Synthetic human input."}}
+{"id":2,"result":{"pending":["source-a","source-b"]}}
+{"event":{"sequence":4,"type":"message","messageId":"message-source-b","source":"source-b","text":"Identical synthetic message."}}
+{"event":{"sequence":5,"type":"task_finished","source":"source-b"}}
+{"id":3,"result":{"pending":["source-a"]}}
+{"event":{"sequence":6,"type":"message","messageId":"message-source-a","source":"source-a","text":"Identical synthetic message."}}
+{"event":{"sequence":7,"type":"task_finished","source":"source-a"}}
+{"id":4,"result":{"pending":[]}}
+{"event":{"sequence":8,"type":"run_finished"}}
+{"id":5,"result":{"complete":true}}

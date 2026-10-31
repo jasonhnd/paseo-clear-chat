@@ -1,0 +1,5 @@
+{"id":1,"op":"start"}
+{"id":2,"op":"human"}
+{"id":3,"op":"release","source":"source-b"}
+{"id":4,"op":"release","source":"source-a"}
+{"id":5,"op":"finish"}
