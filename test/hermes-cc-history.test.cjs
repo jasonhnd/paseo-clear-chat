@@ -414,6 +414,11 @@ test("a failed retry cannot leave a stale saved disk journal after reopening", a
   assert.equal(h.raw.sent.filter(input => input.type === "session.prompt").length, 0);
   assert.equal((await createHermesCcHistoryStore(root).read(key)).status, "complete", "the disk snapshot contains every forwarded prompt");
   unavailable = false;
+  const send = h.raw.send;
+  h.raw.send = async input => {
+    assert.equal((await createHermesCcHistoryStore(root).read(key)).status, "unusable", "the fence is durable before forwarding");
+    await send(input);
+  };
   await h.connection.send(promptInput("boundary", "recovered"));
   assert.equal(h.raw.sent.at(-1).prompt.clientMessageId, "recovered");
   assert.equal((await createHermesCcHistoryStore(root).read(key)).status, "unusable");
