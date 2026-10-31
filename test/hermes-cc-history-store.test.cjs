@@ -10,7 +10,7 @@ const { runInThisContext } = require("node:vm");
 const ts = require("typescript");
 
 function harness(t, overrides = {}) {
-  const root = fs.mkdtempSync(join(tmpdir(), "hermes-cc-history-"));
+  const root = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "hermes-cc-history-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const cache = new Map();
   function load(filename) {
@@ -82,6 +82,138 @@ function assertUnusable(state, reason) {
   assert.equal(state.status, "unusable");
   assert.equal(state.reason, reason);
   assert.equal(Object.hasOwn(state, "events"), false);
+}
+
+for (const conflict of ["foreign token", "newer generation"]) {
+  test(`journal rejects a record with a ${conflict}`, async t => {
+    const h = harness(t), k = key();
+    const initial = await h.store.claimWriter(k);
+    await h.store.start(k, initial);
+    await initial.release();
+    const owner = await h.store.claimWriter(k);
+    await h.store.append(k, { text: "owned" }, owner);
+    const writer = conflict === "foreign token"
+      ? { ...owner, token: "22222222-2222-2222-2222-222222222222" }
+      : { ...owner, generation: owner.generation - 1 };
+    editManifest(h, k, { writer: { token: writer.token, generation: writer.generation } }, true);
+    assertUnusable(await h.create(h.storeRoot).read(k), "foreign_writer");
+    await owner.release();
+  });
+}
+
+test("acquiring a new lease cannot hide a foreign record from the previous owner", async t => {
+  const h = harness(t), k = key(), owner = await h.store.claimWriter(k);
+  await h.store.start(k, owner);
+  await h.store.append(k, { text: "foreign to manifest" }, owner);
+  editManifest(h, k, { writer: { token: "22222222-2222-2222-2222-222222222222", generation: owner.generation } }, true);
+  assertUnusable(await h.store.read(k), "foreign_writer");
+  await owner.release();
+  const next = await h.store.claimWriter(k);
+  t.after(() => next.release());
+  assertUnusable(await h.store.read(k), "foreign_writer");
+});
+
+test("dead-owner takeover preserves a foreign writer classification", async t => {
+  const h = harness(t), k = key(), owner = await h.store.claimWriter(k);
+  t.after(() => owner.release());
+  await h.store.start(k, owner);
+  await h.store.append(k, { text: "foreign" }, owner);
+  editManifest(h, k, { writer: { token: "22222222-2222-2222-2222-222222222222", generation: owner.generation } }, true);
+  assertUnusable(await h.store.read(k), "foreign_writer");
+  const leasePath = join(h.storeRoot, `.writer-${digest(k.providerId, k.nativeSessionId)}`);
+  const lease = JSON.parse(fs.readFileSync(leasePath, "utf8"));
+  fs.writeFileSync(leasePath, JSON.stringify({ ...lease, pid: 2147483647 }));
+  const replacement = await h.create(h.storeRoot).claimWriter(k);
+  assert.ok(replacement);
+  t.after(() => replacement.release());
+  assert.equal(readManifest(h).invalid, "foreign_writer");
+  assertUnusable(await h.create(h.storeRoot).read(k), "foreign_writer");
+});
+
+
+function injectForeignRecord(h, k, initialHead) {
+  const record = JSON.parse(fs.readFileSync(eventsPath(h, k), "utf8").trim());
+  record.writer.token = "22222222-2222-2222-2222-222222222222";
+  record.hash = createHash("sha256").update(initialHead + canonical({ event: record.event, writer: record.writer })).digest("hex");
+  const line = `${canonical(record)}\n`;
+  fs.writeFileSync(eventsPath(h, k), line);
+  editManifest(h, k, { headHash: record.hash, bytes: Buffer.byteLength(line) }, true);
+}
+
+for (const method of ["append", "turnStarted", "turnSettled"]) {
+  test(`first foreign detection during ${method} rejects the mutation`, async t => {
+    const h = harness(t), k = key(), owner = await h.store.claimWriter(k);
+    t.after(() => owner.release());
+    await h.store.start(k, owner);
+    const initialHead = readManifest(h).headHash;
+    await h.store.append(k, { text: "original" }, owner);
+    injectForeignRecord(h, k, initialHead);
+    const before = fs.readFileSync(eventsPath(h));
+    await assert.rejects(method === "append" ? h.store.append(k, { text: "new" }, owner)
+      : h.store[method](k, owner), /^Error: writer_changed$/);
+    assert.equal(readManifest(h).invalid, "foreign_writer");
+    assert.deepEqual(fs.readFileSync(eventsPath(h)), before);
+    assertUnusable(await h.create(h.storeRoot).read(k), "foreign_writer");
+  });
+}
+
+for (const origin of ["earlier takeover", "published invalidation", "foreign marker"]) {
+  test(`dead-owner takeover retains foreign classification from ${origin}`, async t => {
+    const h = harness(t), k = key(), owner = await h.store.claimWriter(k);
+    t.after(() => owner.release());
+    await h.store.start(k, owner);
+    const initialHead = readManifest(h).headHash;
+    await h.store.append(k, { text: "original" }, owner);
+    const leasePath = join(h.storeRoot, `.writer-${digest(k.providerId, k.nativeSessionId)}`);
+    const markDead = () => {
+      const lease = JSON.parse(fs.readFileSync(leasePath, "utf8"));
+      fs.writeFileSync(leasePath, JSON.stringify({ ...lease, pid: 2147483647 }));
+    };
+    if (origin === "earlier takeover") {
+      injectForeignRecord(h, k, initialHead);
+      markDead();
+      const first = await h.create(h.storeRoot).claimWriter(k);
+      assert.ok(first);
+      t.after(() => first.release());
+      assert.equal(readManifest(h).invalid, "foreign_writer");
+    } else if (origin === "published invalidation") {
+      editManifest(h, k, { invalid: "foreign_writer" }, true);
+    } else {
+      fs.writeFileSync(join(h.storeRoot, `.foreign-${digest(k.providerId, k.nativeSessionId)}`), "");
+    }
+    markDead();
+    const replacement = await h.create(h.storeRoot).claimWriter(k);
+    assert.ok(replacement);
+    t.after(() => replacement.release());
+    assert.equal(readManifest(h).invalid, "foreign_writer");
+    assertUnusable(await h.create(h.storeRoot).read(k), "foreign_writer");
+    for (const method of ["append", "turnStarted", "turnSettled"]) {
+      await assert.rejects(method === "append" ? h.store.append(k, { text: "blocked" }, replacement)
+        : h.store[method](k, replacement), /^Error: writer_changed$/);
+    }
+  });
+}
+
+for (const damage of ["later hash", "later malformed record", "manifest head"]) {
+  test(`a foreign record followed by ${damage} is corrupt`, async t => {
+    const h = harness(t), k = key(), owner = await h.store.claimWriter(k);
+    t.after(() => owner.release());
+    await h.store.start(k, owner);
+    await h.store.append(k, { text: "first" }, owner);
+    await h.store.append(k, { text: "second" }, owner);
+    editManifest(h, k, { writer: { token: "22222222-2222-2222-2222-222222222222", generation: owner.generation } }, true);
+    assertUnusable(await h.create(h.storeRoot).read(k), "foreign_writer");
+    if (damage === "manifest head") editManifest(h, k, { headHash: "0".repeat(64) }, true);
+    else {
+      const file = eventsPath(h, k), bytes = fs.readFileSync(file);
+      const second = bytes.indexOf(10) + 1;
+      const index = damage === "later hash" ? bytes.indexOf(Buffer.from("second"), second) : second;
+      assert.ok(index >= second);
+      bytes[index] = damage === "later hash" ? "S".charCodeAt(0) : "!".charCodeAt(0);
+      fs.writeFileSync(file, bytes);
+    }
+    assertUnusable(await h.create(h.storeRoot).read(k), "corrupt");
+  });
 }
 
 test("Hermes CC history journal round-trips events recorded from creation", async t => {
@@ -1160,10 +1292,10 @@ for (const failure of ["open turn", "corrupt byte", "record count", "size", "man
     assert.ok(replacement);
     t.after(() => replacement.release());
     unreadable = false;
-    if (failure !== "manifest checksum") assert.equal(readManifest(h).invalid, "writer_changed");
+    if (failure !== "manifest checksum") assert.equal(readManifest(h).invalid, failure === "writer token" || failure === "foreign mark" ? "foreign_writer" : "writer_changed");
     const state = await h.create(h.storeRoot).read(k);
-    assertUnusable(state, failure === "foreign mark" ? "foreign_writer" : failure === "manifest checksum" ? "corrupt" : "writer_changed");
-    if (failure === "foreign mark") {
+    assertUnusable(state, failure === "foreign mark" || failure === "writer token" ? "foreign_writer" : failure === "manifest checksum" ? "corrupt" : "writer_changed");
+    if (failure === "foreign mark" || failure === "writer token") {
       await assert.rejects(h.store.append(k, { clientMessageId: "B" }, replacement), /^Error: writer_changed$/);
       await assert.rejects(h.store.turnSettled(k, replacement), /^Error: writer_changed$/);
     } else {
