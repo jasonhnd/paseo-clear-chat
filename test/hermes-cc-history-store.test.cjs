@@ -101,6 +101,80 @@ for (const conflict of ["foreign token", "newer generation"]) {
   });
 }
 
+test("replacing the writer pathname across processes cannot produce a saved mixed journal", { timeout: 15000 }, async t => {
+  const h = harness(t), k = key(), compiled = compileHistory(h);
+  const script = join(h.root, "replacement-worker.cjs");
+  fs.writeFileSync(script, `
+    const store = require(process.argv[2]).createHermesCcHistoryStore(process.argv[3]);
+    const key = { providerId: "hermes-cc", nativeSessionId: "native-1" };
+    let owner;
+    process.on("message", async message => {
+      try {
+        if (message === "claim") {
+          owner = await store.claimWriter(key);
+          if (owner && process.argv[4] === "first") await store.start(key, owner);
+          process.send({ kind: "claim", owner: owner && { token: owner.token, generation: owner.generation } });
+        } else if (message === "append") {
+          if (!owner) { await store.invalidate(key, "foreign_writer"); process.send({ kind: "append", result: "foreign_writer" }); }
+          else {
+            try { await store.append(key, { process: process.argv[4] }, owner); process.send({ kind: "append", result: "accepted" }); }
+            catch (error) { process.send({ kind: "append", result: error.message }); }
+          }
+        } else if (message === "read") process.send({ kind: "read", state: await store.read(key) });
+        else if (message === "stop") { await owner?.release(); process.exit(0); }
+      } catch (error) { process.send({ kind: "error", error: error.stack }); }
+    });
+  `);
+  const workers = ["first", "second"].map(role => fork(script, [compiled, h.storeRoot, role], { stdio: ["ignore", "ignore", "pipe", "ipc"] }));
+  t.after(() => workers.forEach(worker => worker.kill()));
+  const ask = (worker, command) => new Promise((resolve, reject) => {
+    worker.once("error", reject);
+    worker.once("message", message => message.kind === "error" ? reject(new Error(message.error)) : resolve(message));
+    worker.send(command);
+  });
+  const first = await ask(workers[0], "claim");
+  assert.ok(first.owner);
+  const pathname = join(h.storeRoot, `.writer-${digest(k.providerId, k.nativeSessionId)}`);
+  fs.unlinkSync(pathname);
+  fs.writeFileSync(pathname, JSON.stringify({ ...first.owner, pid: 2147483647 }), { flag: "wx" });
+  await ask(workers[1], "claim");
+  const attempt2 = await ask(workers[1], "append");
+  const attempt1 = await ask(workers[0], "append");
+  const results = [attempt1.result, attempt2.result];
+  assert.ok(results.filter(result => result === "accepted").length <= 1);
+  assert.ok(results.some(result => ["writer_changed", "foreign_writer"].includes(result)));
+  for (const worker of workers) assert.equal((await ask(worker, "read")).state.status, "unusable");
+  assert.equal((await h.create(h.storeRoot).read(k)).status, "unusable");
+  await Promise.all(workers.map(worker => new Promise(resolve => {
+    worker.once("exit", resolve); worker.send("stop");
+  })));
+});
+
+for (const damage of ["mid-record truncation", "unterminated half line", "broken chain hash"]) {
+  test(`a ${damage} cannot become a saved journal after an append`, async t => {
+    const h = harness(t), k = key();
+    await h.store.start(k);
+    await h.store.append(k, { text: "first" });
+    await h.store.append(k, { text: "second" });
+    const file = eventsPath(h, k), original = fs.readFileSync(file);
+    if (damage === "mid-record truncation") fs.writeFileSync(file, original.subarray(0, original.length - 8));
+    else if (damage === "unterminated half line") {
+      const end = original.indexOf(10) + 1;
+      const partial = original.subarray(0, end + Math.floor((original.length - end) / 2));
+      fs.writeFileSync(file, partial);
+      editManifest(h, k, { bytes: partial.length }, true);
+    } else {
+      const broken = Buffer.from(original), position = broken.indexOf(Buffer.from("first"));
+      broken[position] = "F".charCodeAt(0);
+      fs.writeFileSync(file, broken);
+    }
+    assert.equal((await h.store.read(k)).status, "unusable");
+    await h.store.append(k, { text: "after damage" });
+    assert.equal((await h.create(h.storeRoot).read(k)).status, "unusable");
+    assert.equal(fs.readFileSync(file, "utf8").includes("after damage"), false);
+  });
+}
+
 test("Hermes CC history journal round-trips events recorded from creation", async t => {
   const h = harness(t), k = key();
   await h.store.start(k);
