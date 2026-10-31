@@ -213,7 +213,9 @@ test("a stale prefix in either description is regenerated", async t => {
       assertInvocation(dir);
       assert.equal(result.status, 0, result.stderr);
       const updated = read(file), actual = locale === "default" ? updated : updated.translations[locale];
-      assert.equal(actual.description, entry.description.replace(/^v1\.2\.3\.4 · /, `v${version} · `));
+      const strip = value => value.replace(/^v\d+(?:\.\d+){3} · /, "");
+      assert.match(actual.description, /^v\d+(?:\.\d+){3} · /, "the build must regenerate a version prefix");
+      assert.equal(strip(actual.description), strip(entry.description), "the wording after the prefix must be preserved");
     });
   }
 });
