@@ -4,6 +4,7 @@ const { spawnSync } = require("node:child_process");
 const { resolve } = require("node:path");
 const { stripVTControlCharacters } = require("node:util");
 const { manifestVersion } = require("./manifest-version.cjs");
+const { settingsVersion } = require("./settings-version.cjs");
 
 function install({ run = spawnSync, resolveDependency = require.resolve, report = console.error } = {}) {
   const checkout = resolve(__dirname, "..");
@@ -52,6 +53,8 @@ function install({ run = spawnSync, resolveDependency = require.resolve, report 
   try {
     manifestVersion(checkout, { write: true });
     manifestVersion(checkout);
+    settingsVersion(checkout, { write: true });
+    settingsVersion(checkout);
   } catch (error) {
     report(`Clear Chat manifest version check failed: ${error.message}`);
     return 1;

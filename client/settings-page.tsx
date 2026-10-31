@@ -1,5 +1,6 @@
 import { useSettings, useTranslation } from "@getpaseo/plugin/client";
 import { messages } from "./messages";
+import { version } from "./package-version.json";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
@@ -336,6 +337,9 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
           style={[styles.description, { color: tokens.foregroundMuted, fontFamily: tokens.fontUi }]}
         >
           {t("settings.intro")}
+        </Text>
+        <Text testID="installed-version" style={[styles.description, { color: tokens.foregroundMuted, fontFamily: tokens.fontUi }]}>
+          {t("settings.version", { version })}
         </Text>
       </View>
 
