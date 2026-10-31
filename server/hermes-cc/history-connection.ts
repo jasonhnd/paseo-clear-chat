@@ -280,7 +280,7 @@ export function journalHermesCcConnection(
       emit(original);
       if (session.claimRefused) emit({ type: "timeline.item", sessionId: original.sessionId,
         item: { type: "notification", id: "hermes-cc:recording-refused", level: "warning",
-          message: "Clear Chat could not record this conversation because another writer is active." } });
+          message: "Clear Chat could not record this conversation because the recorder is unavailable." } });
       return;
     }
     const event = session.namespaced ? withRuntimeIds(original, session.generation) : original;
