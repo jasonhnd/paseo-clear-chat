@@ -1231,7 +1231,7 @@ for (const failure of ["open turn", "corrupt byte", "record count", "size", "man
     if (failure !== "manifest checksum") assert.equal(readManifest(h).invalid, failure === "writer token" ? "foreign_writer" : "writer_changed");
     const state = await h.create(h.storeRoot).read(k);
     assertUnusable(state, failure === "foreign mark" || failure === "writer token" ? "foreign_writer" : failure === "manifest checksum" ? "corrupt" : "writer_changed");
-    if (failure === "foreign mark") {
+    if (failure === "foreign mark" || failure === "writer token") {
       await assert.rejects(h.store.append(k, { clientMessageId: "B" }, replacement), /^Error: writer_changed$/);
       await assert.rejects(h.store.turnSettled(k, replacement), /^Error: writer_changed$/);
     } else {
