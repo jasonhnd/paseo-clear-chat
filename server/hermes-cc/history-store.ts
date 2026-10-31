@@ -301,8 +301,10 @@ async function viewEvents(session: Directory, manifest: Manifest, maxBytesPerSes
     try {
       const value: unknown = JSON.parse(line);
       if (!record(value) || !Object.hasOwn(value, "event")) return { status: "corrupt" };
-      head = hash(head + canonical(value.event));
-      if (value.hash !== head || canonical({ event: value.event, hash: head }) !== line) return { status: "corrupt" };
+      const writer = value.writer;
+      if (writer !== undefined && !writerOwner(writer)) return { status: "corrupt" };
+      head = hash(head + canonical(writer === undefined ? value.event : { event: value.event, writer }));
+      if (value.hash !== head || canonical({ event: value.event, hash: head, ...(writer === undefined ? {} : { writer }) }) !== line) return { status: "corrupt" };
       events.push(value.event);
     } catch { return { status: "corrupt" }; }
   }
@@ -918,8 +920,10 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
               rejectInvalid = true;
               return;
             }
-            const headHash = hash(loaded.headHash + encoded);
-            const line = canonical({ event: JSON.parse(encoded), hash: headHash });
+            const event = JSON.parse(encoded);
+            const writer = loaded.writer;
+            const headHash = hash(loaded.headHash + (writer ? canonical({ event, writer }) : encoded));
+            const line = canonical({ event, hash: headHash, ...(writer ? { writer } : {}) });
             const added = Buffer.byteLength(`${line}\n`, "utf8");
             const viewed = await verifyForWrite(session, loaded);
             if (viewed.status === "unsafe") throw new Error("unsafe_history_file");
