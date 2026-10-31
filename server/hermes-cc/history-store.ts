@@ -296,7 +296,7 @@ async function viewEvents(session: Directory, manifest: Manifest, maxBytesPerSes
   if (lines === null || lines.length !== manifest.records) return { status: "corrupt" };
   if (!Buffer.from(lines.length ? `${lines.join("\n")}\n` : "").equals(bytes)) return { status: "corrupt" };
   const events: unknown[] = [];
-  let head = seed(manifest);
+  let head = seed(manifest), foreign = false;
   for (const line of lines) {
     try {
       const value: unknown = JSON.parse(line);
@@ -306,11 +306,12 @@ async function viewEvents(session: Directory, manifest: Manifest, maxBytesPerSes
       head = hash(head + canonical(writer === undefined ? value.event : { event: value.event, writer }));
       if (value.hash !== head || canonical({ event: value.event, hash: head, ...(writer === undefined ? {} : { writer }) }) !== line) return { status: "corrupt" };
       if (writer && (!manifest.writer || writer.generation > manifest.writer.generation ||
-          (writer.generation === manifest.writer.generation && writer.token !== manifest.writer.token))) return { status: "foreign_writer" };
+          (writer.generation === manifest.writer.generation && writer.token !== manifest.writer.token))) foreign = true;
       events.push(value.event);
     } catch { return { status: "corrupt" }; }
   }
-  return head === manifest.headHash ? { status: "ok", events } : { status: "corrupt" };
+  if (head !== manifest.headHash) return { status: "corrupt" };
+  return foreign ? { status: "foreign_writer" } : { status: "ok", events };
 }
 async function appendLine(session: Directory, line: string): Promise<number> {
   const payload = Buffer.from(`${line}\n`, "utf8");
@@ -791,7 +792,7 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
             let replayable = false;
             // Check against the old owner before advancing the generation, or a
             // same-generation foreign record could be mistaken for old history.
-            const foreign = !previous && !loaded.invalid &&
+            const foreign = !loaded.invalid &&
               (await viewEvents(session, loaded, maxBytesPerSession)).status === "foreign_writer";
             if (previous && !Object.hasOwn(loaded, "invalid") && sameWriter(loaded.writer, previous)) {
               try {
