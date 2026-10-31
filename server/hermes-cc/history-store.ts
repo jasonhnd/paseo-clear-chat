@@ -271,7 +271,7 @@ function parseLines(bytes: Buffer): string[] | null {
   if (lines.some(line => line.length === 0)) return null;
   return lines;
 }
-type EventsView = { status: "ok"; events: unknown[] } | { status: "corrupt" } | { status: "over_cap" } | { status: "unsafe" };
+type EventsView = { status: "ok"; events: unknown[] } | { status: "corrupt" } | { status: "foreign_writer" } | { status: "over_cap" } | { status: "unsafe" };
 async function viewEvents(session: Directory, manifest: Manifest, maxBytesPerSession: number): Promise<EventsView> {
   let size = 0n;
   const target = child(session, EVENTS);
@@ -296,17 +296,22 @@ async function viewEvents(session: Directory, manifest: Manifest, maxBytesPerSes
   if (lines === null || lines.length !== manifest.records) return { status: "corrupt" };
   if (!Buffer.from(lines.length ? `${lines.join("\n")}\n` : "").equals(bytes)) return { status: "corrupt" };
   const events: unknown[] = [];
-  let head = seed(manifest);
+  let head = seed(manifest), foreign = false;
   for (const line of lines) {
     try {
       const value: unknown = JSON.parse(line);
       if (!record(value) || !Object.hasOwn(value, "event")) return { status: "corrupt" };
-      head = hash(head + canonical(value.event));
-      if (value.hash !== head || canonical({ event: value.event, hash: head }) !== line) return { status: "corrupt" };
+      const writer = value.writer;
+      if (writer !== undefined && !writerOwner(writer)) return { status: "corrupt" };
+      head = hash(head + canonical(writer === undefined ? value.event : { event: value.event, writer }));
+      if (value.hash !== head || canonical({ event: value.event, hash: head, ...(writer === undefined ? {} : { writer }) }) !== line) return { status: "corrupt" };
+      if (writer && (!manifest.writer || writer.generation > manifest.writer.generation ||
+          (writer.generation === manifest.writer.generation && writer.token !== manifest.writer.token))) foreign = true;
       events.push(value.event);
     } catch { return { status: "corrupt" }; }
   }
-  return head === manifest.headHash ? { status: "ok", events } : { status: "corrupt" };
+  if (head !== manifest.headHash) return { status: "corrupt" };
+  return foreign ? { status: "foreign_writer" } : { status: "ok", events };
 }
 async function appendLine(session: Directory, line: string): Promise<number> {
   const payload = Buffer.from(`${line}\n`, "utf8");
@@ -626,6 +631,7 @@ function judge(manifest: Manifest, viewed: EventsView): HermesCcJournalState {
   if (!manifest.startedFromCreation) return unusable("started_mid_session");
   if (viewed.status === "unsafe") throw new Error("unsafe_history_file");
   if (viewed.status === "corrupt") return unusable("corrupt");
+  if (viewed.status === "foreign_writer") return unusable("foreign_writer");
   if (viewed.status === "over_cap") return unusable("over_cap");
   if (manifest.openTurns !== 0) return unusable("unsettled_turn");
   return { status: "complete", events: viewed.events };
@@ -784,6 +790,10 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
           // using the same operation lock as every journal mutation.
           if (typeof loaded !== "string" && session !== "missing") {
             let replayable = false;
+            // Check against the old owner before advancing the generation, or a
+            // same-generation foreign record could be mistaken for old history.
+            const foreign = loaded.invalid === "foreign_writer" || (!loaded.invalid &&
+              (await viewEvents(session, loaded, maxBytesPerSession)).status === "foreign_writer");
             if (previous && !Object.hasOwn(loaded, "invalid") && sameWriter(loaded.writer, previous)) {
               try {
                 // A dead writer is safe to replace only after the full read checks,
@@ -795,7 +805,7 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
               } catch { /* Failed verification must not preserve replay. */ }
             }
             await writeManifest(session, { ...loaded, writer: { token, generation },
-              ...(previous && !replayable ? { invalid: "writer_changed" } : {}) });
+              ...(foreign ? { invalid: "foreign_writer" } : previous && !replayable ? { invalid: "writer_changed" } : {}) });
             verified.delete(keyHash(key));
           }
         } finally { if (session !== "missing") await session.handle.close(); }
@@ -918,13 +928,16 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
               rejectInvalid = true;
               return;
             }
-            const headHash = hash(loaded.headHash + encoded);
-            const line = canonical({ event: JSON.parse(encoded), hash: headHash });
+            const event = JSON.parse(encoded);
+            const writer = loaded.writer;
+            const headHash = hash(loaded.headHash + (writer ? canonical({ event, writer }) : encoded));
+            const line = canonical({ event, hash: headHash, ...(writer ? { writer } : {}) });
             const added = Buffer.byteLength(`${line}\n`, "utf8");
             const viewed = await verifyForWrite(session, loaded);
             if (viewed.status === "unsafe") throw new Error("unsafe_history_file");
-            if (viewed.status === "corrupt") {
-              await publish(session, { ...loaded, invalid: "corrupt" });
+            if (viewed.status === "corrupt" || viewed.status === "foreign_writer") {
+              await publish(session, { ...loaded, invalid: viewed.status });
+              if (viewed.status === "foreign_writer") throw new Error("writer_changed");
               return;
             }
             if (viewed.status === "over_cap" || loaded.bytes + added > maxBytesPerSession) {
@@ -954,7 +967,8 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
             const viewed = await verifyForWrite(session, loaded);
             if (viewed.status !== "ok") {
               if (viewed.status === "unsafe") throw new Error("unsafe_history_file");
-              await publish(session, { ...loaded, invalid: viewed.status === "over_cap" ? "over_cap" : "corrupt" });
+              await publish(session, { ...loaded, invalid: viewed.status });
+              if (viewed.status === "foreign_writer") throw new Error("writer_changed");
               return;
             }
             if (loaded.openTurns === Number.MAX_SAFE_INTEGER) {
@@ -981,7 +995,8 @@ export function createHermesCcHistoryStore(rootDir: string, options?: {
             const viewed = await verifyForWrite(session, loaded);
             if (viewed.status !== "ok") {
               if (viewed.status === "unsafe") throw new Error("unsafe_history_file");
-              await publish(session, { ...loaded, invalid: viewed.status === "over_cap" ? "over_cap" : "corrupt" });
+              await publish(session, { ...loaded, invalid: viewed.status });
+              if (viewed.status === "foreign_writer") throw new Error("writer_changed");
               return;
             }
             // A duplicate settle must not destroy a journal that has already settled.
