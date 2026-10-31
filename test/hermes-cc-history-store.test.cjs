@@ -129,7 +129,7 @@ test("replacing the writer pathname across processes cannot produce a saved mixe
         } else if (message === "append") {
           if (!owner) { await store.invalidate(key, "foreign_writer"); process.send({ kind: "append", result: "foreign_writer" }); }
           else {
-            try { await store.append(key, { process: process.argv[4] }, owner); process.send({ kind: "append", result: "accepted" }); }
+            try { await store.append(key, { process: process.argv[4] }, owner); process.send({ kind: "append", result: "resolved" }); }
             catch (error) { process.send({ kind: "append", result: error.message }); }
           }
         } else if (message === "read") process.send({ kind: "read", state: await store.read(key) });
@@ -153,7 +153,8 @@ test("replacing the writer pathname across processes cannot produce a saved mixe
   const attempt2 = await ask(workers[1], "append");
   const attempt1 = await ask(workers[0], "append");
   const results = [attempt1.result, attempt2.result];
-  assert.ok(results.filter(result => result === "accepted").length <= 1);
+  const lines = fs.readFileSync(eventsPath(h, k), "utf8").trim().split("\n").filter(Boolean);
+  assert.ok(lines.length <= 1, "at most one write reached the journal");
   assert.ok(results.some(result => ["writer_changed", "foreign_writer"].includes(result)));
   for (const worker of workers) assert.equal((await ask(worker, "read")).state.status, "unusable");
   assert.equal((await h.create(h.storeRoot).read(k)).status, "unusable");
