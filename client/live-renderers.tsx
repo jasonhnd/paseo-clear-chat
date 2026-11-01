@@ -222,7 +222,7 @@ export function LiveToolCallRenderer({
           <FinalToolReply text={calloutData.finalReply} cwd={cwd} tokens={tokens} variant={preferences.markdownVariant}
             expansionIdentity={{ hostId: host.id, agentId, callId: data.callId, name: `final-tool:${data.name}`, timestamp: timestamp.getTime() }} />
           {toolErrorLine(calloutData, "never") ? <Text testID="tool-error-line" selectable style={{ color: tokens.danger }}>{calloutData.error}</Text> : null}
-          <AssistantFooter text={finalToolReplyMarkdown(calloutData.finalReply)} at={timestamp} tokens={tokens} durationMs={durationMs} />
+          <AssistantFooter text={finalToolReplyMarkdown(calloutData.finalReply)} at={timestamp} tokens={tokens} durationMs={durationMs} agentId={agentId} />
         </View>
       ) : (
         <ToolCallout
@@ -405,7 +405,7 @@ export function LiveAssistantRenderer({
           expansionIdentity={{ hostId: host.id, agentId, callId: item.data.messageId, name: "assistant-message", timestamp: timestamp.getTime() }} />
       )}
       {!envelope ? (
-        <AssistantFooter text={item.data.text} at={timestamp} tokens={tokens} durationMs={durationMs} />
+        <AssistantFooter text={item.data.text} at={timestamp} tokens={tokens} durationMs={durationMs} agentId={agentId} />
       ) : null}
       <TimelineTailHub
         agentId={agentId}

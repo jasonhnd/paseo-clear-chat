@@ -8,7 +8,7 @@ Issues, pull requests, commit messages, and code comments are written in English
 
 ## Branches
 
-`pre` is the test branch. Automated and agent work is merged into `pre` only. `main` is the release branch. Merging into `main`, tagging, and publishing a release happen only on an explicit instruction from the maintainer (Jason), never automatically.
+`pre` is the test branch. Automated and agent work is merged into `pre` only. `main` is the release branch. Merging into `main`, tagging, and publishing a release happen only on an explicit instruction from the maintainer, never automatically.
 
 ## Workflow
 

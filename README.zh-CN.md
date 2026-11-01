@@ -46,12 +46,12 @@
 ## 安装
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.14.0.2
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.14.0.4
 ```
 
 打开 Paseo 的插件页面，在 Clear Chat 的说明开头查看版本号。Paseo 0.14.0 在这里显示默认英文说明，即使切换应用语言也是如此。
 
-Clear Chat 0.14.0.2 需要 Paseo 0.14.0 或更新的版本。打开 **Settings → Plugins → Clear Chat**，可以选颜色、字体和折叠方式。
+Clear Chat 0.14.0.4 需要 Paseo 0.14.0 或更新的版本。打开 **Settings → Plugins → Clear Chat**，可以选颜色、字体和折叠方式。
 
 以后要更新：
 
@@ -197,6 +197,7 @@ Paseo 0.13 会在插件拿到消息前去掉粘贴的图片，Hermes 也没有�
 
 - 只有装了这个版本之后，在 **·CC** Agent 里新发的提问才显示图。以前建的 Agent 和它们的旧消息不显示。
 - 错误、通知这类系统消息不会保存，重启后看不到。
+- 同一段对话要是被两处都带新版身份信息的写入同时记录，Clear Chat 会改用 Hermes 自己的原文显示，不把两边的记录混在一起；旧版本写下的记录没有这层信息，按历史记录照常回放。一条消息写不进保存的那份记录时，窗口不会关闭，并把这一条报成没发出去，你可以重发；那份记录本身不会被删掉，也不会被改写。
 - 保存的文件本身被改坏时，这段对话会退回 Hermes 自己的原文，不显示图；坏一张图只影响它所在的那条提问。
 - 保存的记录对不上、被改过，或用过斜杠命令、回退（例如 `/undo`）时，这段对话会退回 Hermes 自己的原文，不显示图。
 - 同一段对话一次只从一个窗口用。要是第二个窗口也向同一段对话发了提问，记录会作废，两个窗口都退回 Hermes 自己的原文。
@@ -224,7 +225,7 @@ Clear Chat 只改变 Paseo 显示对话的方式。有些事由 Paseo 决定，�
 | 问题 | 怎么办 |
 |---|---|
 | 用 Cafe 插件安装失败，或 Paseo 提示缺少 `@shikijs/core` 等 Shiki 依赖。 | 用[安装](#安装)里的 Paseo CLI 命令重试，仓库和版本标签保持不变。Clear Chat 用 `npm ci --include=dev` 安装依赖，所以运行 daemon 的主机上要有 Node.js 和 npm，网络也要能连到 npm 仓库。如果代码目录是你自己管理的，请先在那里运行 `npm ci --include=dev` 再重试。 |
-| 安装停止，提示插件需要更新的 Paseo 版本。 | 使用 Clear Chat 0.14.0.2 时，请把 daemon 主机和所有连接的应用升级到 Paseo 0.14.0 或更新。旧宿主请看[安装](#安装)中的 Paseo 0.13 命令及其未实测提示，以及单独的 Paseo 0.12 说明。 |
+| 安装停止，提示插件需要更新的 Paseo 版本。 | 使用 Clear Chat 0.14.0.4 时，请把 daemon 主机和所有连接的应用升级到 Paseo 0.14.0 或更新。旧宿主请看[安装](#安装)中的 Paseo 0.13 命令及其未实测提示，以及单独的 Paseo 0.12 说明。 |
 | Paseo 拒绝这个插件版本，或 Clear Chat 提示缺少插件设置或时间线支持。 | 把运行 daemon 的主机和所有连着的应用都更新到新版 Paseo，再重新加载 Clear Chat。Clear Chat 需要的 Paseo 版本写在 `paseo-plugin.json` 里。 |
 | 插件注册失败，Clear Chat 启动不了。 | 更新 Paseo，再重新加载 Clear Chat。还不行的话，先备份插件设置，再用 CLI 重新安装。 |
 | Clear Chat 读不到主机上的设置。 | 重新连接主机，在 **Settings → Plugins → Clear Chat** 里点 **重试**（Retry）。还不行的话，检查 daemon 能不能访问插件设置文件夹。 |
@@ -259,7 +260,7 @@ cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_back
 **2. 安装**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.14.0.2
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.14.0.4
 ```
 
 **3. 确认后卸载旧插件**

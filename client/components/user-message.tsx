@@ -4,6 +4,7 @@ import { translate as t } from "../translation";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, Pressable, StyleSheet, Image, Modal, Platform, useWindowDimensions } from "react-native";
 import { CopyFallbackDialog, copyTouchTarget, useCopyText } from "./copy-feedback";
+import { QuoteReply } from "./quote-reply";
 import { Glyph } from "./glyph";
 import { Pop } from "./motion";
 import { radius } from "./theme-tokens";
@@ -507,6 +508,7 @@ export function UserMessage({
               {formatClock(timestamp)}
             </Text>
           ) : null}
+          {agentId ? <QuoteReply text={text} agentId={agentId} tokens={tokens} /> : null}
           <Pressable
             onPress={handleCopy}
             accessibilityRole="button"

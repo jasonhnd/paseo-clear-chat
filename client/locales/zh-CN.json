@@ -144,6 +144,18 @@
     "dialogBody": "自动复制失败了。请长按文字，选“全选”，再选“复制”。",
     "dialogFieldA11y": "要复制的文字"
   },
+  "quote": {
+    "action": "引用回复",
+    "title": "引用消息回复",
+    "quoted": "引用的消息",
+    "expand": "展开引用",
+    "collapse": "收起引用",
+    "reply": "你的回复",
+    "busy": "请等待智能体完成后再发送。",
+    "failed": "无法发送回复。请确认智能体空闲后重试。",
+    "cancel": "取消",
+    "send": "发送"
+  },
   "prompt": {
     "you": "你",
     "copyA11y": "复制提问",

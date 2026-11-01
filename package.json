@@ -1,6 +1,6 @@
 {
   "name": "clear-chat",
-  "version": "0.14.0.2",
+  "version": "0.14.0.4",
   "private": true,
   "description": "Makes agent conversations easy to read: one-line steps, a card for every tool and step details.",
   "license": "MIT",
@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "@getpaseo/plugin": "0.13.0",
+    "@getpaseo/server": "0.14.0",
     "@tanstack/react-query": "^5.90.11",
     "@types/node": "^22.15.3",
     "@types/react": "~19.2.0",
