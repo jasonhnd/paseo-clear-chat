@@ -16,6 +16,28 @@ function setup(type, locale = "en", text = quote) {
   return { h, mounted, agent, sent, refs, handle, setRefreshStatus: value => { refreshedStatus = value; } };
 }
 
+test("tool-rendered final reply exposes quote action for the current agent", async t => {
+  const sent = [], refs = [];
+  const h = createToolHarness("web", { agent: { status: "idle" }, replyFooter: true,
+    paseo: { agents: { ref: id => { refs.push(id); return {
+      refresh: async () => ({ agent: { status: "idle" } }), send: async text => { sent.push(text); },
+    }; } } } });
+  t.after(() => h.unmount());
+  const mounted = h.mount({ type: "tool_call", callId: "final-call", name: "wrap_up", status: "completed",
+    error: null, detail: { type: "unknown", input: { text: quote }, output: "Acknowledged" } }, false);
+  const footer = byId(h, byId(h, mounted.tree, "tool-final-reply"), "reply-footer");
+  const action = byId(h, footer, "quote-action");
+  assert.ok(action, "tool-rendered final reply footer must show the quote action");
+  action.props.onPress();
+  let tree = mounted.render();
+  assert.equal(h.text(byId(h, tree, "quote-original")), quote);
+  byId(h, tree, "quote-reply-input").props.onChangeText("Reply");
+  tree = mounted.render();
+  await byId(h, tree, "quote-send").props.onPress();
+  assert.equal(refs.at(-1), "demo-agent");
+  assert.deepEqual(sent, ["> First line\n> \n> > existing quote\n> Last line\n> \n\nReply"]);
+});
+
 test("quote preserves CRLF, CR, and LF line breaks", async () => {
   const original = "first\r\n\r\nsecond\rthird\nfourth\r\n";
   const { h, mounted, sent } = setup("assistant_message", "en", original);
