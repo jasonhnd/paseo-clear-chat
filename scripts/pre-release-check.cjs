@@ -130,7 +130,7 @@ for (const name of files) {
       const heading = /^## \[([^\]]+)\]/.exec(line);
       if (heading) { releaseSections++; latestRelease ||= heading[1]; }
       const reference = /^\[([^\]]+)\]:\s/.exec(line);
-      if (reference ? reference[1] !== latestRelease : releaseSections > 1) return;
+      if (releaseSections > 1 && (!reference || reference[1] !== latestRelease)) return;
     }
     for (const old of versions) if (old && !/[\r\n]/.test(old) && line.includes(old) && !(old === legacyVersion && compatibilityLines[name]?.delete(line))) fail("stale version scan", `${name}:${i + 1}`, `found ${JSON.stringify(old)}`);
   });

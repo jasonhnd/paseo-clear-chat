@@ -50,6 +50,14 @@ test("default scan selects the two releases older than the package and permits d
   assert.match(stale.stderr, /FAIL stale version scan: stale\.txt:1:/);
 });
 
+test("stale reference definitions before historical sections are reported", t => {
+  const { dir, write } = fixture(t);
+  write("CHANGELOG.md", `[other]: https://example.com/v${prior}\n## [8.1.0.3]\n## [${current}]\n## [${prior}]\n## [${legacy}]\n`);
+  const result = run(dir);
+  assert.match(result.stderr, /FAIL stale version scan: CHANGELOG\.md:1:/, "reports the stale non-matching reference definition");
+  assert.equal(result.status, 1);
+});
+
 test("explicit scan permits only the exact compatibility lines in their README files", t => {
   const { dir, write } = fixture(t);
   const clean = run(dir, [legacy]);
