@@ -46,12 +46,12 @@
 ## インストール
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.14.0.3
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.14.0.4
 ```
 
 Paseo のプラグイン画面を開き、Clear Chat の説明の先頭でバージョンを確認してください。Paseo 0.14.0 は、アプリの言語を切り替えても、ここに既定の英語の説明を表示します。
 
-Clear Chat 0.14.0.3 には Paseo 0.14.0 以降が必要です。**Settings → Plugins → Clear Chat** で色、フォント、折りたたみを選べます。
+Clear Chat 0.14.0.4 には Paseo 0.14.0 以降が必要です。**Settings → Plugins → Clear Chat** で色、フォント、折りたたみを選べます。
 
 あとで更新するには：
 
@@ -225,7 +225,7 @@ Clear Chat が変えるのは、Paseo での会話の表示のしかただけで
 | 症状 | 対処 |
 |---|---|
 | Cafe プラグインからのインストールに失敗する、または Paseo が `@shikijs/core` などの Shiki の依存パッケージが足りないと表示する。 | [インストール](#インストール)にある Paseo CLI のコマンドで、同じリポジトリとリリースの ref を指定してやり直してください。Clear Chat は `npm ci --include=dev` で依存パッケージを入れるので、daemon を動かすホストに Node.js と npm が必要で、ネットワークから npm レジストリにつながる必要があります。チェックアウトを自分で管理している場合は、先にそこで `npm ci --include=dev` を実行してからやり直してください。 |
-| プラグインに新しい Paseo が必要なため、インストールが止まる。 | Clear Chat 0.14.0.3 を使うには、daemon のホストと接続するすべてのアプリを Paseo 0.14.0 以降に更新してください。古いホストについては、[インストール](#インストール)の Paseo 0.13 のコマンドと未検証の注意、および別記の Paseo 0.12 の説明をご覧ください。 |
+| プラグインに新しい Paseo が必要なため、インストールが止まる。 | Clear Chat 0.14.0.4 を使うには、daemon のホストと接続するすべてのアプリを Paseo 0.14.0 以降に更新してください。古いホストについては、[インストール](#インストール)の Paseo 0.13 のコマンドと未検証の注意、および別記の Paseo 0.12 の説明をご覧ください。 |
 | Paseo がプラグインのバージョンを受け付けない、または Clear Chat がプラグインの設定やタイムラインの対応がないと表示する。 | daemon のホストと、つないでいるすべてのアプリの Paseo を更新してから、Clear Chat を再読み込みしてください。Clear Chat に必要な Paseo のバージョンは `paseo-plugin.json` に書いてあります。 |
 | プラグインの登録に失敗し、Clear Chat が起動しない。 | Paseo を更新して Clear Chat を再読み込みしてください。それでも直らない場合は、プラグインの設定をバックアップしてから CLI で入れ直してください。 |
 | Clear Chat がホストの設定を読み込めない。 | ホストにつなぎ直し、**Settings → Plugins → Clear Chat** で **再試行**（Retry）を選んでください。それでも直らない場合は、daemon がプラグインの設定フォルダーにアクセスできるか確認してください。 |
@@ -260,7 +260,7 @@ cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_back
 **2. インストール**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.14.0.3
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.14.0.4
 ```
 
 **3. 確認してから古いプラグインを削除**

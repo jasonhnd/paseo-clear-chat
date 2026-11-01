@@ -206,14 +206,18 @@ test("a stale prefix in either description is regenerated", async t => {
   for (const locale of ["default", "zh-CN"]) {
     await t.test(locale, t => {
       const dir = fixture(t), file = path.join(dir, "paseo-plugin.json");
+      const version = read(path.join(dir, "package.json")).version;
       const manifest = read(file), entry = locale === "default" ? manifest : manifest.translations[locale];
-      entry.description = entry.description.replace("v0.14.0.2", "v1.2.3.4");
+      entry.description = entry.description.replace(/^v\d+(?:\.\d+){3} · /, "v1.2.3.4 · ");
+      const before = entry.description.replace(/^v\d+(?:\.\d+){3} · /, "");
       write(file, manifest);
       const result = build(dir);
       assertInvocation(dir);
       assert.equal(result.status, 0, result.stderr);
       const updated = read(file), actual = locale === "default" ? updated : updated.translations[locale];
-      assert.equal(actual.description, entry.description.replace("v1.2.3.4", "v0.14.0.2"));
+      const prefix = `v${version} · `;
+      assert.ok(actual.description.startsWith(prefix), "the build must regenerate the package version prefix");
+      assert.equal(actual.description.slice(prefix.length), before, "the wording after the prefix must be preserved");
     });
   }
 });

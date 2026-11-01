@@ -10,7 +10,7 @@ Clear Chat changes how agent conversations look in Paseo, so the answer is easy 
 
 ## Setup
 
-Clear Chat 0.14.0.2 needs Paseo 0.14.0 or later. For older hosts, see the [README installation guidance](README.md#install), including the untested Paseo 0.13 commands and the separate Paseo 0.12 instructions.
+Clear Chat 0.14.0.4 needs Paseo 0.14.0 or later. For older hosts, see the [README installation guidance](README.md#install), including the untested Paseo 0.13 commands and the separate Paseo 0.12 instructions.
 
 Installation runs `npm ci` on the daemon host, so Node.js and npm must be available there and the host must be able to reach the npm registry.
 
