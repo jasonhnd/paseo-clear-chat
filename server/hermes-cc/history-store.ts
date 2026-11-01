@@ -386,9 +386,13 @@ async function withDiskLock<T>(root: Directory, run: () => Promise<T>): Promise<
       if (!hasCode(error, "EEXIST")) throw error;
       let stat;
       try { stat = await lstat(target); }
-      catch (error) { if (hasCode(error, "ENOENT")) continue; throw error; }
-      if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1) throw new Error("unsafe_history_lock");
-      if (Date.now() - stat.mtimeMs > STALE_MS) {
+      catch (error) { if (!hasCode(error, "ENOENT")) throw error; }
+      // Unlinking cannot turn a regular lock into a symlink or a non-file.
+      if (stat && (!stat.isFile() || stat.isSymbolicLink())) throw new Error("unsafe_history_lock");
+      // Unlinking one name cannot create extra hard links or a negative link count.
+      if (stat && stat.nlink !== 0 && stat.nlink !== 1) throw new Error("unsafe_history_lock");
+      // ENOENT and zero links can both result from a concurrent unlink; retry below.
+      if (stat?.nlink === 1 && Date.now() - stat.mtimeMs > STALE_MS) {
         let alive = false;
         try {
           const owner: unknown = JSON.parse((await readFile(root, LOCK, LOCK_BYTES)).toString("utf8"));
