@@ -51,6 +51,37 @@ test("does not send if the agent becomes busy after the first refresh", async ()
   h.unmount();
 });
 
+test("a long quote can be expanded and collapsed without losing the draft", () => {
+  const original = "Long quote\n".repeat(100);
+  const { h, mounted } = setup("assistant_message", "en", original);
+  byId(h, mounted.tree, "quote-action").props.onPress();
+  let tree = mounted.render();
+  const preview = byId(h, tree, "quote-preview");
+  assert.ok(preview, "the quote preview must be available to expand");
+  const collapsedHeight = preview.props.style.maxHeight;
+  preview.props.onContentSizeChange(300, 2000);
+  tree = mounted.render();
+  byId(h, tree, "quote-reply-input").props.onChangeText("draft");
+  tree = mounted.render();
+  const expand = byId(h, tree, "quote-expand");
+  assert.ok(expand, "long quotes must have an expand control");
+  assert.equal(expand.props.accessibilityLabel, require("../client/locales/en.json").quote.expand);
+  assert.equal(expand.props.accessibilityState.expanded, false);
+  expand.props.onPress();
+  tree = mounted.render();
+  assert.ok(byId(h, tree, "quote-preview").props.style.maxHeight > collapsedHeight);
+  assert.equal(byId(h, tree, "quote-expand").props.accessibilityState.expanded, true);
+  assert.equal(h.text(byId(h, tree, "quote-original")), original);
+  assert.equal(byId(h, tree, "quote-reply-input").props.value, "draft");
+  byId(h, tree, "quote-expand").props.onPress();
+  tree = mounted.render();
+  assert.equal(byId(h, tree, "quote-preview").props.style.maxHeight, collapsedHeight);
+  byId(h, tree, "quote-cancel").props.onPress();
+  byId(h, mounted.render(), "quote-action").props.onPress();
+  assert.equal(byId(h, mounted.render(), "quote-preview").props.style.maxHeight, collapsedHeight);
+  h.unmount();
+});
+
 for (const type of ["user_message", "assistant_message"]) {
   test(`${type}: quotes the entire message and sends the exact reply`, async () => {
     const { h, mounted, sent, refs } = setup(type);
@@ -116,6 +147,12 @@ for (const locale of ["en", "zh-CN", "ja"]) {
     const tree = mounted.render();
     assert.equal(byId(h, tree, "quote-reply-input").props.accessibilityLabel, words.reply);
     for (const word of [words.quoted, words.cancel, words.send]) assert.ok(h.text(tree).includes(word));
+    byId(h, tree, "quote-preview").props.onContentSizeChange(300, 2000);
+    let expandedTree = mounted.render();
+    assert.equal(byId(h, expandedTree, "quote-expand").props.accessibilityLabel, words.expand);
+    byId(h, expandedTree, "quote-expand").props.onPress();
+    expandedTree = mounted.render();
+    assert.equal(byId(h, expandedTree, "quote-expand").props.accessibilityLabel, words.collapse);
     h.unmount();
   });
 }
