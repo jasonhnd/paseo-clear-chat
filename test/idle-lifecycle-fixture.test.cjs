@@ -52,6 +52,19 @@ test("child targeting and synthetic refusal retain identity; successful close is
   await send(close("child", "refused"));
   assert.deepEqual(events.at(-1), { type: "request.failed", requestId: "refused",
     error: { code: "synthetic_refusal", message: "Synthetic close refusal" } });
+  fixture.setPromptRefusal("child", true);
+  const beforeRefusedPrompt = events.length;
+  await send(prompt("child"));
+  const refusedEvents = events.slice(beforeRefusedPrompt);
+  assert.deepEqual(refusedEvents.find(e => e.type === "session.prompt_result"), {
+    type: "session.prompt_result", sessionId: "child", clientMessageId: "turn-1",
+    result: { type: "failed", error: { code: "synthetic_refusal", message: "Synthetic message refusal" } },
+  }, "sender must receive the message refusal");
+  assert.equal(refusedEvents.some(e => e.type === "timeline.item" && e.item.type === "user_message"), false,
+    "the conversation must not show the refused message as saved");
+  assert.equal(refusedEvents.some(e => e.type === "session.turn" ||
+    (e.type === "session.prompt_result" && e.result.type !== "failed")), false,
+    "the refused message must not be admitted as a turn");
   assert.equal(fixture.hasSession("child"), true);
   assert.equal(fixture.hasSession("parent"), true);
   await send(close("parent", "parent-close"));

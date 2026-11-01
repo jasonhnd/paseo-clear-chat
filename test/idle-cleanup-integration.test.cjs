@@ -54,7 +54,7 @@ async function harness(t) {
     await session.startTurn("synthetic", { clientMessageId: "turn-1" });
     assert.ok(events.some(event => event.type === "turn_completed" && event.turnId === "turn-1"));
   };
-  return { fixture, id, session, cleanup, completeTurn, advance: () => { now += 3600000; } };
+  return { fixture, id, session, events, cleanup, completeTurn, advance: () => { now += 3600000; } };
 }
 
 async function retainedThenCollected(h, release) {
@@ -62,6 +62,17 @@ async function retainedThenCollected(h, release) {
   assert.deepEqual(first, { collected: [], failures: [] });
   assert.equal(h.fixture.hasSession(h.id), true, "protected runtime must remain open");
   assert.equal(h.fixture.inputs.some(input => input.type === "session.close"), false, "cleanup must not send close while protected");
+  h.fixture.setPromptRefusal(h.id, true);
+  const beforeEvents = h.events.length;
+  const historyBefore = await Array.fromAsync(h.session.streamHistory());
+  await assert.rejects(h.session.startTurn("refused synthetic message", { clientMessageId: "refused-message" }),
+    /Synthetic message refusal/, "sender must receive the message refusal");
+  assert.deepEqual(await Array.fromAsync(h.session.streamHistory()), historyBefore,
+    "the conversation history must not treat the refused message as saved");
+  assert.equal(h.events.slice(beforeEvents).some(event =>
+    (event.type === "timeline" && event.item.type === "user_message") || event.type === "turn_started"), false,
+    "the live conversation must not show or start the refused message");
+  h.fixture.setPromptRefusal(h.id, false);
   await release();
   assert.deepEqual(await h.cleanup.sweep(), { collected: [], failures: [] }, "protection resets the idle clock");
   assert.ok(h.fixture.inputs.some(input => input.type === "session.can_stop_runtime"), "cleanup must consult the provider safety probe");
