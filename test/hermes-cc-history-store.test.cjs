@@ -1329,3 +1329,80 @@ test("Hermes CC history stays complete across two clean writer restarts", async 
   }
   assert.equal(readManifest(h).records, before.records);
 });
+
+test("Hermes CC history retries lock observations interrupted by unlink", async t => {
+  for (const observation of ["unlinked inode", "ENOENT"]) {
+    await t.test(observation, async t => {
+      const fsp = require("node:fs/promises");
+      let observed = false;
+      const wrapped = { ...fsp, async lstat(path, ...args) {
+        if (!observed && String(path).endsWith("/.journal.lock")) {
+          observed = true;
+          const held = await fsp.open(path, "r");
+          try {
+            await fsp.unlink(path);
+            if (observation === "ENOENT") return await fsp.lstat(path, ...args);
+            const stat = await held.stat();
+            assert.equal(stat.nlink, 0, "the unlinked inode has no remaining names");
+            return stat;
+          } finally { await held.close(); }
+        }
+        return fsp.lstat(path, ...args);
+      } };
+      const h = harness(t, { "node:fs/promises": wrapped }), k = key();
+      fs.mkdirSync(h.storeRoot);
+      fs.writeFileSync(join(h.storeRoot, ".journal.lock"), "synthetic owner");
+      await h.store.start(k);
+      assert.equal(observed, true);
+      await h.store.append(k, { n: 1 });
+      assert.deepEqual(await h.store.read(k), { status: "complete", events: [{ n: 1 }] });
+    });
+  }
+});
+
+test("Hermes CC history applies the lock deadline to interrupted observations", async t => {
+  for (const observation of ["unlinked inode", "ENOENT"]) {
+    await t.test(observation, async t => {
+      t.mock.timers.enable({ apis: ["Date"] });
+      const fsp = require("node:fs/promises");
+      let observed = false;
+      const wrapped = { ...fsp, async lstat(path, ...args) {
+        if (!observed && String(path).endsWith("/.journal.lock")) {
+          observed = true;
+          const held = await fsp.open(path, "r");
+          try {
+            await fsp.unlink(path);
+            t.mock.timers.tick(15_001);
+            if (observation === "ENOENT") return await fsp.lstat(path, ...args);
+            const stat = await held.stat();
+            assert.equal(stat.nlink, 0);
+            return stat;
+          } finally { await held.close(); }
+        }
+        return fsp.lstat(path, ...args);
+      } };
+      const h = harness(t, { "node:fs/promises": wrapped });
+      fs.mkdirSync(h.storeRoot);
+      fs.writeFileSync(join(h.storeRoot, ".journal.lock"), "synthetic owner");
+      await assert.rejects(h.store.start(key()), /^Error: history_lock_timeout$/);
+      assert.equal(observed, true);
+    });
+  }
+});
+
+test("Hermes CC history rejects unsafe lock entries", async t => {
+  for (const kind of ["symlink", "directory", "hard link"]) {
+    await t.test(kind, async t => {
+      const h = harness(t), lock = join(h.storeRoot, ".journal.lock");
+      fs.mkdirSync(h.storeRoot);
+      if (kind === "directory") fs.mkdirSync(lock);
+      else {
+        const other = join(h.root, "other");
+        fs.writeFileSync(other, "synthetic owner");
+        if (kind === "symlink") fs.symlinkSync(other, lock);
+        else fs.linkSync(other, lock);
+      }
+      await assert.rejects(h.store.start(key()), /^Error: unsafe_history_lock$/);
+    });
+  }
+});
