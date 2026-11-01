@@ -1,0 +1,116 @@
+{
+  "running": {
+    "type": "agent_update",
+    "payload": {
+      "kind": "upsert",
+      "generation": "synthetic-generation",
+      "seq": 2,
+      "agent": {
+        "id": "synthetic-agent",
+        "provider": "synthetic",
+        "cwd": ".",
+        "workspaceId": "synthetic-workspace",
+        "model": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "lastUserMessageAt": null,
+        "capabilities": {
+          "supportsStreaming": false,
+          "supportsSessionPersistence": false,
+          "supportsDynamicModes": false,
+          "supportsMcpServers": false,
+          "supportsReasoningStream": false,
+          "supportsToolInvocations": false,
+          "supportsRewindConversation": false,
+          "supportsRewindFiles": false,
+          "supportsRewindBoth": false
+        },
+        "currentModeId": null,
+        "availableModes": [],
+        "pendingPermissions": [],
+        "persistence": null,
+        "title": "Synthetic agent",
+        "labels": {},
+        "updatedAt": "2026-01-01T00:00:02.000Z",
+        "status": "running",
+        "activeTurn": {
+          "turnId": "synthetic-turn",
+          "startedAt": "2026-01-01T00:00:02.000Z"
+        }
+      }
+    }
+  },
+  "olderIdle": {
+    "type": "agent_update",
+    "payload": {
+      "kind": "upsert",
+      "generation": "synthetic-generation",
+      "seq": 1,
+      "agent": {
+        "id": "synthetic-agent",
+        "provider": "synthetic",
+        "cwd": ".",
+        "workspaceId": "synthetic-workspace",
+        "model": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "lastUserMessageAt": null,
+        "capabilities": {
+          "supportsStreaming": false,
+          "supportsSessionPersistence": false,
+          "supportsDynamicModes": false,
+          "supportsMcpServers": false,
+          "supportsReasoningStream": false,
+          "supportsToolInvocations": false,
+          "supportsRewindConversation": false,
+          "supportsRewindFiles": false,
+          "supportsRewindBoth": false
+        },
+        "currentModeId": null,
+        "availableModes": [],
+        "pendingPermissions": [],
+        "persistence": null,
+        "title": "Synthetic agent",
+        "labels": {},
+        "updatedAt": "2026-01-01T00:00:01.000Z",
+        "status": "idle",
+        "activeTurn": null
+      }
+    }
+  },
+  "newerIdle": {
+    "type": "agent_update",
+    "payload": {
+      "kind": "upsert",
+      "generation": "synthetic-generation",
+      "seq": 3,
+      "agent": {
+        "id": "synthetic-agent",
+        "provider": "synthetic",
+        "cwd": ".",
+        "workspaceId": "synthetic-workspace",
+        "model": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "lastUserMessageAt": null,
+        "capabilities": {
+          "supportsStreaming": false,
+          "supportsSessionPersistence": false,
+          "supportsDynamicModes": false,
+          "supportsMcpServers": false,
+          "supportsReasoningStream": false,
+          "supportsToolInvocations": false,
+          "supportsRewindConversation": false,
+          "supportsRewindFiles": false,
+          "supportsRewindBoth": false
+        },
+        "currentModeId": null,
+        "availableModes": [],
+        "pendingPermissions": [],
+        "persistence": null,
+        "title": "Synthetic agent",
+        "labels": {},
+        "updatedAt": "2026-01-01T00:00:03.000Z",
+        "status": "idle",
+        "activeTurn": null
+      }
+    }
+  }
+}
