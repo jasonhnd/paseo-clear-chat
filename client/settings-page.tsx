@@ -351,6 +351,9 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
         <Text testID="installed-version" style={[styles.description, { color: tokens.foregroundMuted, fontFamily: tokens.fontUi }]}>
           {t("settings.version", { version: installedVersion ?? t("hub.unknown").replace(/^./, letter => letter.toUpperCase()) })}
         </Text>
+        <Text testID="installed-version-note" style={[styles.description, { color: tokens.foregroundMuted, fontFamily: tokens.fontUi }]}>
+          {t("settings.versionNote")}
+        </Text>
       </View>
 
       {storageError ? (

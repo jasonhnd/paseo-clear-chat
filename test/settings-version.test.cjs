@@ -7,6 +7,12 @@ const { tmpdir } = require("node:os");
 const { settingsVersion } = require("../scripts/settings-version.cjs");
 const packageVersion = require("../package.json").version;
 
+const versionNotes = {
+  en: "This is the version of the build this install was made from. A directory install keeps the version metadata already in that directory, so it can show an older release.",
+  ja: "これは、このインストールの元になったビルドのバージョンです。ディレクトリからのインストールでは、そのディレクトリにあるバージョン情報がそのまま使われるため、古いリリースのバージョンが表示されることがあります。",
+  "zh-CN": "这里显示的是这次安装所用构建的版本。从目录安装时会沿用该目录里已有的版本信息，因此可能显示旧版本。",
+};
+
 test("generated version matches package metadata and updates for another artifact", t => {
   const dir = mkdtempSync(join(tmpdir(), "settings-version-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -18,6 +24,22 @@ test("generated version matches package metadata and updates for another artifac
   assert.equal(settingsVersion(dir), "12.34.56.78");
   assert.equal(JSON.parse(readFileSync(join(dir, "client", "package-version.svg"))).version, "12.34.56.78");
 });
+
+for (const [locale, expected] of Object.entries(versionNotes)) {
+  for (const [metadata, options] of [
+    ["present", { packageVersionText: JSON.stringify({ version: packageVersion }) }],
+    ["missing", { packageVersionText: new Error("missing") }],
+  ]) {
+    test(`${locale}: version note is shown with ${metadata} metadata`, t => {
+      const h = createToolHarness("ios", { locale, settingsPage: true, ...options });
+      t.after(() => h.unmount());
+      const tree = h.draw({ type: h.settingsScreens.get("chat-presentation").Component, props: { theme: { colors: {} } } });
+      const notes = h.nodes(tree, node => node.props.testID === "installed-version-note");
+      assert.equal(notes.length, 1);
+      assert.equal(h.text(notes[0]), expected);
+    });
+  }
+}
 
 for (const [locale, label] of [["en", "Clear Chat version"], ["zh-CN", "Clear Chat 版本"], ["ja", "Clear Chat バージョン"]]) {
   for (const version of [packageVersion, "12.34.56.78"]) {
