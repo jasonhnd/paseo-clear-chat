@@ -20,6 +20,70 @@ function timingHost(timeline = entries) {
   return { paseo, agent, requests };
 }
 
+test("reply footer hides subsecond and invalid durations while preserving Copy", async () => {
+  const h = createToolHarness("web", { replyFooter: true });
+  const { AssistantFooter } = h.load("client/components/turn-footer.tsx");
+  const props = { text: "Complete reply", at: new Date("2026-01-01T12:00:00Z"), tokens: h.tokens };
+  for (const [durationMs, expected] of [
+    [undefined, undefined], [NaN, undefined], [Infinity, undefined], [-Infinity, undefined],
+    [-1, undefined], [0, undefined], [1, undefined], [500, undefined], [999, undefined],
+    [1000, "Worked for 1s"], [21099, "Worked for 21s"], [61000, "Worked for 1m 1s"],
+    [3661000, "Worked for 1h 1m"],
+  ]) {
+    const tree = h.draw({ type: AssistantFooter, props: { ...props, durationMs } });
+    const labels = h.nodes(tree, node => node.props.testID === "reply-duration");
+    assert.equal(labels.length, expected === undefined ? 0 : 1, `duration ${durationMs}`);
+    if (expected !== undefined) assert.equal(h.text(labels[0]), expected);
+    const copy = h.nodes(tree, node => node.props.accessibilityLabel === "Copy reply");
+    assert.equal(copy.length, 1);
+  }
+  const tree = h.draw({ type: AssistantFooter, props: { ...props, durationMs: 0 } });
+  await h.nodes(tree, node => node.props.accessibilityLabel === "Copy reply")[0].props.onPress();
+  assert.deepEqual(h.copies, [props.text]);
+  h.unmount();
+});
+
+for (const kind of ["assistant", "wrap-up"]) {
+  test(`${kind} reply applies the duration boundary from the canonical timeline`, async () => {
+    for (const [duration, expected] of [[0, undefined], [1, undefined], [999, undefined], [-1000, undefined], [1000, "Worked for 1s"], [21099, "Worked for 21s"]]) {
+      const timeline = [structuredClone(entries[0]), structuredClone(entries.at(-1))];
+      timeline[1].timestamp = new Date(Date.parse(timeline[0].timestamp) + duration).toISOString();
+      if (kind === "wrap-up") timeline[1].item = wrapUp;
+      const source = timingHost(timeline);
+      const h = createToolHarness("web", { ...source, replyFooter: true });
+      const mounted = h.mount(timeline[1].item, false, { timestamp: new Date(timeline[1].timestamp) });
+      assert.equal(h.nodes(mounted.tree, node => node.props.testID === "reply-duration").length, 0, "pending read has no label");
+      await settle();
+      const tree = mounted.render();
+      const labels = h.nodes(tree, node => node.props.testID === "reply-duration");
+      assert.equal(labels.length, expected === undefined ? 0 : 1, `duration ${duration}`);
+      if (expected !== undefined) assert.equal(h.text(labels[0]), expected);
+      const copy = h.nodes(tree, node => node.props.accessibilityLabel === "Copy reply");
+      assert.equal(copy.length, 1);
+      await copy[0].props.onPress();
+      assert.equal(h.copies.length, 1);
+      h.unmount();
+    }
+  });
+}
+
+test("an incomplete timeline page does not show a partial duration", async () => {
+  const source = timingHost();
+  let resolvePage;
+  source.paseo.agents.ref = () => ({ timeline: { refetch: () => new Promise(resolve => { resolvePage = resolve; }) } });
+  const h = createToolHarness("web", { ...source, replyFooter: true });
+  const final = entries.at(-1);
+  const mounted = h.mount(final.item, false, { timestamp: new Date(final.timestamp) });
+  await settle();
+  assert.equal(h.nodes(mounted.render(), node => node.props.testID === "reply-duration").length, 0);
+  resolvePage({ entries, agent: source.agent, hasOlder: true, hasNewer: false, error: null });
+  await settle();
+  const tree = mounted.render();
+  assert.equal(h.nodes(tree, node => node.props.testID === "reply-duration").length, 0);
+  assert.equal(h.nodes(tree, node => node.props.accessibilityLabel === "Copy reply").length, 1);
+  h.unmount();
+});
+
 for (const platform of ["web", "ios", "android"]) {
   test(`captured final reply retains exactly one Worked for label on ${platform}`, async () => {
     const source = timingHost();

@@ -116,7 +116,7 @@ export function AssistantFooter({ text, at, tokens, durationMs, agentId }: Assis
       </Pressable>
       {agentId ? <QuoteReply text={text} agentId={agentId} tokens={tokens} /> : null}
       <Text style={styles.time}>{time}</Text>
-      {durationMs !== undefined && Number.isFinite(durationMs) && durationMs >= 0 ? (
+      {durationMs !== undefined && Number.isFinite(durationMs) && durationMs >= 1000 ? (
         <Text testID="reply-duration" style={styles.time}>{t("reply.workedFor", { duration: formatWorkedDuration(durationMs) })}</Text>
       ) : null}
     </View>
