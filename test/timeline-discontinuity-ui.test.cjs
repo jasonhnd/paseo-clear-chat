@@ -44,16 +44,28 @@ test("a flagged sequence gap replaces the old timing and uses the new cursor", a
   const { host, shown } = fixture(t);
   const old = turn("old-gap", 1, 21), replacement = turn("after-gap", 7, 42), next = turn("next", 9, 12);
   host.enqueue("agent-a", tail(), page("epoch-a", old));
-  assert.match(await shown("agent-a", old[1]), /Worked for 21s/);
+  assert.match(await shown("agent-a", old[1]), /Worked for 21s/, "pre-gap timing is visible before the gap");
   // Sequence numbers 3 through 6 are absent; the host signals the gap.
   host.agents["agent-a"].updatedAt = "2";
   host.enqueue("agent-a", after("epoch-a", 2), page("epoch-a", replacement, { gap: true }));
-  assert.doesNotMatch(await shown("agent-a", old[1]), /Worked for /);
-  assert.match(await shown("agent-a", replacement[1]), /Worked for 42s/);
+  assert.doesNotMatch(await shown("agent-a", old[1]), /Worked for /, "pre-gap timing is cleared");
+  assert.match(await shown("agent-a", replacement[1]), /Worked for 42s/, "post-gap timing is visible");
   host.agents["agent-a"].updatedAt = "3";
   host.enqueue("agent-a", after("epoch-a", 8), page("epoch-a", next));
-  assert.match(await shown("agent-a", next[1]), /Worked for 12s/);
-  assert.match(await shown("agent-a", replacement[1]), /Worked for 42s/);
+  assert.match(await shown("agent-a", next[1]), /Worked for 12s/, "later post-gap timing is visible");
+  assert.match(await shown("agent-a", replacement[1]), /Worked for 42s/, "post-gap timing remains visible");
+});
+
+test("a reset flag alone replaces visible timing in the same epoch", async t => {
+  const { host, shown } = fixture(t);
+  const old = turn("before-reset", 1, 21), replacement = turn("after-reset", 7, 42);
+  host.enqueue("agent-a", tail(), page("epoch-a", old));
+  assert.match(await shown("agent-a", old[1]), /Worked for 21s/, "pre-reset timing is visible");
+
+  host.agents["agent-a"].updatedAt = "2";
+  host.enqueue("agent-a", after("epoch-a", 2), page("epoch-a", replacement, { reset: true }));
+  assert.doesNotMatch(await shown("agent-a", old[1]), /Worked for /, "pre-reset timing is cleared");
+  assert.match(await shown("agent-a", replacement[1]), /Worked for 42s/, "post-reset timing is visible");
 });
 
 test("a duplicated page cannot change a settled reply's visible timing", async t => {
