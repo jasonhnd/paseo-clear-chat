@@ -5,7 +5,7 @@
 const net = require("node:net");
 const fs = require("node:fs");
 const { isAbsolute } = require("node:path");
-const { randomUUID } = require("node:crypto");
+const { createHash } = require("node:crypto");
 const readline = require("node:readline");
 
 const socket = process.env.BACKGROUND_TASK_FIXTURE_SOCKET;
@@ -14,6 +14,15 @@ if (process.argv.length !== 3 || process.argv[2] !== "acp" || !socket || !isAbso
   process.exit(1);
 }
 const sessions = new Map();
+const seed = process.env.BACKGROUND_TASK_FIXTURE_SEED ?? "background-task-fixture";
+let sessionNumber = 0;
+function nextSessionId() {
+  const bytes = createHash("sha256").update(JSON.stringify([seed, ++sessionNumber])).digest().subarray(0, 16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x80;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 const send = value => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...value }) + "\n");
 const update = (sessionId, value) => send({ method: "session/update", params: { sessionId, update: value } });
 const server = net.createServer(connection => {
@@ -56,7 +65,7 @@ server.listen(socket, () => {
       reply({ protocolVersion: 1, agentInfo: { name: "synthetic-background-task-no-model", version: "1" },
         agentCapabilities: { loadSession: false }, authMethods: [] });
     } else if (method === "session/new") {
-      const sessionId = randomUUID();
+      const sessionId = nextSessionId();
       sessions.set(sessionId, new Map());
       reply({ sessionId });
     } else if (method === "session/prompt") {

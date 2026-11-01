@@ -11,9 +11,9 @@ const test = require("node:test");
 const agent = join(__dirname, "fixtures/background-task/agent.cjs");
 const controlCli = join(__dirname, "fixtures/background-task/control.cjs");
 const execFileAsync = promisify(execFile);
-function start(socket) {
+function start(socket, seed) {
   const child = spawn(process.execPath, [agent, "acp"], {
-    env: { BACKGROUND_TASK_FIXTURE_SOCKET: socket }, stdio: "pipe",
+    env: { BACKGROUND_TASK_FIXTURE_SOCKET: socket, ...(seed === undefined ? {} : { BACKGROUND_TASK_FIXTURE_SEED: seed }) }, stdio: "pipe",
   });
   const messages = [], pending = new Map();
   let nextId = 0, stderr = "";
@@ -46,6 +46,37 @@ function control(socket, command) {
     lines.once("line", line => { connection.end(); resolve(JSON.parse(line)); });
   });
 }
+
+test("same seed produces identical timelines and a different seed changes session IDs", { timeout: 10000 }, async () => {
+  const root = fs.mkdtempSync(join(process.env.TMPDIR, "background-task-seed-"));
+  async function record(seed, name) {
+    const socket = join(root, `${name}.sock`);
+    const instance = start(socket, seed);
+    try {
+      await instance.request("initialize");
+      const sessionId = (await instance.request("session/new")).result.sessionId;
+      const otherId = (await instance.request("session/new")).result.sessionId;
+      await instance.request("session/prompt", { sessionId, prompt: [{ type: "text", text: "Run synthetic tasks" }] });
+      await control(socket, { action: "complete", sessionId, taskId: "synthetic-complete" });
+      await control(socket, { action: "fail", sessionId, taskId: "synthetic-fail" });
+      await instance.request("initialize");
+      instance.child.stdin.end();
+      assert.deepEqual(await instance.closed, { code: 0, signal: null });
+      return { sessionId, otherId, timeline: instance.messages };
+    } finally {
+      if (instance.child.exitCode === null) instance.child.kill("SIGKILL");
+      await instance.closed;
+    }
+  }
+  try {
+    const first = await record("synthetic-seed", "first");
+    const repeat = await record("synthetic-seed", "repeat");
+    const different = await record("different-seed", "different");
+    assert.deepEqual(first.timeline, repeat.timeline, "the same seed must produce identical timelines");
+    assert.notEqual(first.sessionId, different.sessionId, "different seeds must produce different session IDs");
+    assert.notEqual(first.sessionId, first.otherId, "sessions in one run must have distinct IDs");
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
 
 test("background tasks remain running after the reply until independently controlled", { timeout: 10000 }, async () => {
   assert.ok(process.env.TMPDIR && isAbsolute(process.env.TMPDIR));
