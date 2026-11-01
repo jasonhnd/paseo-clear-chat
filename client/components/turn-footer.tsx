@@ -7,6 +7,7 @@ import { Glyph } from "./glyph";
 import { unselectable } from "./selection";
 import { radius } from "./theme-tokens";
 import type { ExtendedThemeTokens } from "./theme-tokens";
+import { QuoteReply } from "./quote-reply";
 import { formatWorkedDuration } from "../reply-duration";
 
 /**
@@ -21,6 +22,7 @@ interface AssistantFooterProps {
   at: Date;
   tokens: ExtendedThemeTokens;
   durationMs?: number;
+  agentId?: string;
 }
 
 /**
@@ -48,7 +50,7 @@ export function formatReplyTime(date: Date, now: Date = new Date()): string {
   return `${label} ${time}`;
 }
 
-export function AssistantFooter({ text, at, tokens, durationMs }: AssistantFooterProps) {
+export function AssistantFooter({ text, at, tokens, durationMs, agentId }: AssistantFooterProps) {
   const { t } = useTranslation(messages);
   const { copied, handleCopy, fallbackText, setFallbackText } = useCopyText(text);
 
@@ -112,6 +114,7 @@ export function AssistantFooter({ text, at, tokens, durationMs }: AssistantFoote
         />
         <Text style={styles.copyLabel}>{copied ? t("reply.copied") : t("reply.copy")}</Text>
       </Pressable>
+      {agentId ? <QuoteReply text={text} agentId={agentId} tokens={tokens} /> : null}
       <Text style={styles.time}>{time}</Text>
       {durationMs !== undefined && Number.isFinite(durationMs) && durationMs >= 0 ? (
         <Text testID="reply-duration" style={styles.time}>{t("reply.workedFor", { duration: formatWorkedDuration(durationMs) })}</Text>
