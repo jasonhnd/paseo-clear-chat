@@ -5,16 +5,51 @@ const { createToolHarness } = require("./helpers/tool-harness.cjs");
 const byId = (h, tree, id) => h.nodes(tree, node => node.props.testID === id)[0];
 const quote = "First line\n\n> existing quote\nLast line\n";
 
-function setup(type, locale = "en") {
+function setup(type, locale = "en", text = quote) {
   const agent = { status: "idle", cwd: "/sample", workspaceId: "sample" };
   const sent = [], refs = [];
   let refreshedStatus = null;
   const handle = { refresh: async () => ({ agent: { status: refreshedStatus ?? agent.status } }), send: async text => { sent.push(text); } };
   const h = createToolHarness("web", { agent, locale, userMessage: true, replyFooter: true,
     paseo: { agents: { ref: id => { refs.push(id); return handle; } } } });
-  const mounted = h.mount({ type, text: quote }, false);
-  return { h, mounted, agent, sent, refs, setRefreshStatus: value => { refreshedStatus = value; } };
+  const mounted = h.mount({ type, text }, false);
+  return { h, mounted, agent, sent, refs, handle, setRefreshStatus: value => { refreshedStatus = value; } };
 }
+
+test("quote preserves CRLF, CR, and LF line breaks", async () => {
+  const original = "first\r\n\r\nsecond\rthird\nfourth\r\n";
+  const { h, mounted, sent } = setup("assistant_message", "en", original);
+  byId(h, mounted.tree, "quote-action").props.onPress();
+  let tree = mounted.render();
+  assert.equal(h.text(byId(h, tree, "quote-original")), original);
+  byId(h, tree, "quote-reply-input").props.onChangeText("reply");
+  tree = mounted.render();
+  await byId(h, tree, "quote-send").props.onPress();
+  assert.deepEqual(sent, ["> first\r\n> \r\n> second\r> third\n> fourth\r\n> \n\nreply"]);
+  h.unmount();
+});
+
+test("does not send if the agent becomes busy after the first refresh", async () => {
+  const { h, mounted, handle } = setup("assistant_message");
+  let refreshes = 0, sends = 0, serverStatus = "idle";
+  handle.refresh = async () => {
+    if (++refreshes === 2) serverStatus = "running";
+    return { agent: { status: serverStatus } };
+  };
+  handle.send = async () => { sends++; assert.notEqual(serverStatus, "running", "send would interrupt the running turn"); };
+  byId(h, mounted.tree, "quote-action").props.onPress();
+  let tree = mounted.render();
+  byId(h, tree, "quote-reply-input").props.onChangeText("draft");
+  tree = mounted.render();
+  await byId(h, tree, "quote-send").props.onPress();
+  tree = mounted.render();
+  assert.equal(refreshes, 2);
+  assert.equal(sends, 0);
+  assert.equal(byId(h, tree, "quote-reply-input").props.value, "draft");
+  assert.ok(h.text(tree).includes(require("../client/locales/en.json").quote.busy));
+  assert.ok(h.text(tree).includes(require("../client/locales/en.json").quote.failed));
+  h.unmount();
+});
 
 for (const type of ["user_message", "assistant_message"]) {
   test(`${type}: quotes the entire message and sends the exact reply`, async () => {
