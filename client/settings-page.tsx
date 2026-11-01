@@ -1,6 +1,5 @@
 import { useSettings, useTranslation } from "@getpaseo/plugin/client";
 import { messages } from "./messages";
-import { version } from "./package-version.json";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
@@ -25,6 +24,17 @@ import {
   type UiFontPreference,
   type OutputLineLimit,
 } from "./preferences";
+
+// Paseo bundles SVG imports as text, so malformed JSON can be handled here.
+let installedVersion: string | undefined;
+try {
+  const raw: unknown = require("./package-version.svg");
+  const metadata: unknown = JSON.parse(typeof raw === "string" ? raw : "");
+  const version = metadata && typeof metadata === "object" && "version" in metadata ? metadata.version : undefined;
+  if (typeof version === "string" && /^(?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*)){3}$/.test(version)) installedVersion = version;
+} catch {
+  // Directory installs do not run the build hook and have no generated metadata.
+}
 
 const ACCENT_OPTIONS: ReadonlyArray<{
   id: AccentPreset;
@@ -339,7 +349,7 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
           {t("settings.intro")}
         </Text>
         <Text testID="installed-version" style={[styles.description, { color: tokens.foregroundMuted, fontFamily: tokens.fontUi }]}>
-          {t("settings.version", { version })}
+          {t("settings.version", { version: installedVersion ?? t("hub.unknown").replace(/^./, letter => letter.toUpperCase()) })}
         </Text>
       </View>
 

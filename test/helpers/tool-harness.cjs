@@ -176,6 +176,19 @@ function createToolHarness(platform = "ios", options = {}) {
   }
   function load(path) {
     let filename = resolve(root, path);
+    if (options.directoryInstall && filename.endsWith("/client/package-version.json")) return { version: options.directoryInstall };
+    if (options.directoryInstall && filename.endsWith("/client/package-version.svg")) throw new Error("missing generated metadata");
+    if (filename.endsWith("/client/package-version.json") && Object.hasOwn(options, "packageVersionText")) {
+      if (options.packageVersionText instanceof Error) throw options.packageVersionText;
+      return JSON.parse(options.packageVersionText);
+    }
+    if (filename.endsWith("/client/package-version.svg")) {
+      if (Object.hasOwn(options, "packageVersionText")) {
+        if (options.packageVersionText instanceof Error) throw options.packageVersionText;
+        return options.packageVersionText;
+      }
+      return readFileSync(filename, "utf8");
+    }
     if (!existsSync(filename)) filename += existsSync(filename + ".ts") ? ".ts" : ".tsx";
     if (filename.endsWith(".json")) return options.localeResources?.[filename.split("/").pop().replace(/\.json$/, "")] ?? JSON.parse(readFileSync(filename, "utf8"));
     const key = relative(root, filename).replace(/\.tsx?$/, "");
