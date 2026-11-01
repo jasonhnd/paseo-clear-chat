@@ -12,6 +12,28 @@ const failed = new Set();
 const versionPattern = /^(?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*)){3}$/;
 const ignored = new Set([".git", "node_modules", ".tmp", "dist"]);
 const ignoredFiles = new Set([".showcase/showcase.js", ".showcase/tools/collect.cjs"]);
+// These exact lines document the older-host release and its known history.
+const legacyVersion = [0, 13, 2, 2].join(".");
+const compatibilityLines = {
+  "README.md": new Set([
+    "Still on Paseo 0.13? Clear Chat " + legacyVersion + " is already released and declares support for Paseo 0.13.0 or later. The exact installation command below has not yet been tested on Paseo 0.13:",
+    "paseo plugin install git:jasonhnd/paseo-clear-chat --ref v" + legacyVersion,
+    "paseo plugin update clear-chat --ref v" + legacyVersion + " --yes",
+    "**Previously affected conversations.** Clear Chat " + legacyVersion + " prevents a compatibility issue in which certain failed tool calls with no error message could make a **·CC** conversation's history fail to open. Conversations already affected by this issue may still fail to open after upgrading; there is currently no automatic fix for those affected conversations."
+  ]),
+  "README.zh-CN.md": new Set([
+    "还在用 Paseo 0.13？Clear Chat " + legacyVersion + " 已经发布，并声明支持 Paseo 0.13.0 或更新版本。下面这条安装命令尚未在 Paseo 0.13 上实测：",
+    "paseo plugin install git:jasonhnd/paseo-clear-chat --ref v" + legacyVersion,
+    "paseo plugin update clear-chat --ref v" + legacyVersion + " --yes",
+    "**已经受影响的旧对话。** Clear Chat " + legacyVersion + " 可以防止以后因某些工具调用失败且没有错误信息，导致 **·CC** 对话的历史打不开。已经受这个问题影响的旧对话升级后仍可能打不开，目前还没有自动修复这些对话的办法。"
+  ]),
+  "README.ja.md": new Set([
+    "Paseo 0.13 を使い続ける場合、公開済みの Clear Chat " + legacyVersion + " は Paseo 0.13.0 以降への対応を明記しています。以下のインストールコマンドは Paseo 0.13 でまだ実機確認していません：",
+    "paseo plugin install git:jasonhnd/paseo-clear-chat --ref v" + legacyVersion,
+    "paseo plugin update clear-chat --ref v" + legacyVersion + " --yes",
+    "**すでに影響を受けた会話。** Clear Chat " + legacyVersion + " は、一部のツール呼び出しが失敗してエラーメッセージがないときに、**·CC** の会話履歴を開けなくなる互換性の問題を今後防ぎます。すでにこの問題の影響を受けた会話は、アップグレード後も開けない場合があります。現在、それらの会話を自動で修復する方法はありません。"
+  ]),
+};
 const signoff = ["package.json", "package-lock.json", "paseo-plugin.json", "CHANGELOG.md",
   "README.md", "README.zh-CN.md", "README.ja.md", "OVERVIEW.md", "OVERVIEW.zh-CN.md",
   "scripts/pre-release-check.cjs"];
@@ -74,13 +96,14 @@ let versions = process.argv.slice(2);
 if (!versions.length && changelog !== null) {
   const releases = [...changelog.matchAll(/^## \[([^\]]+)\]/gm)].map(match => match[1]);
   const current = releases.indexOf(version);
-  if (current < 0 || releases.length - current < 3) {
+  const previous = current < 0 ? [] : releases.slice(current + 1, current + 3);
+  if (previous.length < 2) {
     fail("stale version scan", "CHANGELOG.md:1", "cannot find two releases before the package version; supply versions as arguments");
-  } else versions = releases.slice(current + 1, current + 3);
+  } else versions = previous;
 }
 if (versions.some(value => !value || /[\r\n]/.test(value))) fail("stale version scan", "scripts/pre-release-check.cjs:1", "version arguments must be nonempty single-line strings");
 console.log(`Searching for: ${versions.map(value => JSON.stringify(value)).join(", ") || "<none>"}`);
-console.log("Excludes Git data, installed dependencies, generated build files, and historical changelog sections.");
+console.log("Excludes Git data, installed dependencies, generated build files, historical changelog sections, and documented older-host references.");
 function walk(dir = "") {
   let entries;
   try { entries = fs.readdirSync(path.join(root, dir), { withFileTypes: true }); }
@@ -109,7 +132,7 @@ for (const name of files) {
       const reference = /^\[([^\]]+)\]:\s/.exec(line);
       if (reference ? reference[1] !== latestRelease : releaseSections > 1) return;
     }
-    for (const old of versions) if (old && !/[\r\n]/.test(old) && line.includes(old)) fail("stale version scan", `${name}:${i + 1}`, `found ${JSON.stringify(old)}`);
+    for (const old of versions) if (old && !/[\r\n]/.test(old) && line.includes(old) && !(old === legacyVersion && compatibilityLines[name]?.delete(line))) fail("stale version scan", `${name}:${i + 1}`, `found ${JSON.stringify(old)}`);
   });
 }
 if (!failed.has("stale version scan")) console.log("PASS stale version scan");
