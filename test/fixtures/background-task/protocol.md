@@ -8,7 +8,7 @@ Run the self-contained check with an existing absolute temporary directory:
 node --test test/background-task-fixture.test.cjs
 ```
 
-Observed on Linux: 2 tests passed, 0 failed, 0 skipped (exit 0). This checks the fixture protocol, not product acceptance. For manual ACP use, create a private directory, set `BACKGROUND_TASK_FIXTURE_SOCKET` to a nonexistent socket path inside it, and run:
+This checks the fixture protocol, not product acceptance. Session IDs are derived from `BACKGROUND_TASK_FIXTURE_SEED` (default `background-task-fixture`) and the session creation order, so repeating the same commands with the same seed reproduces the same messages. For manual ACP use, create a private directory, set `BACKGROUND_TASK_FIXTURE_SOCKET` to a nonexistent socket path inside it, and run:
 
 ```sh
 node test/fixtures/background-task/agent.cjs acp
