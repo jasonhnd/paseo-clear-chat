@@ -27,16 +27,16 @@ const server = net.createServer(connection => {
       connection.write(JSON.stringify({ tasks: Object.fromEntries(tasks) }) + "\n");
       return;
     }
-    if (!["complete", "fail"].includes(command.action) || !tasks.has(command.taskId)) {
+    if (!["progress", "complete", "fail"].includes(command.action) || !tasks.has(command.taskId)) {
       connection.write('{"error":"unknown action or task"}\n'); return;
     }
     if (tasks.get(command.taskId) !== "in_progress") {
       connection.write('{"error":"task already finished"}\n'); return;
     }
-    const status = command.action === "complete" ? "completed" : "failed";
+    const status = command.action === "progress" ? "in_progress" : command.action === "complete" ? "completed" : "failed";
     tasks.set(command.taskId, status);
     update(command.sessionId, { sessionUpdate: "tool_call_update", toolCallId: command.taskId, status,
-      content: [{ type: "content", content: { type: "text", text: `Synthetic task ${status}.` } }] });
+      content: [{ type: "content", content: { type: "text", text: `Synthetic task ${status === "in_progress" ? "in progress" : status}.` } }] });
     connection.write(JSON.stringify({ taskId: command.taskId, status }) + "\n");
   });
 });
