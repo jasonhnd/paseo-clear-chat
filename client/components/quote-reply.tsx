@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { useAgent, usePaseo, useTranslation } from "@getpaseo/plugin/client";
 import { Modal, TextInput } from "@getpaseo/plugin/client/ui";
 import { messages } from "../messages";
@@ -14,8 +14,11 @@ export function QuoteReply({ text, agentId, tokens }: { text: string; agentId: s
   const { t } = useTranslation(messages);
   const paseo = usePaseo();
   const status = useAgent(agentId, agent => agent.status);
+  const { height } = useWindowDimensions();
   const [quote, setQuote] = useState<string | null>(null);
   const [reply, setReply] = useState("");
+  const [expanded, setExpanded] = useState(false);
+  const [quoteHeight, setQuoteHeight] = useState(0);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<"busy" | "failed" | null>(null);
   const pending = useRef(false);
@@ -26,6 +29,8 @@ export function QuoteReply({ text, agentId, tokens }: { text: string; agentId: s
     generation.current++;
     setQuote(null);
     setReply("");
+    setExpanded(false);
+    setQuoteHeight(0);
     setError(null);
   }
 
@@ -73,9 +78,17 @@ export function QuoteReply({ text, agentId, tokens }: { text: string; agentId: s
           <Modal.Content>
             <View style={{ gap: 12 }}>
               <Text style={{ color: tokens.foreground, fontSize: tokens.fs(13) }}>{t("quote.quoted")}</Text>
-              <ScrollView style={{ maxHeight: 180, backgroundColor: tokens.surface0 }}>
+              <ScrollView testID="quote-preview" onContentSizeChange={(_, contentHeight) => setQuoteHeight(contentHeight)}
+                style={{ maxHeight: expanded ? Math.max(240, Math.min(480, height * 0.45)) : 180, backgroundColor: tokens.surface0 }}>
                 <Text selectable testID="quote-original" style={{ color: tokens.foreground, padding: 12 }}>{quote}</Text>
               </ScrollView>
+              {quoteHeight > 180 ? (
+                <Pressable testID="quote-expand" accessibilityRole="button"
+                  accessibilityLabel={t(expanded ? "quote.collapse" : "quote.expand")}
+                  accessibilityState={{ expanded }} onPress={() => setExpanded(!expanded)} style={{ alignSelf: "flex-start", padding: 8 }}>
+                  <Text style={{ color: tokens.accent }}>{t(expanded ? "quote.collapse" : "quote.expand")}</Text>
+                </Pressable>
+              ) : null}
               <TextInput testID="quote-reply-input" accessibilityLabel={t("quote.reply")} placeholder={t("quote.reply")}
                 value={reply} onChangeText={setReply} multiline editable={!sending}
                 style={{ color: tokens.foreground, backgroundColor: tokens.surface0, minHeight: 120, padding: 12, textAlignVertical: "top" }} />

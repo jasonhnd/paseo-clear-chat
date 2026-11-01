@@ -147,6 +147,8 @@
     "action": "Quote reply",
     "title": "Reply with quote",
     "quoted": "Quoted message",
+    "expand": "Expand quote",
+    "collapse": "Collapse quote",
     "reply": "Your reply",
     "busy": "Wait for the agent to finish before sending.",
     "failed": "Could not send the reply. Check that the agent is idle and try again.",
