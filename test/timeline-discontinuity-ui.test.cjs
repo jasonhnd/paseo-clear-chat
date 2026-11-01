@@ -56,6 +56,23 @@ test("a flagged sequence gap replaces the old timing and uses the new cursor", a
   assert.match(await shown("agent-a", replacement[1]), /Worked for 42s/);
 });
 
+test("a duplicated page cannot change a settled reply's visible timing", async t => {
+  const { host, shown } = fixture(t);
+  const entries = turn("duplicate", 1, 21);
+  const firstPage = page("epoch-a", [entries[0]]);
+  host.enqueue("agent-a", tail(), firstPage);
+  assert.doesNotMatch(await shown("agent-a", entries[1]), /Worked for /);
+
+  host.agents["agent-a"].updatedAt = "2";
+  host.enqueue("agent-a", after("epoch-a", 1), page("epoch-a", [entries[1]]));
+  assert.match(await shown("agent-a", entries[1]), /Worked for 21s/);
+
+  // Replay the original page after the response has already been observed.
+  host.agents["agent-a"].updatedAt = "3";
+  host.enqueue("agent-a", after("epoch-a", 2), firstPage);
+  assert.match(await shown("agent-a", entries[1]), /Worked for 21s/);
+});
+
 test("partial recovery and a failed read never present partial timing as complete", async t => {
   const { host, shown } = fixture(t);
   const old = turn("settled", 1, 21), partial = turn("partial", 7, 42), complete = turn("complete", 7, 30);
