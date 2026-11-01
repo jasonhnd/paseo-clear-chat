@@ -1,19 +1,16 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const { execFileSync, spawn } = require("node:child_process");
+const { spawn } = require("node:child_process");
 const { once } = require("node:events");
-const { realpathSync } = require("node:fs");
 const { dirname, join } = require("node:path");
 const { pathToFileURL } = require("node:url");
 const test = require("node:test");
 const { createIdleLifecycleFixture } = require("./fixtures/idle-lifecycle-provider.cjs");
 
-// Load the host installed with the Paseo CLI, not the older development SDK.
+// Exercise the pinned host version, independently of the older development SDK.
 async function hostModules() {
-  const executable = execFileSync("which", ["paseo"], { encoding: "utf8" }).trim();
-  const cliBin = dirname(realpathSync(executable));
-  const serverEntry = require.resolve("@getpaseo/server", { paths: [cliBin] });
+  const serverEntry = require.resolve("@getpaseo/server");
   const serverDir = dirname(serverEntry);
   return Promise.all(["agent/idle-runtime-cleanup/index.js", "agent/agent-manager.js", "agent/plugin-provider.js"]
     .map(path => import(pathToFileURL(join(serverDir, path)).href)));
