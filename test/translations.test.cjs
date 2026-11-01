@@ -245,6 +245,7 @@ for (const locale of ["en", "zh-CN", "ja"]) {
     const text = readFileSync(resolve(__dirname, `../client/locales/${locale}.json`), "utf8");
     const original = text
       .replace(/    "version": ".*",\n/, "")
+      .replace(/  "quote": \{\n(?:    ".*\n){10}  \},\n/, "")
       .replace(/    "hermesCc": \{\n(?:      ".*\n){3}    \},\n/, "")
       .replace(/    "imageThumbA11y": ".*",\n    "moreImages": ".*",\n    "closeImage": ".*",\n/, "")
       .replace(/    "sectionInline": \{\n(?:      ".*\n){5}    \},\n/, "");
