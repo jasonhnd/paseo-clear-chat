@@ -27,8 +27,13 @@ function createIdleLifecycleFixture({ runtimeSafety = false } = {}) {
           cwd: input.config.cwd, capabilities: connection.capabilities, restoration: "core" });
         emit({ type: "session.ready", requestId: input.requestId, sessionId: input.sessionId });
       } else if (input.type === "session.prompt") {
-        session(input.sessionId);
+        const state = session(input.sessionId);
         const turnId = input.prompt.clientMessageId;
+        if (state.refusePrompt) {
+          emit({ type: "session.prompt_result", sessionId: input.sessionId, clientMessageId: turnId,
+            result: { type: "failed", error: { code: "synthetic_refusal", message: "Synthetic message refusal" } } });
+          return;
+        }
         emit({ type: "session.prompt_result", sessionId: input.sessionId, clientMessageId: turnId,
           result: { type: "turn", turnId } });
         emit({ type: "session.turn", sessionId: input.sessionId, turnId, state: "started" });
@@ -76,6 +81,7 @@ function createIdleLifecycleFixture({ runtimeSafety = false } = {}) {
       emit({ type: "session.ready", sessionId: childId });
     },
     setCloseRefusal(id, refuse) { session(id).refuse = refuse; },
+    setPromptRefusal(id, refuse) { session(id).refusePrompt = refuse; },
     hasSession(id) { return sessions.has(id); },
   };
 }
