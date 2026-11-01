@@ -1,8 +1,9 @@
 "use strict";
 
 // In-memory provider fixture. Controls are deliberately separate from the provider protocol.
-function createIdleLifecycleFixture() {
+function createIdleLifecycleFixture({ runtimeSafety = false } = {}) {
   const sessions = new Map(), listeners = new Set(), inputs = [];
+  const capabilities = ["prompt.message", "permission", "session.subsession", ...(runtimeSafety ? ["session.can_stop_runtime"] : [])];
   let connected = false;
   const emit = event => { for (const listener of listeners) listener(structuredClone(event)); };
   const session = id => {
@@ -15,7 +16,7 @@ function createIdleLifecycleFixture() {
     status, error: null, detail: { type: "plain_text", text: "Synthetic work" },
   } });
   const connection = {
-    version: 1, capabilities: ["prompt.message", "permission", "session.subsession"],
+    version: 1, capabilities,
     onEvent(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     async send(input) {
       inputs.push(structuredClone(input));
@@ -37,6 +38,10 @@ function createIdleLifecycleFixture() {
         if (!state.pending || input.permissionId !== "approval") throw new Error("Unknown synthetic approval");
         state.pending = false;
         emit({ type: "session.permission_resolved", sessionId: input.sessionId, permissionId: input.permissionId });
+      } else if (input.type === "session.can_stop_runtime" && runtimeSafety) {
+        const state = session(input.sessionId);
+        emit({ type: "session.can_stop_runtime", requestId: input.requestId, sessionId: input.sessionId,
+          canStop: !state.background && !(state.childProcess && state.childProcess.exitCode === null && state.childProcess.signalCode === null) });
       } else if (input.type === "session.close") {
         const state = session(input.sessionId);
         if (state.refuse) {
@@ -57,6 +62,7 @@ function createIdleLifecycleFixture() {
     inputs,
     startBackground(id) { const state = session(id); if (state.background) throw new Error("Work already running"); state.background = true; tool(id, "running"); },
     finishBackground(id) { const state = session(id); if (!state.background) throw new Error("No work running"); state.background = false; tool(id, "completed"); },
+    setChildProcess(id, childProcess) { session(id).childProcess = childProcess; },
     requestApproval(id) {
       const state = session(id); if (state.pending) throw new Error("Approval already pending"); state.pending = true;
       emit({ type: "session.permission", sessionId: id, request: { id: "approval", name: "synthetic approval", kind: "other" } });

@@ -6,13 +6,19 @@ itself with a daemon. The exported factory returns a provider registration, an
 input log, and explicit out-of-band controls; each factory call is isolated.
 The tests validate all inputs and events against the development SDK schemas.
 
-The fixture does not implement idle cleanup or a clock. The host's official
-one-hour threshold is unchanged. A completed turn with a running tool or a
-pending permission is synthetic stimulus, not evidence that a host protects it.
-The close refusal is a synthetic `request.failed`, not evidence that a real
-provider can veto cleanup or that a host honors the failure. A host integration
-must establish whether and how these signals can safely be injected before
-using this fixture there; no host registration or configuration is included.
+The fixture does not implement idle cleanup or a clock. Its optional runtime
+safety capability reports running synthetic work and a registered live child
+process to the host. The close refusal remains a synthetic `request.failed`,
+not evidence that a real provider can veto cleanup by refusing a close.
+
+`idle-cleanup-integration.test.cjs` loads the installed Paseo 0.14 server's
+plugin bridge, manager eligibility checks and idle cleanup sweep. It connects
+this fixture through the bridge and uses a controlled clock; the manager's
+storage and close side effects are replaced by a small test adapter. Each
+case verifies retention and, after release and another hour, collection. The
+child is a real synthetic subprocess, but its status is reported by the fixture:
+this does not establish that Paseo discovers arbitrary operating-system child
+processes. The pending approval goes through the host's permission handlers.
 
 ## Reproduction
 
@@ -20,11 +26,12 @@ With dependencies installed and `TMPDIR` set to the prescribed test directory:
 
 ```sh
 node --test test/idle-lifecycle-fixture.test.cjs
+node --test test/idle-cleanup-integration.test.cjs
 ```
 
-Expected: three tests pass, zero fail or skip. Observed on Linux: three pass,
-zero fail or skip, exit code 0. These are fixture checks, not daemon or UI
-acceptance. The full suite and typecheck results belong in the card report.
+Each command runs three tests. These checks require the Paseo CLI with the
+0.14 server installed and are not daemon or UI acceptance tests. The full
+suite and typecheck results belong in the card report.
 
 ## Protocol and controls
 
@@ -64,5 +71,6 @@ without closing the child; after the child work and approval resolve,
 `setCloseRefusal("child", false)` allows its close and emits the corresponding
 closed and completed events. Closing an unknown session fails. A second fixture
 instance has independent sessions and events. These controls intentionally do
-not enforce protection themselves: a real host must decide whether to close a
-target, and that decision is outside this fixture.
+do not decide cleanup themselves. When explicitly enabled, the separate
+`session.can_stop_runtime` capability reports background work and registered
+child-process state so the host can make that decision.
