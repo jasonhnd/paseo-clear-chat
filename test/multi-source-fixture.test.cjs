@@ -9,6 +9,10 @@ const test = require("node:test");
 // The host is an integration-test prerequisite, not the plugin's 0.13 SDK.
 function hostDirectory() {
   if (process.env.PASEO_SERVER_ROOT) return resolve(process.env.PASEO_SERVER_ROOT);
+  try {
+    const entry = require.resolve("@getpaseo/server");
+    return resolve(dirname(entry), "../../..");
+  } catch { /* Try a Paseo executable on PATH. */ }
   for (const dir of (process.env.PATH || "").split(delimiter)) {
     const cli = join(dir, "paseo");
     if (!fs.existsSync(cli)) continue;
@@ -23,7 +27,7 @@ const host = hostDirectory();
 test("concurrent sources use Paseo's queued timeline and deduplication", {
   timeout: 30000,
 }, async () => {
-  assert.ok(host, "Install Paseo 0.14.0 or set PASEO_SERVER_ROOT to its server package before running npm test");
+  assert.ok(host, "Run npm ci to install @getpaseo/server 0.14.0, install Paseo 0.14.0 on PATH, or set PASEO_SERVER_ROOT to its server package");
   const version = JSON.parse(fs.readFileSync(join(host, "package.json"), "utf8")).version;
   assert.equal(version, "0.14.0", "This regression targets Paseo server 0.14.0");
   const agentDir = join(host, "dist/server/server/agent");
@@ -97,7 +101,7 @@ test("concurrent sources use Paseo's queued timeline and deduplication", {
 // Exercise submission before provider delivery. Only the session and storage
 // boundaries are synthetic; routing, admission, and projection are Paseo's.
 async function submissionsScenario(fault) {
-  assert.ok(host, "Install Paseo 0.14.0 or set PASEO_SERVER_ROOT to its server package before running npm test");
+  assert.ok(host, "Run npm ci to install @getpaseo/server 0.14.0, install Paseo 0.14.0 on PATH, or set PASEO_SERVER_ROOT to its server package");
   const agentDir = join(host, "dist/server/server/agent");
   const { AgentManager } = await import(pathToFileURL(join(agentDir, "agent-manager.js")));
   const { createAgentMessageDelivery, parseAgentMessages } = await import(pathToFileURL(join(agentDir, "agent-messages/index.js")));
