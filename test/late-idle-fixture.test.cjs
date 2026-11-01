@@ -55,7 +55,7 @@ function consumer() {
   };
 }
 
-test("a gated late idle delivery leaves the running card intact", async () => {
+test("a gated late idle delivery leaves the running card intact", { timeout: 10000 }, async () => {
   const host = consumer();
   let releaseObservation;
   const observationGate = new Promise(resolve => { releaseObservation = resolve; });
@@ -70,10 +70,18 @@ test("a gated late idle delivery leaves the running card intact", async () => {
       await observationGate;
     },
   });
-  await Promise.race([runningObserved, replay]);
+  let deadline;
   try {
+    await Promise.race([
+      runningObserved,
+      replay,
+      new Promise((_, reject) => {
+        deadline = setTimeout(() => reject(new Error("late-idle state was not reached")), 5000);
+      }),
+    ]);
     assert.deepEqual(deliveries, [2], "the stale frame waits for the observation gate");
   } finally {
+    clearTimeout(deadline);
     releaseObservation();
   }
   await replay;
