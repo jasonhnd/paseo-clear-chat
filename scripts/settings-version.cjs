@@ -6,7 +6,7 @@ const { join } = require("node:path");
 function settingsVersion(directory, { write = false } = {}) {
   const version = JSON.parse(readFileSync(join(directory, "package.json"), "utf8")).version;
   if (typeof version !== "string" || !version.trim()) throw new Error("package version is missing");
-  const file = join(directory, "client", "package-version.json");
+  const file = join(directory, "client", "package-version.svg");
   const expected = `${JSON.stringify({ version }, null, 2)}\n`;
   if (write) {
     mkdirSync(join(directory, "client"), { recursive: true });
