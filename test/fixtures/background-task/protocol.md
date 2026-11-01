@@ -31,12 +31,14 @@ Expected stdout: `session/update` tool calls `synthetic-complete` and `synthetic
 
 ```sh
 node test/fixtures/background-task/control.cjs '{"action":"status","sessionId":"SESSION"}'
+node test/fixtures/background-task/control.cjs '{"action":"progress","sessionId":"SESSION","taskId":"synthetic-complete"}'
+node test/fixtures/background-task/control.cjs '{"action":"progress","sessionId":"SESSION","taskId":"synthetic-fail"}'
 node test/fixtures/background-task/control.cjs '{"action":"complete","sessionId":"SESSION","taskId":"synthetic-complete"}'
 node test/fixtures/background-task/control.cjs '{"action":"status","sessionId":"SESSION"}'
 node test/fixtures/background-task/control.cjs '{"action":"fail","sessionId":"SESSION","taskId":"synthetic-fail"}'
 node test/fixtures/background-task/control.cjs '{"action":"status","sessionId":"SESSION"}'
 ```
 
-Expected status responses progress from both `in_progress`, to `completed` and `in_progress`, to `completed` and `failed`. Each successful command returns its task ID and terminal status; the agent writes a corresponding `session/update` `tool_call_update` to ACP stdout after the prompt response. A repeated terminal command returns `task already finished`; an unknown session or task returns an error and emits no update. The CLI exits 1 on a control error. A second session has independent empty state. Only one prompt is accepted per session. EOF on agent stdin closes the socket; state is intentionally not persisted.
+Expected status responses progress from both `in_progress`, to `completed` and `in_progress`, to `completed` and `failed`. Each progress or terminal command returns its task ID and status; the agent writes a corresponding `session/update` `tool_call_update` to ACP stdout after the prompt response. Progress retains the `in_progress` status and includes a progress message. A command for a finished task returns `task already finished`; an unknown session or task returns an error and emits no update. The CLI exits 1 on a control error. A second session has independent empty state. Only one prompt is accepted per session. EOF on agent stdin closes the socket; state is intentionally not persisted.
 
 The automated test observes all of these ordering, status, and negative controls, and verifies that a missing or relative socket path fails and an existing file is not replaced. It does not exercise a host, its event projection, or the UI. Linux host/UI acceptance, macOS tests, and independent cross-vendor review remain separate gates.

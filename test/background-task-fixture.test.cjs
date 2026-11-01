@@ -75,6 +75,11 @@ test("background tasks remain running after the reply until independently contro
     assert.deepEqual(await control(socket, { action: "fail", sessionId: "unknown", taskId: "synthetic-fail" }), { error: "unknown session" });
     assert.deepEqual(await control(socket, { action: "cancel", sessionId, taskId: "synthetic-fail" }), { error: "unknown action or task" });
     assert.equal(notifications().length, 3);
+    assert.deepEqual(await control(socket, { action: "progress", sessionId, taskId: "synthetic-complete" }), { taskId: "synthetic-complete", status: "in_progress" });
+    assert.deepEqual(await control(socket, { action: "progress", sessionId, taskId: "synthetic-fail" }), { taskId: "synthetic-fail", status: "in_progress" });
+    assert.deepEqual(await control(socket, { action: "status", sessionId }), {
+      tasks: { "synthetic-complete": "in_progress", "synthetic-fail": "in_progress" },
+    });
     const command = { action: "complete", sessionId, taskId: "synthetic-complete" };
     const cli = await execFileAsync(process.execPath, [controlCli, JSON.stringify(command)], { env: { BACKGROUND_TASK_FIXTURE_SOCKET: socket } });
     assert.deepEqual(JSON.parse(cli.stdout), { taskId: "synthetic-complete", status: "completed" });
@@ -83,6 +88,7 @@ test("background tasks remain running after the reply until independently contro
       tasks: { "synthetic-complete": "completed", "synthetic-fail": "in_progress" },
     });
     assert.deepEqual(await control(socket, { action: "complete", sessionId, taskId: "synthetic-complete" }), { error: "task already finished" });
+    assert.deepEqual(await control(socket, { action: "progress", sessionId, taskId: "synthetic-complete" }), { error: "task already finished" });
     assert.deepEqual(await control(socket, { action: "fail", sessionId, taskId: "synthetic-fail" }), { taskId: "synthetic-fail", status: "failed" });
     assert.deepEqual(await control(socket, { action: "status", sessionId }), {
       tasks: { "synthetic-complete": "completed", "synthetic-fail": "failed" },
@@ -90,6 +96,8 @@ test("background tasks remain running after the reply until independently contro
     // A subsequent ACP response is a barrier for notifications written by the controls.
     await instance.request("initialize");
     assert.deepEqual(notifications().slice(3).map(message => message.params), [
+      { sessionId, update: { sessionUpdate: "tool_call_update", toolCallId: "synthetic-complete", status: "in_progress", content: [{ type: "content", content: { type: "text", text: "Synthetic task in progress." } }] } },
+      { sessionId, update: { sessionUpdate: "tool_call_update", toolCallId: "synthetic-fail", status: "in_progress", content: [{ type: "content", content: { type: "text", text: "Synthetic task in progress." } }] } },
       { sessionId, update: { sessionUpdate: "tool_call_update", toolCallId: "synthetic-complete", status: "completed", content: [{ type: "content", content: { type: "text", text: "Synthetic task completed." } }] } },
       { sessionId, update: { sessionUpdate: "tool_call_update", toolCallId: "synthetic-fail", status: "failed", content: [{ type: "content", content: { type: "text", text: "Synthetic task failed." } }] } },
     ]);
