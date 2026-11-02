@@ -136,6 +136,19 @@ test("setting OFF, non-ACP configs and existing target IDs register nothing", ()
   assert.equal(h.hermesCcProvidersFromConfig({ x: { ...source, label: "  " } }, true, async () => {})[0].label, "x·CC");
 });
 
+test("derives the complete registration set from each config", () => {
+  const h = harness(), source = { extends: "acp", command: ["hermes", "acp"] };
+  const ids = (config, enabled = true) => h.hermesCcProvidersFromConfig(config, enabled, async () => {}).map(p => p.id).sort();
+  const initial = { alpha: source, beta: source };
+  assert.deepEqual(ids(initial), ["alpha-cc", "beta-cc"]);
+  assert.deepEqual(ids(initial, false), []);
+  assert.deepEqual(ids({ ...initial, gamma: source }), ["alpha-cc", "beta-cc", "gamma-cc"]);
+  assert.deepEqual(ids({ beta: source }), ["beta-cc"]);
+  assert.deepEqual(ids({ ...initial, "alpha-cc": {} }), ["beta-cc"]);
+  assert.deepEqual(ids({ ...initial, disabled: { ...source, enabled: false }, nonAcp: { ...source, extends: "other" }, wrongCommand: { ...source, command: ["other", "acp"] } }), ["alpha-cc", "beta-cc"]);
+  assert.deepEqual(ids({ ...initial, nil: null, array: [], text: "bad", malformed: { extends: "acp", command: ["hermes", 42] } }), ["alpha-cc", "beta-cc"]);
+});
+
 test("awaits exact image capture and forwards the identical prompt object unchanged", async () => {
   const h = harness(), raw = fakeConnection();
   const first = Buffer.from([0, 255, 128, 10]), second = Buffer.from("other bytes");

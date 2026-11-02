@@ -557,6 +557,8 @@ function registerServer(server: PluginServerContext, historyStore: (home: string
     hermesCcImageStore = createHermesCcImageStore(hermesCcImageRoot(server, home), { trustedRoot: home });
     startup = hermesCcStartupConfig(home);
   } catch { console.debug?.("[clear-chat] hermes_cc: startup_unavailable"); }
+  // Each contribution registers one complete set. The host removes the previous
+  // process's registrations on reload; the SDK cannot update them in place.
   const providers = startup.enabled && home !== undefined ? hermesCcProvidersFromConfig(startup.providers, true, async ({ sessionKey, clientMessageId, images }) => {
     if (!clientMessageId) {
       console.debug("[clear-chat] hermes_cc: message_id_unavailable");

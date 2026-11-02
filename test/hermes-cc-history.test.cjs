@@ -1397,6 +1397,46 @@ test("default contribution restores two image prompts from disk after restart an
   await third.connection.close();
 });
 
+test("fresh contributions rebuild all provider registrations after configuration changes", t => {
+  const root = fs.mkdtempSync(join(tmpdir(), "cc-provider-reload-"));
+  const previousHome = process.env.PASEO_HOME;
+  process.env.PASEO_HOME = root;
+  t.after(() => {
+    if (previousHome === undefined) delete process.env.PASEO_HOME; else process.env.PASEO_HOME = previousHome;
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  const source = { extends: "acp", command: ["hermes", "acp"] };
+  const writeConfig = providers => fs.writeFileSync(join(root, "config.json"), JSON.stringify({ agents: { providers } }));
+  const start = () => {
+    const registrations = new Map();
+    const stop = load("index.server.ts").default({ registerSettings() {}, handle() {}, registerProvider(provider) {
+      assert.equal(registrations.has(provider.id), false, `duplicate registration: ${provider.id}`);
+      registrations.set(provider.id, provider);
+    } });
+    return { registrations, stop };
+  };
+  const ids = instance => [...instance.registrations.keys()].sort();
+  writeConfig({ old: source, retained: source });
+  const first = start();
+  assert.deepEqual(ids(first), ["old-cc", "retained-cc"]);
+  writeConfig({ retained: source, added: source });
+  assert.deepEqual(ids(first), ["old-cc", "retained-cc"], "config edits alone do not update a running process");
+  first.stop();
+  const second = start();
+  assert.deepEqual(ids(second), ["added-cc", "retained-cc"]);
+  second.stop();
+  writeConfig({ final: source });
+  const third = start();
+  assert.deepEqual(ids(third), ["final-cc"]);
+  third.stop();
+  const settings = join(root, "plugin-settings", "clear-chat");
+  fs.mkdirSync(settings, { recursive: true });
+  fs.writeFileSync(join(settings, "hermes-cc.json"), JSON.stringify({ version: 1, values: { enabled: false } }));
+  const disabled = start();
+  assert.deepEqual(ids(disabled), []);
+  disabled.stop();
+});
+
 for (const setting of [true, false]) test(`original Hermes sessions never write Clear Chat journals (Hermes·CC enabled: ${setting})`, async t => {
   const f = fixture(t), previousHome = process.env.PASEO_HOME;
   process.env.PASEO_HOME = f.root;
