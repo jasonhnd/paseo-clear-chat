@@ -4,11 +4,36 @@ All notable changes to Clear Chat are listed here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and each version is the Paseo version it is built and tested for plus one number that counts Clear Chat's releases for that Paseo version, for example 0.12.0.1 for the first release for Paseo 0.12.0. Releases 1.0.0 and 1.0.1 came out before this rule.
 
-## Unreleased
+## [0.15.0.1] - Unreleased
+
+### Added
+
+- You can quote a message and reply to it: pick the quote action on a message, write your reply in Clear Chat's own composer, and it is sent as the quoted block, a blank line and your reply ([issue #128](https://github.com/jasonhnd/paseo-clear-chat/issues/128), [PR #130](https://github.com/jasonhnd/paseo-clear-chat/pull/130)).
+- The settings page shows the version of the installed Clear Chat build, with a line explaining that a directory install keeps the version information already in that directory, so it can show an older release ([issue #84](https://github.com/jasonhnd/paseo-clear-chat/issues/84), [PR #123](https://github.com/jasonhnd/paseo-clear-chat/pull/123)).
+
+### Fixed
+
+- When two writers touched the same conversation at the same moment, Clear Chat could report that conversation as unsafe instead of waiting for the other writer. It now retries for up to 15 seconds; a lock that is genuinely unsafe is still reported ([issue #138](https://github.com/jasonhnd/paseo-clear-chat/issues/138), [PR #139](https://github.com/jasonhnd/paseo-clear-chat/pull/139)).
+- The reply elapsed-time label is no longer shown when the displayed whole-second value would be zero, or when the duration is missing or invalid; durations of one second or more keep their existing formatting, and tool-step timing is unchanged ([issue #82](https://github.com/jasonhnd/paseo-clear-chat/issues/82), [PR #140](https://github.com/jasonhnd/paseo-clear-chat/pull/140)).
+
+### Internal
+
+- A release check script keeps the package, lockfile and manifest versions in step, scans for stale version strings outside the changelog history, runs the tests and the type checker, and prints a SHA-256 sheet of the files going into a release ([issue #127](https://github.com/jasonhnd/paseo-clear-chat/issues/127), [PR #129](https://github.com/jasonhnd/paseo-clear-chat/pull/129)). The stale version scan reads the previous two releases off the changelog, stops before the changelog history and its compare links, and still accepts the documented Paseo 0.13 references ([issue #143](https://github.com/jasonhnd/paseo-clear-chat/issues/143), [PR #144](https://github.com/jasonhnd/paseo-clear-chat/pull/144)).
+- No-model fixtures now cover the background-task lifecycle, a timeline reset and a gap in sequence numbers, late-idle delivery, multi-source concurrency, and idle protection with a refusal ([issues #91 to #95](https://github.com/jasonhnd/paseo-clear-chat/issues/91), [PR #124](https://github.com/jasonhnd/paseo-clear-chat/pull/124), [PR #125](https://github.com/jasonhnd/paseo-clear-chat/pull/125), [PR #126](https://github.com/jasonhnd/paseo-clear-chat/pull/126), [PR #133](https://github.com/jasonhnd/paseo-clear-chat/pull/133), [PR #134](https://github.com/jasonhnd/paseo-clear-chat/pull/134)).
+- The stale-version regression derives its expected prefix from the manifest instead of a literal release string, so it keeps working across releases ([issue #103](https://github.com/jasonhnd/paseo-clear-chat/issues/103), [PR #117](https://github.com/jasonhnd/paseo-clear-chat/pull/117)).
+- An investigation records how a synthetic Codex history replay without timestamps changes a rendered "Worked for 21s" reply to "Worked for 0s", together with a reproduction test. The display defect itself is fixed in the entry under Fixed ([issue #82](https://github.com/jasonhnd/paseo-clear-chat/issues/82), [PR #132](https://github.com/jasonhnd/paseo-clear-chat/pull/132)).
+- The Paseo server package those fixtures need is a development-only dependency; it is not shipped with the plugin.
+
+### Compatibility
+
+- Compatibility with Paseo 0.15.0 was checked at the source level: 0.15.0 removes no export from `@getpaseo/plugin` or `@getpaseo/client` (it adds nine and seven), every one of the 39 exports Clear Chat imports is present with unchanged declarations, and Clear Chat does not use the lifecycle hooks that were renamed in 0.15.0. Host-side behaviour is covered by the acceptance run, recorded separately.
+- On Paseo 0.15.0 the plugin installs, builds and loads, and its source-level API surface is unchanged; the remaining host-side acceptance items are listed as not verified in the acceptance record, not as passed.
 
 ### Known limitations
 
+- **Sending a quoted reply while the assistant is answering.** When you send a quoted reply, Clear Chat first checks whether the assistant is idle. If it is busy, the message is not sent: your draft is kept and Clear Chat asks you to send it later. In a rare case — the assistant starts answering after that check but before your message arrives — the message can still interrupt that answer. A way to insert a message without interrupting was tested; in that test the original answer was cut off, so Clear Chat does not use it.
 - The **·CC** provider list is rebuilt from the current provider configuration when Clear Chat starts or reloads, not while it is running; after changing providers, run `paseo plugin reload clear-chat` to update it ([issue #141](https://github.com/jasonhnd/paseo-clear-chat/issues/141)).
+- With a directory install, the version shown on the settings page is the version metadata already in that directory, so it can show an older release than the one you installed ([issue #84](https://github.com/jasonhnd/paseo-clear-chat/issues/84), [PR #123](https://github.com/jasonhnd/paseo-clear-chat/pull/123)).
 
 ## [0.14.0.4] - 2026-11-01
 
@@ -212,6 +237,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.15.0.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.14.0.4...v0.15.0.1
 [0.14.0.4]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.14.0.3...v0.14.0.4
 [0.14.0.3]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.14.0.2...v0.14.0.3
 [0.14.0.2]: https://github.com/jasonhnd/paseo-clear-chat/releases/tag/v0.14.0.2
