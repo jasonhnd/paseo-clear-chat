@@ -4,7 +4,13 @@ All notable changes to Clear Chat are listed here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and each version is the Paseo version it is built and tested for plus one number that counts Clear Chat's releases for that Paseo version, for example 0.12.0.1 for the first release for Paseo 0.12.0. Releases 1.0.0 and 1.0.1 came out before this rule.
 
-## [0.15.0.1] - Unreleased
+## [0.15.0.2] - 2026-11-03
+
+### Changed
+
+- The quote action under a message is now an icon button beside the copy button, drawn at the same size and colour, instead of a text label. It keeps its accessible name and its hover title in English, Chinese and Japanese; pressing it still opens the quote panel, and it is still greyed out while the agent is busy ([issue #151](https://github.com/jasonhnd/paseo-clear-chat/issues/151), [PR #152](https://github.com/jasonhnd/paseo-clear-chat/pull/152)).
+
+## [0.15.0.1] - 2026-11-03
 
 ### Added
 
@@ -237,6 +243,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.15.0.2]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.0.1...v0.15.0.2
 [0.15.0.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.14.0.4...v0.15.0.1
 [0.14.0.4]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.14.0.3...v0.14.0.4
 [0.14.0.3]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.14.0.2...v0.14.0.3
