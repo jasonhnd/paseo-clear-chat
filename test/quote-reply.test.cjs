@@ -165,6 +165,7 @@ for (const locale of ["en", "zh-CN", "ja"]) {
   test(`${locale}: quote window shows translated controls`, () => {
     const { h, mounted } = setup("assistant_message", locale);
     const words = require(`../client/locales/${locale}.json`).quote;
+    assert.equal(h.text(byId(h, mounted.tree, "quote-action")), words.label);
     assert.equal(byId(h, mounted.tree, "quote-action").props.accessibilityLabel, words.action);
     const webElement = {};
     byId(h, mounted.tree, "quote-action").props.ref(webElement);
@@ -179,6 +180,40 @@ for (const locale of ["en", "zh-CN", "ja"]) {
     byId(h, expandedTree, "quote-expand").props.onPress();
     expandedTree = mounted.render();
     assert.equal(byId(h, expandedTree, "quote-expand").props.accessibilityLabel, words.collapse);
+    h.unmount();
+  });
+}
+
+for (const type of ["user_message", "assistant_message"]) {
+  test(`${type}: copy precedes quote with matching controls`, () => {
+    const { h, mounted } = setup(type);
+    const user = type === "user_message";
+    const resources = require("../client/locales/en.json");
+    const controls = h.nodes(mounted.tree, node => node.type === "Pressable" &&
+      [user ? resources.prompt.copyA11y : resources.reply.copyA11y, resources.quote.action].includes(node.props.accessibilityLabel));
+    assert.deepEqual(controls.map(node => node.props.accessibilityLabel), [
+      user ? resources.prompt.copyA11y : resources.reply.copyA11y, resources.quote.action,
+    ]);
+    const [copy, action] = controls;
+    assert.equal(h.text(action), user ? "" : resources.quote.label);
+    const copyIcon = h.nodes(copy, node => node.type === "Glyph")[0];
+    const quoteIcon = h.nodes(action, node => node.type === "Glyph")[0];
+    assert.equal(copyIcon.props.name, "Copy");
+    assert.equal(quoteIcon.props.name, "Quote");
+    assert.equal(quoteIcon.props.size, copyIcon.props.size);
+    assert.equal(quoteIcon.props.color, copyIcon.props.color);
+    if (user) {
+      assert.equal(h.text(copy), "");
+    } else {
+      for (const key of ["flexDirection", "alignItems", "gap", "marginLeft", "paddingHorizontal", "paddingVertical", "borderRadius"]) {
+        assert.equal(action.props.style[key], copy.props.style[key], key);
+      }
+      const copyLabel = h.nodes(copy, node => node.type === "Text")[0];
+      const quoteLabel = h.nodes(action, node => node.type === "Text")[0];
+      for (const key of ["fontFamily", "fontSize", "fontWeight", "color"]) {
+        assert.equal(quoteLabel.props.style[key], copyLabel.props.style[key], key);
+      }
+    }
     h.unmount();
   });
 }

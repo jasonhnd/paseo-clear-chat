@@ -146,6 +146,7 @@
     "dialogFieldA11y": "要复制的文字"
   },
   "quote": {
+    "label": "引用",
     "action": "引用回复",
     "title": "引用消息回复",
     "quoted": "引用的消息",

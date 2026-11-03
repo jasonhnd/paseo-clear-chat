@@ -146,6 +146,7 @@
     "dialogFieldA11y": "Text to copy"
   },
   "quote": {
+    "label": "Quote",
     "action": "Quote reply",
     "title": "Reply with quote",
     "quoted": "Quoted message",
