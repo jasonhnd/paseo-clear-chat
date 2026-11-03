@@ -146,6 +146,7 @@
     "dialogFieldA11y": "コピーするテキスト"
   },
   "quote": {
+    "label": "引用",
     "action": "引用して返信",
     "title": "引用して返信",
     "quoted": "引用したメッセージ",

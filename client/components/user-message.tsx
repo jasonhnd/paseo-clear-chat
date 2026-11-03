@@ -508,7 +508,6 @@ export function UserMessage({
               {formatClock(timestamp)}
             </Text>
           ) : null}
-          {agentId ? <QuoteReply text={text} agentId={agentId} tokens={tokens} /> : null}
           <Pressable
             onPress={handleCopy}
             accessibilityRole="button"
@@ -523,6 +522,7 @@ export function UserMessage({
               />
             </Pop>
           </Pressable>
+          {agentId ? <QuoteReply text={text} agentId={agentId} tokens={tokens} userMessage /> : null}
         </View>
         <MessageOutput text={text} tokens={tokens} identity={expansionIdentity} part="prompt">
           {(shownText) => <Text selectable style={styles.text}>{shownText}</Text>}

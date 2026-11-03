@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 "use strict";
 
-// Run from any directory: node scripts/pre-release-check.cjs [old-version ...]
+// Run from any directory: node scripts/pre-release-check.cjs [--release-notes file] [old-version ...]
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
@@ -92,14 +92,22 @@ descriptions.forEach(([label, description], i) => {
 
 console.log("\nStale version scan");
 const changelog = read("CHANGELOG.md", "stale version scan");
-let versions = process.argv.slice(2);
+const versions = [];
+let releaseNotes;
+const args = process.argv.slice(2);
+for (let i = 0; i < args.length; i++) {
+  if (args[i] !== "--release-notes") versions.push(args[i]);
+  else if (releaseNotes !== undefined || !args[i + 1] || args[i + 1] === "--release-notes") {
+    fail("release date", "scripts/pre-release-check.cjs:1", "--release-notes requires one file and may only be specified once");
+  } else releaseNotes = args[++i];
+}
 if (!versions.length && changelog !== null) {
   const releases = [...changelog.matchAll(/^## \[([^\]]+)\]/gm)].map(match => match[1]);
   const current = releases.indexOf(version);
   const previous = current < 0 ? [] : releases.slice(current + 1, current + 3);
   if (previous.length < 2) {
     fail("stale version scan", "CHANGELOG.md:1", "cannot find two releases before the package version; supply versions as arguments");
-  } else versions = previous;
+  } else versions.push(...previous);
 }
 if (versions.some(value => !value || /[\r\n]/.test(value))) fail("stale version scan", "scripts/pre-release-check.cjs:1", "version arguments must be nonempty single-line strings");
 console.log(`Searching for: ${versions.map(value => JSON.stringify(value)).join(", ") || "<none>"}`);
@@ -134,6 +142,20 @@ for (const name of files) {
   });
 }
 if (!failed.has("stale version scan")) console.log("PASS stale version scan");
+
+console.log("\nRelease date");
+function checkUnreleased(name, contents, onlyCurrentHeading = false) {
+  if (contents === null) return;
+  contents.split("\n").forEach((line, i) => {
+    const heading = onlyCurrentHeading && /^## \[([^\]]+)\]/.exec(line);
+    if (onlyCurrentHeading && (!heading || heading[1] !== version)) return;
+    const marker = /Unreleased|未发布|未公開/.exec(line);
+    if (marker) fail("release date", `${name}:${i + 1}`, `found ${JSON.stringify(marker[0])}`);
+  });
+}
+checkUnreleased("CHANGELOG.md", changelog, true);
+if (releaseNotes !== undefined) checkUnreleased(releaseNotes, read(releaseNotes, "release date"));
+if (!failed.has("release date")) console.log("PASS release date");
 
 console.log("\nVerification");
 for (const [command, args] of [["npm", ["test"]], ["npx", ["tsc", "--noEmit"]]]) {

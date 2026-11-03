@@ -1,8 +1,11 @@
 import React, { useRef, useState } from "react";
-import { Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import { Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { useAgent, usePaseo, useTranslation } from "@getpaseo/plugin/client";
 import { Modal, TextInput } from "@getpaseo/plugin/client/ui";
 import { messages } from "../messages";
+import { copyTouchTarget } from "./copy-feedback";
+import { Glyph } from "./glyph";
+import { radius } from "./theme-tokens";
 import type { ExtendedThemeTokens } from "./theme-tokens";
 
 export function composeQuoteReply(quote: string, reply: string): string {
@@ -10,7 +13,7 @@ export function composeQuoteReply(quote: string, reply: string): string {
 }
 
 /** A draft belongs to one rendered message and never touches the host composer. */
-export function QuoteReply({ text, agentId, tokens }: { text: string; agentId: string; tokens: ExtendedThemeTokens }) {
+export function QuoteReply({ text, agentId, tokens, userMessage = false }: { text: string; agentId: string; tokens: ExtendedThemeTokens; userMessage?: boolean }) {
   const { t } = useTranslation(messages);
   const paseo = usePaseo();
   const status = useAgent(agentId, agent => agent.status);
@@ -68,10 +71,17 @@ export function QuoteReply({ text, agentId, tokens }: { text: string; agentId: s
   return (
     <>
       <Pressable testID="quote-action" accessibilityRole="button" accessibilityLabel={t("quote.action")}
+        ref={element => {
+          // React Native Web does not forward the title prop from Pressable.
+          if (Platform.OS === "web" && element) (element as unknown as HTMLElement).title = t("quote.action");
+        }}
         accessibilityState={{ disabled: !available }} disabled={!available}
         onPress={() => { if (available) { setQuote(text); setReply(""); setError(null); } }}
-        style={{ padding: 6, opacity: available ? 1 : 0.5 }}>
-        <Text style={{ color: tokens.foregroundMuted, fontFamily: tokens.fontUi, fontSize: tokens.fs(11) }}>{t("quote.action")}</Text>
+        style={{ ...copyTouchTarget, ...(userMessage ? {} : { flexDirection: "row", alignItems: "center", gap: 4, marginLeft: -6 }),
+          paddingHorizontal: userMessage ? 4 : 6, paddingVertical: userMessage ? 2 : 3,
+          borderRadius: userMessage ? undefined : radius.block, opacity: available ? 1 : 0.5 }}>
+        <Glyph name="Quote" size={userMessage ? 11 : 12} color={userMessage ? tokens.userTextMuted : tokens.foregroundMuted} />
+        {!userMessage ? <Text style={{ fontFamily: tokens.fontUi, fontSize: tokens.fs(11), fontWeight: "500", color: tokens.foregroundMuted }}>{t("quote.label")}</Text> : null}
       </Pressable>
       {quote !== null ? (
         <Modal title={t("quote.title")} open onOpenChange={open => { if (!open && !sending) close(); }}>

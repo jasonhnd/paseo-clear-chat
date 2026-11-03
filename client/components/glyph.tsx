@@ -292,6 +292,8 @@ function renderGlyph(name: string, size: number, color: string): ReactElement {
 
     case "Copy":
       return <HostIcon name="Copy" size={size} color={color} />;
+    case "Quote":
+      return <HostIcon name="Quote" size={size} color={color} />;
     case "Bot":
       return (
         <Text style={[styles.mono, { fontSize: size - 2, color, fontWeight: "700" }, unselectable]}>

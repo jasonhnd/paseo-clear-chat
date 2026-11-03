@@ -92,3 +92,39 @@ test("explicit scan permits only the exact compatibility lines in their README f
   assert.equal(copied.status, 1);
   assert.match(copied.stderr, /FAIL stale version scan: stale\.txt:1:/);
 });
+
+test("release date checks only the current changelog heading", t => {
+  const { dir, write } = fixture(t);
+  for (const marker of ["Unreleased", "未发布", "未公開"]) {
+    write("CHANGELOG.md", `## [8.1.0.3] - ${marker}\n## [${current}] - ${marker}\n## [${prior}] - ${marker}\n## [${legacy}]\n`);
+    const result = run(dir);
+    assert.equal(result.status, 1, result.stderr);
+    assert.deepEqual(result.stderr.split("\n").filter(line => line.startsWith("FAIL")),
+      [`FAIL release date: CHANGELOG.md:2: found "${marker}"`]);
+  }
+  write("CHANGELOG.md", `## [8.1.0.3] - Unreleased\n## [${current}] - 2026-11-03\nUnreleased work is described here.\n## [${prior}] - Unreleased\n## [${legacy}]\n`);
+  const dated = run(dir);
+  assert.equal(dated.status, 0, dated.stderr);
+  assert.match(dated.stdout, /PASS release date/);
+});
+
+test("optional release notes report unreleased markers with their file and line", t => {
+  const { dir, write } = fixture(t);
+  for (const marker of ["Unreleased", "未发布", "未公開"]) {
+    write("release-notes.md", `# Release\nRelease date: **${marker}**\n`);
+    const result = run(dir, ["--release-notes", "release-notes.md", prior]);
+    assert.equal(result.status, 1, result.stderr);
+    assert.deepEqual(result.stderr.split("\n").filter(line => line.startsWith("FAIL")),
+      [`FAIL release date: release-notes.md:2: found "${marker}"`]);
+    assert.ok(result.stdout.includes(`Searching for: "${prior}"`));
+  }
+  write("release-notes.md", "# Release\nRelease date: **2026-11-03**\n");
+  const dated = run(dir, ["--release-notes", "release-notes.md"]);
+  assert.equal(dated.status, 0, dated.stderr);
+  const missing = run(dir, ["--release-notes", "missing.md"]);
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /FAIL release date: missing\.md:1:/);
+  const noArgument = run(dir, ["--release-notes"]);
+  assert.equal(noArgument.status, 1);
+  assert.match(noArgument.stderr, /FAIL release date: scripts\/pre-release-check\.cjs:1:/);
+});
