@@ -5,6 +5,8 @@
       "description": "Add Hermes·CC versions of configured Hermes ACP providers to save pasted prompt images in Clear Chat. Reload the host to apply.",
       "error": "Could not load or save the Hermes·CC setting."
     },
+    "version": "Clear Chat version {{version}}",
+    "versionNote": "This is the version of the build this install was made from. A directory install keeps the version metadata already in that directory, so it can show an older release.",
     "title": "Chat presentation",
     "intro": "Changes are saved on the selected host and shared by its clients. New messages follow rendering changes; reload the chat to update existing messages. Accent colours update immediately.",
     "accent": {
@@ -142,6 +144,18 @@
     "dialogTitle": "Copy text",
     "dialogBody": "Automatic copying failed. Touch and hold the text, choose Select All, then Copy.",
     "dialogFieldA11y": "Text to copy"
+  },
+  "quote": {
+    "action": "Quote reply",
+    "title": "Reply with quote",
+    "quoted": "Quoted message",
+    "expand": "Expand quote",
+    "collapse": "Collapse quote",
+    "reply": "Your reply",
+    "busy": "Wait for the agent to finish before sending.",
+    "failed": "Could not send the reply. Check that the agent is idle and try again.",
+    "cancel": "Cancel",
+    "send": "Send"
   },
   "prompt": {
     "you": "You",
