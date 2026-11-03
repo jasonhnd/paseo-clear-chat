@@ -185,6 +185,8 @@ Paseo 在桌面、网页、iPhone 和 iPad 上运行同一个插件。Clear Chat
 
 Paseo 0.13 会在插件拿到消息前去掉粘贴的图片，Hermes 也没有留下 Clear Chat 以后用来找图的凭据。所以 Clear Chat 为你配置的每个 Hermes 提供商加了一个自己的版本，名字带 **·CC**，例如 **Hermes·PP·CC**。凡是命令为 `hermes acp` 的 Hermes 提供商都支持，带不带 `-p <profile>` 都行；它用同样的命令、Profile 和环境启动同一个 Hermes。把提问原样转给 Hermes 之前，它先把粘贴的图片存在自己的文件夹里。气泡只在图片和这条消息完全对得上时才显示图，对不上就什么也不显示。
 
+**·CC** 提供商列表只在 Clear Chat 启动或重新加载时根据当前提供商配置重建，运行期间不会更新；修改提供商后请运行 `paseo plugin reload clear-chat` 来更新列表。
+
 要用的话，在 Paseo 里新建 Agent 时选 **·CC** 版本。Paseo 的后台服务重启、Mac 重启、升级 Paseo，或 Paseo 被强行结束、崩溃（当时没有回答到一半）以后，图片和你当时的原文都还在。你原来的 Hermes Agent 不受影响。
 
 **·CC** 版本的权限模式要等你第一次打开 **·CC** 窗口、并且 Paseo 刷新了选项列表（或重新加载）以后，才会出现在列表里；模型也一样，除非你在 Hermes 提供商的设置里已经列出了模型。
