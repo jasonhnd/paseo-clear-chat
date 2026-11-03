@@ -26,7 +26,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Compatibility
 
-- Compatibility with Paseo 0.15.0 was checked at the source level: 0.15.0 removes no export from `@getpaseo/plugin` or `@getpaseo/client` (it adds nine and seven), every one of the 39 exports Clear Chat imports is present with unchanged declarations, and Clear Chat does not use the lifecycle hooks that were renamed in 0.15.0. Host-side behaviour is covered by the acceptance run, recorded separately.
+- Compatibility with Paseo 0.15.0 was checked at the source level: 0.15.0 removes no export from `@getpaseo/plugin` or `@getpaseo/client` (it adds nine and seven), every one of the 39 exports Clear Chat imports is present with unchanged declarations, and Clear Chat does not use the lifecycle hooks that were renamed in 0.15.0. Host-side acceptance results are recorded separately (see the next point).
 - On Paseo 0.15.0 the plugin installs, builds and loads, and its source-level API surface is unchanged; the remaining host-side acceptance items are listed as not verified in the acceptance record, not as passed.
 
 ### Known limitations
