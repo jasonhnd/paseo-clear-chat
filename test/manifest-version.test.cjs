@@ -82,7 +82,7 @@ function fixture(t, base = os.tmpdir()) {
     fs.copyFileSync(path.join(root, file), path.join(dir, file));
   }
   fs.mkdirSync(path.join(dir, "scripts"));
-  for (const file of ["install.cjs", "manifest-version.cjs"]) {
+  for (const file of ["install.cjs", "manifest-version.cjs", "settings-version.cjs"]) {
     fs.copyFileSync(path.join(root, "scripts", file), path.join(dir, "scripts", file));
   }
   const bin = path.join(dir, "bin"), home = path.join(dir, "home");
@@ -194,6 +194,7 @@ test("managed build automatically generates both descriptions from the package v
       const result = build(dir);
       assertInvocation(dir);
       const manifest = read(manifestFile);
+      assert.equal(read(path.join(dir, "client", "package-version.svg")).version, version);
       for (const [actual, before] of [[manifest.description, original.description], [manifest.translations["zh-CN"].description, original.translations["zh-CN"].description]]) {
         assert.equal(actual, `v${version} · ${before.replace(/^v\d+(?:\.\d+){3} · /, "")}`, "build must automatically generate the version prefix and preserve wording");
       }

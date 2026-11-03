@@ -234,16 +234,17 @@ test("numeric interpolation renders the original ungrouped English reasoning foo
 });
 
 const approvedResourceHashes = {
-  // Accept the 0.13.1.1 settings.promptBubble.description wording; pin all other baseline text.
-  "en": "22dc51297bae961a892bc91f597465e0fcfad8020c8c99cde9d4d7faeafb67e1",
-  "zh-CN": "29ba2ca0de1925b4d89edb1d4f3a9408217d61aa9147a9cb36789f8bcae954cb",
-  "ja": "e0a6fcd7c7957641820db490b4576139ff07716957c1d8c75b61aa25808f384d",
+  // Pin the approved version note and the baseline text, including the 0.13.1.1 prompt-bubble wording.
+  "en": "dc297471839ff81fd0894fa6fd0accb3a3ac15a75ecac07103052e31cc7a4256",
+  "zh-CN": "76d70dcd9196070c328b370a232f2e85a546b72eddf8ef6667af31a42c1589a9",
+  "ja": "894c97fe26c2e53b26df15f9c1f7331510f079e21d3a94d33bde18e49222b8b6",
 };
 
 for (const locale of ["en", "zh-CN", "ja"]) {
   test(`${locale}: preserves the prior baseline after removing the added inline-section, prompt-image and Hermes setting keys`, () => {
     const text = readFileSync(resolve(__dirname, `../client/locales/${locale}.json`), "utf8");
     const original = text
+      .replace(/    "version": ".*",\n/, "")
       .replace(/  "quote": \{\n(?:    ".*\n){10}  \},\n/, "")
       .replace(/    "hermesCc": \{\n(?:      ".*\n){3}    \},\n/, "")
       .replace(/    "imageThumbA11y": ".*",\n    "moreImages": ".*",\n    "closeImage": ".*",\n/, "")
