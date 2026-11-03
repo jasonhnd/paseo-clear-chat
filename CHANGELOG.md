@@ -4,6 +4,12 @@ All notable changes to Clear Chat are listed here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and each version is the Paseo version it is built and tested for plus one number that counts Clear Chat's releases for that Paseo version, for example 0.12.0.1 for the first release for Paseo 0.12.0. Releases 1.0.0 and 1.0.1 came out before this rule.
 
+## Unreleased
+
+### Known limitations
+
+- The **·CC** provider list is rebuilt from the current provider configuration when Clear Chat starts or reloads, not while it is running; after changing providers, run `paseo plugin reload clear-chat` to update it ([issue #141](https://github.com/jasonhnd/paseo-clear-chat/issues/141)).
+
 ## [0.14.0.4] - 2026-11-01
 
 ### Fixed

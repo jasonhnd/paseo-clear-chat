@@ -50,6 +50,19 @@ test("default scan selects the two releases older than the package and permits d
   assert.match(stale.stderr, /FAIL stale version scan: stale\.txt:1:/);
 });
 
+test("latest release compare reference permits its previous version without hiding unrelated stale strings", t => {
+  const { dir, write } = fixture(t);
+  write("CHANGELOG.md", `## [${current}]\n## [${prior}]\n## [${legacy}]\n\n[${current}]: https://example.com/compare/v${prior}...v${current}\n`);
+  const clean = run(dir);
+  assert.equal(clean.status, 0, clean.stderr);
+
+  write("stale.txt", `stale ${prior}\n`);
+  const stale = run(dir);
+  assert.equal(stale.status, 1);
+  assert.match(stale.stderr, /FAIL stale version scan: stale\.txt:1:/);
+  assert.doesNotMatch(stale.stderr, /FAIL stale version scan: CHANGELOG\.md:/);
+});
+
 test("stale reference definitions before historical sections are reported", t => {
   const { dir, write } = fixture(t);
   write("CHANGELOG.md", `[other]: https://example.com/v${prior}\n## [8.1.0.3]\n## [${current}]\n## [${prior}]\n## [${legacy}]\n`);

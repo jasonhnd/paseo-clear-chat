@@ -124,13 +124,11 @@ for (const name of files) {
   catch (error) { fail("stale version scan", `${name}:1`, error.message); continue; }
   const lines = contents.toString("utf8").split("\n");
   let releaseSections = 0;
-  let latestRelease;
   lines.forEach((line, i) => {
     if (name === "CHANGELOG.md") {
       const heading = /^## \[([^\]]+)\]/.exec(line);
-      if (heading) { releaseSections++; latestRelease ||= heading[1]; }
-      const reference = /^\[([^\]]+)\]:\s/.exec(line);
-      if (releaseSections > 1 && (!reference || reference[1] !== latestRelease)) return;
+      if (heading) releaseSections++;
+      if (releaseSections > 1) return;
     }
     for (const old of versions) if (old && !/[\r\n]/.test(old) && line.includes(old) && !(old === legacyVersion && compatibilityLines[name]?.delete(line))) fail("stale version scan", `${name}:${i + 1}`, `found ${JSON.stringify(old)}`);
   });
