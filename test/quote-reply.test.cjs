@@ -139,6 +139,7 @@ test("busy and unavailable agents cannot open or send, including when status cha
   agent.status = "running";
   let tree = mounted.render();
   assert.equal(byId(h, tree, "quote-action").props.disabled, true);
+  assert.equal(byId(h, tree, "quote-action").props.style.opacity, 0.5);
   byId(h, tree, "quote-action").props.onPress();
   assert.equal(byId(h, mounted.render(), "quote-reply-input"), undefined);
   agent.status = "idle";
@@ -165,6 +166,9 @@ for (const locale of ["en", "zh-CN", "ja"]) {
     const { h, mounted } = setup("assistant_message", locale);
     const words = require(`../client/locales/${locale}.json`).quote;
     assert.equal(byId(h, mounted.tree, "quote-action").props.accessibilityLabel, words.action);
+    const webElement = {};
+    byId(h, mounted.tree, "quote-action").props.ref(webElement);
+    assert.equal(webElement.title, words.action);
     byId(h, mounted.tree, "quote-action").props.onPress();
     const tree = mounted.render();
     assert.equal(byId(h, tree, "quote-reply-input").props.accessibilityLabel, words.reply);

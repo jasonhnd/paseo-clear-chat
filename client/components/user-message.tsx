@@ -508,7 +508,7 @@ export function UserMessage({
               {formatClock(timestamp)}
             </Text>
           ) : null}
-          {agentId ? <QuoteReply text={text} agentId={agentId} tokens={tokens} /> : null}
+          {agentId ? <QuoteReply text={text} agentId={agentId} tokens={tokens} userMessage /> : null}
           <Pressable
             onPress={handleCopy}
             accessibilityRole="button"
