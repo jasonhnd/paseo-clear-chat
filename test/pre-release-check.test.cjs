@@ -20,7 +20,7 @@ function fixture(t) {
   write("package.json", JSON.stringify({ version: current }));
   write("package-lock.json", JSON.stringify({ version: current, packages: { "": { version: current } } }));
   write("paseo-plugin.json", JSON.stringify({ description: `v${current} · fixture`, translations: { example: { description: `v${current} · fixture` } } }));
-  write("CHANGELOG.md", `## [8.1.0.3]\n## [${current}]\n## [${prior}]\n## [${legacy}]\n`);
+  write("CHANGELOG.md", `## [${current}]\n## [${prior}]\n## [${legacy}]\n`);
   for (const name of readmes) {
     const lines = fs.readFileSync(path.join(root, name), "utf8").split("\n").filter(line => line.includes(legacy));
     assert.equal(lines.length, 4);
@@ -38,6 +38,26 @@ function run(dir, args = []) {
     cwd: dir, encoding: "utf8", env: { ...process.env, PATH: path.join(dir, "bin") + path.delimiter + process.env.PATH },
   });
 }
+
+test("first changelog version heading must match the release metadata", t => {
+  const { dir, write } = fixture(t);
+  for (const heading of ["8.1.0.3", prior]) {
+    write("CHANGELOG.md", `# Changelog\n\n## [Unreleased]\n\n## [${heading}] - 2026-11-04\n## [${current}]\n## [${prior}]\n## [${legacy}]\n`);
+    const result = run(dir, [legacy]);
+    assert.equal(result.status, 1, result.stderr);
+    assert.deepEqual(result.stderr.split("\n").filter(line => line.startsWith("FAIL version consistency")),
+      [`FAIL version consistency: CHANGELOG.md:5: version heading "${heading}" differs from package.json:1 version "${current}"`]);
+  }
+  write("CHANGELOG.md", `# Changelog\n\n## [Unreleased]\n\n## [${current}] - 2026-11-04\n## [${prior}]\n## [${legacy}]\n`);
+  const matching = run(dir);
+  assert.equal(matching.status, 0, matching.stderr);
+  assert.match(matching.stdout, /PASS all pre-release checks/);
+
+  write("CHANGELOG.md", "# Changelog\n\n## [Unreleased]\n");
+  const missing = run(dir, [legacy]);
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /FAIL version consistency: CHANGELOG\.md:1: cannot find a version heading/);
+});
 
 test("default scan selects the two releases older than the package and permits documented compatibility lines", t => {
   const { dir, write } = fixture(t);
@@ -65,7 +85,7 @@ test("latest release compare reference permits its previous version without hidi
 
 test("stale reference definitions before historical sections are reported", t => {
   const { dir, write } = fixture(t);
-  write("CHANGELOG.md", `[other]: https://example.com/v${prior}\n## [8.1.0.3]\n## [${current}]\n## [${prior}]\n## [${legacy}]\n`);
+  write("CHANGELOG.md", `[other]: https://example.com/v${prior}\n## [${current}]\n## [${prior}]\n## [${legacy}]\n`);
   const result = run(dir);
   assert.match(result.stderr, /FAIL stale version scan: CHANGELOG\.md:1:/, "reports the stale non-matching reference definition");
   assert.equal(result.status, 1);
@@ -96,13 +116,13 @@ test("explicit scan permits only the exact compatibility lines in their README f
 test("release date checks only the current changelog heading", t => {
   const { dir, write } = fixture(t);
   for (const marker of ["Unreleased", "未发布", "未公開"]) {
-    write("CHANGELOG.md", `## [8.1.0.3] - ${marker}\n## [${current}] - ${marker}\n## [${prior}] - ${marker}\n## [${legacy}]\n`);
+    write("CHANGELOG.md", `## [${current}] - ${marker}\n## [${prior}] - ${marker}\n## [${legacy}]\n`);
     const result = run(dir);
     assert.equal(result.status, 1, result.stderr);
     assert.deepEqual(result.stderr.split("\n").filter(line => line.startsWith("FAIL")),
-      [`FAIL release date: CHANGELOG.md:2: found "${marker}"`]);
+      [`FAIL release date: CHANGELOG.md:1: found "${marker}"`]);
   }
-  write("CHANGELOG.md", `## [8.1.0.3] - Unreleased\n## [${current}] - 2026-11-03\nUnreleased work is described here.\n## [${prior}] - Unreleased\n## [${legacy}]\n`);
+  write("CHANGELOG.md", `## [${current}] - 2026-11-03\nUnreleased work is described here.\n## [${prior}] - Unreleased\n## [${legacy}]\n`);
   const dated = run(dir);
   assert.equal(dated.status, 0, dated.stderr);
   assert.match(dated.stdout, /PASS release date/);
