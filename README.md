@@ -46,7 +46,7 @@
 
 ## What's new in 0.15.0.2
 
-- **Quote and reply from a message.** On a message that contains text, pick the quote icon beside Copy. The reply is sent as the quoted block, a blank line and your reply. Hovering the icon shows **Quote reply**; it is greyed out while the agent is busy.
+- **Quote and reply from a message.** On a reply, pick **Quote** (the quote icon) beside Copy; on your own message, pick the same quote icon, which has no label there. The reply is sent as the quoted block, a blank line and your reply. Hovering the icon shows **Quote reply**; it is greyed out while the agent is busy.
 - **The settings page shows the installed version.** The version sits under the page title, followed by a line that says a directory install keeps the version information already in that directory, so it can show an older release.
 - **Works with Paseo 0.15.0.** Checked at the source level: 0.15.0 removes no export from `@getpaseo/plugin` or `@getpaseo/client` (it adds nine and seven), every one of the 39 exports Clear Chat imports is present with unchanged declarations, and Clear Chat does not use the lifecycle hooks that were renamed in 0.15.0. Host-side acceptance results are recorded separately.
 
