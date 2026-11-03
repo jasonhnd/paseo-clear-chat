@@ -1,0 +1,189 @@
+name: Labels
+
+on:
+  pull_request_target:
+    branches: [pre]
+    types: [opened, edited, synchronize, reopened, closed]
+  issues:
+    types: [opened, edited, reopened]
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  labels:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reconcile labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+          const base = `${process.env.GITHUB_API_URL}/repos/${process.env.GITHUB_REPOSITORY}`;
+          const headers = {
+            Accept: 'application/vnd.github+json',
+            Authorization: `Bearer ${process.env.GH_TOKEN}`,
+            'X-GitHub-Api-Version': '2022-11-28',
+          };
+
+          async function request(path, options = {}) {
+            const response = await fetch(`${base}${path}`, {
+              ...options,
+              headers: { ...headers, ...options.headers },
+            });
+            if (!response.ok) {
+              const error = new Error(`${options.method || 'GET'} ${path}: ${response.status} ${await response.text()}`);
+              error.status = response.status;
+              throw error;
+            }
+            return response.json();
+          }
+
+          async function list(path) {
+            const items = [];
+            for (let page = 1; ; page++) {
+              const batch = await request(`${path}${path.includes('?') ? '&' : '?'}per_page=100&page=${page}`);
+              items.push(...batch);
+              if (batch.length < 100) return items;
+            }
+          }
+
+          const types = new Set(['bug', 'enhancement', 'documentation', 'test', 'release']);
+          const statuses = new Set([
+            'status:todo', 'status:pr-open', 'status:in-review', 'status:implementing',
+            'status:merged', 'status:superseded',
+          ]);
+          const categories = [
+            name => name.startsWith('size:'),
+            name => name.startsWith('risk:'),
+            name => /^P[0-3]$/.test(name),
+          ];
+          const names = item => item.labels.map(label => label.name);
+          let available;
+
+          function titleType(title) {
+            const prefix = title.match(/^\s*(fix|feat|docs|test|chore)(?:\(([^)]+)\))?!?\s*:/i);
+            if (!prefix) return 'enhancement';
+            switch (prefix[1].toLowerCase()) {
+              case 'fix': return 'bug';
+              case 'docs': return 'documentation';
+              case 'test': return 'test';
+              case 'chore': return prefix[2]?.toLowerCase() === 'release' ? 'release' : 'enhancement';
+              default: return 'enhancement';
+            }
+          }
+
+          function setStatus(labels, status) {
+            if (!available.has(status)) throw new Error(`Missing repository label: ${status}`);
+            return [...labels.filter(label => !statuses.has(label)), status];
+          }
+
+          function availableType(title) {
+            const type = titleType(title);
+            if (available.has(type)) return type;
+            if (available.has('enhancement')) {
+              console.warn(`Missing repository label ${type}; using enhancement`);
+              return 'enhancement';
+            }
+            throw new Error(`Missing repository label: ${type}`);
+          }
+
+          async function save(item, labels) {
+            const current = names(item);
+            const desired = [...new Set(labels)];
+            const currentSet = new Set(current);
+            if (current.length === desired.length && desired.every(label => currentSet.has(label))) return;
+            await request(`/issues/${item.number}/labels`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ labels: desired }),
+            });
+            console.log(`Updated labels for #${item.number}: ${desired.join(', ')}`);
+          }
+
+          async function issue(number) {
+            try {
+              const item = await request(`/issues/${number}`);
+              return item.pull_request ? null : item;
+            } catch (error) {
+              if (error.status === 404 || error.status === 410) return null;
+              throw error;
+            }
+          }
+
+          function linkedNumber(body) {
+            const match = (body || '').match(/\b(?:fixes|closes|refs)\s+#(\d+)\b/i);
+            if (!match) return null;
+            const number = Number(match[1]);
+            return Number.isSafeInteger(number) && number > 0 ? number : null;
+          }
+
+          async function reconcileIssue(item) {
+            const labels = names(item);
+            if (!labels.some(label => types.has(label))) {
+              labels.push(availableType(item.title));
+            }
+            if (categories.some(category => !labels.some(category))) {
+              if (available.has('needs-triage')) labels.push('needs-triage');
+              else console.warn(`Cannot mark #${item.number} for triage: missing repository label needs-triage`);
+            }
+            await save(item, labels);
+          }
+
+          async function reconcilePull(number) {
+            const pull = await request(`/pulls/${number}`);
+            if (pull.base.ref !== 'pre') return;
+            const linked = linkedNumber(pull.body);
+            const source = linked ? await issue(linked) : null;
+            const sourceLabels = source ? names(source) : [];
+            let labels = names(pull).filter(label => !types.has(label));
+            const issueTypes = sourceLabels.filter(label => types.has(label));
+            labels.push(...(issueTypes.length ? issueTypes : [availableType(pull.title)]));
+            for (const category of categories) {
+              const copied = sourceLabels.filter(category);
+              if (copied.length) labels = [...labels.filter(label => !category(label)), ...copied];
+            }
+            labels = setStatus(labels, pull.state === 'open' ? 'status:pr-open' :
+              pull.merged_at ? 'status:merged' : 'status:superseded');
+            await save(pull, labels);
+            if (pull.merged_at && source) {
+              await save(source, setStatus(sourceLabels, 'status:merged'));
+            }
+          }
+
+          async function main() {
+            available = new Set((await list('/labels')).map(label => label.name));
+            if (process.env.GITHUB_EVENT_NAME === 'pull_request_target') {
+              await reconcilePull(event.pull_request.number);
+            } else if (process.env.GITHUB_EVENT_NAME === 'issues') {
+              const item = await issue(event.issue.number);
+              if (item) await reconcileIssue(item);
+            } else {
+              const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+              const open = await list('/issues?state=open');
+              const closed = (await list(`/issues?state=closed&since=${encodeURIComponent(since)}`))
+                .filter(item => item.closed_at && item.closed_at >= since);
+              const errors = [];
+              for (const item of [...open, ...closed]) {
+                try {
+                  if (item.pull_request) await reconcilePull(item.number);
+                  else {
+                    const current = await issue(item.number);
+                    if (current) await reconcileIssue(current);
+                  }
+                } catch (error) {
+                  console.error(`Failed to reconcile #${item.number}:`, error);
+                  errors.push(item.number);
+                }
+              }
+              if (errors.length) throw new Error(`Failed to reconcile: ${errors.join(', ')}`);
+            }
+          }
+          main().catch(error => { console.error(error); process.exitCode = 1; });
+          NODE
