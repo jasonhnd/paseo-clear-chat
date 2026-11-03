@@ -77,9 +77,11 @@ export function QuoteReply({ text, agentId, tokens, userMessage = false }: { tex
         }}
         accessibilityState={{ disabled: !available }} disabled={!available}
         onPress={() => { if (available) { setQuote(text); setReply(""); setError(null); } }}
-        style={{ ...copyTouchTarget, paddingHorizontal: userMessage ? 4 : 6, paddingVertical: userMessage ? 2 : 3,
+        style={{ ...copyTouchTarget, ...(userMessage ? {} : { flexDirection: "row", alignItems: "center", gap: 4, marginLeft: -6 }),
+          paddingHorizontal: userMessage ? 4 : 6, paddingVertical: userMessage ? 2 : 3,
           borderRadius: userMessage ? undefined : radius.block, opacity: available ? 1 : 0.5 }}>
         <Glyph name="Quote" size={userMessage ? 11 : 12} color={userMessage ? tokens.userTextMuted : tokens.foregroundMuted} />
+        {!userMessage ? <Text style={{ fontFamily: tokens.fontUi, fontSize: tokens.fs(11), fontWeight: "500", color: tokens.foregroundMuted }}>{t("quote.label")}</Text> : null}
       </Pressable>
       {quote !== null ? (
         <Modal title={t("quote.title")} open onOpenChange={open => { if (!open && !sending) close(); }}>
