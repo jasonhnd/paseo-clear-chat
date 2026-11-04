@@ -168,7 +168,7 @@ function createToolHarness(platform = "ios", options = {}) {
     };
   }
   if (options.reasoningTrace) delete stubs["client/components/reasoning-trace"];
-  if (options.replyFooter) delete stubs["client/components/turn-footer"];
+  if (options.replyFooter || options.userMessage) delete stubs["client/components/turn-footer"];
   if (options.images) {
     delete stubs["client/image-file"];
     delete stubs["client/components/image-preview"];
