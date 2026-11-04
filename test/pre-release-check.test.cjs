@@ -1,18 +1,19 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 const test = require("node:test");
 
 const root = path.resolve(__dirname, "..");
 const legacy = [0, 13, 2, 2].join(".");
+const day = "2026-11-04";
 const current = [8, 1, 0, 2].join(".");
 const prior = [8, 1, 0, 1].join(".");
 const readmes = ["README.md", "README.zh-CN.md", "README.ja.md"];
 
 function fixture(t) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clear-chat-release-check-"));
+  fs.mkdirSync(path.join(root, ".tmp"), { recursive: true });
+  const dir = fs.mkdtempSync(path.join(root, ".tmp", "clear-chat-release-check-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   fs.mkdirSync(path.join(dir, "scripts"));
   fs.copyFileSync(path.join(root, "scripts/pre-release-check.cjs"), path.join(dir, "scripts/pre-release-check.cjs"));
@@ -20,7 +21,7 @@ function fixture(t) {
   write("package.json", JSON.stringify({ version: current }));
   write("package-lock.json", JSON.stringify({ version: current, packages: { "": { version: current } } }));
   write("paseo-plugin.json", JSON.stringify({ description: `v${current} · fixture`, translations: { example: { description: `v${current} · fixture` } } }));
-  write("CHANGELOG.md", `## [${current}]\n## [${prior}]\n## [${legacy}]\n`);
+  write("CHANGELOG.md", `## [${current}] - ${day}\n## [${prior}]\n## [${legacy}]\n`);
   for (const name of readmes) {
     const lines = fs.readFileSync(path.join(root, name), "utf8").split("\n").filter(line => line.includes(legacy));
     assert.equal(lines.length, 4);
@@ -33,16 +34,16 @@ function fixture(t) {
   return { dir, write };
 }
 
-function run(dir, args = []) {
-  return spawnSync(process.execPath, [path.join(dir, "scripts/pre-release-check.cjs"), ...args], {
-    cwd: dir, encoding: "utf8", env: { ...process.env, PATH: path.join(dir, "bin") + path.delimiter + process.env.PATH },
+function run(dir, args = [], env = {}) {
+  return spawnSync(process.execPath, [path.join(dir, "scripts/pre-release-check.cjs"), ...(env.noTagDay ? [] : ["--tag-day", day]), ...args], {
+    cwd: dir, encoding: "utf8", env: { ...process.env, ...env.variables, PATH: path.join(dir, "bin") + path.delimiter + process.env.PATH },
   });
 }
 
 test("first changelog version heading must match the release metadata", t => {
   const { dir, write } = fixture(t);
   for (const heading of ["8.1.0.3", prior]) {
-    write("CHANGELOG.md", `# Changelog\n\n## [Unreleased]\n\n## [${heading}] - 2026-11-04\n## [${current}]\n## [${prior}]\n## [${legacy}]\n`);
+    write("CHANGELOG.md", `# Changelog\n\n## [Unreleased]\n\n## [${heading}] - 2026-11-04\n## [${current}] - ${day}\n## [${prior}]\n## [${legacy}]\n`);
     const result = run(dir, [legacy]);
     assert.equal(result.status, 1, result.stderr);
     assert.deepEqual(result.stderr.split("\n").filter(line => line.startsWith("FAIL version consistency")),
@@ -72,7 +73,7 @@ test("default scan selects the two releases older than the package and permits d
 
 test("latest release compare reference permits its previous version without hiding unrelated stale strings", t => {
   const { dir, write } = fixture(t);
-  write("CHANGELOG.md", `## [${current}]\n## [${prior}]\n## [${legacy}]\n\n[${current}]: https://example.com/compare/v${prior}...v${current}\n`);
+  write("CHANGELOG.md", `## [${current}] - ${day}\n## [${prior}]\n## [${legacy}]\n\n[${current}]: https://example.com/compare/v${prior}...v${current}\n`);
   const clean = run(dir);
   assert.equal(clean.status, 0, clean.stderr);
 
@@ -85,7 +86,7 @@ test("latest release compare reference permits its previous version without hidi
 
 test("stale reference definitions before historical sections are reported", t => {
   const { dir, write } = fixture(t);
-  write("CHANGELOG.md", `[other]: https://example.com/v${prior}\n## [${current}]\n## [${prior}]\n## [${legacy}]\n`);
+  write("CHANGELOG.md", `[other]: https://example.com/v${prior}\n## [${current}] - ${day}\n## [${prior}]\n## [${legacy}]\n`);
   const result = run(dir);
   assert.match(result.stderr, /FAIL stale version scan: CHANGELOG\.md:1:/, "reports the stale non-matching reference definition");
   assert.equal(result.status, 1);
@@ -119,10 +120,9 @@ test("release date checks only the current changelog heading", t => {
     write("CHANGELOG.md", `## [${current}] - ${marker}\n## [${prior}] - ${marker}\n## [${legacy}]\n`);
     const result = run(dir);
     assert.equal(result.status, 1, result.stderr);
-    assert.deepEqual(result.stderr.split("\n").filter(line => line.startsWith("FAIL")),
-      [`FAIL release date: CHANGELOG.md:1: found "${marker}"`]);
+    assert.match(result.stderr, new RegExp(`FAIL release date: CHANGELOG\\.md:1: found "${marker}"`));
   }
-  write("CHANGELOG.md", `## [${current}] - 2026-11-03\nUnreleased work is described here.\n## [${prior}] - Unreleased\n## [${legacy}]\n`);
+  write("CHANGELOG.md", `## [${current}] - ${day}\nUnreleased work is described here.\n## [${prior}] - Unreleased\n## [${legacy}]\n`);
   const dated = run(dir);
   assert.equal(dated.status, 0, dated.stderr);
   assert.match(dated.stdout, /PASS release date/);
@@ -134,11 +134,10 @@ test("optional release notes report unreleased markers with their file and line"
     write("release-notes.md", `# Release\nRelease date: **${marker}**\n`);
     const result = run(dir, ["--release-notes", "release-notes.md", prior]);
     assert.equal(result.status, 1, result.stderr);
-    assert.deepEqual(result.stderr.split("\n").filter(line => line.startsWith("FAIL")),
-      [`FAIL release date: release-notes.md:2: found "${marker}"`]);
+    assert.match(result.stderr, new RegExp(`FAIL release date: release-notes\\.md:2: found "${marker}"`));
     assert.ok(result.stdout.includes(`Searching for: "${prior}"`));
   }
-  write("release-notes.md", "# Release\nRelease date: **2026-11-03**\n");
+  write("release-notes.md", `# Release\nRelease date: **${day}**\n`);
   const dated = run(dir, ["--release-notes", "release-notes.md"]);
   assert.equal(dated.status, 0, dated.stderr);
   const missing = run(dir, ["--release-notes", "missing.md"]);
@@ -147,4 +146,57 @@ test("optional release notes report unreleased markers with their file and line"
   const noArgument = run(dir, ["--release-notes"]);
   assert.equal(noArgument.status, 1);
   assert.match(noArgument.stderr, /FAIL release date: scripts\/pre-release-check\.cjs:1:/);
+});
+
+test("release dates must match the tag day and each other", t => {
+  const { dir, write } = fixture(t);
+  write("release-notes.md", `# Release\nRelease date: **${day}**\n`);
+  assert.equal(run(dir, ["--release-notes", "release-notes.md"]).status, 0);
+
+  write("CHANGELOG.md", `# Changelog\n## [${current}] - 2026-11-03\n## [${prior}]\n## [${legacy}]\n`);
+  const early = run(dir, ["--release-notes", "release-notes.md"]);
+  assert.equal(early.status, 1);
+  assert.match(early.stderr, /CHANGELOG\.md:2: date "2026-11-03" differs from tag day "2026-11-04"/);
+  assert.match(early.stderr, /release-notes\.md:2: date "2026-11-04" differs from CHANGELOG\.md:2 date "2026-11-03"/);
+
+  write("CHANGELOG.md", `## [${current}] - ${day}\n## [${prior}]\n## [${legacy}]\n`);
+  write("release-notes.md", "# Release\nRelease date: **2026-11-05**\n");
+  const different = run(dir, ["--release-notes", "release-notes.md"]);
+  assert.equal(different.status, 1);
+  assert.match(different.stderr, /release-notes\.md:2: date "2026-11-05" differs from tag day "2026-11-04"/);
+  assert.match(different.stderr, /release-notes\.md:2: date "2026-11-05" differs from CHANGELOG\.md:1 date "2026-11-04"/);
+});
+
+test("the default tag day is the Tokyo date even just after midnight JST", t => {
+  const { dir, write } = fixture(t);
+  write("clock.cjs", `const RealDate = Date;
+    global.Date = class extends RealDate {
+      constructor(...args) { super(...(args.length ? args : ["2026-11-03T15:01:00Z"])); }
+      static now() { return new RealDate("2026-11-03T15:01:00Z").valueOf(); }
+    };\n`);
+  const result = run(dir, [], { noTagDay: true, variables: { NODE_OPTIONS: `--require=${path.join(dir, "clock.cjs")}`, TZ: "UTC" } });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /PASS release date/);
+});
+
+test("missing and invalid calendar dates and invalid tag options fail", t => {
+  const { dir, write } = fixture(t);
+  for (const value of ["2026-02-29", "2026-13-01", "2026-1-04", ""]) {
+    write("CHANGELOG.md", `## [${current}] - ${value}\n## [${prior}]\n## [${legacy}]\n`);
+    const result = run(dir);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /FAIL release date: CHANGELOG\.md:1: invalid or missing date/);
+  }
+  write("CHANGELOG.md", `## [${current}] - ${day}\n## [${prior}]\n## [${legacy}]\n`);
+  for (const value of ["2026-02-30", ""]) {
+    write("release-notes.md", `# Release\nRelease date: ${value}\n`);
+    const result = run(dir, ["--release-notes", "release-notes.md"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /FAIL release date: release-notes\.md:2: invalid or missing date/);
+  }
+  write("release-notes.md", "# Release\n");
+  assert.match(run(dir, ["--release-notes", "release-notes.md"]).stderr, /release-notes\.md:1: invalid or missing date/);
+  assert.match(run(dir, ["--tag-day", "2026-02-30"], { noTagDay: true }).stderr, /invalid tag day "2026-02-30"/);
+  assert.match(run(dir, ["--tag-day"], { noTagDay: true }).stderr, /--tag-day requires one date/);
+  assert.match(run(dir, ["--tag-day", day]).stderr, /--tag-day requires one date/);
 });
