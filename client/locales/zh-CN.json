@@ -251,7 +251,8 @@
       "detailsHint": "打开步骤详情"
     },
     "error": {
-      "none": "失败（没有报告错误信息）"
+      "none": "失败（没有报告错误信息）",
+      "commandExit": "命令退出，退出码为 {{code}}"
     },
     "expansion": {
       "prefix": "无法保存或读取工具的展开状态：{{error}}",

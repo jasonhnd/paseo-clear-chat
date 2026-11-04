@@ -12,9 +12,29 @@ const hasLabel = (h, tree, expected) => assert.ok(h.nodes(tree, node => node.pro
 const interpolate = (text, values) => text.replace(/{{(\w+)}}/g, (_, key) => values[key]);
 const call = { type: "tool_call", name: "shell", status: "completed", callId: "sample-call", detail: { type: "shell", command: "printf sample", output: "" } };
 const presentationHost = { rpc: async () => ({ status: "ready", revision: "0", values: { preferences: {}, legacyMigrated: true } }) };
+const commandExitMessages = { en: "Command exited with code 1", "zh-CN": "命令退出，退出码为 1", ja: "コマンドは終了コード 1 で終了しました" };
 
 for (const locale of ["en", "zh-CN", "ja"]) {
   const r = resources[locale];
+  test(`${locale}: Hermes shell exit fallback appears in step details and copy error`, async t => {
+    const h = createToolHarness("ios", { locale, width: 390, preferences: { collapsedStepAction: "details" } });
+    t.after(() => h.unmount());
+    const item = { ...call, status: "failed", detail: { ...call.detail, exitCode: 1, output: "command output" },
+      error: { message: "Tool call failed", hermesCcExitCode: 1 } };
+    h.mount(item, false);
+    const build = h.load("client/tool-call-data.ts").buildLiveToolCallData;
+    const Content = h.load("client/components/step-detail-content.tsx").StepDetailContent;
+    const tree = h.draw({ type: Content, props: { step: build(item), tokens: h.tokens } });
+    const expected = commandExitMessages[locale];
+    hasText(h, tree, expected);
+    await byId(h, tree, "step-detail-copy-error").props.onPress();
+    assert.equal(h.copies.at(-1), expected);
+    for (const variation of [
+      { ...item, error: { message: "Tool call failed" }, detail: { ...item.detail, exitCode: 0 } },
+      { ...item, error: { message: "Tool call failed" }, detail: { ...call.detail, output: "exit code 1" } },
+      { ...item, name: "read", detail: { type: "read", filePath: "sample" }, error: { message: "Tool call failed" } },
+    ]) assert.equal(build(variation).error, "Tool call failed");
+  });
   test(`${locale}: settings render approved labels and option text`, async () => {
     const h = createToolHarness("ios", { locale, settingsPage: true, presentationHost });
     await new Promise(setImmediate);
@@ -249,8 +269,9 @@ for (const locale of ["en", "zh-CN", "ja"]) {
       .replace(/    "hermesCc": \{\n(?:      ".*\n){3}    \},\n/, "")
       .replace(/    "imageThumbA11y": ".*",\n    "moreImages": ".*",\n    "closeImage": ".*",\n/, "")
       .replace(/    "sectionInline": \{\n(?:      ".*\n){5}    \},\n/, "");
+    const baseline = original.replace(/(      "none": ".*"),\n      "commandExit": ".*"\n/, "$1\n");
     assert.notEqual(original, text);
-    assert.equal(createHash("sha256").update(original).digest("hex"), approvedResourceHashes[locale]);
+    assert.equal(createHash("sha256").update(baseline).digest("hex"), approvedResourceHashes[locale]);
     assert.deepEqual(resources[locale].detail.sectionInline, Object.fromEntries(Object.entries(resources[locale].detail.section).map(([key, title]) => [key, locale === "en" ? key : title])));
   });
 }

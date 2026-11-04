@@ -251,7 +251,8 @@
       "detailsHint": "Opens step details"
     },
     "error": {
-      "none": "Failed (no error message reported)"
+      "none": "Failed (no error message reported)",
+      "commandExit": "Command exited with code {{code}}"
     },
     "expansion": {
       "prefix": "Tool expansion choice could not be saved or loaded: {{error}}",
