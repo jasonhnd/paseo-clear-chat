@@ -14,6 +14,7 @@ import { selectionSurface } from "./selection-actions";
 import { MessageOutput } from "./message-output";
 import type { ToolExpansionIdentity } from "../tool-expansion-store";
 import { promptImageRpc, promptImagesRpc } from "../../shared/prompt-images-rpc";
+import { formatReplyTime } from "../message-time";
 
 export interface TurnUsage {
   inputTokens?: number;
@@ -152,13 +153,6 @@ function fitFrame(
     height = width / ratio;
   }
   return { width: Math.max(1, Math.round(width)), height: Math.max(1, Math.round(height)) };
-}
-
-function formatClock(value: Date): string {
-  const hh = String(value.getHours()).padStart(2, "0");
-  const mm = String(value.getMinutes()).padStart(2, "0");
-  const ss = String(value.getSeconds()).padStart(2, "0");
-  return `${hh}:${mm}:${ss}`;
 }
 
 /** One labelled figure. A missing count is omitted, never shown as zero. */
@@ -505,7 +499,7 @@ export function UserMessage({
           </Text>
           {timestamp ? (
             <Text selectable style={styles.clock}>
-              {formatClock(timestamp)}
+              {formatReplyTime(timestamp)}
             </Text>
           ) : null}
           <Pressable

@@ -73,3 +73,33 @@ test("unfamiliar wrap-up JSON stays verbatim on the clipboard", () => {
     assert.equal(finalToolReplyMarkdown(source), source);
   }
 });
+
+test("prompt and reply timestamps share locale and date formatting", () => {
+  const h = createToolHarness();
+  const { formatReplyTime } = h.load("client/message-time.ts");
+  const originalLocale = Intl.DateTimeFormat;
+  const originalTimeLocale = Date.prototype.toLocaleTimeString;
+  const originalDateLocale = Date.prototype.toLocaleDateString;
+  try {
+    for (const locale of ["en", "zh-CN", "ja"]) {
+      Intl.DateTimeFormat = class extends originalLocale {
+        constructor(_locales, options) { super(locale, options); }
+      };
+      const now = new Date(2026, 10, 4, 15, 0, 0);
+      const promptAt = new Date(2026, 10, 4, 13, 55, 42);
+      const promptLabel = formatReplyTime(promptAt, now);
+      const replyLabel = formatReplyTime(promptAt, now);
+      assert.equal(promptLabel, replyLabel, `${locale} prompt and reply`);
+      assert.doesNotMatch(promptLabel, /:\d{2}:\d{2}/, `${locale} has no seconds`);
+      const previousDay = new Date(2026, 10, 3, 13, 55, 42);
+      const previousPromptLabel = formatReplyTime(previousDay, now);
+      const previousReplyLabel = formatReplyTime(previousDay, now);
+      assert.equal(previousPromptLabel, previousReplyLabel, `${locale} previous day prompt and reply`);
+      assert.notEqual(previousPromptLabel, promptLabel, `${locale} previous day includes a date label`);
+    }
+  } finally {
+    Intl.DateTimeFormat = originalLocale;
+    Date.prototype.toLocaleTimeString = originalTimeLocale;
+    Date.prototype.toLocaleDateString = originalDateLocale;
+  }
+});
