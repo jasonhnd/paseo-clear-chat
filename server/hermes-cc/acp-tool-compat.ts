@@ -4,6 +4,7 @@ import { z } from "zod";
 
 type Tool = {
   kind?: string;
+  title?: string;
   input?: unknown;
   output?: unknown;
   content?: unknown[];
@@ -74,6 +75,7 @@ class ToolRuntime {
     const current = this.calls.get(update.toolCallId);
     const next: Tool = { ...current?.latest, status: current?.latest.status ?? "pending" };
     if (typeof update.kind === "string") next.kind = update.kind;
+    if (typeof update.title === "string") next.title = update.title;
     if (["pending", "in_progress", "completed", "failed"].includes(String(update.status))) next.status = String(update.status);
     // Absent fields keep their values; explicit null raw values replace them.
     if (update.rawInput !== undefined) next.input = structuredClone(update.rawInput);
@@ -146,6 +148,17 @@ class ToolRuntime {
         type: "read", filePath: path, ...(text !== undefined ? { content: text } : {}),
         ...(typeof input?.offset === "number" ? { offset: input.offset } : {}),
         ...(typeof input?.limit === "number" ? { limit: input.limit } : {}),
+      };
+    }
+    if (tool.kind === "execute" && detail.type === "unknown") {
+      const fromInput = typeof input?.command === "string" && input.command.trim() ? input.command : undefined;
+      const fromTitle = tool.title?.match(/^terminal:\s*(.*)$/s)?.[1];
+      const command = fromInput ?? (fromTitle?.trim() ? fromTitle : undefined);
+      const detailExitCode = record(detail)?.exitCode;
+      const exitCode = detailExitCode !== undefined ? detailExitCode : output?.exitCode;
+      if (command !== undefined) detail = {
+        type: "shell", command, ...(text !== undefined ? { output: text } : {}),
+        ...(typeof exitCode === "number" || exitCode === null ? { exitCode } : {}),
       };
     }
     if (detail.type === "unknown" && text !== undefined && tool.output == null) {
