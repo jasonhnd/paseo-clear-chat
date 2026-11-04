@@ -233,6 +233,39 @@ test("numeric interpolation renders the original ungrouped English reasoning foo
   }
 });
 
+for (const locale of ["en", "zh-CN", "ja"]) {
+  for (const count of [1, 2]) {
+    test(`${locale}: reasoning card pluralizes step and token counts ${count}`, () => {
+      const h = createToolHarness("ios", { locale });
+      const ReasoningTrace = h.load("client/components/reasoning-trace.tsx").ReasoningTrace;
+      try {
+        const data = {
+          id: "sample",
+          agentModel: "",
+          durationMs: 0,
+          totalTokens: count,
+          status: "completed",
+          steps: Array.from({ length: count }, (_, index) => ({
+            id: `step-${index + 1}`,
+            number: index + 1,
+            title: "",
+            content: "sample",
+            status: "completed",
+            durationMs: 0,
+          })),
+        };
+        const tree = h.draw({ type: ReasoningTrace, props: { data, tokens: h.tokens } });
+        const expectedSteps = locale === "en" ? `${count} step${count === 1 ? "" : "s"}` : interpolate(resources[locale].reasoning.steps, { count });
+        const expectedTokens = locale === "en" ? `${count} token${count === 1 ? "" : "s"}` : interpolate(resources[locale].reasoning.tokens, { count });
+        hasText(h, tree, expectedSteps);
+        hasText(h, tree, expectedTokens);
+      } finally {
+        h.unmount();
+      }
+    });
+  }
+}
+
 const approvedResourceHashes = {
   // Pin the approved version note and the baseline text, including the 0.13.1.1 prompt-bubble wording.
   "en": "dc297471839ff81fd0894fa6fd0accb3a3ac15a75ecac07103052e31cc7a4256",
@@ -247,7 +280,8 @@ for (const locale of ["en", "zh-CN", "ja"]) {
       .replace(/    "version": ".*",\n/, "")
       .replace(/  "quote": \{\n(?:    ".*\n){11}  \},\n/, "")
       .replace(/    "hermesCc": \{\n(?:      ".*\n){3}    \},\n/, "")
-      .replace(/    "imageThumbA11y": ".*",\n    "moreImages": ".*",\n    "closeImage": ".*",\n/, "")
+    .replace(/    "imageThumbA11y": ".*",\n    "moreImages": ".*",\n    "closeImage": ".*",\n/, "")
+      .replace(/    "stepsOne": ".*",\n    "tokensOne": ".*",\n/, "")
       .replace(/    "sectionInline": \{\n(?:      ".*\n){5}    \},\n/, "");
     assert.notEqual(original, text);
     assert.equal(createHash("sha256").update(original).digest("hex"), approvedResourceHashes[locale]);
