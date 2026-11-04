@@ -11,6 +11,7 @@ const betaSchema = process.env.CC_ACP_TOOLS_BETA_SCHEMA ? require(process.env.CC
 const { FetchAgentTimelineResponseMessageSchema } = require("@getpaseo/protocol/messages");
 const acpPath = dirname(require.resolve("@agentclientprotocol/sdk"));
 const { zSessionNotification } = require(join(acpPath, "schema/zod.gen.js"));
+const { createToolHarness } = require("./helpers/tool-harness.cjs");
 
 function load(filename, overrides = {}, cache = new Map()) {
   filename = resolve(__dirname, "..", filename);
@@ -230,6 +231,73 @@ test("failed shell fallback does not add exit code markers", async t => {
     const event = freeze({ ...original, item: { ...original.item, detail: { type: "shell", command: "false", exitCode: 1 }, error: { message: "Reported failure" } } });
     assert.deepEqual(runtime.adapt(event).item.error, { message: "Reported failure" });
   }
+});
+
+test("execute wire steps become shell details and retain failure semantics through the client", async t => {
+  const command = "ls /workspace/example/missing-directory";
+  const result = code => `terminal result\n- **output:** ls: missing directory\n- **exit_code:** ${code}`;
+  const execute = (id, extra = {}) => call(id, { kind: "execute", title: `terminal: ${command}`, rawInput: { command }, ...extra });
+  const f = fixture(() => [
+    execute("failed"), update("failed", { status: "failed", content: content(result(1)) }),
+    execute("zero"), update("zero", { status: "failed", content: content(result(0)) }),
+    execute("free"), update("free", { status: "failed", content: content("exit code: 2") }),
+    execute("error"), update("error", { status: "failed", content: content(result(1)), error: { message: "Reported failure" } }),
+    call("read"), update("read", { status: "failed", content: content(result(1)) }),
+    execute("no-command", { title: "terminal:", rawInput: {} }), update("no-command", { status: "failed", content: content(result(1)) }),
+    execute("title", { rawInput: {} }), update("title", { status: "completed", content: content(result(0)) }),
+    call("other", { kind: "other", title: `terminal: ${command}`, rawInput: { command }, status: "completed" }),
+  ]);
+  const h = await connect(t, f.create()[0]); await open(h, "boundary");
+  const row = (id, status = "failed") => tools(h).find(item => item.callId === id && item.status === status);
+  assert.deepEqual(row("failed", "running").detail, { type: "shell", command });
+  assert.deepEqual(row("failed").detail, { type: "shell", command, output: result(1) });
+  assert.deepEqual(row("failed").error, { message: "Tool call failed" });
+  assert.deepEqual(row("title", "completed").detail, { type: "shell", command, output: result(0) });
+  assert.equal(row("no-command").detail.type, "unknown");
+  assert.equal(row("other", "completed").detail.type, "unknown");
+  assert.equal(row("read").detail.type, "read");
+  validate(h);
+
+  const messages = { en: "Command exited with code 1", "zh-CN": "命令退出，退出码为 1", ja: "コマンドは終了コード 1 で終了しました" };
+  for (const locale of Object.keys(messages)) {
+    const ui = createToolHarness("ios", { locale });
+    t.after(() => ui.unmount());
+    ui.mount(row("failed"), false);
+    const build = ui.load("client/tool-call-data.ts").buildLiveToolCallData;
+    const Content = ui.load("client/components/step-detail-content.tsx").StepDetailContent;
+    const step = build(row("failed"));
+    assert.equal(step.tool, "shell");
+    assert.equal(step.command, command);
+    assert.equal(step.exitCode, 1);
+    const tree = ui.draw({ type: Content, props: { step, tokens: ui.tokens } });
+    const byId = id => ui.nodes(tree, node => node.props.testID === id)[0];
+    const exitLabel = require(`../client/locales/${locale}.json`).detail.exitCode.replace("{{code}}", "1");
+    assert.equal(ui.text(byId("step-detail-exit-code")), exitLabel);
+    assert.equal(ui.text(byId("step-detail-error")), messages[locale]);
+    await byId("step-detail-copy-error").props.onPress();
+    assert.equal(ui.copies.at(-1), messages[locale]);
+    for (const [id, expected] of [["zero", "Tool call failed"], ["free", "Tool call failed"], ["error", "Reported failure"], ["read", "Tool call failed"], ["no-command", "Tool call failed"]]) {
+      assert.equal(build(row(id)).error, expected, `${locale}: ${id}`);
+    }
+    assert.equal(build(row("zero")).exitCode, 0);
+    assert.equal(build(row("free")).exitCode, undefined);
+    assert.equal(build(row("no-command")).tool, "unknown");
+    assert.equal(build(row("title", "completed")).tool, "shell");
+  }
+});
+
+test("execute normalization preserves a structured exit code and leaves typed details alone", async t => {
+  const f = fixture(() => [call("probe"), update("probe", { status: "failed" })]);
+  const h = await connect(t, f.create()[0]); await open(h, "boundary");
+  const original = f.rawEvents.find(event => event.type === "timeline.item" && event.item.status === "failed");
+  for (const detail of [{ type: "unknown", input: {}, output: null, exitCode: 7 }, { type: "unknown", input: {}, output: { exitCode: 7 } }]) {
+    const runtime = await isolatedRuntime([call("probe", { kind: "execute", title: "terminal: false", rawInput: { command: "false" }, rawOutput: detail.output, status: "failed" })]);
+    const event = freeze({ ...original, item: { ...original.item, detail } });
+    assert.deepEqual(runtime.adapt(event).item.detail, { type: "shell", command: "false", exitCode: 7 });
+  }
+  const runtime = await isolatedRuntime([call("probe", { kind: "execute", title: "terminal: false", rawInput: { command: "false" }, status: "failed" })]);
+  const detail = { type: "read", filePath: "sample" };
+  assert.strictEqual(runtime.adapt(freeze({ ...original, item: { ...original.item, detail } })).item.detail, detail);
 });
 
 test("mismatched failed/null leaves the queued snapshot for the next proper running match", async t => {
