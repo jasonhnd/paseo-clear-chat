@@ -210,13 +210,13 @@ test("uncorrelated failed/null normalizes only the error and preserves other eve
   }
 });
 
-test("failed shell fallback uses only a structured non-zero exit code", async t => {
+test("failed shell fallback does not add exit code markers", async t => {
   const f = fixture(() => [call("probe"), update("probe", { status: "failed" })]);
   const h = await connect(t, f.create()[0]); await open(h, "boundary");
   const original = f.rawEvents.find(event => event.type === "timeline.item" && event.item.status === "failed");
   for (const correlated of [false, true]) {
     for (const [detail, expected] of [
-      [{ type: "shell", command: "false", exitCode: 1, output: "ordinary output" }, { message: "Tool call failed", hermesCcExitCode: 1 }],
+      [{ type: "shell", command: "false", exitCode: 1, output: "ordinary output" }, { message: "Tool call failed" }],
       [{ type: "shell", command: "true", exitCode: 0, output: "exit code 1" }, { message: "Tool call failed" }],
       [{ type: "shell", command: "false", output: "exit code 1" }, { message: "Tool call failed" }],
       [{ type: "read", filePath: "sample", exitCode: 1 }, { message: "Tool call failed" }],

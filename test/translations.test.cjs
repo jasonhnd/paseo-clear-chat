@@ -13,27 +13,39 @@ const interpolate = (text, values) => text.replace(/{{(\w+)}}/g, (_, key) => val
 const call = { type: "tool_call", name: "shell", status: "completed", callId: "sample-call", detail: { type: "shell", command: "printf sample", output: "" } };
 const presentationHost = { rpc: async () => ({ status: "ready", revision: "0", values: { preferences: {}, legacyMigrated: true } }) };
 const commandExitMessages = { en: "Command exited with code 1", "zh-CN": "命令退出，退出码为 1", ja: "コマンドは終了コード 1 で終了しました" };
+const hermesErrors = require("./fixtures/real-hermes-errors.json").items;
 
 for (const locale of ["en", "zh-CN", "ja"]) {
   const r = resources[locale];
   test(`${locale}: Hermes shell exit fallback appears in step details and copy error`, async t => {
     const h = createToolHarness("ios", { locale, width: 390, preferences: { collapsedStepAction: "details" } });
     t.after(() => h.unmount());
-    const item = { ...call, status: "failed", detail: { ...call.detail, exitCode: 1, output: "command output" },
-      error: { message: "Tool call failed", hermesCcExitCode: 1 } };
+    const item = hermesErrors[1];
     h.mount(item, false);
     const build = h.load("client/tool-call-data.ts").buildLiveToolCallData;
     const Content = h.load("client/components/step-detail-content.tsx").StepDetailContent;
     const tree = h.draw({ type: Content, props: { step: build(item), tokens: h.tokens } });
     const expected = commandExitMessages[locale];
-    hasText(h, tree, expected);
+    assert.equal(h.text(byId(h, tree, "step-detail-error")), expected);
     await byId(h, tree, "step-detail-copy-error").props.onPress();
     assert.equal(h.copies.at(-1), expected);
-    for (const variation of [
-      { ...item, error: { message: "Tool call failed" }, detail: { ...item.detail, exitCode: 0 } },
-      { ...item, error: { message: "Tool call failed" }, detail: { ...call.detail, output: "exit code 1" } },
-      { ...item, name: "read", detail: { type: "read", filePath: "sample" }, error: { message: "Tool call failed" } },
-    ]) assert.equal(build(variation).error, "Tool call failed");
+    const variants = [
+      [{ ...item, detail: { ...item.detail, output: item.detail.output.replace("exit_code:** 1", "exit_code:** 0") } }, "Tool call failed"],
+      [{ ...item, detail: { ...item.detail, output: "exit code 1" } }, "Tool call failed"],
+      [{ ...item, error: { message: "Reported failure" } }, "Reported failure"],
+      [{ ...item, error: { message: "Tool call failed", reason: "Reported failure" } }, "Tool call failed"],
+      [hermesErrors[0], "Tool call failed"],
+    ];
+    for (const [variation, message] of variants) {
+      const detail = h.draw({ type: Content, props: { step: build(variation), tokens: h.tokens } });
+      assert.equal(h.text(byId(h, detail, "step-detail-error")), message);
+      await byId(h, detail, "step-detail-copy-error").props.onPress();
+      assert.equal(h.copies.at(-1), message);
+    }
+    assert.equal(build({ ...item, detail: { ...item.detail, exitCode: 0 } }).error, "Tool call failed");
+    assert.equal(build({ ...item, detail: { ...item.detail, exitCode: 2 } }).error,
+      resources[locale].tool.error.commandExit.replace("{{code}}", "2"));
+    assert.equal(build({ ...item, status: "completed" }).error, "Tool call failed");
   });
   test(`${locale}: settings render approved labels and option text`, async () => {
     const h = createToolHarness("ios", { locale, settingsPage: true, presentationHost });

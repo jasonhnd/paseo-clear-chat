@@ -254,7 +254,7 @@ for (const platform of ["web", "ios", "android"]) {
     assert.equal(output, `terminal result\n- output: ${stdout}\n- exit_code: 1`);
     assert.ok(h.text(tree).includes(stdout));
     assert.equal(find(h, tree, "tool-summary-row").props.accessibilityState.expanded, true);
-    assert.equal(find(h, tree, "tool-error-line") && h.text(find(h, tree, "tool-error-line")), "Tool call failed");
+    assert.equal(find(h, tree, "tool-error-line") && h.text(find(h, tree, "tool-error-line")), "Command exited with code 1");
   });
 }
 
