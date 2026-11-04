@@ -331,6 +331,7 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
     () => buildThemeTokens(theme.colors, preferences),
     [preferences, theme.colors],
   );
+  const [versionPrefix, versionSuffix] = t("settings.version", { version: "__VERSION__" }).split("__VERSION__");
 
   return (
     <View {...hostFontEscape} style={[styles.container, { backgroundColor: tokens.surface0 }]}>
@@ -348,10 +349,10 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
         >
           {t("settings.intro")}
         </Text>
-        <Text testID="installed-version" style={[styles.description, { color: tokens.foregroundMuted, fontFamily: tokens.fontUi }]}>
-          {t("settings.version", { version: installedVersion ?? t("hub.unknown").replace(/^./, letter => letter.toUpperCase()) })}
+        <Text testID="installed-version" style={[styles.version, { color: tokens.foregroundMuted, fontFamily: tokens.fontUi }]}>
+          {versionPrefix}<Text style={[styles.versionValue, { color: tokens.foreground, fontFamily: tokens.fontMono }]}>{installedVersion ?? t("hub.unknown").replace(/^./, letter => letter.toUpperCase())}</Text>{versionSuffix}
         </Text>
-        <Text testID="installed-version-note" style={[styles.description, { color: tokens.foregroundMuted, fontFamily: tokens.fontUi }]}>
+        <Text testID="installed-version-note" style={[styles.description, styles.versionNote, { color: tokens.foregroundMuted, fontFamily: tokens.fontUi }]}>
           {t("settings.versionNote")}
         </Text>
       </View>
@@ -366,7 +367,7 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
           { borderColor: tokens.borderSubtle, backgroundColor: tokens.surfaceGlass },
         ]}
       >
-        <View style={styles.row}>
+        <View style={[styles.row, styles.firstRow]}>
           <Text style={[styles.rowTitle, { color: tokens.foreground, fontFamily: tokens.fontUi }]}>
             {t("settings.accent.label")}
           </Text>
@@ -625,8 +626,12 @@ const styles = StyleSheet.create({
   intro: { padding: 14, borderWidth: 1, borderRadius: radius.card, gap: 4 },
   title: { fontSize: 16, fontWeight: "700" },
   description: { fontSize: 13, lineHeight: 18 },
+  version: { fontSize: 11, lineHeight: 18, marginTop: 8 },
+  versionValue: { fontSize: 13, fontWeight: "600" },
+  versionNote: { maxWidth: 380, marginTop: 4 },
   card: { borderWidth: 1, borderRadius: radius.card, overflow: "hidden" },
   row: { padding: 14, gap: 8, borderTopWidth: 1 },
+  firstRow: { borderTopWidth: 0 },
   rowTitle: { fontSize: 14, fontWeight: "600" },
   rowDescription: { fontSize: 12, lineHeight: 17 },
   options: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
