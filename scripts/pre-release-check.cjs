@@ -89,9 +89,20 @@ descriptions.forEach(([label, description], i) => {
   compare("paseo-plugin.json", descriptionLines[i], label + " prefix", match?.[1], version,
     Boolean(match && match[2].trim() && !/^v\S+\s*·/.test(match[2]) && typeof version === "string"));
 });
+const changelog = read("CHANGELOG.md", "version consistency");
+if (changelog !== null) {
+  const heading = /^## \[((?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*)){2,})\]/m.exec(changelog);
+  if (!heading) fail("version consistency", "CHANGELOG.md:1", "cannot find a version heading");
+  else {
+    const line = changelog.slice(0, heading.index).split("\n").length;
+    console.log(`CHANGELOG.md:${line} version heading: ${JSON.stringify(heading[1])}`);
+    if (typeof version === "string" && heading[1] !== version) {
+      fail("version consistency", `CHANGELOG.md:${line}`, `version heading ${JSON.stringify(heading[1])} differs from package.json:${pkgLine || 1} version ${JSON.stringify(version)}`);
+    }
+  }
+}
 
 console.log("\nStale version scan");
-const changelog = read("CHANGELOG.md", "stale version scan");
 const versions = [];
 let releaseNotes;
 const args = process.argv.slice(2);
