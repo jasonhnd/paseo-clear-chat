@@ -271,12 +271,12 @@ export function ReasoningTrace({ data, tokens, defaultExpanded = false, streamin
               ) : null}
               {data.steps.length > 0 ? (
                 <Text selectable style={styles.badge}>
-                  {t("reasoning.steps", { count: data.steps.length })}
+                  {t(data.steps.length === 1 ? "reasoning.stepsOne" : "reasoning.steps", { count: data.steps.length })}
                 </Text>
               ) : null}
               {data.totalTokens > 0 ? (
                 <Text selectable style={styles.badge}>
-                  {t("reasoning.tokens", { count: data.totalTokens, replace: { count: data.totalTokens.toLocaleString() } })}
+                  {t(data.totalTokens === 1 ? "reasoning.tokensOne" : "reasoning.tokens", { count: data.totalTokens, replace: { count: data.totalTokens.toLocaleString() } })}
                 </Text>
               ) : null}
             </View>
