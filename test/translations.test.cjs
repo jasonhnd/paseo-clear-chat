@@ -265,6 +265,37 @@ test("numeric interpolation renders the original ungrouped English reasoning foo
   }
 });
 
+test("English reasoning card uses singular step and token labels only for a count of one", () => {
+  const h = createToolHarness("ios", { reasoningTrace: true });
+  const ReasoningTrace = h.load("client/components/reasoning-trace.tsx").ReasoningTrace;
+  const render = (stepCount, totalTokens) => {
+    const tree = h.draw({ type: ReasoningTrace, props: {
+      data: { id: "sample", agentModel: "", durationMs: 0, totalTokens, status: "completed", steps: Array.from({ length: stepCount }, (_, index) => ({ id: `step-${index + 1}`, number: index + 1, title: "", content: "", status: "completed" })) },
+      tokens: h.tokens,
+      defaultExpanded: true,
+    } });
+    return h.text(tree);
+  };
+  try {
+    assert.match(render(1, 1), /1 step/);
+    assert.match(render(1, 1), /1 token/);
+    assert.match(render(2, 2), /2 steps/);
+    assert.match(render(2, 2), /2 tokens/);
+  } finally {
+    h.unmount();
+  }
+});
+
+for (const locale of ["zh-CN", "ja"]) {
+  test(`${locale}: reasoning step and token strings remain unpluralized`, () => {
+    const reasoning = resources[locale].reasoning;
+    assert.equal(reasoning.steps, locale === "zh-CN" ? "{{count}} 步" : "{{count}} ステップ");
+    assert.equal(reasoning.tokens, locale === "zh-CN" ? "{{count}} 个 token" : "{{count}} トークン");
+    assert.equal(Object.hasOwn(reasoning, "stepsOne"), false);
+    assert.equal(Object.hasOwn(reasoning, "tokensOne"), false);
+  });
+}
+
 const approvedResourceHashes = {
   // Pin the approved version note and the baseline text, including the 0.13.1.1 prompt-bubble wording.
   "en": "dc297471839ff81fd0894fa6fd0accb3a3ac15a75ecac07103052e31cc7a4256",
@@ -280,6 +311,8 @@ for (const locale of ["en", "zh-CN", "ja"]) {
       .replace(/  "quote": \{\n(?:    ".*\n){11}  \},\n/, "")
       .replace(/    "hermesCc": \{\n(?:      ".*\n){3}    \},\n/, "")
       .replace(/    "imageThumbA11y": ".*",\n    "moreImages": ".*",\n    "closeImage": ".*",\n/, "")
+      .replace(/    "stepsOne": ".*",\n/, "")
+      .replace(/    "tokensOne": ".*",\n/, "")
       .replace(/    "sectionInline": \{\n(?:      ".*\n){5}    \},\n/, "");
     const baseline = original.replace(/(      "none": ".*"),\n      "commandExit": ".*"\n/, "$1\n");
     assert.notEqual(original, text);
