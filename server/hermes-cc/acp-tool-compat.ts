@@ -16,10 +16,15 @@ const record = (value: unknown): Record<string, unknown> | undefined =>
     ? value as Record<string, unknown> : undefined;
 const status = (value: string) => value === "pending" || value === "in_progress" ? "running" : value;
 const json = (value: unknown) => z.json().safeParse(value);
+const fallbackError = (detail: ProviderToolCallDetail) => ({
+  message: "Tool call failed",
+  ...(detail.type === "shell" && typeof detail.exitCode === "number" && Number.isInteger(detail.exitCode) && detail.exitCode !== 0
+    ? { hermesCcExitCode: detail.exitCode } : {}),
+});
 const normalizeUncorrelatedError = (event: ProviderEvent): ProviderEvent =>
   event.type === "timeline.item" && event.item.type === "tool_call" &&
   event.item.status === "failed" && event.item.error === null
-    ? { ...event, item: { ...event.item, error: { message: "Tool call failed" } } }
+    ? { ...event, item: { ...event.item, error: fallbackError(event.item.detail) } }
     : event;
 
 /** One instance per public connector runtime, never per provider or tool title. */
@@ -155,7 +160,7 @@ class ToolRuntime {
     // Textual content is output: never derive an error description from it.
     const explicit = tool.error ?? event.item.error;
     const parsed = json(explicit);
-    const error = parsed.success && parsed.data !== null ? parsed.data : { message: "Tool call failed" };
+    const error = parsed.success && parsed.data !== null ? parsed.data : fallbackError(detail);
     return { ...event, item: { ...event.item, detail, metadata, error } };
   }
 }
