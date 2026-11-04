@@ -253,6 +253,31 @@ test("numeric interpolation renders the original ungrouped English reasoning foo
   }
 });
 
+for (const locale of ["en", "zh-CN", "ja"]) {
+  test(`${locale}: reasoning step and token counts render with the correct singular form`, () => {
+    const h = createToolHarness("ios", { locale, reasoningTrace: true });
+    const ReasoningTrace = h.load("client/components/reasoning-trace.tsx").ReasoningTrace;
+    try {
+      for (const [steps, totalTokens] of [[1, 1], [2, 2]]) {
+        const tree = h.draw({ type: ReasoningTrace, props: {
+          data: {
+            id: "sample", agentModel: "", durationMs: 0, totalTokens, status: "completed",
+            steps: Array.from({ length: steps }, (_, index) => ({ id: `step-${index}`, number: index + 1, title: "", content: "" })),
+          },
+          tokens: h.tokens,
+          defaultExpanded: true,
+        } });
+        const expectedSteps = locale === "en" ? `${steps} ${steps === 1 ? "step" : "steps"}` : interpolate(resources[locale].reasoning.steps, { count: steps });
+        const expectedTokens = locale === "en" ? `${totalTokens} ${totalTokens === 1 ? "token" : "tokens"}` : interpolate(resources[locale].reasoning.tokens, { count: totalTokens });
+        hasText(h, tree, expectedSteps);
+        hasText(h, tree, expectedTokens);
+      }
+    } finally {
+      h.unmount();
+    }
+  });
+}
+
 const approvedResourceHashes = {
   // Pin the approved version note and the baseline text, including the 0.13.1.1 prompt-bubble wording.
   "en": "dc297471839ff81fd0894fa6fd0accb3a3ac15a75ecac07103052e31cc7a4256",
@@ -268,6 +293,8 @@ for (const locale of ["en", "zh-CN", "ja"]) {
       .replace(/  "quote": \{\n(?:    ".*\n){11}  \},\n/, "")
       .replace(/    "hermesCc": \{\n(?:      ".*\n){3}    \},\n/, "")
       .replace(/    "imageThumbA11y": ".*",\n    "moreImages": ".*",\n    "closeImage": ".*",\n/, "")
+      .replace(/    "stepsOne": ".*",\n/, "")
+      .replace(/    "tokensOne": ".*",\n/, "")
       .replace(/    "sectionInline": \{\n(?:      ".*\n){5}    \},\n/, "");
     const baseline = original.replace(/(      "none": ".*"),\n      "commandExit": ".*"\n/, "$1\n");
     assert.notEqual(original, text);
