@@ -123,7 +123,6 @@ function createToolHarness(platform = "ios", options = {}) {
     "client/components/theme-tokens": { buildThemeTokens: () => tokens, radius: {}, withAlpha: color => color },
     "client/components/selection-actions": { useSelectionActions: noop, selectionCodeText: {}, selectionSurface: {} },
     "client/components/selection": { selectableSurface: {}, unselectable: {} },
-    "client/components/host-font-escape": { hostFontEscape: {} },
     "client/components/prompt-anchor": { promptRowAnchor: () => ({}) },
     "client/components/glyph": { Glyph: props => jsx("Glyph", props) },
     "client/components/motion": { Rotate: passthrough, Glow: passthrough, Pop: passthrough },

@@ -6,6 +6,7 @@ import { messages } from "../messages";
 import { useEnhancerPreferences } from "../preferences";
 import { copyTouchTarget } from "./copy-feedback";
 import { Glyph } from "./glyph";
+import { hostFontEscape } from "./host-font-escape";
 import { MarkdownView } from "./markdown/markdown-view";
 import { radius, withAlpha } from "./theme-tokens";
 import type { ExtendedThemeTokens } from "./theme-tokens";
@@ -94,7 +95,7 @@ export function QuoteReply({ text, agentId, tokens, userMessage = false }: { tex
               <Text style={{ color: tokens.foreground, fontSize: tokens.fs(13) }}>{t("quote.quoted")}</Text>
               <ScrollView testID="quote-preview" onContentSizeChange={(_, contentHeight) => setQuoteHeight(contentHeight)}
                 style={{ maxHeight: expanded ? Math.max(240, Math.min(480, height * 0.45)) : 180, backgroundColor: tokens.surface0 }}>
-                <View testID="quote-original" style={{ padding: 12, borderLeftWidth: 2, borderLeftColor: withAlpha(tokens.foregroundMuted, 0.5) }}>
+                <View testID="quote-original" {...hostFontEscape} style={{ padding: 12, borderLeftWidth: 2, borderLeftColor: withAlpha(tokens.foregroundMuted, 0.5) }}>
                   <MarkdownView text={quote} cwd={cwd} tokens={tokens} variant={markdownVariant} />
                 </View>
               </ScrollView>
