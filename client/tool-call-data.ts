@@ -236,7 +236,7 @@ export function buildLiveToolCallData(data: LiveToolCallPayload): ToolCalloutDat
     tool: toolKind,
     title,
     status,
-    error: status === "failed" ? toolFailureMessage(data.error, detail, toolKind) : errorText(data.error),
+    error: status === "failed" ? toolFailureMessage(data.error, detail, toolKind, exitCodeCandidate) : errorText(data.error),
     finalReply,
     images: fileOperation ? [] : extractGeneratedImages([output, detail.text], { toolOutput: !finalReply, generated: generatesImages }),
     filePath: skill ? undefined : filePath,

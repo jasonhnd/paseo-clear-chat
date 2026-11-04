@@ -26,11 +26,11 @@ function reportedText(value: unknown): string | undefined {
   return undefined;
 }
 
-export function toolFailureMessage(error: unknown, detail: Record<string, unknown>, tool: ToolCallKind): string | undefined {
+export function toolFailureMessage(error: unknown, detail: Record<string, unknown>, tool: ToolCallKind, exitCode?: number): string | undefined {
   const fallback = record(error);
-  if (["shell", "bash", "git"].includes(tool) && fallback.message === "Tool call failed" &&
-      typeof fallback.hermesCcExitCode === "number" && Number.isInteger(fallback.hermesCcExitCode) && fallback.hermesCcExitCode !== 0) {
-    return t("tool.error.commandExit", { code: fallback.hermesCcExitCode });
+  if (["shell", "bash", "git"].includes(tool) && fallback.message === "Tool call failed" && Object.keys(fallback).length === 1 &&
+      typeof exitCode === "number" && Number.isInteger(exitCode) && exitCode !== 0) {
+    return t("tool.error.commandExit", { code: exitCode });
   }
   // These tools carry request content at the detail root. Only exclude that
   // input field; content blocks inside output/result still report failures.
