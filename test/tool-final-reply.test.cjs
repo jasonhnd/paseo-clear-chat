@@ -16,6 +16,15 @@ const cases = [
 ];
 const byId = (h, tree, id) => h.nodes(tree, node => node.props.testID === id);
 
+test("tool reply inline paths retain their existing behavior", async () => {
+  const h = createToolHarness("web", { markdown: true });
+  const { tree } = h.mount(call("ccd_turn", { phase: "wrap_up", recap: "`bin/tool` `./with space.txt` `README.md`" }), false);
+  const links = h.nodes(tree, node => /^(Show|Copy) file path:/.test(node.props.accessibilityLabel ?? ""));
+  assert.deepEqual(links.map(link => link.props.accessibilityLabel), ["Show file path: ./with space.txt", "Show file path: README.md"]);
+  for (const link of links) await link.props.onPress({ stopPropagation() {} });
+  assert.deepEqual(h.reveals, ["./with space.txt", "README.md"].map(path => ({ cwd: "/workspace/demo", path })));
+});
+
 test("complete wrap-up fields render Markdown recap, a question and lettered options", () => {
   const h = createToolHarness("ios", { markdown: true });
   const payload = {

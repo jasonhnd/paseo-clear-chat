@@ -12,6 +12,7 @@ import { SyntaxHighlightBlock } from "../syntax-highlight";
 import { useReplyFilePath } from "../use-reply-file-path";
 import { CopyFallbackDialog } from "../copy-feedback";
 import { openLink } from "../open-link";
+import { inlineFilePath } from "../../file-path-links";
 import { extractGeneratedImages, imageSource, type GeneratedImage } from "../../generated-images";
 import { GeneratedImages } from "../generated-images";
 import { parseMarkdown, type MdAlign, type MdBlock, type MdInline, type MdListItem } from "./parse";
@@ -35,6 +36,7 @@ export interface MarkdownViewProps {
   images?: GeneratedImage[];
   cwd?: string | null;
   expansionIdentity?: ToolExpansionIdentity;
+  inlineWorkspacePaths?: boolean;
 }
 
 type MdTableBlock = Extract<MdBlock, { kind: "table" }>;
@@ -208,9 +210,10 @@ interface RenderContext {
   styles: MarkdownStyles;
   tokens: ExtendedThemeTokens;
   metrics: VariantMetrics;
-  openFilePath(path: string): Promise<void>;
+  openFilePath(path: string, workspaceOnly?: boolean): Promise<void>;
   copyFilePath: boolean;
   cwd?: string | null;
+  inlineWorkspacePaths: boolean;
 }
 
 /**
@@ -246,7 +249,7 @@ function scaleMetrics(metrics: VariantMetrics, scale: number): VariantMetrics {
   };
 }
 
-export function MarkdownView({ text, tokens, variant, images = [], cwd, expansionIdentity }: MarkdownViewProps) {
+export function MarkdownView({ text, tokens, variant, images = [], cwd, expansionIdentity, inlineWorkspacePaths = true }: MarkdownViewProps) {
   useTranslation(messages);
   const filePath = useReplyFilePath(cwd);
   const blocks = useMemo(() => parseMarkdown(text), [text]);
@@ -262,8 +265,8 @@ export function MarkdownView({ text, tokens, variant, images = [], cwd, expansio
   );
   const styles = useMemo(() => buildStyles(tokens, variant, metrics), [tokens, variant, metrics]);
   const context = useMemo<RenderContext>(
-    () => ({ styles, tokens, metrics, cwd, expansionIdentity, openFilePath: filePath.openFilePath, copyFilePath: filePath.copy }),
-    [styles, tokens, metrics, cwd, expansionIdentity, filePath.openFilePath, filePath.copy],
+    () => ({ styles, tokens, metrics, cwd, expansionIdentity, inlineWorkspacePaths, openFilePath: filePath.openFilePath, copyFilePath: filePath.copy }),
+    [styles, tokens, metrics, cwd, expansionIdentity, inlineWorkspacePaths, filePath.openFilePath, filePath.copy],
   );
 
   return (
@@ -506,33 +509,40 @@ function renderFlow(
 ): React.ReactNode {
   const runs = imageRuns(spans);
   if (!runs.some(run => run.kind === "image")) {
-    return <Text key={key} selectable={canSelectInline(spans)} style={textStyle}>{options.prefix}{renderInline(spans, context, key)}</Text>;
+    return <Text key={key} selectable={canSelectInline(spans, context)} style={textStyle}>{options.prefix}{renderInline(spans, context, key)}</Text>;
   }
   return (
     <View key={key} style={[{ minWidth: 0, gap: 8 }, options.containerStyle]}>
       {options.prefix}
       {runs.map((run, index) => run.kind === "image"
         ? <MarkdownImage key={`${key}i${index}:${run.src}`} src={run.src} alt={run.alt} cwd={context.cwd} tokens={context.tokens} />
-        : <Text key={`${key}t${index}`} selectable={canSelectInline(run.spans)} style={[textStyle, { flex: 0 }]}>{renderInline(run.spans, context, `${key}t${index}`)}</Text>)}
+        : <Text key={`${key}t${index}`} selectable={canSelectInline(run.spans, context)} style={[textStyle, { flex: 0 }]}>{renderInline(run.spans, context, `${key}t${index}`)}</Text>)}
     </View>
   );
 }
 
-function hasLink(spans: MdInline[]): boolean {
-  return spans.some((span) => span.kind === "link" || ("spans" in span && hasLink(span.spans)));
+function hasLink(spans: MdInline[], context: RenderContext): boolean {
+  return spans.some((span) => {
+    if (span.kind === "codeSpan") return context.inlineWorkspacePaths && !!inlineFilePath(span.text);
+    if (span.kind === "link") {
+      return !span.inlineCode || !context.inlineWorkspacePaths || !!inlineFilePath(span.filePath!);
+    }
+    return "spans" in span && hasLink(span.spans, context);
+  });
 }
 
-function canSelectInline(spans: MdInline[]): boolean {
+function canSelectInline(spans: MdInline[], context: RenderContext): boolean {
   // iOS selection recognizers compete with nested Text presses. Keep the
   // entire linked text run tappable; other runs and the reply copy still work.
-  return Platform.OS !== "ios" || !hasLink(spans);
+  return Platform.OS !== "ios" || !hasLink(spans, context);
 }
 
 function renderInline(
   spans: MdInline[],
   context: RenderContext,
   keyPrefix: string,
-  selectable = canSelectInline(spans),
+  selectable = canSelectInline(spans, context),
+  insideLink = false,
 ): React.ReactNode[] {
   const { styles } = context;
   return spans.map((span, index) => {
@@ -543,6 +553,16 @@ function renderInline(
       case "image":
         return span.alt;
       case "codeSpan":
+        if (!insideLink && context.inlineWorkspacePaths && inlineFilePath(span.text)) {
+          return (
+            <Text key={key} selectable={selectable} accessibilityRole="link"
+              accessibilityLabel={t(context.copyFilePath ? "markdown.copyPathA11y" : "markdown.showPathA11y", { path: span.text })}
+              onPress={(event) => { event.stopPropagation(); return context.openFilePath(span.text, true); }}
+              style={styles.link}>
+              <Text selectable={selectable} style={styles.codeSpan}>{span.text}</Text>
+            </Text>
+          );
+        }
         return (
           <Text key={key} selectable={selectable} style={styles.codeSpan}>
             {span.text}
@@ -551,28 +571,32 @@ function renderInline(
       case "strong":
         return (
           <Text key={key} selectable={selectable} style={styles.strong}>
-            {renderInline(span.spans, context, key, selectable)}
+            {renderInline(span.spans, context, key, selectable, insideLink)}
           </Text>
         );
       case "emphasis":
         return (
           <Text key={key} selectable={selectable} style={styles.emphasis}>
-            {renderInline(span.spans, context, key, selectable)}
+            {renderInline(span.spans, context, key, selectable, insideLink)}
           </Text>
         );
       case "strike":
         return (
           <Text key={key} selectable={selectable} style={styles.strike}>
-            {renderInline(span.spans, context, key, selectable)}
+            {renderInline(span.spans, context, key, selectable, insideLink)}
           </Text>
         );
       case "highlight":
         return (
           <Text key={key} testID="markdown-highlight" selectable={selectable} style={styles.highlight}>
-            {renderInline(span.spans, context, key, selectable)}
+            {renderInline(span.spans, context, key, selectable, insideLink)}
           </Text>
         );
       case "link":
+        const codePath = span.inlineCode;
+        if (codePath && context.inlineWorkspacePaths && !inlineFilePath(span.filePath!)) {
+          return <React.Fragment key={key}>{renderInline(span.spans, context, key, selectable)}</React.Fragment>;
+        }
         // `onPress` on a Text, not a Pressable wrapper: a link sits mid
         // sentence, and a View there would break the line box and drop the
         // text out of the paragraph's selection range.
@@ -587,11 +611,11 @@ function renderInline(
             // routes through the host's opener instead.
             onPress={(event) => {
               event.stopPropagation();
-              return span.filePath ? context.openFilePath(span.filePath) : openLink(span.href);
+              return span.filePath ? context.openFilePath(span.filePath, !!codePath && context.inlineWorkspacePaths) : openLink(span.href);
             }}
             style={styles.link}
           >
-            {renderInline(span.spans, context, key, selectable)}
+            {renderInline(span.spans, context, key, selectable, true)}
           </Text>
         );
     }
@@ -871,8 +895,7 @@ function buildStyles(
     codeSpan: {
       fontFamily: tokens.fontMono,
       fontSize: metrics.bodySize - 1,
-      // A neutral tint, not the accent: inline code is not a link and must not
-      // borrow the one colour that means "action" everywhere else in the card.
+      // Keep the code chip's neutral tint even when the surrounding run is a link.
       backgroundColor: withAlpha(tokens.foreground, tokens.isDark ? 0.12 : 0.07),
       borderRadius: radius.chip,
       paddingHorizontal: CODE_CHIP_PADDING,

@@ -20,7 +20,7 @@ export function FinalToolReply({ text, tokens, variant, cwd, expansionIdentity }
   const { t } = useTranslation(messages);
   const content = useMemo(() => parseFinalToolReply(text), [text, t]);
   const markdown = (text: string, part: string) => (
-    <MarkdownView text={text} cwd={cwd} tokens={tokens} variant={variant}
+    <MarkdownView text={text} cwd={cwd} tokens={tokens} variant={variant} inlineWorkspacePaths={false}
       expansionIdentity={expansionIdentity ? {
         ...expansionIdentity,
         callId: JSON.stringify([expansionIdentity.callId ?? expansionIdentity.name, part]),

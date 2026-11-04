@@ -48,7 +48,7 @@ for (const platform of ["web", "ios", "android"]) {
     assert.deepEqual(platform === "web" ? h.reveals.map(value => value.path) : h.copies, targets);
     assert.equal(h.links.length, 0, "filesystem paths never reach a URL handler");
     if (platform !== "web") {
-      assert.deepEqual(h.reveals, []);
+      assert.deepEqual(h.reveals, paths.slice(6).map(path => ({ cwd: "/workspace/demo", path, workspaceOnly: true, checkOnly: true })));
       assert.match(h.toasts.at(-1), /Path copied.*host computer/i);
     }
     if (platform === "ios") {
@@ -165,7 +165,77 @@ test("inline filenames retain their line selectors as one file action", async ()
   const links = fileLinks(h, tree);
   assert.equal(links.length, 1);
   await press(links[0]);
-  assert.deepEqual(h.reveals, [{ cwd: "/workspace/demo", path: "README.md:55:3" }]);
+  assert.deepEqual(h.reveals, [{ cwd: "/workspace/demo", path: "README.md:55:3", workspaceOnly: true }]);
+});
+
+test("inline paths alone get workspace-checked actions and preserve the displayed text", async () => {
+  const h = createToolHarness("web", { markdown: true });
+  const text = "Open `client/components/quote-reply.tsx`, `bin/tool`, `README.md` and `./missing`. Keep `memory`, `skill_view`, `two words`, `dir/two words`, and `https://example.com/file.txt`.\n\n```\nclient/components/quote-reply.tsx\n```";
+  const { tree } = h.mount({ type: "assistant_message", text });
+  const links = fileLinks(h, tree);
+  const targets = ["client/components/quote-reply.tsx", "bin/tool", "README.md", "./missing"];
+  assert.deepEqual(links.map(link => link.props.accessibilityLabel.replace(/^Show file path: /, "")), targets);
+  for (const link of links) await press(link);
+  assert.deepEqual(h.reveals, targets.map(path => ({ cwd: "/workspace/demo", path, workspaceOnly: true })));
+  const displayed = h.text(tree).replaceAll("\n", "");
+  assert.match(displayed, /Open client\/components\/quote-reply\.tsx, bin\/tool, README\.md and \.\/missing/);
+  assert.match(displayed, /memory, skill_view, two words, dir\/two words, and https:\/\/example\.com\/file\.txt/);
+});
+
+test("explicit links containing inline code keep their own destinations", async () => {
+  const h = createToolHarness("web", { markdown: true });
+  const { tree } = h.mount({ type: "assistant_message", text: "[`bin/tool`](./other.txt) and [`bin/tool`](https://example.com)" });
+  const links = h.nodes(tree, node => node.props.accessibilityRole === "link");
+  assert.equal(links.length, 2);
+  await press(links[0]);
+  assert.deepEqual(h.reveals, [{ cwd: "/workspace/demo", path: "./other.txt" }]);
+});
+
+test("inline reveal checks real files and rejects outside paths and symlink escapes", async () => {
+  const root = fs.mkdtempSync(join(tmpdir(), "inline-files-"));
+  const workspace = join(root, "workspace");
+  const calls = [];
+  fs.mkdirSync(workspace);
+  fs.writeFileSync(join(workspace, "file"), "inside");
+  fs.writeFileSync(join(root, "outside"), "outside");
+  fs.symlinkSync(join(root, "outside"), join(workspace, "escape"));
+  const h = createToolHarness("web", { modules: { "node:child_process": { spawn(command, args) {
+    calls.push({ command, args });
+    const child = new EventEmitter(); child.unref = () => {};
+    setImmediate(() => child.emit("spawn"));
+    return child;
+  } } } });
+  const handlers = new Map();
+  h.load("index.server.ts").default({ registerSettings() {}, handle(contract, handler) { handlers.set(contract.name, handler); } });
+  const reveal = handlers.get("file.reveal");
+  try {
+    for (const path of ["./file", join(workspace, "file")]) {
+      assert.equal((await reveal({ cwd: workspace, path, workspaceOnly: true })).revealed, join(workspace, "file"));
+    }
+    for (const path of ["./missing", "../outside", join(root, "outside"), "./escape", "."]) {
+      assert.equal((await reveal({ cwd: workspace, path, workspaceOnly: true })).revealed, null);
+    }
+    assert.equal((await reveal({ cwd: "", path: join(workspace, "file"), workspaceOnly: true })).revealed, null);
+    assert.equal((await reveal({ cwd: workspace, path: "./file", workspaceOnly: true, checkOnly: true })).revealed, join(workspace, "file"));
+    assert.equal(calls.length, 2);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("missing inline paths are not copied on mobile", async () => {
+  const h = createToolHarness("ios", { markdown: true, revealRpc: async () => ({ revealed: null, error: "missing" }) });
+  const { tree } = h.mount({ type: "assistant_message", text: "`./missing`" });
+  await press(fileLinks(h, tree)[0]);
+  assert.deepEqual(h.copies, []);
+  assert.match(h.toasts.at(-1), /could not.*host|does not exist/i);
+});
+
+test("copying a reply with an inline path keeps its original Markdown", async () => {
+  const h = createToolHarness("web", { markdown: true, replyFooter: true });
+  const text = "Open `client/components/quote-reply.tsx` next.\n";
+  const { tree } = h.mount({ type: "assistant_message", text });
+  const button = h.nodes(tree, node => node.type === "Pressable" && node.props.accessibilityLabel === "Copy reply")[0];
+  await button.props.onPress();
+  assert.deepEqual(h.copies, [text]);
 });
 
 test("spaced paths stop at fullwidth punctuation before the next sentence", () => {
@@ -188,7 +258,7 @@ for (const platform of ["web", "ios", "android"]) {
     assert.match(h.text(tree), /Discuss README\.md, "README\.md", and 'index\.ts' as words/);
     for (const link of links) await press(link);
     assert.deepEqual(platform === "web" ? h.reveals : h.copies,
-      platform === "web" ? targets.map(path => ({ cwd: "/workspace/demo", path })) : targets);
+      platform === "web" ? targets.map((path, index) => ({ cwd: "/workspace/demo", path, ...(index === 3 ? { workspaceOnly: true } : {}) })) : targets);
     assert.deepEqual(h.links, []);
   });
 }

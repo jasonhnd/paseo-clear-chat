@@ -15,6 +15,8 @@ export const revealPathRpc = defineRpc({
   input: z.object({
     cwd: z.string(),
     path: z.string(),
+    workspaceOnly: z.boolean().optional(),
+    checkOnly: z.boolean().optional(),
   }),
   output: z.object({
     revealed: z.string().nullable(),
