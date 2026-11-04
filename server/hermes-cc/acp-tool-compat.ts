@@ -1,6 +1,7 @@
 import type { AcpStream, AcpStreamMessage } from "@getpaseo/plugin/server/acp";
 import type { ProviderConnection, ProviderEvent, ProviderToolCallDetail } from "@getpaseo/plugin/server/provider";
 import { z } from "zod";
+import { terminalResultOutput } from "../../shared/terminal-result";
 
 type Tool = {
   kind?: string;
@@ -157,7 +158,7 @@ class ToolRuntime {
       const detailExitCode = record(detail)?.exitCode;
       const exitCode = detailExitCode !== undefined ? detailExitCode : output?.exitCode;
       if (command !== undefined) detail = {
-        type: "shell", command, ...(text !== undefined ? { output: text } : {}),
+        type: "shell", command, ...(text !== undefined ? { output: terminalResultOutput(text) as string } : {}),
         ...(typeof exitCode === "number" || exitCode === null ? { exitCode } : {}),
       };
     }
