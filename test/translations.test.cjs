@@ -265,34 +265,33 @@ test("numeric interpolation renders the original ungrouped English reasoning foo
   }
 });
 
-test("English reasoning card uses singular step and token labels only for a count of one", () => {
-  const h = createToolHarness("ios", { reasoningTrace: true });
-  const ReasoningTrace = h.load("client/components/reasoning-trace.tsx").ReasoningTrace;
-  const render = (stepCount, totalTokens) => {
-    const tree = h.draw({ type: ReasoningTrace, props: {
-      data: { id: "sample", agentModel: "", durationMs: 0, totalTokens, status: "completed", steps: Array.from({ length: stepCount }, (_, index) => ({ id: `step-${index + 1}`, number: index + 1, title: "", content: "", status: "completed" })) },
-      tokens: h.tokens,
-      defaultExpanded: true,
-    } });
-    return h.text(tree);
-  };
-  try {
-    assert.match(render(1, 1), /1 step/);
-    assert.match(render(1, 1), /1 token/);
-    assert.match(render(2, 2), /2 steps/);
-    assert.match(render(2, 2), /2 tokens/);
-  } finally {
-    h.unmount();
-  }
-});
-
-for (const locale of ["zh-CN", "ja"]) {
-  test(`${locale}: reasoning step and token strings remain unpluralized`, () => {
-    const reasoning = resources[locale].reasoning;
-    assert.equal(reasoning.steps, locale === "zh-CN" ? "{{count}} 步" : "{{count}} ステップ");
-    assert.equal(reasoning.tokens, locale === "zh-CN" ? "{{count}} 个 token" : "{{count}} トークン");
-    assert.equal(Object.hasOwn(reasoning, "stepsOne"), false);
-    assert.equal(Object.hasOwn(reasoning, "tokensOne"), false);
+for (const locale of ["en", "zh-CN", "ja"]) {
+  test(`${locale}: reasoning card renders localized step and token counts`, () => {
+    const h = createToolHarness("ios", { locale, reasoningTrace: true });
+    const ReasoningTrace = h.load("client/components/reasoning-trace.tsx").ReasoningTrace;
+    const render = (stepCount, totalTokens) => {
+      const tree = h.draw({ type: ReasoningTrace, props: {
+        data: { id: "sample", agentModel: "", durationMs: 0, totalTokens, status: "completed", steps: Array.from({ length: stepCount }, (_, index) => ({ id: `step-${index + 1}`, number: index + 1, title: "", content: "", status: "completed" })) },
+        tokens: h.tokens,
+        defaultExpanded: true,
+      } });
+      return h.text(tree);
+    };
+    const expected = locale === "en"
+      ? ["1 step", "1 token", "2 steps", "2 tokens"]
+      : locale === "zh-CN"
+        ? ["1 步", "1 个 token", "2 步", "2 个 token"]
+        : ["1 ステップ", "1 トークン", "2 ステップ", "2 トークン"];
+    try {
+      const one = render(1, 1);
+      const two = render(2, 2);
+      assert.ok(one.includes(expected[0]), JSON.stringify(one));
+      assert.ok(one.includes(expected[1]), JSON.stringify(one));
+      assert.ok(two.includes(expected[2]), JSON.stringify(two));
+      assert.ok(two.includes(expected[3]), JSON.stringify(two));
+    } finally {
+      h.unmount();
+    }
   });
 }
 
