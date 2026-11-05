@@ -6,7 +6,6 @@ function createCapturePlan(readme) {
   const imageIds = new Set(["compare", "hero", "fold-compare", "step-details", "find", "quote"]);
   for (const match of readme.matchAll(/\b(?:src|srcset)="((?:docs\/)?images\/([a-z0-9-]+)-(light|dark)\.png)"/g)) {
     const [, file, id, theme] = match;
-    if (file === "images/demo-poster-dark.png") continue;
     const directory = imageIds.has(id) ? "images" : "docs/images";
     if (file !== `${directory}/${id}-${theme}.png`) throw new Error(`Unexpected screenshot location: ${file}`);
     if (!groups.has(id)) groups.set(id, { id });
