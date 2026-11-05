@@ -13,6 +13,7 @@ import { installChatFind } from "./client/components/chat-find";
 import { extractPromptImages } from "./client/prompt-images";
 import { installCompactToolSpacing } from "./client/tool-row-spacing";
 import { extractGeneratedImages } from "./client/generated-images";
+import { containsComponentFence } from "./client/component-fences";
 import { projectedApprovalStatus } from "./client/tool-approval";
 import { installStepDetailPanel } from "./client/components/step-detail-host";
 import {
@@ -265,6 +266,7 @@ function registerClient(client: PluginClientContext) {
     transform({ item }) {
       if (item.type !== "assistant_message") return undefined;
       if (!getEnhancerPreferences().assistantMarkdown) return undefined;
+      if (containsComponentFence(item.text)) return undefined;
       const images = extractGeneratedImages({ ...item, text: undefined });
       if (!item.text.trim() && !images.length) return undefined;
       return {
