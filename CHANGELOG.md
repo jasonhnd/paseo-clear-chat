@@ -30,7 +30,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Compatibility
 
-- Clear Chat 0.15.1.1 is the Clear Chat release for Paseo 0.15.1. Paseo 0.15.1 fixes one problem: on Windows machines where PowerShell 5.1 cannot run `Get-CimInstance`, the daemon did not start when the terminal worker could not read its own process identity. It does not change the plugin interface: `@getpaseo/plugin` and `@getpaseo/client` are byte-for-byte the same as in Paseo 0.15.0, so no export is added or removed, and Clear Chat's behaviour does not change because of it.
+- Clear Chat 0.15.1.1 is the Clear Chat release for Paseo 0.15.1. Paseo 0.15.1 fixes one problem: on Windows machines where PowerShell 5.1 cannot run `Get-CimInstance`, the daemon did not start when the terminal worker could not read its own process identity. It does not change the plugin interface: `@getpaseo/plugin` and `@getpaseo/client` are byte-for-byte the same as in Paseo 0.15.0, so no export is added or removed, and Clear Chat's behaviour does not change because of it. Clear Chat was installed on a Paseo 0.15.1 host and the following were spot-checked there: the settings page version line, failed and successful command steps, a one-step reasoning card, the quote panel, file paths in inline code and the time format; the full regression suite and the type check pass. The other host-side acceptance items are recorded as not checked, not as passed.
 
 ### Upgrading
 

@@ -410,7 +410,7 @@ Clear Chat changes only how Paseo shows a conversation. Everything below is a li
 
 **How do I quote a message?** Pick the quote icon beside Copy on a message that contains text, write your reply, and send. It is greyed out while the agent is busy.
 
-**Which Paseo versions work?** 0.14.0 or later, with 0.15.1 checked at the source level. Paseo 0.13 has an older, untested path described under [Install](#install).
+**Which Paseo versions work?** 0.14.0 or later. Clear Chat was installed on a Paseo 0.15.1 host and spot-checked there (the settings page, command steps, the reasoning card, the quote panel, file paths in inline code, and the time format); the other items have not been checked on 0.15.1. Paseo 0.13 has an older, untested path described under [Install](#install).
 
 ## Troubleshooting
 
