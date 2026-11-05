@@ -235,11 +235,12 @@ test("failed shell fallback does not add exit code markers", async t => {
 
 test("execute wire steps become shell details and retain failure semantics through the client", async t => {
   const command = "ls /workspace/example/missing-directory";
-  const result = code => `terminal result\n- **output:** ls: missing directory\n- **exit_code:** ${code}`;
+  const body = "ls: missing directory\n**literal markdown**\n- **exit_code:** not a wrapper label";
+  const result = code => `terminal result\n- **output:** ${body}\n- **exit_code:** ${code}`;
   const execute = (id, extra = {}) => call(id, { kind: "execute", title: `terminal: ${command}`, rawInput: { command }, ...extra });
   const f = fixture(() => [
     execute("failed"), update("failed", { status: "failed", content: content(result(1)) }),
-    execute("zero"), update("zero", { status: "failed", content: content(result(0)) }),
+    execute("zero"), update("zero", { status: "completed", content: content(result(0)) }),
     execute("free"), update("free", { status: "failed", content: content("exit code: 2") }),
     execute("error"), update("error", { status: "failed", content: content(result(1)), error: { message: "Reported failure" } }),
     call("read"), update("read", { status: "failed", content: content(result(1)) }),
@@ -250,9 +251,11 @@ test("execute wire steps become shell details and retain failure semantics throu
   const h = await connect(t, f.create()[0]); await open(h, "boundary");
   const row = (id, status = "failed") => tools(h).find(item => item.callId === id && item.status === status);
   assert.deepEqual(row("failed", "running").detail, { type: "shell", command });
-  assert.deepEqual(row("failed").detail, { type: "shell", command, output: result(1) });
+  const cleanResult = code => `terminal result\n- output: ${body}\n- exit_code: ${code}`;
+  assert.deepEqual(row("failed").detail, { type: "shell", command, output: cleanResult(1) });
   assert.deepEqual(row("failed").error, { message: "Tool call failed" });
-  assert.deepEqual(row("title", "completed").detail, { type: "shell", command, output: result(0) });
+  assert.deepEqual(row("zero", "completed").detail, { type: "shell", command, output: cleanResult(0) });
+  assert.deepEqual(row("title", "completed").detail, { type: "shell", command, output: cleanResult(0) });
   assert.equal(row("no-command").detail.type, "unknown");
   assert.equal(row("other", "completed").detail.type, "unknown");
   assert.equal(row("read").detail.type, "read");
@@ -263,23 +266,31 @@ test("execute wire steps become shell details and retain failure semantics throu
     const ui = createToolHarness("ios", { locale });
     t.after(() => ui.unmount());
     ui.mount(row("failed"), false);
-    const build = ui.load("client/tool-call-data.ts").buildLiveToolCallData;
+    const build = data => ui.load("client/tool-call-data.ts").buildLiveToolCallData({ ...data, agentMessage: undefined });
     const Content = ui.load("client/components/step-detail-content.tsx").StepDetailContent;
     const step = build(row("failed"));
     assert.equal(step.tool, "shell");
     assert.equal(step.command, command);
     assert.equal(step.exitCode, 1);
+    assert.equal(step.output, cleanResult(1));
+    assert.equal(step.output.includes("**literal markdown**"), true);
+    assert.equal(step.copyResult, cleanResult(1));
+    const base = ui.load("client/tool-call-data.ts").buildLiveToolCallData({ name: "terminal", status: "failed",
+      detail: { type: "shell", command, output: cleanResult(1), exitCode: 1 },
+      metadata: { kind: "execute", title: `terminal: ${command}` }, agentMessage: undefined });
+    assert.equal(step.copyResult, base.copyResult);
     const tree = ui.draw({ type: Content, props: { step, tokens: ui.tokens } });
     const byId = id => ui.nodes(tree, node => node.props.testID === id)[0];
+    assert.equal(ui.text(byId("step-detail-output")), cleanResult(1));
     const exitLabel = require(`../client/locales/${locale}.json`).detail.exitCode.replace("{{code}}", "1");
     assert.equal(ui.text(byId("step-detail-exit-code")), exitLabel);
     assert.equal(ui.text(byId("step-detail-error")), messages[locale]);
     await byId("step-detail-copy-error").props.onPress();
     assert.equal(ui.copies.at(-1), messages[locale]);
-    for (const [id, expected] of [["zero", "Tool call failed"], ["free", "Tool call failed"], ["error", "Reported failure"], ["read", "Tool call failed"], ["no-command", "Tool call failed"]]) {
+    for (const [id, expected] of [["zero", undefined], ["free", "Tool call failed"], ["error", "Reported failure"], ["read", "Tool call failed"], ["no-command", "Tool call failed"]]) {
       assert.equal(build(row(id)).error, expected, `${locale}: ${id}`);
     }
-    assert.equal(build(row("zero")).exitCode, 0);
+    assert.equal(build(row("zero", "completed")).exitCode, 0);
     assert.equal(build(row("free")).exitCode, undefined);
     assert.equal(build(row("no-command")).tool, "unknown");
     assert.equal(build(row("title", "completed")).tool, "shell");

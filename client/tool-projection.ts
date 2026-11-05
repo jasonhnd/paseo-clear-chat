@@ -1,4 +1,5 @@
 import { record, stringValue } from "./tool-detail";
+import { terminalResultOutput } from "../shared/terminal-result";
 
 const projectedTools = [
   { source: "terminal", host: "execute", type: "shell", field: "command" },
@@ -12,16 +13,6 @@ function argumentAfterPrefix(value: unknown, name: string): string | undefined {
   if (typeof value !== "string") return undefined;
   const prefix = `${name}:`;
   return value.startsWith(prefix) ? value.slice(prefix.length).trim() : undefined;
-}
-
-function terminalResultOutput(value: unknown): unknown {
-  if (typeof value !== "string") return value;
-  // Only clean the provider's outer labels. Everything between them is literal
-  // command output, including Markdown and lines that resemble result labels.
-  return value.replace(
-    /^(terminal result\r?\n- )\*\*output:\*\*([\s\S]*)(\r?\n- )\*\*exit_code:\*\*( -?\d+(?:\r?\n)?)$/,
-    "$1output:$2$3exit_code:$4",
-  );
 }
 
 /** Recover tool identity from the host's projected category and display fields. */
