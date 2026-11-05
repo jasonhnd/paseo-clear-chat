@@ -369,21 +369,24 @@ Clear Chat changes only how Paseo shows a conversation. Everything below is a li
 
 | Cannot | What to do instead | Waiting on |
 | --- | --- | --- |
-| Show pasted images in your original Hermes agents | Create the agent from the **·CC** copy of the provider; it saves the images itself | Paseo to hand pasted images to plugins before they are stripped |
-| Use Paseo's own Markdown | Turn **Assistant markdown** off for mermaid, images and the host's file-path links | The plugin SDK to expose the host's Markdown renderer |
-| Use hardware keys in the native apps | Keyboard navigation works in a browser and the desktop app | Native key events in the plugin SDK |
-| Follow Paseo's code font in the native apps | iOS and iPadOS use Menlo, Android uses the system monospace | The SDK to read the host's font settings |
-| Drag to select text on iOS and iPadOS | Keep **Assistant markdown** and **Enhanced prompt bubble** on and use the **Copy** buttons | Paseo to allow selection inside plugin-drawn text |
-| Show a step's duration when the agent does not report one | Nothing to do: the row simply omits the time | Providers to send durations over ACP |
-| Have Paseo's turn folding fold content Clear Chat drew | Use Clear Chat's own folding, and **When a collapsed step is pressed** | Paseo to include plugin content in its turn folding |
-| Follow Paseo's text size | Use Clear Chat's own **Text size** | The same upstream change as above |
-| Search messages that are not loaded yet | Scroll up to load older messages, then search again | A search API over unloaded history |
-| **Fork chat from here**, from a message | Turn Clear Chat off in **Settings → Plugins**, then use Paseo's own message menu | The plugin API to expose Paseo's agent actions |
-| **Copy turn** | Same: with Clear Chat off, Paseo's own **Copy turn** appears | The same plugin API |
-| **Copy message**, by Paseo's own menu | Clear Chat's **Copy** button copies the reply while Clear Chat draws it | The same plugin API |
-| **Rewind**, from a message | Turn Clear Chat off and use Paseo's own rewind | The same plugin API |
-| Open a **·CC** conversation after Clear Chat is turned off | Turn Clear Chat back on: the conversation's saved record is written by Clear Chat | Paseo to read conversation history that a plugin wrote |
-| Keep settings after you remove the plugin | Back up the settings before removing; removing a plugin deletes them | Paseo to keep plugin settings on removal |
+| Show pasted images in your original Hermes agents | Create the agent from the **·CC** copy of the provider; it saves the images itself | Paseo to hand pasted images to plugins before they are stripped ([#8257](https://github.com/getpaseo/paseo/discussions/8257), [#6736](https://github.com/getpaseo/paseo/pull/6736), [#4556](https://github.com/getpaseo/paseo/issues/4556)) |
+| Use Paseo's own Markdown | Turn **Assistant markdown** off for mermaid, images and the host's file-path links | The plugin SDK to expose the host's Markdown renderer (no matching official entry as of 2026-11-05) |
+| Use hardware keys in the native apps | Keyboard navigation works in a browser and the desktop app | Native key events in the plugin SDK (no matching official entry as of 2026-11-05) |
+| Follow Paseo's code font in the native apps | iOS and iPadOS use Menlo, Android uses the system monospace | The SDK to read the host's font settings ([#6600](https://github.com/getpaseo/paseo/discussions/6600)) |
+| Drag to select text on iOS and iPadOS | Keep **Assistant markdown** and **Enhanced prompt bubble** on and use the **Copy** buttons | Paseo to allow selection inside plugin-drawn text (no matching official entry as of 2026-11-05) |
+| Show a step's duration when the agent does not report one | Nothing to do: the row simply omits the time | Providers to send durations over ACP (no matching official entry as of 2026-11-05) |
+| Have Paseo's turn folding fold content Clear Chat drew | Use Clear Chat's own folding, and **When a collapsed step is pressed** | Paseo to include plugin content in its turn folding ([#8842](https://github.com/getpaseo/paseo/issues/8842), [#8811](https://github.com/getpaseo/paseo/pull/8811)) |
+| Follow Paseo's text size | Use Clear Chat's own **Text size** | Paseo to let plugins follow the app's font size ([#5642](https://github.com/getpaseo/paseo/discussions/5642)) |
+| Search messages that are not loaded yet | Scroll up to load older messages, then search again | A search API over unloaded history (no matching official entry as of 2026-11-05) |
+| **Fork chat from here**, from a message | Turn Clear Chat off in **Settings → Plugins**, then use Paseo's own message menu | The plugin API to expose Paseo's agent actions ([#7462](https://github.com/getpaseo/paseo/pull/7462), [#8290](https://github.com/getpaseo/paseo/discussions/8290)) |
+| **Copy turn** | Same: with Clear Chat off, Paseo's own **Copy turn** appears | The same plugin API ([#8290](https://github.com/getpaseo/paseo/discussions/8290)) |
+| **Copy message**, by Paseo's own menu | Clear Chat's **Copy** button copies the reply while Clear Chat draws it | The same plugin API ([#8290](https://github.com/getpaseo/paseo/discussions/8290)) |
+| **Rewind**, from a message | Turn Clear Chat off and use Paseo's own rewind | The same plugin API ([#6676](https://github.com/getpaseo/paseo/discussions/6676)) |
+| Open a file from a path you press on a remote client (a phone, or a browser on another machine) | The file opens in the file manager of the machine that runs the Paseo daemon, not on your device; copy the path instead (**Copy path** in the step menu) | Paseo to let plugin rows open files in its own file pane ([#7317](https://github.com/getpaseo/paseo/discussions/7317), [#7318](https://github.com/getpaseo/paseo/pull/7318)) |
+| Open a **·CC** conversation after Clear Chat is turned off | Turn Clear Chat back on: the conversation's saved record is written by Clear Chat | Paseo to read conversation history that a plugin wrote (no matching official entry as of 2026-11-05) |
+| Keep settings after you remove the plugin | Back up the settings before removing; removing a plugin deletes them | Paseo to keep plugin settings on removal (no matching official entry as of 2026-11-05) |
+
+Numbers are issues, pull requests and discussions in Paseo's official repository (`getpaseo/paseo`). Progress is theirs to report; the list is as of 2026-11-05.
 
 ## Privacy and data on the host
 

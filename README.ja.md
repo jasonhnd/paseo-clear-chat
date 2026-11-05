@@ -369,21 +369,24 @@ Clear Chat は Paseo が会話を表示する方法だけを変えます。以�
 
 | できないこと | 代わりにどうする | 待っているもの |
 | --- | --- | --- |
-| 元の Hermes エージェントで貼り付けた画像を表示する | **·CC** 版のプロバイダーでエージェントを作る（画像はそちらが保存します） | Paseo が画像を剥がす前にプラグインへ渡すこと |
-| Paseo 自身の Markdown を使う | mermaid・画像・ホストのパスリンクを使うときは **アシスタントの Markdown** をオフにする | プラグイン SDK がホストの Markdown レンダラーを公開すること |
-| ネイティブアプリでハードウェアキーを使う | ブラウザーとデスクトップアプリではキーボード操作ができます | プラグイン SDK のネイティブキーイベント |
-| ネイティブアプリで Paseo のコードフォントに従う | iOS／iPadOS は Menlo、Android はシステムの等幅フォント | SDK がホストのフォント設定を読めること |
-| iOS／iPadOS でドラッグしてテキストを選択する | **アシスタントの Markdown** と **プロンプトの吹き出しを強化** をオンにしたまま **コピー** ボタンを使う | Paseo がプラグイン描画のテキスト選択を許可すること |
-| エージェントが報告しない所要時間を表示する | 何もしなくて大丈夫です（その行は時刻を出しません） | プロバイダーが ACP で所要時間を送ること |
-| Paseo のターン折りたたみで Clear Chat の描画も折りたたむ | Clear Chat 自身の折りたたみと **折りたたんだステップを押したとき** を使う | Paseo がプラグインの内容をターン折りたたみに含めること |
-| Paseo の文字サイズに従う | Clear Chat の **文字サイズ** を使う | 上と同じ上流の変更 |
-| まだ読み込んでいないメッセージを検索する | 上にスクロールして古いメッセージを読み込んでから検索し直す | 未読み込み履歴の検索 API |
-| メッセージから会話を分岐（Fork chat from here） | **Settings → Plugins** で Clear Chat をオフにし、Paseo 自身のメッセージメニューを使う | Paseo のプラグイン API がこれらのエージェント操作を公開すること |
-| ターン全体をコピー（Copy turn） | 同じく Clear Chat をオフにして Paseo 自身の **Copy turn** を使う | 同じプラグイン API |
-| Paseo のメニューで 1 通だけコピー | Clear Chat が描いている間は Clear Chat の **コピー** ボタンを使う | 同じプラグイン API |
-| メッセージから巻き戻し（Rewind） | Clear Chat をオフにして Paseo 自身の巻き戻しを使う | 同じプラグイン API |
-| Clear Chat をオフにしたあと **·CC** の会話を開く | Clear Chat をオンに戻す（この会話の保存記録は Clear Chat が書いています） | Paseo がプラグインの書いた会話履歴を読めること |
-| プラグインを外したあとも設定を残す | 外す前に設定をバックアップしてください（外すと設定も削除されます） | Paseo がアンインストール時に設定を残すこと |
+| 元の Hermes エージェントで貼り付けた画像を表示する | **·CC** 版のプロバイダーでエージェントを作る（画像はそちらが保存します） | Paseo が画像を剥がす前にプラグインへ渡すこと（[#8257](https://github.com/getpaseo/paseo/discussions/8257)、[#6736](https://github.com/getpaseo/paseo/pull/6736)、[#4556](https://github.com/getpaseo/paseo/issues/4556)） |
+| Paseo 自身の Markdown を使う | mermaid・画像・ホストのパスリンクを使うときは **アシスタントの Markdown** をオフにする | プラグイン SDK がホストの Markdown レンダラーを公開すること（該当する公式の項目なし、2026-11-05 時点） |
+| ネイティブアプリでハードウェアキーを使う | ブラウザーとデスクトップアプリではキーボード操作ができます | プラグイン SDK のネイティブキーイベント（該当する公式の項目なし、2026-11-05 時点） |
+| ネイティブアプリで Paseo のコードフォントに従う | iOS／iPadOS は Menlo、Android はシステムの等幅フォント | SDK がホストのフォント設定を読めること（[#6600](https://github.com/getpaseo/paseo/discussions/6600)） |
+| iOS／iPadOS でドラッグしてテキストを選択する | **アシスタントの Markdown** と **プロンプトの吹き出しを強化** をオンにしたまま **コピー** ボタンを使う | Paseo がプラグイン描画のテキスト選択を許可すること（該当する公式の項目なし、2026-11-05 時点） |
+| エージェントが報告しない所要時間を表示する | 何もしなくて大丈夫です（その行は時刻を出しません） | プロバイダーが ACP で所要時間を送ること（該当する公式の項目なし、2026-11-05 時点） |
+| Paseo のターン折りたたみで Clear Chat の描画も折りたたむ | Clear Chat 自身の折りたたみと **折りたたんだステップを押したとき** を使う | Paseo がプラグインの内容をターン折りたたみに含めること（[#8842](https://github.com/getpaseo/paseo/issues/8842)、[#8811](https://github.com/getpaseo/paseo/pull/8811)） |
+| Paseo の文字サイズに従う | Clear Chat の **文字サイズ** を使う | Paseo がプラグインにアプリの文字サイズ設定を読ませること（[#5642](https://github.com/getpaseo/paseo/discussions/5642)） |
+| まだ読み込んでいないメッセージを検索する | 上にスクロールして古いメッセージを読み込んでから検索し直す | 未読み込み履歴の検索 API（該当する公式の項目なし、2026-11-05 時点） |
+| メッセージから会話を分岐（Fork chat from here） | **Settings → Plugins** で Clear Chat をオフにし、Paseo 自身のメッセージメニューを使う | Paseo のプラグイン API がこれらのエージェント操作を公開すること（[#7462](https://github.com/getpaseo/paseo/pull/7462)、[#8290](https://github.com/getpaseo/paseo/discussions/8290)） |
+| ターン全体をコピー（Copy turn） | 同じく Clear Chat をオフにして Paseo 自身の **Copy turn** を使う | 同じプラグイン API（[#8290](https://github.com/getpaseo/paseo/discussions/8290)） |
+| Paseo のメニューで 1 通だけコピー | Clear Chat が描いている間は Clear Chat の **コピー** ボタンを使う | 同じプラグイン API（[#8290](https://github.com/getpaseo/paseo/discussions/8290)） |
+| メッセージから巻き戻し（Rewind） | Clear Chat をオフにして Paseo 自身の巻き戻しを使う | 同じプラグイン API（[#6676](https://github.com/getpaseo/paseo/discussions/6676)） |
+| リモートのクライアント（スマートフォン、または別のマシンのブラウザー）でパスを押してファイルを開く | ファイルは Paseo の daemon が動いているマシンのファイルマネージャーで開き、手元の端末では開きません。代わりにパスをコピーしてください（ステップメニューの **パスをコピー**） | Paseo がプラグインの行から自分のファイルパネルでファイルを開けるようにすること（[#7317](https://github.com/getpaseo/paseo/discussions/7317)、[#7318](https://github.com/getpaseo/paseo/pull/7318)） |
+| Clear Chat をオフにしたあと **·CC** の会話を開く | Clear Chat をオンに戻す（この会話の保存記録は Clear Chat が書いています） | Paseo がプラグインの書いた会話履歴を読めること（該当する公式の項目なし、2026-11-05 時点） |
+| プラグインを外したあとも設定を残す | 外す前に設定をバックアップしてください（外すと設定も削除されます） | Paseo がアンインストール時に設定を残すこと（該当する公式の項目なし、2026-11-05 時点） |
+
+番号は Paseo 公式リポジトリ（`getpaseo/paseo`）の issue・PR・ディスカッションです。進み具合は公式の情報に従ってください。一覧は 2026-11-05 時点です。
 
 ## プライバシーとホスト上のデータ
 
