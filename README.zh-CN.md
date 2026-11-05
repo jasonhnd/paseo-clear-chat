@@ -41,7 +41,7 @@
 
 <sub>1. 在一台机器上用无头 Google Chrome 跑 5 次取中位数。你的结果会不一样。测法见 [scripts/perf/README.md](scripts/perf/README.md)（英文）。</sub>
 
-## 这一版新增（0.15.0.3）
+## 这一版新增（0.15.1.1）
 
 - **设置页的版本行更好读了。** 已安装的版本号和它的标签区分得开；下面那行说明变窄了，中文不再让最后一行只剩一两个字；强调色卡片顶部也没有了黑色粗边（[#147](https://github.com/jasonhnd/paseo-clear-chat/issues/147)）。
 - **行内代码里的文件路径可以点开。** 回复里用行内代码写的路径，点一下就像正文里的路径一样打开那个文件（见下面的 **打开文件**）。它必须是单个路径，并且是 Agent 工作区里真实存在的文件；文件不存在或在工作区外，只会弹出打不开的提示。**复制** 仍然复制原文。行内代码里含空格的路径不再是链接（以前是），请改写成 Markdown 链接。（[#163](https://github.com/jasonhnd/paseo-clear-chat/issues/163)）。
@@ -54,12 +54,12 @@
 ## 安装
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.0.3
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.1.1
 ```
 
 打开 Paseo 的插件页面，在 Clear Chat 的说明开头查看版本号。Paseo 0.14.0 在这里显示默认英文说明，即使切换应用语言也是如此。
 
-Clear Chat 0.15.0.3 需要 Paseo 0.14.0 或更新的版本。打开 **Settings → Plugins → Clear Chat**，可以选颜色、字体和折叠方式。
+Clear Chat 0.15.1.1 需要 Paseo 0.14.0 或更新的版本。打开 **Settings → Plugins → Clear Chat**，可以选颜色、字体和折叠方式。
 
 以后要更新：
 
@@ -108,7 +108,7 @@ Clear Chat 的版本号＝这一版对应、测过的 Paseo 版本，再加一�
 ```bash
 paseo plugin update clear-chat                 # 跟 main 上的最新版，改之前会问
 paseo plugin update clear-chat --yes           # 同上，不再问
-paseo plugin update clear-chat --ref v0.15.0.3 --yes   # 固定到某个版本
+paseo plugin update clear-chat --ref v0.15.1.1 --yes   # 固定到某个版本
 ```
 
 升级会保留你的设置。回退到更早的版本一般也保留，但某一次回退对设置的影响没有保证，设置重要的话先备份。卸载插件会删掉它的设置。
@@ -293,7 +293,7 @@ Ctrl/Cmd+F 打开查找栏。只搜当前显示出来的文字：折叠的步骤
 | 助手回复 Markdown（Assistant markdown） | 用插件自己的标题、列表和代码块显示回复。关掉后，回复交回 Paseo 自己显示。 |
 | Markdown 样式（Markdown style） | 文档（Document，行距宽松，适合长回答）、紧凑（Compact，间距更小，适合短回复）或终端（Terminal，正文使用代码字体）。 |
 
-**已安装版本。** 设置页标题下面显示 `Clear Chat 版本 0.15.0.3`，再下面一行说明这个值的来历：从目录安装时会沿用该目录里已有的版本信息，因此可能显示比你安装的更旧的版本。构建里没有可用的版本信息时，这一行显示 **未知**（Unknown）。
+**已安装版本。** 设置页标题下面显示 `Clear Chat 版本 0.15.1.1`，再下面一行说明这个值的来历：从目录安装时会沿用该目录里已有的版本信息，因此可能显示比你安装的更旧的版本。构建里没有可用的版本信息时，这一行显示 **未知**（Unknown）。
 
 **自定强调色。** 点一个色块，或输入 `#RGB`、`#RRGGBB` 后按 **应用**（Apply）。HEX 写错时会留在输入框里并提示错误，已保存的颜色不变。切换到预设色后，你的自定颜色仍会记住。保存的 HEX 值始终不变；只有文字可能看不清时，显示出来的颜色才会在浅色主题下调深、在深色主题下调浅。实心按钮上的文字用黑或白，哪个对比度高用哪个。
 
@@ -410,14 +410,14 @@ Clear Chat 只改变 Paseo 显示对话的方式。下面每一条都是插件�
 
 **怎么引用一条消息？** 在含文字的消息上点 Copy 旁边的引用图标，写好回复再发送。Agent 忙的时候图标是灰的。
 
-**支持哪些 Paseo 版本？** 0.14.0 或更新；0.15.0 已在源码层面核过。Paseo 0.13 有一条旧的、未实测的路径，写在[安装](#安装)里。
+**支持哪些 Paseo 版本？** 0.14.0 或更新；0.15.1 已在源码层面核过。Paseo 0.13 有一条旧的、未实测的路径，写在[安装](#安装)里。
 
 ## 常见问题
 
 | 问题 | 怎么办 |
 |---|---|
 | 用 Cafe 插件安装失败，或 Paseo 提示缺少 `@shikijs/core` 等 Shiki 依赖。 | 用[安装](#安装)里的 Paseo CLI 命令重试，仓库和版本标签保持不变。Clear Chat 用 `npm ci --include=dev` 安装依赖，所以运行 daemon 的主机上要有 Node.js 和 npm，网络也要能连到 npm 仓库。如果代码目录是你自己管理的，请先在那里运行 `npm ci --include=dev` 再重试。 |
-| 安装停止，提示插件需要更新的 Paseo 版本。 | 使用 Clear Chat 0.15.0.3 时，请把 daemon 主机和所有连接的应用升级到 Paseo 0.14.0 或更新。旧宿主请看[安装](#安装)中的 Paseo 0.13 命令及其未实测提示，以及单独的 Paseo 0.12 说明。 |
+| 安装停止，提示插件需要更新的 Paseo 版本。 | 使用 Clear Chat 0.15.1.1 时，请把 daemon 主机和所有连接的应用升级到 Paseo 0.14.0 或更新。旧宿主请看[安装](#安装)中的 Paseo 0.13 命令及其未实测提示，以及单独的 Paseo 0.12 说明。 |
 | Paseo 拒绝这个插件版本，或 Clear Chat 提示缺少插件设置或时间线支持。 | 把运行 daemon 的主机和所有连着的应用都更新到新版 Paseo，再重新加载 Clear Chat。Clear Chat 需要的 Paseo 版本写在 `paseo-plugin.json` 里。 |
 | 插件注册失败，Clear Chat 启动不了。 | 更新 Paseo，再重新加载 Clear Chat。还不行的话，先备份插件设置，再用 CLI 重新安装。 |
 | Clear Chat 读不到主机上的设置。 | 重新连接主机，在 **Settings → Plugins → Clear Chat** 里点 **重试**（Retry）。还不行的话，检查 daemon 能不能访问插件设置文件夹。 |
@@ -452,7 +452,7 @@ cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_back
 **2. 安装**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.0.3
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.1.1
 ```
 
 **3. 确认后卸载旧插件**
