@@ -140,6 +140,16 @@ test("opening while running makes no read; a raced running response leaves the s
   assert.equal(s.requests.at(-1).cursor.seq, 27);
 });
 
+test("provider sub-agents never request a canonical timeline", async t => {
+  const s = source(); t.after(() => s.h.unmount());
+  for (const revision of ["idle:1", "running"]) {
+    const result = await s.read(revision, "sample-host", "provider:parent:child");
+    assert.equal(result.durations.size, 0);
+    assert.equal(result.messages.size, 0);
+  }
+  assert.equal(s.requests.length, 0);
+});
+
 for (const flag of ["reset", "staleCursor", "gap"]) {
   test(`${flag}: a complete replacement read clears old timing and sender identities`, async t => {
     const s = source(); t.after(() => s.h.unmount());
@@ -191,8 +201,7 @@ test("an incomplete hasNewer recovery stops after one tail read and preserves se
   const settled = await s.read("idle:1");
   s.pages.push(page(turn(1).slice(0, 3), 104, { hasNewer: true }),
     page([...turn(0), ...turn(1)], 127, { hasNewer: true }));
-  assert.equal(await s.read("idle:2"), settled);
-  assert.equal(await s.read("idle:2"), settled);
+  await assert.rejects(s.read("idle:2"), /Canonical timeline unavailable/);
   assert.deepEqual(s.requests.map(r => r.direction), ["tail", "after", "tail"]);
   s.pages.push(page(turn(1)));
   assert.equal((await s.read("idle:3")).durations.size, 2);
@@ -248,15 +257,31 @@ test("overlapping settled revisions serialize cursor updates without losing turn
   assert.equal(s.requests[1].cursor.seq, 27);
 });
 
-test("a failed delta preserves settled labels and retries from the same cursor on the next revision", async t => {
+test("a failed delta preserves settled labels and retries the same revision from the same cursor", async t => {
   const s = source(); t.after(() => s.h.unmount());
   s.pages.push(page(turn(0)));
   const first = await s.read("idle:1");
   s.pages.push(() => { throw Error("Sample network unavailable"); });
-  assert.equal(await s.read("idle:2"), first);
-  assert.equal(await s.read("idle:2"), first);
+  await assert.rejects(s.read("idle:2"), /Sample network unavailable/);
+  assert.equal(await s.read("running"), first);
   s.pages.push(page(turn(1)));
-  assert.equal((await s.read("idle:3")).durations.size, 2);
+  assert.equal((await s.read("idle:2")).durations.size, 2);
   assert.deepEqual(s.requests.map(r => r.direction), ["tail", "after", "after"]);
   assert.equal(s.requests.at(-1).cursor.seq, 27);
+});
+
+test("failed reads do not block another agent or an already queued revision", async t => {
+  const s = source(); t.after(() => s.h.unmount());
+  let rejectRead;
+  s.pages.push(() => new Promise((_, reject) => { rejectRead = reject; }));
+  const failed = s.read("idle:1", "sample-host", "first");
+  await new Promise(resolve => setImmediate(resolve));
+  s.pages.push(page(turn(0)), page(turn(1)));
+  const queued = s.read("idle:2", "sample-host", "first");
+  const other = s.read("idle:1", "sample-host", "second");
+  rejectRead(Error("Sample network unavailable"));
+  await assert.rejects(failed, /Sample network unavailable/);
+  assert.equal((await other).durations.size, 1);
+  assert.equal((await queued).durations.size, 1);
+  assert.deepEqual(s.requests.map(r => r.direction), ["tail", "tail", "tail"]);
 });

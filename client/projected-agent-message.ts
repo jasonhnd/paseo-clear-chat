@@ -16,6 +16,8 @@ export function useProjectedAgentMessage(hostId: string, agentId: string, data: 
     let cancelled = false;
     void loadCanonicalTimeline(paseo, hostId, agentId, revision).then(({ messages }) => {
       if (!cancelled) setLoaded({ requestKey, message: messages.get(callId) });
+    }).catch(() => {
+      if (!cancelled) setLoaded({ requestKey });
     });
     return () => { cancelled = true; };
   }, [paseo, hostId, agentId, revision, callId, requestKey]);

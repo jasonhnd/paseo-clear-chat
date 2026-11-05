@@ -94,11 +94,13 @@ test("partial recovery and a failed read never present partial timing as complet
   host.enqueue("agent-a", after("epoch-a", 2), page("epoch-a", partial, { staleCursor: true, hasOlder: true }));
   host.enqueue("agent-a", tail(), page("epoch-a", partial, { hasNewer: true }));
   assert.doesNotMatch(await shown("agent-a", partial[1]), /Worked for /);
-  assert.match(await shown("agent-a", old[1]), /Worked for 21s/);
+  host.fail("agent-a", after("epoch-a", 2));
+  assert.doesNotMatch(await shown("agent-a", old[1]), /Worked for /);
   host.agents["agent-a"].updatedAt = "3";
   host.fail("agent-a", after("epoch-a", 2));
   assert.doesNotMatch(await shown("agent-a", partial[1]), /Worked for /);
-  assert.match(await shown("agent-a", old[1]), /Worked for 21s/);
+  host.fail("agent-a", after("epoch-a", 2));
+  assert.doesNotMatch(await shown("agent-a", old[1]), /Worked for /);
   host.agents["agent-a"].updatedAt = "4";
   host.enqueue("agent-a", after("epoch-a", 2), page("epoch-a", complete, { staleCursor: true }));
   assert.match(await shown("agent-a", complete[1]), /Worked for 30s/);

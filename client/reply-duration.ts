@@ -17,6 +17,8 @@ export function useReplyDuration(hostId: string, agentId: string, at: Date, repl
     let cancelled = false;
     void loadCanonicalTimeline(paseo, hostId, agentId, revision).then(({ durations }) => {
       if (!cancelled) setLoaded({ requestKey, duration: durations.get(key) });
+    }).catch(() => {
+      if (!cancelled) setLoaded({ requestKey });
     });
     return () => { cancelled = true; };
   }, [paseo, hostId, agentId, revision, key, requestKey]);

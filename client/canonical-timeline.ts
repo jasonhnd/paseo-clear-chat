@@ -21,6 +21,7 @@ const empty = (): DerivedTimeline => ({ durations: new Map(), messages: new Map(
 
 /** Share one incremental read across timing and delivery lookups, retaining only derived data. */
 export function loadCanonicalTimeline(paseo: Paseo, hostId: string, agentId: string, revision: string): Promise<DerivedTimeline> {
+  if (agentId.startsWith("provider:")) return Promise.resolve(empty());
   let cache = caches.get(paseo);
   if (!cache) { cache = new Map(); caches.set(paseo, cache); }
   const key = JSON.stringify([hostId, agentId]);
@@ -37,7 +38,7 @@ export function loadCanonicalTimeline(paseo: Paseo, hostId: string, agentId: str
   const state = cached;
   const previous = state.pending;
   state.revision = revision;
-  state.pending = previous.then(async () => {
+  const pending = previous.catch(() => state.value).then(async () => {
     const timeline = paseo.agents.ref(agentId).timeline;
     const cursor = state.cursor;
     let page = await timeline.refetch(cursor
@@ -67,6 +68,10 @@ export function loadCanonicalTimeline(paseo: Paseo, hostId: string, agentId: str
     state.cursor = page.endCursor ?? (reset ? undefined : cursor);
     state.value = { durations: timing.snapshot(), messages };
     return state.value;
-  }).catch(() => state.value);
+  }).catch(error => {
+    if (state.pending === pending) state.revision = undefined;
+    throw error;
+  });
+  state.pending = pending;
   return state.pending;
 }
