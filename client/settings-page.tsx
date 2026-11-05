@@ -492,6 +492,20 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
           />
         ) : null}
 
+        <View style={[styles.row, { borderTopColor: tokens.borderSubtle }]}>
+          <Text style={[styles.rowTitle, { color: tokens.foreground, fontFamily: tokens.fontUi }]}>{t("settings.delegatedTools.label")}</Text>
+          <Text style={[styles.rowDescription, { color: tokens.foregroundMuted, fontFamily: tokens.fontUi }]}>{t("settings.delegatedTools.description")}</Text>
+          <TextInput
+            accessibilityLabel={t("settings.delegatedTools.label")}
+            accessibilityHint={t("settings.delegatedTools.description")}
+            value={preferences.delegatedTools}
+            onChangeText={(delegatedTools) => { void updateEnhancerPreferences({ delegatedTools }); }}
+            autoCapitalize="none"
+            autoCorrect={false}
+            spellCheck={false}
+            style={[styles.toolNamesInput, { color: tokens.foreground, borderColor: tokens.border, fontFamily: tokens.fontUi }]}
+          />
+        </View>
         <ToggleRow
           title={t("settings.foldSteps.label")}
           description={t("settings.foldSteps.description")}
@@ -653,6 +667,7 @@ const styles = StyleSheet.create({
   colourSample: { width: 28, height: 28, borderRadius: radius.chip },
   hexControls: { flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" },
   hexInput: { flexGrow: 1, flexShrink: 1, flexBasis: 140, minWidth: 0, minHeight: 44, borderWidth: 1, borderRadius: radius.block, paddingHorizontal: 10, paddingVertical: 8, fontSize: 16 },
+  toolNamesInput: { alignSelf: "stretch", minWidth: 0, minHeight: 44, borderWidth: 1, borderRadius: radius.block, paddingHorizontal: 10, paddingVertical: 8, fontSize: 16 },
   applyColour: { minHeight: 44, paddingHorizontal: 16, justifyContent: "center", borderRadius: radius.block },
   swatch: { width: 12, height: 12, borderRadius: radius.chip },
   accentLabel: { fontSize: 12, fontWeight: "600" },

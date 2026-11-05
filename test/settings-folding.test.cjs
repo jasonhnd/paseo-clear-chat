@@ -100,3 +100,20 @@ for (const [label, limit] of [["10 lines", 10], ["15 lines", 15], ["30 lines", 3
     fresh.h.unmount();
   });
 }
+
+test("tool delegation setting saves, reloads, and resets with presentation settings", async () => {
+  const host = createPresentationHost();
+  const first = await client(host);
+  const input = (h, tree) => h.nodes(tree, node => node.props.accessibilityLabel === "Leave these tools to other plugins")[0];
+  assert.equal(input(first.h, first.page()).props.value, "");
+  await input(first.h, first.page()).props.onChangeText("shell, read_file");
+  // Settings writes are queued asynchronously by the input handler.
+  await new Promise(setImmediate);
+  assert.equal(host.values.preferences.delegatedTools, "shell, read_file");
+  first.h.unmount();
+  const fresh = await client(host);
+  assert.equal(input(fresh.h, fresh.page()).props.value, "shell, read_file");
+  await fresh.h.load("client/preferences.ts").resetEnhancerPreferences();
+  assert.equal(input(fresh.h, fresh.page()).props.value, "");
+  fresh.h.unmount();
+});

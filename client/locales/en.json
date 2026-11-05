@@ -1,5 +1,9 @@
 {
   "settings": {
+    "delegatedTools": {
+      "label": "Leave these tools to other plugins",
+      "description": "Enter comma-separated tool names. Names are case sensitive."
+    },
     "hermesCc": {
       "label": "Hermes·CC providers",
       "description": "Add Hermes·CC versions of configured Hermes ACP providers to save pasted prompt images in Clear Chat. Reload the host to apply.",
