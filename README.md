@@ -41,7 +41,7 @@
 
 <sub>1. Median of five runs in headless Google Chrome on one machine. Your numbers will differ. The method is in [scripts/perf/README.md](scripts/perf/README.md).</sub>
 
-## What's new in 0.15.0.3
+## What's new in 0.15.1.1
 
 - **The settings page version line is easier to read.** The installed version now stands out from its label, the note under it is narrower so it no longer ends on a very short last line in Chinese, and the accent colour card no longer has a black border on top ([#147](https://github.com/jasonhnd/paseo-clear-chat/issues/147)).
 - **A file path in inline code opens the file.** In a reply, a path written in inline code opens the file the same way a path in running text does (see **Open files** below). It must be a single path, and the file must exist in the agent's workspace; if it does not exist or lies outside the workspace, you only get the "could not be opened" message. **Copy** still copies the original text. A path that contains spaces is no longer a link when written in inline code (it used to be); write it as a Markdown link instead. ([#163](https://github.com/jasonhnd/paseo-clear-chat/issues/163)).
@@ -54,12 +54,12 @@
 ## Install
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.0.3
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.1.1
 ```
 
 Open Paseo’s plugins page and look for the version at the start of the Clear Chat description. Paseo 0.14.0 displays the default English description there even when the app language is changed.
 
-Clear Chat 0.15.0.3 needs Paseo 0.14.0 or later. Open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
+Clear Chat 0.15.1.1 needs Paseo 0.14.0 or later. Open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
 
 To update later:
 
@@ -108,7 +108,7 @@ A Clear Chat version is the Paseo version it is built and tested for, plus one m
 ```bash
 paseo plugin update clear-chat                 # latest on main, asks first
 paseo plugin update clear-chat --yes           # same, no question
-paseo plugin update clear-chat --ref v0.15.0.3 --yes   # pin one release
+paseo plugin update clear-chat --ref v0.15.1.1 --yes   # pin one release
 ```
 
 An update keeps your settings. A rollback to an earlier ref also keeps them, but the effect of a specific rollback on settings is not guaranteed, so back them up first if the settings matter. Removing the plugin deletes its settings.
@@ -293,7 +293,7 @@ On a message that contains text, pick the quote icon beside Copy. A panel opens 
 | Assistant markdown | Draws replies with Clear Chat's own headings, lists and code blocks. Off hands replies back to Paseo. |
 | Markdown style | Document (airy, for long answers), Compact (tighter, for short replies) or Terminal (body in the code font). |
 
-**Installed version.** Under the title of the settings page, Clear Chat shows `Clear Chat version 0.15.0.3`. The line below it explains the value: a directory install keeps the version information already in that directory, so it can show an older release than the one you installed. If the build carries no usable version, the line shows **Unknown**.
+**Installed version.** Under the title of the settings page, Clear Chat shows `Clear Chat version 0.15.1.1`. The line below it explains the value: a directory install keeps the version information already in that directory, so it can show an older release than the one you installed. If the build carries no usable version, the line shows **Unknown**.
 
 **Custom accent colour.** Tap a swatch, or enter `#RGB` or `#RRGGBB` and press **Apply**. An invalid HEX value stays in the field with an error, and the saved colour does not change. Switching to a preset remembers your custom colour. The saved HEX value never changes; only the colour you see is darkened on light themes or lightened on dark themes when text would otherwise be hard to read. Filled buttons use black or white text, whichever has more contrast.
 
@@ -410,14 +410,14 @@ Clear Chat changes only how Paseo shows a conversation. Everything below is a li
 
 **How do I quote a message?** Pick the quote icon beside Copy on a message that contains text, write your reply, and send. It is greyed out while the agent is busy.
 
-**Which Paseo versions work?** 0.14.0 or later, with 0.15.0 checked at the source level. Paseo 0.13 has an older, untested path described under [Install](#install).
+**Which Paseo versions work?** 0.14.0 or later, with 0.15.1 checked at the source level. Paseo 0.13 has an older, untested path described under [Install](#install).
 
 ## Troubleshooting
 
 | Problem | What to do |
 |---|---|
 | Installing through the Cafe plugin fails, or Paseo reports a missing Shiki dependency such as `@shikijs/core`. | Retry with the Paseo CLI command in [Install](#install), using the same repository and release ref. Clear Chat installs its dependencies with `npm ci --include=dev`, so Node.js and npm must be available on the daemon host, and its network must reach the npm registry. If you manage the checkout yourself, run `npm ci --include=dev` there before retrying. |
-| Installation stops because the plugin needs a newer Paseo version. | For Clear Chat 0.15.0.3, update Paseo on the daemon host and all connected apps to 0.14.0 or later. For older hosts, see the [Install](#install) section for the Paseo 0.13 commands and their untested-status warning, and the separate Paseo 0.12 instructions. |
+| Installation stops because the plugin needs a newer Paseo version. | For Clear Chat 0.15.1.1, update Paseo on the daemon host and all connected apps to 0.14.0 or later. For older hosts, see the [Install](#install) section for the Paseo 0.13 commands and their untested-status warning, and the separate Paseo 0.12 instructions. |
 | Paseo rejects the plugin version, or Clear Chat says plugin settings or timeline support is missing. | Update Paseo on the daemon host and in every connected app, then reload Clear Chat. The Paseo version Clear Chat needs is declared in `paseo-plugin.json`. |
 | Clear Chat cannot start because plugin registration failed. | Update Paseo and reload Clear Chat. If it still fails, back up the plugin settings before you reinstall from the CLI. |
 | Clear Chat cannot read its settings from the host. | Reconnect to the host and choose **Retry** in **Settings → Plugins → Clear Chat**. If it still fails, check that the daemon can access the plugin settings folder. |
@@ -452,7 +452,7 @@ If the `beautiful-chat` settings folder does not exist, you never changed Beauti
 **2. Install**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.0.3
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.1.1
 ```
 
 **3. Check, then remove the old plugin**

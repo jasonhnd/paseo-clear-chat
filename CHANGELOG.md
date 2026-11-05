@@ -4,7 +4,7 @@ All notable changes to Clear Chat are listed here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and each version is the Paseo version it is built and tested for plus one number that counts Clear Chat's releases for that Paseo version, for example 0.12.0.1 for the first release for Paseo 0.12.0. Releases 1.0.0 and 1.0.1 came out before this rule.
 
-## [0.15.0.3] - YYYY-MM-DD
+## [0.15.1.1] - YYYY-MM-DD
 
 ### Added
 
@@ -28,9 +28,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - The pre-release check now fails when the version in `package.json`, the lockfile or the manifest differs from the changelog heading ([issue #161](https://github.com/jasonhnd/paseo-clear-chat/issues/161), [PR #162](https://github.com/jasonhnd/paseo-clear-chat/pull/162)), and when the release date in the changelog heading or the release notes is not the tag day in Japan Standard Time; `--tag-day YYYY-MM-DD` sets the tag day explicitly ([issue #176](https://github.com/jasonhnd/paseo-clear-chat/issues/176), [PR #179](https://github.com/jasonhnd/paseo-clear-chat/pull/179)).
 
+### Compatibility
+
+- Clear Chat 0.15.1.1 is the Clear Chat release for Paseo 0.15.1. Paseo 0.15.1 fixes one problem: on Windows machines where PowerShell 5.1 cannot run `Get-CimInstance`, the daemon did not start when the terminal worker could not read its own process identity. It does not change the plugin interface: `@getpaseo/plugin` and `@getpaseo/client` are byte-for-byte the same as in Paseo 0.15.0, so no export is added or removed, and Clear Chat's behaviour does not change because of it.
+
 ### Upgrading
 
-- Update an existing installation with `paseo plugin update clear-chat --ref v0.15.0.3`; the plugin reloads on its own and the Paseo daemon is not restarted. Removing a plugin also removes its settings, so back them up before removing.
+- Update an existing installation with `paseo plugin update clear-chat --ref v0.15.1.1`; the plugin reloads on its own and the Paseo daemon is not restarted. Removing a plugin also removes its settings, so back them up before removing.
 - With a directory install, the version shown on the settings page is the version metadata already in that directory, so it can show an older release than the one you installed.
 
 ### Known limitations
@@ -277,7 +281,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
-[0.15.0.3]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.0.2...v0.15.0.3
+[0.15.1.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.0.2...v0.15.1.1
 [0.15.0.2]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.0.1...v0.15.0.2
 [0.15.0.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.14.0.4...v0.15.0.1
 [0.14.0.4]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.14.0.3...v0.14.0.4
