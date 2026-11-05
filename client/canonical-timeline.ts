@@ -21,6 +21,8 @@ const empty = (): DerivedTimeline => ({ durations: new Map(), messages: new Map(
 
 /** Share one incremental read across timing and delivery lookups, retaining only derived data. */
 export function loadCanonicalTimeline(paseo: Paseo, hostId: string, agentId: string, revision: string): Promise<DerivedTimeline> {
+  // A provider sub-agent pane uses a synthetic id the host cannot load; ask for nothing.
+  if (agentId.startsWith("provider:")) return Promise.resolve(empty());
   let cache = caches.get(paseo);
   if (!cache) { cache = new Map(); caches.set(paseo, cache); }
   const key = JSON.stringify([hostId, agentId]);
