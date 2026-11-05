@@ -5,16 +5,67 @@ const { createToolHarness } = require("./helpers/tool-harness.cjs");
 const byId = (h, tree, id) => h.nodes(tree, node => node.props.testID === id)[0];
 const quote = "First line\n\n> existing quote\nLast line\n";
 
-function setup(type, locale = "en", text = quote) {
+test("quote preview escapes the host font rule and follows the conversation fonts", async t => {
+  const colors = { surface0: "#111111", foreground: "#eeeeee", foregroundMuted: "#aaaaaa", accent: "#00ff00", statusDanger: "#ff0000" };
+  let values = { preferences: {}, legacyMigrated: true };
+  const presentationHost = { rpc: async (contract, input) => {
+    if (contract.name.endsWith(".write")) values = structuredClone(input.values);
+    return { status: contract.name.endsWith(".write") ? "saved" : "ready", revision: "0", values: structuredClone(values) };
+  } };
+  const h = createToolHarness("web", { agent: { status: "idle" }, replyFooter: true, markdown: true, themeTokens: true, presentationHost, themeColors: colors });
+  t.after(() => h.unmount());
+  await new Promise(setImmediate);
+  const mounted = h.mount({ type: "assistant_message", text: "## Heading\n\nThis has **bold words** and `inline code`\n\n- List item" }, false);
+  byId(h, mounted.tree, "quote-action").props.onPress();
+  const theme = h.load("client/components/theme-tokens.ts");
+  const preferences = h.load("client/preferences.ts");
+  const flatten = style => Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
+
+  for (const [uiFont, family] of [["embedded", theme.fontUi], ["system", "System"]]) {
+    if (uiFont === "system") await preferences.updateEnhancerPreferences({ uiFont });
+    const preview = byId(h, mounted.render(), "quote-original");
+    assert.equal(preview.props.dataSet.pmono, true);
+    for (const text of ["Heading", "This has \nbold words\n and \ninline code", "List item"]) {
+      const block = h.nodes(preview, node => node.type === "Text" && h.text(node) === text)[0];
+      assert.ok(block, text);
+      assert.equal(flatten(block.props.style).fontFamily, family, text);
+    }
+    const bold = h.nodes(preview, node => node.type === "Text" && h.text(node) === "bold words")[0];
+    assert.equal(flatten(bold.props.style).fontWeight, "700");
+    const code = h.nodes(preview, node => node.type === "Text" && h.text(node) === "inline code")[0];
+    assert.equal(flatten(code.props.style).fontFamily, theme.buildThemeTokens(colors, h.preferences).fontMono);
+  }
+});
+
+function setup(type, locale = "en", text = quote, options = {}) {
   const agent = { status: "idle", cwd: "/sample", workspaceId: "sample" };
   const sent = [], refs = [];
   let refreshedStatus = null;
   const handle = { refresh: async () => ({ agent: { status: refreshedStatus ?? agent.status } }), send: async text => { sent.push(text); } };
-  const h = createToolHarness("web", { agent, locale, userMessage: true, replyFooter: true,
+  const h = createToolHarness("web", { agent, locale, userMessage: true, replyFooter: true, ...options,
     paseo: { agents: { ref: id => { refs.push(id); return handle; } } } });
   const mounted = h.mount({ type, text }, false);
   return { h, mounted, agent, sent, refs, handle, setRefreshStatus: value => { refreshedStatus = value; } };
 }
+
+test("Markdown preview keeps the original bytes when sending", async t => {
+  const original = "## Heading\r\n\r\n**Bold** and `inline code`\r\n";
+  const { h, mounted, sent } = setup("assistant_message", "en", original, { markdown: true });
+  t.after(() => h.unmount());
+  byId(h, mounted.tree, "quote-action").props.onPress();
+  let tree = mounted.render();
+  const preview = byId(h, tree, "quote-original");
+  const rendered = h.text(preview);
+  assert.equal(rendered, "Heading\nBold\n and \ninline code");
+  assert.equal(preview.props.style.borderLeftWidth, 2);
+  for (const text of ["Heading", "Bold", "inline code"]) {
+    assert.ok(h.nodes(preview, node => node.type === "Text" && node.props.selectable && h.text(node) === text).length, text);
+  }
+  byId(h, tree, "quote-reply-input").props.onChangeText("  Réponse\n");
+  tree = mounted.render();
+  await byId(h, tree, "quote-send").props.onPress();
+  assert.deepEqual(Buffer.from(sent[0]), Buffer.from("> ## Heading\r\n> \r\n> **Bold** and `inline code`\r\n> \n\n  Réponse\n"));
+});
 
 test("tool-rendered final reply exposes quote action for the current agent", async t => {
   const sent = [], refs = [];

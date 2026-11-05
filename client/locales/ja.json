@@ -251,7 +251,8 @@
       "detailsHint": "ステップの詳細を開きます"
     },
     "error": {
-      "none": "失敗（エラーメッセージの報告なし）"
+      "none": "失敗（エラーメッセージの報告なし）",
+      "commandExit": "コマンドは終了コード {{code}} で終了しました"
     },
     "expansion": {
       "prefix": "ツールの開閉状態を保存または読み込めませんでした: {{error}}",
@@ -480,7 +481,9 @@
     "summary": "推論のまとめ",
     "status": "推論",
     "steps": "{{count}} ステップ",
+    "stepsOne": "{{count}} ステップ",
     "tokens": "{{count}} トークン",
+    "tokensOne": "{{count}} トークン",
     "step": "ステップ {{number}}",
     "stepTitled": "{{number}}. {{title}}",
     "stepSeconds": "{{seconds}}秒",

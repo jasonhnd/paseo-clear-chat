@@ -12,9 +12,41 @@ const hasLabel = (h, tree, expected) => assert.ok(h.nodes(tree, node => node.pro
 const interpolate = (text, values) => text.replace(/{{(\w+)}}/g, (_, key) => values[key]);
 const call = { type: "tool_call", name: "shell", status: "completed", callId: "sample-call", detail: { type: "shell", command: "printf sample", output: "" } };
 const presentationHost = { rpc: async () => ({ status: "ready", revision: "0", values: { preferences: {}, legacyMigrated: true } }) };
+const commandExitMessages = { en: "Command exited with code 1", "zh-CN": "命令退出，退出码为 1", ja: "コマンドは終了コード 1 で終了しました" };
+const hermesErrors = require("./fixtures/real-hermes-errors.json").items;
 
 for (const locale of ["en", "zh-CN", "ja"]) {
   const r = resources[locale];
+  test(`${locale}: Hermes shell exit fallback appears in step details and copy error`, async t => {
+    const h = createToolHarness("ios", { locale, width: 390, preferences: { collapsedStepAction: "details" } });
+    t.after(() => h.unmount());
+    const item = hermesErrors[1];
+    h.mount(item, false);
+    const build = h.load("client/tool-call-data.ts").buildLiveToolCallData;
+    const Content = h.load("client/components/step-detail-content.tsx").StepDetailContent;
+    const tree = h.draw({ type: Content, props: { step: build(item), tokens: h.tokens } });
+    const expected = commandExitMessages[locale];
+    assert.equal(h.text(byId(h, tree, "step-detail-error")), expected);
+    await byId(h, tree, "step-detail-copy-error").props.onPress();
+    assert.equal(h.copies.at(-1), expected);
+    const variants = [
+      [{ ...item, detail: { ...item.detail, output: item.detail.output.replace("exit_code:** 1", "exit_code:** 0") } }, "Tool call failed"],
+      [{ ...item, detail: { ...item.detail, output: "exit code 1" } }, "Tool call failed"],
+      [{ ...item, error: { message: "Reported failure" } }, "Reported failure"],
+      [{ ...item, error: { message: "Tool call failed", reason: "Reported failure" } }, "Tool call failed"],
+      [hermesErrors[0], "Tool call failed"],
+    ];
+    for (const [variation, message] of variants) {
+      const detail = h.draw({ type: Content, props: { step: build(variation), tokens: h.tokens } });
+      assert.equal(h.text(byId(h, detail, "step-detail-error")), message);
+      await byId(h, detail, "step-detail-copy-error").props.onPress();
+      assert.equal(h.copies.at(-1), message);
+    }
+    assert.equal(build({ ...item, detail: { ...item.detail, exitCode: 0 } }).error, "Tool call failed");
+    assert.equal(build({ ...item, detail: { ...item.detail, exitCode: 2 } }).error,
+      resources[locale].tool.error.commandExit.replace("{{code}}", "2"));
+    assert.equal(build({ ...item, status: "completed" }).error, "Tool call failed");
+  });
   test(`${locale}: settings render approved labels and option text`, async () => {
     const h = createToolHarness("ios", { locale, settingsPage: true, presentationHost });
     await new Promise(setImmediate);
@@ -233,6 +265,36 @@ test("numeric interpolation renders the original ungrouped English reasoning foo
   }
 });
 
+for (const locale of ["en", "zh-CN", "ja"]) {
+  test(`${locale}: reasoning card renders localized step and token counts`, () => {
+    const h = createToolHarness("ios", { locale, reasoningTrace: true });
+    const ReasoningTrace = h.load("client/components/reasoning-trace.tsx").ReasoningTrace;
+    const render = (stepCount, totalTokens) => {
+      const tree = h.draw({ type: ReasoningTrace, props: {
+        data: { id: "sample", agentModel: "", durationMs: 0, totalTokens, status: "completed", steps: Array.from({ length: stepCount }, (_, index) => ({ id: `step-${index + 1}`, number: index + 1, title: "", content: "", status: "completed" })) },
+        tokens: h.tokens,
+        defaultExpanded: true,
+      } });
+      return h.text(tree);
+    };
+    const expected = locale === "en"
+      ? ["1 step", "1 token", "2 steps", "2 tokens"]
+      : locale === "zh-CN"
+        ? ["1 步", "1 个 token", "2 步", "2 个 token"]
+        : ["1 ステップ", "1 トークン", "2 ステップ", "2 トークン"];
+    try {
+      const one = render(1, 1);
+      const two = render(2, 2);
+      assert.ok(one.includes(expected[0]), JSON.stringify(one));
+      assert.ok(one.includes(expected[1]), JSON.stringify(one));
+      assert.ok(two.includes(expected[2]), JSON.stringify(two));
+      assert.ok(two.includes(expected[3]), JSON.stringify(two));
+    } finally {
+      h.unmount();
+    }
+  });
+}
+
 const approvedResourceHashes = {
   // Pin the approved version note and the baseline text, including the 0.13.1.1 prompt-bubble wording.
   "en": "dc297471839ff81fd0894fa6fd0accb3a3ac15a75ecac07103052e31cc7a4256",
@@ -248,9 +310,12 @@ for (const locale of ["en", "zh-CN", "ja"]) {
       .replace(/  "quote": \{\n(?:    ".*\n){11}  \},\n/, "")
       .replace(/    "hermesCc": \{\n(?:      ".*\n){3}    \},\n/, "")
       .replace(/    "imageThumbA11y": ".*",\n    "moreImages": ".*",\n    "closeImage": ".*",\n/, "")
+      .replace(/    "stepsOne": ".*",\n/, "")
+      .replace(/    "tokensOne": ".*",\n/, "")
       .replace(/    "sectionInline": \{\n(?:      ".*\n){5}    \},\n/, "");
+    const baseline = original.replace(/(      "none": ".*"),\n      "commandExit": ".*"\n/, "$1\n");
     assert.notEqual(original, text);
-    assert.equal(createHash("sha256").update(original).digest("hex"), approvedResourceHashes[locale]);
+    assert.equal(createHash("sha256").update(baseline).digest("hex"), approvedResourceHashes[locale]);
     assert.deepEqual(resources[locale].detail.sectionInline, Object.fromEntries(Object.entries(resources[locale].detail.section).map(([key, title]) => [key, locale === "en" ? key : title])));
   });
 }

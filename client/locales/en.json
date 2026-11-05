@@ -251,7 +251,8 @@
       "detailsHint": "Opens step details"
     },
     "error": {
-      "none": "Failed (no error message reported)"
+      "none": "Failed (no error message reported)",
+      "commandExit": "Command exited with code {{code}}"
     },
     "expansion": {
       "prefix": "Tool expansion choice could not be saved or loaded: {{error}}",
@@ -480,7 +481,9 @@
     "summary": "Reasoning summary",
     "status": "Reasoning",
     "steps": "{{count}} steps",
+    "stepsOne": "{{count}} step",
     "tokens": "{{count}} tokens",
+    "tokensOne": "{{count}} token",
     "step": "Step {{number}}",
     "stepTitled": "{{number}}. {{title}}",
     "stepSeconds": "{{seconds}}s",

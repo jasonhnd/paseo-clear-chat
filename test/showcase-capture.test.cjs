@@ -18,29 +18,44 @@ test("published capture planning routes theme pairs to their documented director
   assert.throws(() => createCapturePlan("No screenshots"), /no screenshot references/);
   assert.throws(() => createCapturePlan('<img src="docs/images/tool-read-light.png">'), /Missing screenshot theme/);
   assert.throws(() => createCapturePlan('<img src="images/tool-read-light.png">'), /Unexpected screenshot location/);
+  for (const id of ["hero", "fold-compare", "step-details", "find", "quote"]) {
+    assert.deepEqual(createCapturePlan(`<img src="images/${id}-light.png"><source srcset="images/${id}-dark.png">`), [
+      { id, light: `images/${id}-light.png`, dark: `images/${id}-dark.png` },
+    ]);
+    assert.throws(() => createCapturePlan(`<img src="docs/images/${id}-light.png">`), /Unexpected screenshot location/);
+  }
+  assert.throws(() => createCapturePlan('<img src="images/icon.png"><source srcset="images/demo-poster-dark.png"><img src="images/demo-poster.png">'), /no screenshot references/);
 });
 
 test("all README languages retain matching published pairs alongside the separate v2 inventory", () => {
-  const expected = files(createCapturePlan(readme("README.md")));
-  assert.equal(expected.length, 48);
+  const plan = createCapturePlan(readme("README.md"));
+  const expected = files(plan);
+  assert.equal(plan.length, 27);
   for (const file of ["README.md", "README.zh-CN.md", "README.ja.md"]) {
     const content = readme(file);
     assert.deepEqual(files(createCapturePlan(content)), expected);
     const pictures = [...content.matchAll(/<picture>([\s\S]*?)<\/picture>/g)];
-    assert.equal(pictures.filter(match => match[1].includes("docs/images/")).length, 22);
+    assert.equal(pictures.filter(match => match[1].includes("docs/images/")).length, plan.filter(group => group.light.startsWith("docs/images/")).length);
+    assert.equal(pictures.length, plan.length + 1);
     for (const [, picture] of pictures) {
       const dark = picture.match(/<source media="\(prefers-color-scheme: dark\)" srcset="([^"]+-dark\.png)">/);
-      const light = picture.match(/<img[^>]+src="([^"]+-light\.png)">/);
+      const light = picture.match(/<img[^>]+src="([^"]+(?:-light\.png|\/demo-poster\.png))">/);
       assert.ok(dark && light, `${file} has a light fallback and a dark source`);
-      assert.equal(dark[1].replace(/-dark\.png$/, ""), light[1].replace(/-light\.png$/, ""));
+      const expectedLight = dark[1] === "images/demo-poster-dark.png"
+        ? "images/demo-poster.png" : dark[1].replace(/-dark\.png$/, "-light.png");
+      assert.equal(light[1], expectedLight);
     }
   }
   const actual = ["images", "docs/images"].flatMap(directory =>
     readdirSync(resolve(root, directory)).map(file => `${directory}/${file}`)).sort();
-  assert.deepEqual(actual, [...new Set([...expected, ...files(readmeV2Groups), demoCapture.light])].sort());
+  const extraImages = ["icon.png", "demo.mp4", "demo-poster.png", "demo-poster-dark.png", "compare-light.png", "compare-dark.png"].map(file => `images/${file}`);
+  assert.deepEqual(actual, [...new Set([...expected, ...files(readmeV2Groups), demoCapture.light, ...extraImages])].sort());
 });
 
 test("v2 stills retain the required filenames, viewport sizes, and pixel densities", () => {
+  const hero = readmeV2Groups.find(group => group.id === "hero");
+  assert.deepEqual(hero.viewport, { width: 1440, height: 900 });
+  assert.equal(hero.deviceScaleFactor, 1);
   for (const group of readmeV2Groups) {
     for (const theme of ["light", "dark"]) {
       const png = readFileSync(resolve(root, group[theme]));
@@ -49,30 +64,41 @@ test("v2 stills retain the required filenames, viewport sizes, and pixel densiti
       assert.equal(png.readUInt32BE(20), group.viewport.height * group.deviceScaleFactor, group[theme]);
     }
   }
+  for (const id of ["fold-compare", "step-details", "find", "quote"]) {
+    for (const theme of ["light", "dark"]) {
+      const file = `images/${id}-${theme}.png`;
+      const png = readFileSync(resolve(root, file));
+      assert.equal(png.readUInt32BE(0), 0x89504e47, file);
+      assert.equal(png.readUInt32BE(16), hero.viewport.width, file);
+      assert.equal(png.readUInt32BE(20), hero.viewport.height, file);
+    }
+  }
   const gif = readFileSync(resolve(root, demoCapture.light));
   assert.equal(gif.subarray(0, 3).toString(), "GIF");
-  assert.equal(gif.readUInt16LE(6), 1200);
+  assert.equal(demoCapture.width, 1280);
+  assert.equal(demoCapture.height, 800);
+  assert.equal(gif.readUInt16LE(6), demoCapture.width);
+  assert.equal(gif.readUInt16LE(8), demoCapture.height);
   assert.ok(gif.length <= 10_000_000);
 });
 
-test("the hero uses default text size and uniform page scaling inside the 2000px composition", () => {
-  const hero = readmeV2Groups.find(group => group.id === "hero");
-  const { desktop, phone, marginX, marginY, gap } = heroCapture;
-  assert.equal(hero.viewport.width, 2000);
+test("the legacy hero composition uses default text size and uniform page scaling", () => {
+  const { desktop, phone, marginX, marginY, gap, viewport } = heroCapture;
+  assert.equal(viewport.width, 2000);
   assert.equal(marginX, 48);
   assert.equal(marginY, 48);
   assert.equal(gap, 48);
-  assert.equal(desktop.displayWidth + phone.displayWidth + gap + 2 * marginX, hero.viewport.width);
+  assert.equal(desktop.displayWidth + phone.displayWidth + gap + 2 * marginX, viewport.width);
   assert.equal(desktop.deviceScaleFactor, phone.deviceScaleFactor);
   for (const device of [desktop, phone]) {
     assert.equal(device.textScale, 1);
     assert.ok(device.deviceScaleFactor > 1);
-    const atReadmeWidth = device.displayWidth / device.width * 800 / hero.viewport.width;
+    const atReadmeWidth = device.displayWidth / device.width * 800 / viewport.width;
     // At these real compact viewports the authored label is 11px; code is 12px.
     for (const authoredSize of [11, 12]) assert.ok(authoredSize * atReadmeWidth >= 11 && authoredSize * atReadmeWidth <= 12.1);
   }
   const contentHeight = desktop.height * desktop.displayWidth / desktop.width;
-  assert.equal(Math.ceil(contentHeight + 2 * marginY), hero.viewport.height);
+  assert.equal(Math.ceil(contentHeight + 2 * marginY), viewport.height);
 });
 
 test("the synthetic read, edit, test output, and final reply describe the same change", () => {

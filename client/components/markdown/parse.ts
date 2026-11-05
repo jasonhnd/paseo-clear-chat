@@ -23,7 +23,7 @@ export type MdInline =
   | { kind: "emphasis"; spans: MdInline[] }
   | { kind: "strike"; spans: MdInline[] }
   | { kind: "highlight"; spans: MdInline[] }
-  | { kind: "link"; href: string; filePath?: string; spans: MdInline[] };
+  | { kind: "link"; href: string; filePath?: string; inlineCode?: boolean; spans: MdInline[] };
 
 /** One table cell, already reduced to inline runs. */
 export type MdCell = MdInline[];
@@ -540,7 +540,7 @@ function parseInline(src: string, depth = 0, links = true): MdInline[] {
         }
         const code: MdInline = { kind: "codeSpan", text };
         const path = links ? localFilePath(text, true) : null;
-        out.push(path ? { kind: "link", href: path, filePath: path, spans: [code] } : code);
+        out.push(path ? { kind: "link", href: path, filePath: path, inlineCode: true, spans: [code] } : code);
         index = close + run;
         continue;
       }

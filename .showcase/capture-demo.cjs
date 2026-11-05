@@ -5,7 +5,7 @@ const { join } = require("node:path");
 const { execFileSync } = require("node:child_process");
 const assert = require("node:assert/strict");
 
-/** Fixed 1200px stage; the iframe is the real responsive browser viewport. */
+/** The fixed stage contains an iframe that is the real responsive browser viewport. */
 async function captureDemo({ page, origin, work, root, errors, plan, settle, verifyFonts }) {
   const frames = join(work, "frames");
   mkdirSync(frames, { recursive: true });
@@ -13,7 +13,7 @@ async function captureDemo({ page, origin, work, root, errors, plan, settle, ver
   await page.route(`${origin}/stage`, route => route.fulfill({
     contentType: "text/html", body: `<!doctype html><html lang="en"><title>Clear Chat demo</title>
       <body style="margin:0;background:#edf0f5;display:flex;justify-content:center;height:100vh;overflow:hidden">
-      <iframe title="demo-shop conversation" src="/?animate=1&theme=light" style="width:1200px;height:800px;border:0;flex-shrink:0;box-shadow:0 0 0 1px #d5dbe5"></iframe></body></html>`,
+      <iframe title="demo-shop conversation" src="/?animate=1&theme=light" style="width:${plan.width}px;height:${plan.height}px;border:0;flex-shrink:0;box-shadow:0 0 0 1px #d5dbe5"></iframe></body></html>`,
   }));
   await page.goto(`${origin}/stage`);
   const demo = page.frameLocator("iframe");
@@ -84,7 +84,7 @@ async function captureDemo({ page, origin, work, root, errors, plan, settle, ver
     }
     // Cross both responsive breakpoints while the same output remains open.
     if (index >= 204 && index <= 228) {
-      const width = Math.round(1200 - 810 * (index - 204) / 24);
+      const width = Math.round(plan.width - (plan.width - 390) * (index - 204) / 24);
       await page.locator("iframe").evaluate((node, width) => { node.style.width = `${width}px`; }, width);
     }
     if (index === 240) {

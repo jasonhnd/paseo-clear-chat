@@ -1,16 +1,23 @@
 Clear Chat changes how agent conversations look in Paseo, so the answer is easy to find. It does not change what agents do.
 
+It is a display layer, not a provider: every tool kind Paseo reports gets its own card, finished steps fold into one row each, fifteen settings are saved on the host, and the interface text follows English, Simplified Chinese or Japanese.
+
 ## What it does
 
 - Finished steps fold into one short row each: icon, summary and status. The reply that ends a turn stays open.
 - Each tool kind Paseo reports gets its own card, including shell commands, file reads and edits, search, subagents, MCP calls and approvals. Claude, Codex and Hermes calls are all supported.
 - Clicking a folded step shows its details: a bottom sheet on phones, a popover on tablets and a side panel on desktop. Details include the full input and output, and the exit code or duration when the agent reports them.
-- Replies get code highlighting with line numbers, clickable links and file paths, and folding for long code and long prompts.
+- Replies get code highlighting with line numbers, clickable links and file paths, and folding for long code and long prompts. Any message that contains text can be quoted and answered.
 - On a browser or the desktop app, steps can be moved between and opened with the keyboard.
+- The settings page shows the version of the installed build, so a bug report can name it.
+
+## Performance
+
+Measured 2026-11-04 on a 300-step conversation (150 tool calls), three runs per state, on a 4-core, 8 GB cloud test machine with Playwright's Chromium, Clear Chat at commit bcf896b7: first screen 673–843 ms with Clear Chat on, 387–444 ms with it off. Native Paseo is quicker because it folds the whole turn into one row; Clear Chat shows each step, and that is what it is for. The README documents the method and the runner.
 
 ## Setup
 
-Clear Chat 0.15.0.2 needs Paseo 0.14.0 or later. For older hosts, see the [README installation guidance](README.md#install), including the untested Paseo 0.13 commands and the separate Paseo 0.12 instructions.
+Clear Chat 0.15.1.1 needs Paseo 0.14.0 or later. For older hosts, see the [README installation guidance](README.md#install), including the untested Paseo 0.13 commands and the separate Paseo 0.12 instructions.
 
 Installation runs `npm ci` on the daemon host, so Node.js and npm must be available there and the host must be able to reach the npm registry.
 
@@ -29,6 +36,10 @@ Open **Settings → Plugins → Clear Chat** to choose the accent colour, interf
 
 ## Limitations
 
+Clear Chat changes only how Paseo shows a conversation; the README lists every limit with what you can do today and what would have to change upstream. In short:
+
 - Interface text follows the app language in English, Simplified Chinese and Japanese.
 - On the iOS and Android apps, code uses the system monospace font, and hardware keyboard shortcuts for steps are not available.
 - On iOS and iPadOS, text cannot be selected by dragging while the enhanced reply or prompt display is on. Use the Copy buttons instead.
+- Pasted images in your original Hermes agents need the **·CC** provider copy, because Paseo removes the images before a plugin sees them.
+- Removing the plugin deletes its settings; back them up first.

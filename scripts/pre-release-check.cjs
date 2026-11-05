@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 "use strict";
 
-// Run from any directory: node scripts/pre-release-check.cjs [--release-notes file] [old-version ...]
+// Run from any directory: node scripts/pre-release-check.cjs [--release-notes file] [--tag-day YYYY-MM-DD] [old-version ...]
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
@@ -43,7 +43,7 @@ function fail(item, location, message) {
   console.error(`FAIL ${item}: ${location}: ${message}`);
 }
 function read(name, item) {
-  try { return fs.readFileSync(path.join(root, name), "utf8"); }
+  try { return fs.readFileSync(path.resolve(root, name), "utf8"); }
   catch (error) { fail(item, `${name}:1`, error.message); return null; }
 }
 function parse(name) {
@@ -89,17 +89,32 @@ descriptions.forEach(([label, description], i) => {
   compare("paseo-plugin.json", descriptionLines[i], label + " prefix", match?.[1], version,
     Boolean(match && match[2].trim() && !/^v\S+\s*·/.test(match[2]) && typeof version === "string"));
 });
+const changelog = read("CHANGELOG.md", "version consistency");
+if (changelog !== null) {
+  const heading = /^## \[((?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*)){2,})\]/m.exec(changelog);
+  if (!heading) fail("version consistency", "CHANGELOG.md:1", "cannot find a version heading");
+  else {
+    const line = changelog.slice(0, heading.index).split("\n").length;
+    console.log(`CHANGELOG.md:${line} version heading: ${JSON.stringify(heading[1])}`);
+    if (typeof version === "string" && heading[1] !== version) {
+      fail("version consistency", `CHANGELOG.md:${line}`, `version heading ${JSON.stringify(heading[1])} differs from package.json:${pkgLine || 1} version ${JSON.stringify(version)}`);
+    }
+  }
+}
 
 console.log("\nStale version scan");
-const changelog = read("CHANGELOG.md", "stale version scan");
 const versions = [];
 let releaseNotes;
+let tagDay;
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i++) {
-  if (args[i] !== "--release-notes") versions.push(args[i]);
-  else if (releaseNotes !== undefined || !args[i + 1] || args[i + 1] === "--release-notes") {
-    fail("release date", "scripts/pre-release-check.cjs:1", "--release-notes requires one file and may only be specified once");
-  } else releaseNotes = args[++i];
+  const option = args[i];
+  if (option !== "--release-notes" && option !== "--tag-day") versions.push(option);
+  else if ((option === "--release-notes" ? releaseNotes : tagDay) !== undefined ||
+    !args[i + 1] || args[i + 1].startsWith("--")) {
+    fail("release date", "scripts/pre-release-check.cjs:1", `${option} requires one ${option === "--tag-day" ? "date" : "file"} and may only be specified once`);
+  } else if (option === "--release-notes") releaseNotes = args[++i];
+  else tagDay = args[++i];
 }
 if (!versions.length && changelog !== null) {
   const releases = [...changelog.matchAll(/^## \[([^\]]+)\]/gm)].map(match => match[1]);
@@ -153,8 +168,57 @@ function checkUnreleased(name, contents, onlyCurrentHeading = false) {
     if (marker) fail("release date", `${name}:${i + 1}`, `found ${JSON.stringify(marker[0])}`);
   });
 }
+function validDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value.startsWith("0000-")) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value;
+}
+function tokyoToday() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+function checkDate(name, line, value, expected, expectedLabel) {
+  const location = `${name}:${line}`;
+  if (!validDate(value)) {
+    fail("release date", location, `invalid or missing date ${JSON.stringify(value || "<missing>")}; ${expectedLabel} is ${JSON.stringify(expected)}`);
+    return false;
+  }
+  if (expected && value !== expected) {
+    fail("release date", location, `date ${JSON.stringify(value)} differs from ${expectedLabel} ${JSON.stringify(expected)}`);
+  }
+  return true;
+}
+tagDay ??= tokyoToday();
+const validTagDay = validDate(tagDay);
+if (!validTagDay) fail("release date", "scripts/pre-release-check.cjs:1", `invalid tag day ${JSON.stringify(tagDay)}; expected YYYY-MM-DD`);
 checkUnreleased("CHANGELOG.md", changelog, true);
-if (releaseNotes !== undefined) checkUnreleased(releaseNotes, read(releaseNotes, "release date"));
+let changelogDate;
+let changelogLine = 1;
+if (changelog !== null) {
+  const lines = changelog.split("\n");
+  const index = lines.findIndex(line => /^## \[([^\]]+)\]/.exec(line)?.[1] === version);
+  if (index >= 0) {
+    changelogLine = index + 1;
+    changelogDate = /^## \[[^\]]+\] - (\S+)\s*$/.exec(lines[index])?.[1];
+  }
+  checkDate("CHANGELOG.md", changelogLine, changelogDate || "", validTagDay ? tagDay : "", "tag day");
+}
+if (releaseNotes !== undefined) {
+  const notes = read(releaseNotes, "release date");
+  checkUnreleased(releaseNotes, notes);
+  if (notes !== null) {
+    const lines = notes.split("\n");
+    const index = lines.findIndex(line => /^\s*(?:[-*]\s+)?(?:\*\*)?Release date(?:\*\*)?\s*:/i.test(line));
+    const line = index < 0 ? 1 : index + 1;
+    const date = index < 0 ? "" : /^\s*(?:[-*]\s+)?(?:\*\*)?Release date(?:\*\*)?\s*:\s*(?:\*\*)?(\S+?)(?:\*\*)?\s*$/i.exec(lines[index])?.[1] || "";
+    if (checkDate(releaseNotes, line, date, validTagDay ? tagDay : "", "tag day") && changelogDate && validDate(changelogDate) && date !== changelogDate) {
+      fail("release date", `${releaseNotes}:${line}`, `date ${JSON.stringify(date)} differs from CHANGELOG.md:${changelogLine} date ${JSON.stringify(changelogDate)}`);
+    }
+  }
+}
 if (!failed.has("release date")) console.log("PASS release date");
 
 console.log("\nVerification");

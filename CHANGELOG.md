@@ -4,7 +4,45 @@ All notable changes to Clear Chat are listed here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and each version is the Paseo version it is built and tested for plus one number that counts Clear Chat's releases for that Paseo version, for example 0.12.0.1 for the first release for Paseo 0.12.0. Releases 1.0.0 and 1.0.1 came out before this rule.
 
-## [0.15.0.2] - 2026-11-03
+## [0.15.1.1] - 2026-11-05
+
+### Added
+
+- A file path written in inline code in a reply now opens the file, the same way a path in running text does. Only a single path counts (a bare word, text with spaces or a web address stays plain text), and the file must exist inside the agent's workspace; a path to a missing file, or outside the workspace, or through a symbolic link that leaves the workspace, opens nothing and shows the existing "could not be opened" message. Copying a reply still copies the original Markdown unchanged, and paths in tool cards, code blocks and explicit Markdown links keep their current behaviour ([issue #163](https://github.com/jasonhnd/paseo-clear-chat/issues/163), [PR #165](https://github.com/jasonhnd/paseo-clear-chat/pull/165)).
+
+### Changed
+
+- A path with spaces written in inline code in a reply is no longer a link (it used to be); write it as a Markdown link instead. A single path without spaces is a link ([issue #163](https://github.com/jasonhnd/paseo-clear-chat/issues/163), [PR #165](https://github.com/jasonhnd/paseo-clear-chat/pull/165)).
+- The settings page version line has a clear hierarchy: the installed version stands out from its label, the note under it is narrower so the Chinese text no longer ends on a very short last line, and the accent colour card no longer has a black border on top ([issue #147](https://github.com/jasonhnd/paseo-clear-chat/issues/147), [PR #164](https://github.com/jasonhnd/paseo-clear-chat/pull/164)).
+- The quote panel shows the quoted message as Markdown, with a vertical bar on its left that marks it as a quotation. The text that is sent does not change: it is still the raw quoted text prefixed with `> ` ([issue #166](https://github.com/jasonhnd/paseo-clear-chat/issues/166), [PR #169](https://github.com/jasonhnd/paseo-clear-chat/pull/169)).
+- The quote panel uses the conversation font, so bold text is visible on machines whose system font has no bold face, and it follows the Clear Chat font setting ([issue #172](https://github.com/jasonhnd/paseo-clear-chat/issues/172), [PR #175](https://github.com/jasonhnd/paseo-clear-chat/pull/175)).
+- The time in a prompt's header uses the same format as the reply footer: it follows the locale, has no seconds, and shows the weekday or date for older messages. Before, the prompt header always printed a 24-hour time with seconds, so the two disagreed within one conversation ([issue #170](https://github.com/jasonhnd/paseo-clear-chat/issues/170), [PR #178](https://github.com/jasonhnd/paseo-clear-chat/pull/178)).
+- In a Hermes·CC conversation, a command step is now shown as a shell step, the same as with the base Hermes provider: the command sits in a terminal frame, and the step details show the command, its output and its exit code. When the command fails, the Error line reads "Command exited with code N". The bold asterisks around the labels of Hermes' result in the output are gone, as with the base provider. The wrapper itself (the "terminal result" and "exit_code" lines) is still part of the Output, and Copy gives the original text ([issue #184](https://github.com/jasonhnd/paseo-clear-chat/issues/184), [issue #187](https://github.com/jasonhnd/paseo-clear-chat/issues/187); [PR #185](https://github.com/jasonhnd/paseo-clear-chat/pull/185), [PR #188](https://github.com/jasonhnd/paseo-clear-chat/pull/188)).
+
+### Fixed
+
+- A reasoning card with one step or one token reads "1 step" and "1 token" in English instead of "1 steps". The Chinese and Japanese text is unchanged ([issue #167](https://github.com/jasonhnd/paseo-clear-chat/issues/167), [PR #182](https://github.com/jasonhnd/paseo-clear-chat/pull/182)).
+- A failed shell step with a non-zero exit code now reads "Command exited with code N" on its Error line and in Copy error (in English, Chinese and Japanese) instead of "Tool call failed", when the provider gave no error text. Steps with a zero or missing exit code, other tools, and steps that carry a real error text keep their current message ([issue #168](https://github.com/jasonhnd/paseo-clear-chat/issues/168), [issue #180](https://github.com/jasonhnd/paseo-clear-chat/issues/180); [PR #173](https://github.com/jasonhnd/paseo-clear-chat/pull/173), [PR #181](https://github.com/jasonhnd/paseo-clear-chat/pull/181), [PR #185](https://github.com/jasonhnd/paseo-clear-chat/pull/185)).
+
+### Internal
+
+- The pre-release check now fails when the version in `package.json`, the lockfile or the manifest differs from the changelog heading ([issue #161](https://github.com/jasonhnd/paseo-clear-chat/issues/161), [PR #162](https://github.com/jasonhnd/paseo-clear-chat/pull/162)), and when the release date in the changelog heading or the release notes is not the tag day in Japan Standard Time; `--tag-day YYYY-MM-DD` sets the tag day explicitly ([issue #176](https://github.com/jasonhnd/paseo-clear-chat/issues/176), [PR #179](https://github.com/jasonhnd/paseo-clear-chat/pull/179)).
+
+### Compatibility
+
+- Clear Chat 0.15.1.1 is the Clear Chat release for Paseo 0.15.1. Paseo 0.15.1 fixes one problem: on Windows machines where PowerShell 5.1 cannot run `Get-CimInstance`, the daemon did not start when the terminal worker could not read its own process identity. It does not change the plugin interface: `@getpaseo/plugin` and `@getpaseo/client` are byte-for-byte the same as in Paseo 0.15.0, so no export is added or removed, and Clear Chat's behaviour does not change because of it. Clear Chat was installed on a Paseo 0.15.1 host and the following were spot-checked there: the settings page version line, failed and successful command steps, a one-step reasoning card, the quote panel, file paths in inline code and the time format; the full regression suite and the type check pass. The other host-side acceptance items are recorded as not checked, not as passed.
+
+### Upgrading
+
+- Update an existing installation with `paseo plugin update clear-chat --ref v0.15.1.1`; the plugin reloads on its own and the Paseo daemon is not restarted. Removing a plugin also removes its settings, so back them up before removing.
+- With a directory install, the version shown on the settings page is the version metadata already in that directory, so it can show an older release than the one you installed.
+
+### Known limitations
+
+- Selecting text on a real iPhone, and an entry point for Rewind, have not been verified and are not part of this release.
+- The limitations listed in the first release for Paseo 0.15.0 still apply.
+
+## [0.15.0.2] - 2026-11-04
 
 ### Changed
 
@@ -243,6 +281,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.15.1.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.0.2...v0.15.1.1
 [0.15.0.2]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.0.1...v0.15.0.2
 [0.15.0.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.14.0.4...v0.15.0.1
 [0.14.0.4]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.14.0.3...v0.14.0.4

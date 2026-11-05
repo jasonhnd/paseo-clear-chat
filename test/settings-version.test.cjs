@@ -7,6 +7,12 @@ const { tmpdir } = require("node:os");
 const { settingsVersion } = require("../scripts/settings-version.cjs");
 const packageVersion = require("../package.json").version;
 
+function inlineText(node) {
+  if (Array.isArray(node)) return node.map(inlineText).join("");
+  if (node == null || typeof node === "boolean") return "";
+  return typeof node === "object" ? inlineText(node.props?.children) : String(node);
+}
+
 const versionNotes = {
   en: "This is the version of the build this install was made from. A directory install keeps the version metadata already in that directory, so it can show an older release.",
   ja: "これは、このインストールの元になったビルドのバージョンです。ディレクトリからのインストールでは、そのディレクトリにあるバージョン情報がそのまま使われるため、古いリリースのバージョンが表示されることがあります。",
@@ -54,7 +60,7 @@ for (const [locale, label] of [["en", "Clear Chat version"], ["zh-CN", "Clear Ch
       const tree = h.draw({ type: screen.Component, props: { theme: { colors: {} } } });
       const rows = h.nodes(tree, node => node.props.testID === "installed-version");
       assert.equal(rows.length, 1);
-      assert.equal(h.text(rows[0]), `${label} ${version}`);
+      assert.equal(inlineText(rows[0]), `${label} ${version}`);
     });
   }
 }
@@ -64,7 +70,7 @@ for (const [locale, label, unknown] of [["en", "Clear Chat version", "Unknown"],
     const h = createToolHarness("ios", { locale, settingsPage: true, directoryInstall: "1.0.0.0" });
     t.after(() => h.unmount());
     const tree = h.draw({ type: h.settingsScreens.get("chat-presentation").Component, props: { theme: { colors: {} } } });
-    assert.equal(h.text(h.nodes(tree, node => node.props.testID === "installed-version")[0]), `${label} ${unknown}`);
+    assert.equal(inlineText(h.nodes(tree, node => node.props.testID === "installed-version")[0]), `${label} ${unknown}`);
   });
 }
 
@@ -73,6 +79,6 @@ for (const [problem, raw] of [["missing", new Error("missing")], ["malformed JSO
     const h = createToolHarness("ios", { settingsPage: true, packageVersionText: raw });
     t.after(() => h.unmount());
     const tree = h.draw({ type: h.settingsScreens.get("chat-presentation").Component, props: { theme: { colors: {} } } });
-    assert.equal(h.text(h.nodes(tree, node => node.props.testID === "installed-version")[0]), "Clear Chat version Unknown");
+    assert.equal(inlineText(h.nodes(tree, node => node.props.testID === "installed-version")[0]), "Clear Chat version Unknown");
   });
 }

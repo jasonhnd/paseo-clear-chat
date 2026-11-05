@@ -1,9 +1,11 @@
 import type { AcpStream, AcpStreamMessage } from "@getpaseo/plugin/server/acp";
 import type { ProviderConnection, ProviderEvent, ProviderToolCallDetail } from "@getpaseo/plugin/server/provider";
 import { z } from "zod";
+import { terminalResultOutput } from "../../shared/terminal-result";
 
 type Tool = {
   kind?: string;
+  title?: string;
   input?: unknown;
   output?: unknown;
   content?: unknown[];
@@ -16,10 +18,11 @@ const record = (value: unknown): Record<string, unknown> | undefined =>
     ? value as Record<string, unknown> : undefined;
 const status = (value: string) => value === "pending" || value === "in_progress" ? "running" : value;
 const json = (value: unknown) => z.json().safeParse(value);
+const fallbackError = () => ({ message: "Tool call failed" });
 const normalizeUncorrelatedError = (event: ProviderEvent): ProviderEvent =>
   event.type === "timeline.item" && event.item.type === "tool_call" &&
   event.item.status === "failed" && event.item.error === null
-    ? { ...event, item: { ...event.item, error: { message: "Tool call failed" } } }
+    ? { ...event, item: { ...event.item, error: fallbackError() } }
     : event;
 
 /** One instance per public connector runtime, never per provider or tool title. */
@@ -73,6 +76,7 @@ class ToolRuntime {
     const current = this.calls.get(update.toolCallId);
     const next: Tool = { ...current?.latest, status: current?.latest.status ?? "pending" };
     if (typeof update.kind === "string") next.kind = update.kind;
+    if (typeof update.title === "string") next.title = update.title;
     if (["pending", "in_progress", "completed", "failed"].includes(String(update.status))) next.status = String(update.status);
     // Absent fields keep their values; explicit null raw values replace them.
     if (update.rawInput !== undefined) next.input = structuredClone(update.rawInput);
@@ -147,6 +151,17 @@ class ToolRuntime {
         ...(typeof input?.limit === "number" ? { limit: input.limit } : {}),
       };
     }
+    if (tool.kind === "execute" && detail.type === "unknown") {
+      const fromInput = typeof input?.command === "string" && input.command.trim() ? input.command : undefined;
+      const fromTitle = tool.title?.match(/^terminal:\s*(.*)$/s)?.[1];
+      const command = fromInput ?? (fromTitle?.trim() ? fromTitle : undefined);
+      const detailExitCode = record(detail)?.exitCode;
+      const exitCode = detailExitCode !== undefined ? detailExitCode : output?.exitCode;
+      if (command !== undefined) detail = {
+        type: "shell", command, ...(text !== undefined ? { output: terminalResultOutput(text) as string } : {}),
+        ...(typeof exitCode === "number" || exitCode === null ? { exitCode } : {}),
+      };
+    }
     if (detail.type === "unknown" && text !== undefined && tool.output == null) {
       detail = { ...detail, output: text };
     }
@@ -155,7 +170,7 @@ class ToolRuntime {
     // Textual content is output: never derive an error description from it.
     const explicit = tool.error ?? event.item.error;
     const parsed = json(explicit);
-    const error = parsed.success && parsed.data !== null ? parsed.data : { message: "Tool call failed" };
+    const error = parsed.success && parsed.data !== null ? parsed.data : fallbackError();
     return { ...event, item: { ...event.item, detail, metadata, error } };
   }
 }

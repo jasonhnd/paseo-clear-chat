@@ -20,6 +20,7 @@ interface AssistantFooterProps {
   /** The reply, copied verbatim — the same text the host would copy. */
   text: string;
   at: Date;
+  now?: Date;
   tokens: ExtendedThemeTokens;
   durationMs?: number;
   agentId?: string;
@@ -50,7 +51,7 @@ export function formatReplyTime(date: Date, now: Date = new Date()): string {
   return `${label} ${time}`;
 }
 
-export function AssistantFooter({ text, at, tokens, durationMs, agentId }: AssistantFooterProps) {
+export function AssistantFooter({ text, at, tokens, durationMs, agentId, now }: AssistantFooterProps) {
   const { t } = useTranslation(messages);
   const { copied, handleCopy, fallbackText, setFallbackText } = useCopyText(text);
 
@@ -96,7 +97,7 @@ export function AssistantFooter({ text, at, tokens, durationMs, agentId }: Assis
 
   // The label is recomputed on each render rather than ticked: the footer
   // re-renders whenever the turn does, and a stale minute is not worth a timer.
-  const time = formatReplyTime(at);
+  const time = formatReplyTime(at, now);
 
   return (
     <View testID="reply-footer" style={styles.container}>

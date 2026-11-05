@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
-import { open, stat, type FileHandle } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { open, realpath, stat, type FileHandle } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { revealPathRpc } from "./shared/file-rpc";
@@ -486,11 +486,20 @@ function registerServer(server: PluginServerContext, historyStore: (home: string
     const requested = requestedFile(input.path);
     if (!requested) return { revealed: null, error: "No path" };
 
-    if (!isAbsolute(requested) && !isAbsolute(input.cwd)) {
+    if ((input.workspaceOnly || !isAbsolute(requested)) && !isAbsolute(input.cwd)) {
       return { revealed: null, error: "The session working directory is unavailable." };
     }
     const target = isAbsolute(requested) ? requested : resolve(input.cwd, requested);
     try {
+      if (input.workspaceOnly) {
+        const [root, actual] = await Promise.all([realpath(input.cwd), realpath(target)]);
+        const within = relative(root, actual);
+        if (!within || within === ".." || within.startsWith(`..${sep}`) || isAbsolute(within) || !(await stat(actual)).isFile()) {
+          return { revealed: null, error: "The path is not a file in the workspace." };
+        }
+        if (!input.checkOnly) await revealWithShell(actual, false);
+        return { revealed: actual, error: null };
+      }
       const entry = await stat(target);
       await revealWithShell(target, entry.isDirectory());
       return { revealed: target, error: null };

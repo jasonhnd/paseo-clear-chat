@@ -251,7 +251,8 @@
       "detailsHint": "打开步骤详情"
     },
     "error": {
-      "none": "失败（没有报告错误信息）"
+      "none": "失败（没有报告错误信息）",
+      "commandExit": "命令退出，退出码为 {{code}}"
     },
     "expansion": {
       "prefix": "无法保存或读取工具的展开状态：{{error}}",
@@ -480,7 +481,9 @@
     "summary": "推理摘要",
     "status": "推理",
     "steps": "{{count}} 步",
+    "stepsOne": "{{count}} 步",
     "tokens": "{{count}} 个 token",
+    "tokensOne": "{{count}} 个 token",
     "step": "第 {{number}} 步",
     "stepTitled": "{{number}}. {{title}}",
     "stepSeconds": "{{seconds}} 秒",

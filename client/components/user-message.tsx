@@ -12,6 +12,7 @@ import type { ExtendedThemeTokens } from "./theme-tokens";
 import { selectableSurface } from "./selection";
 import { selectionSurface } from "./selection-actions";
 import { MessageOutput } from "./message-output";
+import { formatReplyTime } from "./turn-footer";
 import type { ToolExpansionIdentity } from "../tool-expansion-store";
 import { promptImageRpc, promptImagesRpc } from "../../shared/prompt-images-rpc";
 
@@ -26,6 +27,8 @@ export interface TurnUsage {
 interface UserMessageProps {
   text: string;
   timestamp?: Date;
+  /** Current time for deterministic timestamp rendering. */
+  now?: Date;
   /** Pasted or attached images, as anything `<Image>` accepts. */
   images?: string[];
   /** Total attachments, including images whose data is unavailable. */
@@ -154,13 +157,6 @@ function fitFrame(
   return { width: Math.max(1, Math.round(width)), height: Math.max(1, Math.round(height)) };
 }
 
-function formatClock(value: Date): string {
-  const hh = String(value.getHours()).padStart(2, "0");
-  const mm = String(value.getMinutes()).padStart(2, "0");
-  const ss = String(value.getSeconds()).padStart(2, "0");
-  return `${hh}:${mm}:${ss}`;
-}
-
 /** One labelled figure. A missing count is omitted, never shown as zero. */
 function UsageFigure({
   label,
@@ -194,6 +190,7 @@ function UsageFigure({
 export function UserMessage({
   text,
   timestamp,
+  now,
   images,
   imageCount,
   agentId,
@@ -505,7 +502,7 @@ export function UserMessage({
           </Text>
           {timestamp ? (
             <Text selectable style={styles.clock}>
-              {formatClock(timestamp)}
+              {formatReplyTime(timestamp, now)}
             </Text>
           ) : null}
           <Pressable

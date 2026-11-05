@@ -13,7 +13,21 @@ export function useReplyFilePath(cwd?: string | null) {
   const { width } = useWindowDimensions();
   const [fallbackText, setFallbackText] = useState<string | null>(null);
   const copy = Platform.OS !== "web" || width < DESKTOP_MIN;
-  const openFilePath = async (path: string) => {
+  const openFilePath = async (path: string, workspaceOnly = false) => {
+    if (workspaceOnly) {
+      if (!cwd) {
+        toast.error(t("toast.cwdMissing"));
+        return;
+      }
+      try {
+        const result = await reveal({ cwd, path, workspaceOnly: true, ...(copy ? { checkOnly: true } : {}) });
+        if (!result.revealed) toast.error(t("toast.pathUnopened"));
+        if (!result.revealed || !copy) return;
+      } catch {
+        toast.error(t("toast.pathHostDown"));
+        return;
+      }
+    }
     if (copy) {
       try {
         await copyText(path);

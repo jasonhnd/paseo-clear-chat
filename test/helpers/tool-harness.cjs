@@ -123,7 +123,6 @@ function createToolHarness(platform = "ios", options = {}) {
     "client/components/theme-tokens": { buildThemeTokens: () => tokens, radius: {}, withAlpha: color => color },
     "client/components/selection-actions": { useSelectionActions: noop, selectionCodeText: {}, selectionSurface: {} },
     "client/components/selection": { selectableSurface: {}, unselectable: {} },
-    "client/components/host-font-escape": { hostFontEscape: {} },
     "client/components/prompt-anchor": { promptRowAnchor: () => ({}) },
     "client/components/glyph": { Glyph: props => jsx("Glyph", props) },
     "client/components/motion": { Rotate: passthrough, Glow: passthrough, Pop: passthrough },
@@ -169,7 +168,7 @@ function createToolHarness(platform = "ios", options = {}) {
     };
   }
   if (options.reasoningTrace) delete stubs["client/components/reasoning-trace"];
-  if (options.replyFooter) delete stubs["client/components/turn-footer"];
+  if (options.replyFooter || options.userMessage) delete stubs["client/components/turn-footer"];
   if (options.images) {
     delete stubs["client/image-file"];
     delete stubs["client/components/image-preview"];

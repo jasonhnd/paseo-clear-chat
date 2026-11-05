@@ -13,6 +13,14 @@ export function localFilePath(value: string, explicit = false): string | null {
   return explicit && FILE_END.test(value) ? value : null;
 }
 
+/** Inline code must be a single path token, not a command or a bare word. */
+export function inlineFilePath(value: string): string | null {
+  if (/\s/.test(value) || !value || /[\x00-\x1f<>|"?*'`()\[\]{},;=!]/.test(value)) return null;
+  if (localFilePath(value, true)) return value;
+  if (value.includes(":") || value.startsWith("//") || /^[./~\\]+$/.test(value)) return null;
+  return /[\\/]/.test(value) ? value : null;
+}
+
 export function isAbsoluteFilePath(value: string): boolean {
   return /^(?:\/|~\/|[a-z]:[\\/])/i.test(value);
 }

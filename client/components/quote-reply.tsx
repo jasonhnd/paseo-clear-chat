@@ -3,9 +3,12 @@ import { Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from
 import { useAgent, usePaseo, useTranslation } from "@getpaseo/plugin/client";
 import { Modal, TextInput } from "@getpaseo/plugin/client/ui";
 import { messages } from "../messages";
+import { useEnhancerPreferences } from "../preferences";
 import { copyTouchTarget } from "./copy-feedback";
 import { Glyph } from "./glyph";
-import { radius } from "./theme-tokens";
+import { hostFontEscape } from "./host-font-escape";
+import { MarkdownView } from "./markdown/markdown-view";
+import { radius, withAlpha } from "./theme-tokens";
 import type { ExtendedThemeTokens } from "./theme-tokens";
 
 export function composeQuoteReply(quote: string, reply: string): string {
@@ -17,6 +20,8 @@ export function QuoteReply({ text, agentId, tokens, userMessage = false }: { tex
   const { t } = useTranslation(messages);
   const paseo = usePaseo();
   const status = useAgent(agentId, agent => agent.status);
+  const cwd = useAgent(agentId, agent => agent.cwd);
+  const { markdownVariant } = useEnhancerPreferences();
   const { height } = useWindowDimensions();
   const [quote, setQuote] = useState<string | null>(null);
   const [reply, setReply] = useState("");
@@ -90,7 +95,9 @@ export function QuoteReply({ text, agentId, tokens, userMessage = false }: { tex
               <Text style={{ color: tokens.foreground, fontSize: tokens.fs(13) }}>{t("quote.quoted")}</Text>
               <ScrollView testID="quote-preview" onContentSizeChange={(_, contentHeight) => setQuoteHeight(contentHeight)}
                 style={{ maxHeight: expanded ? Math.max(240, Math.min(480, height * 0.45)) : 180, backgroundColor: tokens.surface0 }}>
-                <Text selectable testID="quote-original" style={{ color: tokens.foreground, padding: 12 }}>{quote}</Text>
+                <View testID="quote-original" {...hostFontEscape} style={{ padding: 12, borderLeftWidth: 2, borderLeftColor: withAlpha(tokens.foregroundMuted, 0.5) }}>
+                  <MarkdownView text={quote} cwd={cwd} tokens={tokens} variant={markdownVariant} />
+                </View>
               </ScrollView>
               {quoteHeight > 180 ? (
                 <Pressable testID="quote-expand" accessibilityRole="button"
