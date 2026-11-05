@@ -84,11 +84,12 @@ function registerClient(client: PluginClientContext) {
   });
 
   // Live chat timeline interception: render real tool calls, reasoning, and todos with enhanced UI.
-  const removeToolTransformer = client.addTimelineTransformer({
+  const toolTransformer: PluginTimelineTransformerContribution<"tool_call"> = {
     id: "omp-enhanced-tool-call",
     query: { itemType: "tool_call" },
     transform({ item, phase }) {
       if (item.type !== "tool_call") return undefined;
+      if (getEnhancerPreferences().delegatedTools.split(",").some((name) => name.trim() !== "" && name.trim() === item.name)) return undefined;
       const approval = projectedApprovalStatus(item);
       if (approval) {
         return {
@@ -122,6 +123,12 @@ function registerClient(client: PluginClientContext) {
         ],
       };
     },
+  };
+  let removeToolTransformer = client.addTimelineTransformer(toolTransformer);
+  // Once saved settings arrive, invalidate the host's cached projections.
+  const stopWaitingForToolSettings = onEnhancerPreferencesReady(() => {
+    removeToolTransformer();
+    removeToolTransformer = client.addTimelineTransformer({ ...toolTransformer });
   });
 
   const removeToolRenderer = client.addTimelineRenderer({
@@ -333,6 +340,7 @@ function registerClient(client: PluginClientContext) {
     removeChatFind();
     removeToolSpacing();
     removeStepDetails();
+    stopWaitingForToolSettings();
     removeToolTransformer();
     removeToolRenderer();
     removeApprovalRenderer();

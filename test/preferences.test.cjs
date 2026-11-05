@@ -530,3 +530,39 @@ test("fold preferences reject invalid limits and ignore legacy browser values", 
     assert.throws(() => h.preferences.updateEnhancerPreferences({ foldLongOutputAfter }));
   }
 });
+
+test("delegated tool names match exactly and survive reload and reset", async () => {
+  const server = host({ legacyMigrated: true });
+  const first = harness();
+  const cleanup = first.contribute(server.rpc);
+  await new Promise(setImmediate);
+  const transform = (client, name) => client.transformers.get("omp-enhanced-tool-call").transform({
+    item: { type: "tool_call", name, status: "completed", callId: name, detail: { type: "shell", command: "true" } },
+    phase: "complete",
+  });
+  for (const name of ["shell", "Shell", "read"]) assert.equal(transform(first, name).items[0].kind, "omp-tool-call");
+  await first.preferences.updateEnhancerPreferences({ delegatedTools: "shell" });
+  assert.equal(transform(first, "shell"), undefined);
+  assert.equal(transform(first, "read").items[0].kind, "omp-tool-call");
+  const value = " shell, , read_file ,";
+  await first.preferences.updateEnhancerPreferences({ delegatedTools: value });
+  assert.equal(server.values.preferences.delegatedTools, value);
+  assert.equal(transform(first, "shell"), undefined);
+  assert.equal(transform(first, "read_file"), undefined);
+  for (const name of ["Shell", "read", ""]) assert.equal(transform(first, name).items[0].kind, "omp-tool-call");
+
+  const fresh = harness();
+  const freshCleanup = fresh.contribute(server.rpc);
+  const initialTransformer = fresh.transformers.get("omp-enhanced-tool-call");
+  await new Promise(setImmediate);
+  assert.notEqual(fresh.transformers.get("omp-enhanced-tool-call"), initialTransformer);
+  assert.equal(fresh.preferences.getEnhancerPreferences().delegatedTools, value);
+  assert.equal(transform(fresh, "shell"), undefined);
+  assert.equal(transform(fresh, "Shell").items[0].kind, "omp-tool-call");
+  await fresh.preferences.resetEnhancerPreferences();
+  assert.equal(fresh.preferences.getEnhancerPreferences().delegatedTools, "");
+  assert.equal(transform(fresh, "shell").items[0].kind, "omp-tool-call");
+  assert.deepEqual(server.values.preferences, {});
+  freshCleanup();
+  cleanup();
+});
