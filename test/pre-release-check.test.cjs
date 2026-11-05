@@ -25,7 +25,7 @@ function fixture(t) {
   for (const name of readmes) {
     const lines = fs.readFileSync(path.join(root, name), "utf8").split("\n").filter(line => line.includes(legacy));
     assert.equal(lines.length, 4);
-    write(name, lines.join("\n") + "\n");
+    write(name, lines.join("\n") + "\nhttps://img.shields.io/badge/Paseo-%3E%3D0.14.0%20%C2%B7%20tested%208.1.0-5b5bd6\n");
   }
   for (const name of ["OVERVIEW.md", "OVERVIEW.zh-CN.md"]) write(name, "fixture\n");
   const bin = path.join(dir, "bin");
@@ -101,17 +101,40 @@ test("explicit scan permits only the exact compatibility lines in their README f
     write(name, original + `stale ${legacy}\n`);
     const stale = run(dir, [legacy]);
     assert.equal(stale.status, 1, name);
-    assert.ok(stale.stderr.includes(`FAIL stale version scan: ${name}:5:`), stale.stderr);
+    assert.ok(stale.stderr.includes(`FAIL stale version scan: ${name}:6:`), stale.stderr);
     write(name, original + original.split("\n")[1] + "\n");
     const duplicate = run(dir, [legacy]);
     assert.equal(duplicate.status, 1, name);
-    assert.ok(duplicate.stderr.includes(`FAIL stale version scan: ${name}:5:`), duplicate.stderr);
+    assert.ok(duplicate.stderr.includes(`FAIL stale version scan: ${name}:6:`), duplicate.stderr);
     write(name, original);
   }
   write("stale.txt", fs.readFileSync(path.join(dir, readmes[0]), "utf8").split("\n")[0] + "\n");
   const copied = run(dir, [legacy]);
   assert.equal(copied.status, 1);
   assert.match(copied.stderr, /FAIL stale version scan: stale\.txt:1:/);
+});
+
+test("host badges must match the package version in every README", t => {
+  const { dir, write } = fixture(t);
+  const clean = run(dir);
+  assert.equal(clean.status, 0, clean.stderr);
+  assert.match(clean.stdout, /PASS host badge/);
+  for (const name of readmes) {
+    const original = fs.readFileSync(path.join(dir, name), "utf8");
+    write(name, original.replace("tested%208.1.0", "tested%208.0.0"));
+    const stale = run(dir);
+    assert.equal(stale.status, 1);
+    assert.ok(stale.stderr.includes(`FAIL host badge: ${name}:5: tested version "8.0.0"; expected "8.1.0"`), stale.stderr);
+    write(name, original.replace(/https:\/\/img\.shields\.io\/badge\/Paseo-[^\n]+/, ""));
+    const missing = run(dir);
+    assert.equal(missing.status, 1);
+    assert.ok(missing.stderr.includes(`FAIL host badge: ${name}:1: Paseo badge not found`), missing.stderr);
+    write(name, original.replace("%20tested%208.1.0", ""));
+    const unversioned = run(dir);
+    assert.equal(unversioned.status, 1);
+    assert.ok(unversioned.stderr.includes(`FAIL host badge: ${name}:5: tested version "<missing>"`), unversioned.stderr);
+    write(name, original);
+  }
 });
 
 test("release date checks only the current changelog heading", t => {
