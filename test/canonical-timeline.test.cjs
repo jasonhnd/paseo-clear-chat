@@ -140,6 +140,16 @@ test("opening while running makes no read; a raced running response leaves the s
   assert.equal(s.requests.at(-1).cursor.seq, 27);
 });
 
+test("provider sub-agents never request a canonical timeline", async t => {
+  const s = source(); t.after(() => s.h.unmount());
+  for (const revision of ["idle:1", "running"]) {
+    const result = await s.read(revision, "sample-host", "provider:parent:child");
+    assert.equal(result.durations.size, 0);
+    assert.equal(result.messages.size, 0);
+  }
+  assert.equal(s.requests.length, 0);
+});
+
 for (const flag of ["reset", "staleCursor", "gap"]) {
   test(`${flag}: a complete replacement read clears old timing and sender identities`, async t => {
     const s = source(); t.after(() => s.h.unmount());
