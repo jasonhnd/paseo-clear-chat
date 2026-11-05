@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=date"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <a href="https://paseo.sh"><img alt="Paseo 0.14.0+" src="https://img.shields.io/badge/Paseo-%3E%3D0.14.0-5b5bd6"></a>
+  <a href="https://paseo.sh"><img alt="Paseo 0.14.0+，已在 0.15.1 上验过" src="https://img.shields.io/badge/Paseo-%3E%3D0.14.0%20%C2%B7%20tested%200.15.1-5b5bd6"></a>
 </p>
 
 <p align="center">
@@ -24,8 +24,6 @@
 <p align="center">
   <img width="800" alt="一段简短的演示：Agent 在一个示例商店项目里修改免运费提示；每一步各占一行并带状态，没通过的测试运行标着退出码" src="images/demo.gif">
 </p>
-
-<p align="center"><sub><a href="images/demo.mp4"><picture><source media="(prefers-color-scheme: dark)" srcset="images/demo-poster-dark.png"><img width="120" alt="" src="images/demo-poster.png"></picture> 画质更高：看 22 秒的视频</a></sub></p>
 
 <p align="center"><sub>所有截图和演示都用示例数据。</sub></p>
 
