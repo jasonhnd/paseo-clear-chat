@@ -16,7 +16,9 @@ const { rowMetrics } = require("./capture-row-metrics.cjs");
 const root = resolve(__dirname, "..");
 const work = mkdtempSync(join(tmpdir(), "clear-chat-capture-"));
 const selected = process.env.SHOWCASE_CAPTURE_ONLY;
-const plan = readmeV2Groups.filter(group => !selected || selected.split(",").some(id => group.id === id || group.id.startsWith(`${id}-`)));
+// The old hero compositor produces a different image size from the published hero.
+if (selected?.split(",").includes("hero")) throw new Error("The legacy hero compositor cannot reproduce the published hero");
+const plan = readmeV2Groups.filter(group => group.id !== "hero" && (!selected || selected.split(",").some(id => group.id === id || group.id.startsWith(`${id}-`))));
 if (selected && selected !== "demo" && selected !== "settings" && !plan.length) throw new Error(`Unknown capture: ${selected}`);
 process.env.TMPDIR = work;
 process.env.TMP = work;
@@ -367,7 +369,7 @@ async function capture() {
       await browser.close(); browser = undefined;
     }
     if (!selected || selected === "demo") {
-      const { page, errors } = await newPage("demo", { width: 1200, height: 800 });
+      const { page, errors } = await newPage("demo", { width: demoCapture.width, height: demoCapture.height });
       await captureDemo({ page, origin, work, root, errors, plan: demoCapture, settle, verifyFonts });
       await browser.close(); browser = undefined;
     }

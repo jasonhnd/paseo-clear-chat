@@ -3,9 +3,11 @@
 // Published documentation and the upcoming README use separate inventories.
 function createCapturePlan(readme) {
   const groups = new Map();
+  const imageIds = new Set(["compare", "hero", "fold-compare", "step-details", "find", "quote"]);
   for (const match of readme.matchAll(/\b(?:src|srcset)="((?:docs\/)?images\/([a-z0-9-]+)-(light|dark)\.png)"/g)) {
     const [, file, id, theme] = match;
-    const directory = id === "compare" || id === "hero" ? "images" : "docs/images";
+    if (file === "images/demo-poster-dark.png") continue;
+    const directory = imageIds.has(id) ? "images" : "docs/images";
     if (file !== `${directory}/${id}-${theme}.png`) throw new Error(`Unexpected screenshot location: ${file}`);
     if (!groups.has(id)) groups.set(id, { id });
     groups.get(id)[theme] = file;
@@ -23,7 +25,7 @@ const pair = (id, width, height, deviceScaleFactor, detail) => ({
   viewport: { width, height }, deviceScaleFactor, detail,
 });
 const readmeV2Groups = [
-  pair("hero", 2000, 1493, 1, "side"),
+  pair("hero", 1440, 900, 1, "side"),
   pair("phone-timeline", 390, 460, 3),
   pair("phone-details", 390, 900, 3, "sheet"),
   pair("phone-menu", 390, 460, 3, "menu"),
@@ -31,6 +33,8 @@ const readmeV2Groups = [
   pair("ipad-side", 1194, 834, 2, "side"),
 ];
 const heroCapture = {
+  // The legacy composition is retained separately from the published hero.
+  viewport: { width: 2000, height: 1493 },
   marginX: 48, marginY: 48, gap: 48,
   desktop: { width: 534, height: 558, displayWidth: 1336, deviceScaleFactor: 2.5, textScale: 1, detailWidth: 240 },
   phone: { width: 208, height: 700, displayWidth: 520, deviceScaleFactor: 2.5, textScale: 1 },
@@ -39,5 +43,5 @@ const phoneGroups = readmeV2Groups.filter(group => group.id.startsWith("phone-")
 function withPhoneGroups(groups) {
   return [...groups, ...phoneGroups.filter(phone => !groups.some(group => group.id === phone.id))];
 }
-const demoCapture = { id: "demo", light: "images/demo.gif", width: 1200, height: 800, fps: 12, seconds: 26 };
+const demoCapture = { id: "demo", light: "images/demo.gif", width: 1280, height: 800, fps: 12, seconds: 26 };
 module.exports = { createCapturePlan, readmeV2Groups, withPhoneGroups, phoneGroups, demoCapture, heroCapture };
