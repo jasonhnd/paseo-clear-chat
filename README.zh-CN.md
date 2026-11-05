@@ -369,21 +369,24 @@ Clear Chat 只改变 Paseo 显示对话的方式。下面每一条都是插件�
 
 | 做不到 | 现在怎么办 | 在等谁 |
 | --- | --- | --- |
-| 在原来的 Hermes Agent 里显示粘贴的图片 | 新建 Agent 时选提供商的 **·CC** 版本，它自己保存图片 | Paseo 在剥掉图片之前先交给插件（上游未开放） |
-| 使用 Paseo 自己的 Markdown | 要显示 mermaid、图片和宿主的文件路径链接时，关掉 **助手 Markdown** | 插件 SDK 开放宿主的 Markdown 渲染器 |
-| 在手机应用里用硬件键盘 | 浏览器和桌面应用里可以用键盘操作步骤 | 插件 SDK 提供原生按键事件 |
-| 在手机应用里跟随 Paseo 的代码字体 | iOS／iPadOS 用 Menlo，Android 用系统等宽字体 | SDK 开放读取宿主字体设置 |
-| 在 iOS／iPadOS 上拖选文字 | 开着 **助手 Markdown** 和 **增强提问气泡**，用 **复制** 按钮 | Paseo 允许在插件绘制的文字里选中 |
-| Agent 没报耗时的时候显示这一步用了多久 | 不用做什么：这一行就不显示时间 | 供应商通过 ACP 上报耗时 |
-| 让 Paseo 的整轮折叠把 Clear Chat 画的内容也折进去 | 用 Clear Chat 自己的折叠，以及 **点开折叠的步骤时** 这一项 | Paseo 把插件内容纳入整轮折叠 |
-| 跟随 Paseo 的文字大小 | 用 Clear Chat 自己的 **文字大小** | 同上一条的上游改动 |
-| 搜索还没加载的消息 | 先向上滚把旧消息加载出来，再搜一次 | 未加载历史的搜索接口 |
-| 从某条消息分叉对话（Fork chat from here） | 到 **Settings → Plugins** 关掉 Clear Chat，用 Paseo 自己的消息菜单 | Paseo 的插件 API 开放这些 Agent 动作 |
-| 复制整轮（Copy turn） | 同上：关掉 Clear Chat 后用 Paseo 自己的 **Copy turn** | 同一条插件 API |
-| 用 Paseo 菜单复制单条消息 | Clear Chat 画这条消息时，用它的 **复制** 按钮 | 同一条插件 API |
-| 从某条消息回退（Rewind） | 关掉 Clear Chat，用 Paseo 自己的回退 | 同一条插件 API |
-| 关掉 Clear Chat 后打开 **·CC** 对话 | 把 Clear Chat 重新打开：这段对话的保存记录是 Clear Chat 写的 | Paseo 能读插件写下的对话历史 |
-| 卸载插件后还留着设置 | 卸载前先备份；卸载会把插件设置一起删掉 | Paseo 在卸载时保留插件设置 |
+| 在原来的 Hermes Agent 里显示粘贴的图片 | 新建 Agent 时选提供商的 **·CC** 版本，它自己保存图片 | Paseo 在剥掉图片之前先交给插件（上游未开放）（[#8257](https://github.com/getpaseo/paseo/discussions/8257)、[#6736](https://github.com/getpaseo/paseo/pull/6736)、[#4556](https://github.com/getpaseo/paseo/issues/4556)） |
+| 使用 Paseo 自己的 Markdown | 要显示 mermaid、图片和宿主的文件路径链接时，关掉 **助手 Markdown** | 插件 SDK 开放宿主的 Markdown 渲染器（官方暂无对应条目，截至 2026-11-05） |
+| 在手机应用里用硬件键盘 | 浏览器和桌面应用里可以用键盘操作步骤 | 插件 SDK 提供原生按键事件（官方暂无对应条目，截至 2026-11-05） |
+| 在手机应用里跟随 Paseo 的代码字体 | iOS／iPadOS 用 Menlo，Android 用系统等宽字体 | SDK 开放读取宿主字体设置（[#6600](https://github.com/getpaseo/paseo/discussions/6600)） |
+| 在 iOS／iPadOS 上拖选文字 | 开着 **助手 Markdown** 和 **增强提问气泡**，用 **复制** 按钮 | Paseo 允许在插件绘制的文字里选中（官方暂无对应条目，截至 2026-11-05） |
+| Agent 没报耗时的时候显示这一步用了多久 | 不用做什么：这一行就不显示时间 | 供应商通过 ACP 上报耗时（官方暂无对应条目，截至 2026-11-05） |
+| 让 Paseo 的整轮折叠把 Clear Chat 画的内容也折进去 | 用 Clear Chat 自己的折叠，以及 **点开折叠的步骤时** 这一项 | Paseo 把插件内容纳入整轮折叠（[#8842](https://github.com/getpaseo/paseo/issues/8842)、[#8811](https://github.com/getpaseo/paseo/pull/8811)） |
+| 跟随 Paseo 的文字大小 | 用 Clear Chat 自己的 **文字大小** | Paseo 让插件跟随应用的字体大小设置（[#5642](https://github.com/getpaseo/paseo/discussions/5642)） |
+| 搜索还没加载的消息 | 先向上滚把旧消息加载出来，再搜一次 | 未加载历史的搜索接口（官方暂无对应条目，截至 2026-11-05） |
+| 从某条消息分叉对话（Fork chat from here） | 到 **Settings → Plugins** 关掉 Clear Chat，用 Paseo 自己的消息菜单 | Paseo 的插件 API 开放这些 Agent 动作（[#7462](https://github.com/getpaseo/paseo/pull/7462)、[#8290](https://github.com/getpaseo/paseo/discussions/8290)） |
+| 复制整轮（Copy turn） | 同上：关掉 Clear Chat 后用 Paseo 自己的 **Copy turn** | 同一条插件 API（[#8290](https://github.com/getpaseo/paseo/discussions/8290)） |
+| 用 Paseo 菜单复制单条消息 | Clear Chat 画这条消息时，用它的 **复制** 按钮 | 同一条插件 API（[#8290](https://github.com/getpaseo/paseo/discussions/8290)） |
+| 从某条消息回退（Rewind） | 关掉 Clear Chat，用 Paseo 自己的回退 | 同一条插件 API（[#6676](https://github.com/getpaseo/paseo/discussions/6676)） |
+| 在远程客户端（手机，或另一台机器上的浏览器）上点路径打开文件 | 文件会在运行 Paseo daemon 的那台机器的文件管理器里打开，不会在你的设备上打开；改为复制路径（步骤菜单里的 **复制路径**） | Paseo 让插件的行在它自己的文件面板里打开文件（[#7317](https://github.com/getpaseo/paseo/discussions/7317)、[#7318](https://github.com/getpaseo/paseo/pull/7318)） |
+| 关掉 Clear Chat 后打开 **·CC** 对话 | 把 Clear Chat 重新打开：这段对话的保存记录是 Clear Chat 写的 | Paseo 能读插件写下的对话历史（官方暂无对应条目，截至 2026-11-05） |
+| 卸载插件后还留着设置 | 卸载前先备份；卸载会把插件设置一起删掉 | Paseo 在卸载时保留插件设置（官方暂无对应条目，截至 2026-11-05） |
+
+编号是 Paseo 官方仓库（`getpaseo/paseo`）里的 issue、PR 和讨论，进度以官方为准；清单截至 2026-11-05。
 
 ## 隐私与主机上的数据
 
