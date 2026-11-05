@@ -28,6 +28,7 @@ export const preferenceOverridesSchema = z.object({
   foldFinishedSteps: z.boolean().optional(),
   collapsedStepAction: z.enum(["details", "inline"]).optional(),
   foldLongOutputAfter: z.union([z.literal(10), z.literal(15), z.literal(30), z.literal("never")]).optional(),
+  delegatedTools: z.string().optional(),
 });
 
 const presentationSchema = z.object({

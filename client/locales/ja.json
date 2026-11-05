@@ -1,5 +1,9 @@
 {
   "settings": {
+    "delegatedTools": {
+      "label": "これらのツールを他のプラグインに任せる",
+      "description": "ツール名をカンマ区切りで入力してください。大文字と小文字は区別されます。"
+    },
     "hermesCc": {
       "label": "Hermes·CC プロバイダー",
       "description": "設定済みの Hermes ACP プロバイダーに Hermes·CC 版を追加し、プロンプトに貼り付けた画像を Clear Chat に保存します。適用するにはホストを再読み込みしてください。",

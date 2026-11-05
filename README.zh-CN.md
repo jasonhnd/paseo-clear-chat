@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=date"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <a href="https://paseo.sh"><img alt="Paseo 0.14.0+，已在 0.15.1 上验过" src="https://img.shields.io/badge/Paseo-%3E%3D0.14.0%20%C2%B7%20tested%200.15.1-5b5bd6"></a>
+  <a href="https://paseo.sh"><img alt="Paseo 0.14.0+，已在 0.15.2 上验过" src="https://img.shields.io/badge/Paseo-%3E%3D0.14.0%20%C2%B7%20tested%200.15.2-5b5bd6"></a>
 </p>
 
 <p align="center">
@@ -33,31 +33,29 @@
 - **哪一步都能点开看。** 步骤的完整输入、输出和报错，在桌面上显示在侧边面板，在 iPad 上是浮出的小窗，在手机上从底部弹出，长输出不会把对话撑开。见[手机和 iPad](#手机和-ipad)。
 - **每种工具都有卡片。** Claude、Codex、Hermes 的调用都有像样的卡片。Paseo 报告的每种工具类型都有自己的卡片，`skill_view`、`memory` 等 Hermes 工具也有专门的显示。见[功能](#功能)。
 - **跟着你的语言。** Clear Chat 自己的界面文字跟随 Paseo 应用的语言：英文、简体中文或日文。
-- **按你的习惯调。** 一共 15 项设置：强调色、界面与代码字体、文字大小、折叠方式、已安装版本等等。设置保存在主机上，连到这台主机的设备都共用。见[设置](#设置)。
+- **按你的习惯调。** 一共 16 项设置：强调色、界面与代码字体、文字大小、折叠方式、已安装版本等等。设置保存在主机上，连到这台主机的设备都共用。见[设置](#设置)。
 - **不拖慢。** 在 4 核云机器的 300 步测试里，Clear Chat 的首屏是 673–843 毫秒；关掉 Clear Chat、用 Paseo 原生显示是 387–444 毫秒，因为原生把整轮折成一行，不逐步显示。测法见[性能](#性能)。<sup>1</sup>
 - **引用回复。** 在含文字的消息上点引用图标，把回复作为引用块发出去。
 
 <sub>1. 在一台机器上用无头 Google Chrome 跑 5 次取中位数。你的结果会不一样。测法见 [scripts/perf/README.md](scripts/perf/README.md)（英文）。</sub>
 
-## 这一版新增（0.15.1.1）
+## 这一版新增（0.15.2.1）
 
-- **设置页的版本行更好读了。** 已安装的版本号和它的标签区分得开；下面那行说明变窄了，中文不再让最后一行只剩一两个字；强调色卡片顶部也没有了黑色粗边（[#147](https://github.com/jasonhnd/paseo-clear-chat/issues/147)）。
-- **行内代码里的文件路径可以点开。** 回复里用行内代码写的路径，点一下就像正文里的路径一样打开那个文件（见下面的 **打开文件**）。它必须是单个路径，并且是 Agent 工作区里真实存在的文件；文件不存在或在工作区外，只会弹出打不开的提示。**复制** 仍然复制原文。行内代码里含空格的路径不再是链接（以前是），请改写成 Markdown 链接。（[#163](https://github.com/jasonhnd/paseo-clear-chat/issues/163)）。
-- **引用面板和被引用的消息长得一样。** 被引用的消息按 Markdown 显示，左边有一条竖线，字体与对话一致，加粗看得出来；发出去的文字不变（[#166](https://github.com/jasonhnd/paseo-clear-chat/issues/166)、[#172](https://github.com/jasonhnd/paseo-clear-chat/issues/172)）。
-- **提问的时间和回复脚注格式一致。** 提问头部的时间现在和回复下面的脚注用同一种格式：跟随你的语言地区、不带秒，较早的消息显示星期或日期（[#170](https://github.com/jasonhnd/paseo-clear-chat/issues/170)）。
-- **「1 step」「1 token」。** 推理卡片只有一步或一个 token 时，英文界面现在写「1 step」「1 token」，不再是「1 steps」；中文和日文界面不变（[#167](https://github.com/jasonhnd/paseo-clear-chat/issues/167)）。
-- **失败的 shell 步骤会写出退出码。** shell 步骤以非 0 的退出码失败、而供应商没有给出错误文字时，Error 一行和 **复制错误** 现在写「Command exited with code N」（中文、日文界面显示对应译文），不再是「Tool call failed」（[#168](https://github.com/jasonhnd/paseo-clear-chat/issues/168)、[#180](https://github.com/jasonhnd/paseo-clear-chat/issues/180)）。
-- **Hermes·CC 里的命令步骤按 shell 步骤显示。** 在 Hermes·CC 的对话里，命令步骤现在和基础 Hermes 一样按 shell 步骤显示：终端框里是命令，步骤详情里有命令、输出和退出码；命令失败时，Error 一行写「Command exited with code N」。输出里 Hermes 结果外层标签上的加粗星号也去掉了，和基础 Hermes 一致。外层的包络（「terminal result」「exit_code」几行）仍保留在 Output 里，复制出来也是原文（[#184](https://github.com/jasonhnd/paseo-clear-chat/issues/184)、[#187](https://github.com/jasonhnd/paseo-clear-chat/issues/187)）。
+- **含 `ui` 或 `app` 代码块的回复，交给画这种块的插件。** 如果你装了会把 `ui` 或 `app` 代码块画成组件的插件（例如生成式界面插件），这类回复现在由那个插件来画，不再显示成代码。围栏的第一个词是 `ui` 或 `app` 就算；嵌套在别的代码块里的围栏不算。取舍：没装这类插件时，这类回复由 Paseo 自己来画，Clear Chat 的样式对它们不生效（[#206](https://github.com/jasonhnd/paseo-clear-chat/issues/206)）。
+- **新设置：将这些工具交给其他插件（Leave these tools to other plugins）。** 填工具名，用逗号分隔，Clear Chat 就不画这些工具的行，别的插件可以画。名称精确匹配，区分大小写。默认是空的，你不填，什么都不变（[#207](https://github.com/jasonhnd/paseo-clear-chat/issues/207)）。
+- **「做不到的事」表每一行都带了官方编号。** 每行都写出 Paseo 官方仓库里对应的 issue、PR 或讨论，点进去能看官方的进度；还新增一行：在远程客户端（例如手机）上点路径打开文件（[#204](https://github.com/jasonhnd/paseo-clear-chat/issues/204)）。
+- **打开子 Agent 窗格时，宿主日志里不再报「Agent not found」。** Clear Chat 不再向宿主请求子 Agent 窗格那个合成 id 的时间线（[#210](https://github.com/jasonhnd/paseo-clear-chat/issues/210)）。
+- **README 首屏只用演示 GIF，并写出验过的 Paseo 版本。** 顶部的徽章写明了这个版本（[#199](https://github.com/jasonhnd/paseo-clear-chat/issues/199)）。
 
 ## 安装
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.1.1
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.2.1
 ```
 
 打开 Paseo 的插件页面，在 Clear Chat 的说明开头查看版本号。Paseo 0.14.0 在这里显示默认英文说明，即使切换应用语言也是如此。
 
-Clear Chat 0.15.1.1 需要 Paseo 0.14.0 或更新的版本。打开 **Settings → Plugins → Clear Chat**，可以选颜色、字体和折叠方式。
+Clear Chat 0.15.2.1 需要 Paseo 0.14.0 或更新的版本。打开 **Settings → Plugins → Clear Chat**，可以选颜色、字体和折叠方式。
 
 以后要更新：
 
@@ -106,7 +104,7 @@ Clear Chat 的版本号＝这一版对应、测过的 Paseo 版本，再加一�
 ```bash
 paseo plugin update clear-chat                 # 跟 main 上的最新版，改之前会问
 paseo plugin update clear-chat --yes           # 同上，不再问
-paseo plugin update clear-chat --ref v0.15.1.1 --yes   # 固定到某个版本
+paseo plugin update clear-chat --ref v0.15.2.1 --yes   # 固定到某个版本
 ```
 
 升级会保留你的设置。回退到更早的版本一般也保留，但某一次回退对设置的影响没有保证，设置重要的话先备份。卸载插件会删掉它的设置。
@@ -290,8 +288,9 @@ Ctrl/Cmd+F 打开查找栏。只搜当前显示出来的文字：折叠的步骤
 | 选中文字后的操作（Selection actions） | 在卡片里选中文字时，会出现一个小工具条，有「复制」和「添加到聊天」。只在桌面和网页上有效。 |
 | 助手回复 Markdown（Assistant markdown） | 用插件自己的标题、列表和代码块显示回复。关掉后，回复交回 Paseo 自己显示。 |
 | Markdown 样式（Markdown style） | 文档（Document，行距宽松，适合长回答）、紧凑（Compact，间距更小，适合短回复）或终端（Terminal，正文使用代码字体）。 |
+| 将这些工具交给其他插件（Leave these tools to other plugins） | 默认是空的。填工具名，用逗号分隔；名字两边的空格会被忽略，名称精确匹配，区分大小写。Clear Chat 不画你列出的这些工具的行，别的插件可以画。 |
 
-**已安装版本。** 设置页标题下面显示 `Clear Chat 版本 0.15.1.1`，再下面一行说明这个值的来历：从目录安装时会沿用该目录里已有的版本信息，因此可能显示比你安装的更旧的版本。构建里没有可用的版本信息时，这一行显示 **未知**（Unknown）。
+**已安装版本。** 设置页标题下面显示 `Clear Chat 版本 0.15.2.1`，再下面一行说明这个值的来历：从目录安装时会沿用该目录里已有的版本信息，因此可能显示比你安装的更旧的版本。构建里没有可用的版本信息时，这一行显示 **未知**（Unknown）。
 
 **自定强调色。** 点一个色块，或输入 `#RGB`、`#RRGGBB` 后按 **应用**（Apply）。HEX 写错时会留在输入框里并提示错误，已保存的颜色不变。切换到预设色后，你的自定颜色仍会记住。保存的 HEX 值始终不变；只有文字可能看不清时，显示出来的颜色才会在浅色主题下调深、在深色主题下调浅。实心按钮上的文字用黑或白，哪个对比度高用哪个。
 
@@ -316,6 +315,7 @@ Ctrl/Cmd+F 打开查找栏。只搜当前显示出来的文字：折叠的步骤
 | 选区操作 | 开 | 仅桌面与网页 |
 | 助手 Markdown | 开 | 所有设备 |
 | Markdown 样式 | 文档 | 所有设备 |
+| 将这些工具交给其他插件 | 空 | 所有设备 |
 
 设置页标题下面还会显示已安装构建的版本号，再下面一行说明：从目录安装时会沿用该目录里已有的版本信息。
 
@@ -369,21 +369,24 @@ Clear Chat 只改变 Paseo 显示对话的方式。下面每一条都是插件�
 
 | 做不到 | 现在怎么办 | 在等谁 |
 | --- | --- | --- |
-| 在原来的 Hermes Agent 里显示粘贴的图片 | 新建 Agent 时选提供商的 **·CC** 版本，它自己保存图片 | Paseo 在剥掉图片之前先交给插件（上游未开放） |
-| 使用 Paseo 自己的 Markdown | 要显示 mermaid、图片和宿主的文件路径链接时，关掉 **助手 Markdown** | 插件 SDK 开放宿主的 Markdown 渲染器 |
-| 在手机应用里用硬件键盘 | 浏览器和桌面应用里可以用键盘操作步骤 | 插件 SDK 提供原生按键事件 |
-| 在手机应用里跟随 Paseo 的代码字体 | iOS／iPadOS 用 Menlo，Android 用系统等宽字体 | SDK 开放读取宿主字体设置 |
-| 在 iOS／iPadOS 上拖选文字 | 开着 **助手 Markdown** 和 **增强提问气泡**，用 **复制** 按钮 | Paseo 允许在插件绘制的文字里选中 |
-| Agent 没报耗时的时候显示这一步用了多久 | 不用做什么：这一行就不显示时间 | 供应商通过 ACP 上报耗时 |
-| 让 Paseo 的整轮折叠把 Clear Chat 画的内容也折进去 | 用 Clear Chat 自己的折叠，以及 **点开折叠的步骤时** 这一项 | Paseo 把插件内容纳入整轮折叠 |
-| 跟随 Paseo 的文字大小 | 用 Clear Chat 自己的 **文字大小** | 同上一条的上游改动 |
-| 搜索还没加载的消息 | 先向上滚把旧消息加载出来，再搜一次 | 未加载历史的搜索接口 |
-| 从某条消息分叉对话（Fork chat from here） | 到 **Settings → Plugins** 关掉 Clear Chat，用 Paseo 自己的消息菜单 | Paseo 的插件 API 开放这些 Agent 动作 |
-| 复制整轮（Copy turn） | 同上：关掉 Clear Chat 后用 Paseo 自己的 **Copy turn** | 同一条插件 API |
-| 用 Paseo 菜单复制单条消息 | Clear Chat 画这条消息时，用它的 **复制** 按钮 | 同一条插件 API |
-| 从某条消息回退（Rewind） | 关掉 Clear Chat，用 Paseo 自己的回退 | 同一条插件 API |
-| 关掉 Clear Chat 后打开 **·CC** 对话 | 把 Clear Chat 重新打开：这段对话的保存记录是 Clear Chat 写的 | Paseo 能读插件写下的对话历史 |
-| 卸载插件后还留着设置 | 卸载前先备份；卸载会把插件设置一起删掉 | Paseo 在卸载时保留插件设置 |
+| 在原来的 Hermes Agent 里显示粘贴的图片 | 新建 Agent 时选提供商的 **·CC** 版本，它自己保存图片 | Paseo 在剥掉图片之前先交给插件（上游未开放）（[#8257](https://github.com/getpaseo/paseo/discussions/8257)、[#6736](https://github.com/getpaseo/paseo/pull/6736)、[#4556](https://github.com/getpaseo/paseo/issues/4556)） |
+| 使用 Paseo 自己的 Markdown | 要显示 mermaid、图片和宿主的文件路径链接时，关掉 **助手 Markdown** | 插件 SDK 开放宿主的 Markdown 渲染器（官方暂无对应条目，截至 2026-11-05） |
+| 在手机应用里用硬件键盘 | 浏览器和桌面应用里可以用键盘操作步骤 | 插件 SDK 提供原生按键事件（官方暂无对应条目，截至 2026-11-05） |
+| 在手机应用里跟随 Paseo 的代码字体 | iOS／iPadOS 用 Menlo，Android 用系统等宽字体 | SDK 开放读取宿主字体设置（[#6600](https://github.com/getpaseo/paseo/discussions/6600)） |
+| 在 iOS／iPadOS 上拖选文字 | 开着 **助手 Markdown** 和 **增强提问气泡**，用 **复制** 按钮 | Paseo 允许在插件绘制的文字里选中（官方暂无对应条目，截至 2026-11-05） |
+| Agent 没报耗时的时候显示这一步用了多久 | 不用做什么：这一行就不显示时间 | 供应商通过 ACP 上报耗时（官方暂无对应条目，截至 2026-11-05） |
+| 让 Paseo 的整轮折叠把 Clear Chat 画的内容也折进去 | 用 Clear Chat 自己的折叠，以及 **点开折叠的步骤时** 这一项 | Paseo 把插件内容纳入整轮折叠（[#8842](https://github.com/getpaseo/paseo/issues/8842)、[#8811](https://github.com/getpaseo/paseo/pull/8811)） |
+| 跟随 Paseo 的文字大小 | 用 Clear Chat 自己的 **文字大小** | Paseo 让插件跟随应用的字体大小设置（[#5642](https://github.com/getpaseo/paseo/discussions/5642)） |
+| 搜索还没加载的消息 | 先向上滚把旧消息加载出来，再搜一次 | 未加载历史的搜索接口（官方暂无对应条目，截至 2026-11-05） |
+| 从某条消息分叉对话（Fork chat from here） | 到 **Settings → Plugins** 关掉 Clear Chat，用 Paseo 自己的消息菜单 | Paseo 的插件 API 开放这些 Agent 动作（[#7462](https://github.com/getpaseo/paseo/pull/7462)、[#8290](https://github.com/getpaseo/paseo/discussions/8290)） |
+| 复制整轮（Copy turn） | 同上：关掉 Clear Chat 后用 Paseo 自己的 **Copy turn** | 同一条插件 API（[#8290](https://github.com/getpaseo/paseo/discussions/8290)） |
+| 用 Paseo 菜单复制单条消息 | Clear Chat 画这条消息时，用它的 **复制** 按钮 | 同一条插件 API（[#8290](https://github.com/getpaseo/paseo/discussions/8290)） |
+| 从某条消息回退（Rewind） | 关掉 Clear Chat，用 Paseo 自己的回退 | 同一条插件 API（[#6676](https://github.com/getpaseo/paseo/discussions/6676)） |
+| 在远程客户端（手机，或另一台机器上的浏览器）上点路径打开文件 | 文件会在运行 Paseo daemon 的那台机器的文件管理器里打开，不会在你的设备上打开；改为复制路径（步骤菜单里的 **复制路径**） | Paseo 让插件的行在它自己的文件面板里打开文件（[#7317](https://github.com/getpaseo/paseo/discussions/7317)、[#7318](https://github.com/getpaseo/paseo/pull/7318)） |
+| 关掉 Clear Chat 后打开 **·CC** 对话 | 把 Clear Chat 重新打开：这段对话的保存记录是 Clear Chat 写的 | Paseo 能读插件写下的对话历史（官方暂无对应条目，截至 2026-11-05） |
+| 卸载插件后还留着设置 | 卸载前先备份；卸载会把插件设置一起删掉 | Paseo 在卸载时保留插件设置（官方暂无对应条目，截至 2026-11-05） |
+
+编号是 Paseo 官方仓库（`getpaseo/paseo`）里的 issue、PR 和讨论，进度以官方为准；清单截至 2026-11-05。
 
 ## 隐私与主机上的数据
 
@@ -408,14 +411,16 @@ Clear Chat 只改变 Paseo 显示对话的方式。下面每一条都是插件�
 
 **怎么引用一条消息？** 在含文字的消息上点 Copy 旁边的引用图标，写好回复再发送。Agent 忙的时候图标是灰的。
 
-**支持哪些 Paseo 版本？** 0.14.0 或更新。Clear Chat 已在 Paseo 0.15.1 的主机上安装并抽验过（设置页、命令步骤、推理卡、引用面板、行内代码里的文件路径、时间格式），其余项目还没有在 0.15.1 上验过。Paseo 0.13 有一条旧的、未实测的路径，写在[安装](#安装)里。
+**能和画图表或其他工具行的插件一起用吗？** 能，但有两条限制。含 `ui` 或 `app` 代码块的回复，交给画这种块的插件；没装这类插件时，由 Paseo 自己画这条回复，Clear Chat 的样式对它不生效。其他画工具行的插件，把工具名填进设置里的 **将这些工具交给其他插件**。
+
+**支持哪些 Paseo 版本？** 0.14.0 或更新。Clear Chat 已在 Paseo 0.15.2 的主机上安装并检查过（产品项、页面版式和子 Agent 窗格），没列出的项目还没有在 0.15.2 上验过。Paseo 0.13 有一条旧的、未实测的路径，写在[安装](#安装)里。
 
 ## 常见问题
 
 | 问题 | 怎么办 |
 |---|---|
 | 用 Cafe 插件安装失败，或 Paseo 提示缺少 `@shikijs/core` 等 Shiki 依赖。 | 用[安装](#安装)里的 Paseo CLI 命令重试，仓库和版本标签保持不变。Clear Chat 用 `npm ci --include=dev` 安装依赖，所以运行 daemon 的主机上要有 Node.js 和 npm，网络也要能连到 npm 仓库。如果代码目录是你自己管理的，请先在那里运行 `npm ci --include=dev` 再重试。 |
-| 安装停止，提示插件需要更新的 Paseo 版本。 | 使用 Clear Chat 0.15.1.1 时，请把 daemon 主机和所有连接的应用升级到 Paseo 0.14.0 或更新。旧宿主请看[安装](#安装)中的 Paseo 0.13 命令及其未实测提示，以及单独的 Paseo 0.12 说明。 |
+| 安装停止，提示插件需要更新的 Paseo 版本。 | 使用 Clear Chat 0.15.2.1 时，请把 daemon 主机和所有连接的应用升级到 Paseo 0.14.0 或更新。旧宿主请看[安装](#安装)中的 Paseo 0.13 命令及其未实测提示，以及单独的 Paseo 0.12 说明。 |
 | Paseo 拒绝这个插件版本，或 Clear Chat 提示缺少插件设置或时间线支持。 | 把运行 daemon 的主机和所有连着的应用都更新到新版 Paseo，再重新加载 Clear Chat。Clear Chat 需要的 Paseo 版本写在 `paseo-plugin.json` 里。 |
 | 插件注册失败，Clear Chat 启动不了。 | 更新 Paseo，再重新加载 Clear Chat。还不行的话，先备份插件设置，再用 CLI 重新安装。 |
 | Clear Chat 读不到主机上的设置。 | 重新连接主机，在 **Settings → Plugins → Clear Chat** 里点 **重试**（Retry）。还不行的话，检查 daemon 能不能访问插件设置文件夹。 |
@@ -450,7 +455,7 @@ cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_back
 **2. 安装**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.1.1
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.2.1
 ```
 
 **3. 确认后卸载旧插件**

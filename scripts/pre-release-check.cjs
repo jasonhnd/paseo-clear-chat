@@ -102,6 +102,21 @@ if (changelog !== null) {
   }
 }
 
+console.log("\nHost badge");
+const host = typeof version === "string" && versionPattern.test(version) ? version.split(".").slice(0, 3).join(".") : null;
+for (const name of ["README.md", "README.zh-CN.md", "README.ja.md"]) {
+  const contents = read(name, "host badge");
+  if (contents === null) continue;
+  const badges = [...contents.matchAll(/https:\/\/img\.shields\.io\/badge\/Paseo-[^\s"'<>)]*/g)];
+  if (!badges.length) fail("host badge", `${name}:1`, "Paseo badge not found");
+  for (const badge of badges) {
+    const line = contents.slice(0, badge.index).split("\n").length;
+    const found = /tested%20([^-?&#]+)/.exec(badge[0])?.[1];
+    if (!host || found !== host) fail("host badge", `${name}:${line}`, `tested version ${JSON.stringify(found || "<missing>")}; expected ${JSON.stringify(host || "<invalid package version>")}`);
+  }
+}
+if (!failed.has("host badge")) console.log("PASS host badge");
+
 console.log("\nStale version scan");
 const versions = [];
 let releaseNotes;

@@ -4,6 +4,38 @@ All notable changes to Clear Chat are listed here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and each version is the Paseo version it is built and tested for plus one number that counts Clear Chat's releases for that Paseo version, for example 0.12.0.1 for the first release for Paseo 0.12.0. Releases 1.0.0 and 1.0.1 came out before this rule.
 
+## [0.15.2.1] - 2026-11-06
+
+### Added
+
+- A new setting, "Leave these tools to other plugins": a comma-separated list of tool names, empty by default. Clear Chat does not draw the rows of the tools you list, so another plugin that draws tool rows can. Names are matched exactly, including upper and lower case, and spaces around a name are ignored. The value is saved with the other settings, and the reset clears it ([issue #207](https://github.com/jasonhnd/paseo-clear-chat/issues/207), [PR #209](https://github.com/jasonhnd/paseo-clear-chat/pull/209)).
+
+### Changed
+
+- A reply that contains a `ui` or `app` code block is left to the plugin that draws such blocks, so it is no longer shown as code. A reply counts when a code fence starts with the word `ui` or `app` (any case, up to three spaces of indentation, backticks or tildes, an unclosed fence counts so a reply that is still streaming already yields); a fence quoted inside another code block does not count. When no plugin draws the block, Paseo draws the reply itself and Clear Chat's styling does not apply to it ([issue #206](https://github.com/jasonhnd/paseo-clear-chat/issues/206), [PR #208](https://github.com/jasonhnd/paseo-clear-chat/pull/208)).
+- The README's "what a plugin cannot do" table names, in every row, the issue, pull request or discussion in Paseo's official repository where you can follow the item, and has a new row for opening a file from a path you press on a remote client ([issue #204](https://github.com/jasonhnd/paseo-clear-chat/issues/204), [PR #205](https://github.com/jasonhnd/paseo-clear-chat/pull/205)).
+- The README opens with the demo GIF only, and the Paseo badge shows the Paseo version Clear Chat was tested on ([issue #199](https://github.com/jasonhnd/paseo-clear-chat/issues/199), [PR #201](https://github.com/jasonhnd/paseo-clear-chat/pull/201), [PR #202](https://github.com/jasonhnd/paseo-clear-chat/pull/202)).
+
+### Fixed
+
+- Opening a provider sub-agent's read-only pane no longer makes Clear Chat ask the host for the timeline of the pane's synthetic id, which logged "Agent not found" on the host each time ([issue #210](https://github.com/jasonhnd/paseo-clear-chat/issues/210), [PR #212](https://github.com/jasonhnd/paseo-clear-chat/pull/212)).
+
+### Compatibility
+
+- Clear Chat 0.15.2.1 is the Clear Chat release for Paseo 0.15.2. In Paseo 0.15.2, `@getpaseo/plugin` is byte-for-byte the same as in Paseo 0.15.1, and `@getpaseo/client` only gains one method that Clear Chat does not use.
+- The previous Clear Chat release was checked on a Paseo 0.15.2 host: the product items passed; the full regression suite passed (1,894 tests) and so did the type check; the page layout passed in 18 cases (six widths, each with the three folding modes). A later development state passed 1,909 tests and the same 18 layout cases. A sub-agent read-only pane was read with a test provider: Clear Chat draws its own rows there, and Paseo's whole-turn folding does not fold them. On phone and iPad widths, Paseo 0.15.2's own toolbar buttons are 28 px tall; that is the host's behaviour and is not counted as a Clear Chat defect.
+- The release candidate was checked on an isolated host running Paseo 0.15.2: it installs and loads; the plugin API comparison with Paseo 0.15.1 shows only an added method; the settings page version line reads 0.15.2.1 in English, Chinese and Japanese; the product spot checks (command steps, the reasoning card, the quote panel, file paths in inline code, the time format) pass; the full regression suite (1,914 tests) and the type check pass; the page layout passes in 18 cases (six widths, three folding modes). With a test generative-UI plugin installed, a reply with a `ui` code block is drawn by that plugin; with a test tool-row plugin, listing a tool in the new setting hands that tool's rows to it, after a reload of the chat. In a sub-agent read-only pane opened with a test provider, the host no longer logs "Agent not found". Items not listed here have not been checked on Paseo 0.15.2.
+
+### Known limitations
+
+- Without a plugin that draws `ui` or `app` code blocks, a reply that contains one is drawn by Paseo, and Clear Chat's styling does not apply to it.
+- Paseo's whole-turn folding does not fold what Clear Chat draws; see the row about turn folding in the README's "what a plugin cannot do" table.
+- The limitations listed in the previous release still apply.
+
+### Upgrading
+
+- Update an existing installation with `paseo plugin update clear-chat --ref v0.15.2.1`; the plugin reloads on its own and the Paseo daemon is not restarted. Removing a plugin also removes its settings, so back them up before removing.
+
 ## [0.15.1.1] - 2026-11-05
 
 ### Added
@@ -281,6 +313,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.15.2.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.1.1...v0.15.2.1
 [0.15.1.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.0.2...v0.15.1.1
 [0.15.0.2]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.0.1...v0.15.0.2
 [0.15.0.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.14.0.4...v0.15.0.1

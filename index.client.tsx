@@ -13,6 +13,7 @@ import { installChatFind } from "./client/components/chat-find";
 import { extractPromptImages } from "./client/prompt-images";
 import { installCompactToolSpacing } from "./client/tool-row-spacing";
 import { extractGeneratedImages } from "./client/generated-images";
+import { containsComponentFence } from "./client/component-fences";
 import { projectedApprovalStatus } from "./client/tool-approval";
 import { installStepDetailPanel } from "./client/components/step-detail-host";
 import {
@@ -84,11 +85,12 @@ function registerClient(client: PluginClientContext) {
   });
 
   // Live chat timeline interception: render real tool calls, reasoning, and todos with enhanced UI.
-  const removeToolTransformer = client.addTimelineTransformer({
+  const toolTransformer: PluginTimelineTransformerContribution<"tool_call"> = {
     id: "omp-enhanced-tool-call",
     query: { itemType: "tool_call" },
     transform({ item, phase }) {
       if (item.type !== "tool_call") return undefined;
+      if (getEnhancerPreferences().delegatedTools.split(",").some((name) => name.trim() !== "" && name.trim() === item.name)) return undefined;
       const approval = projectedApprovalStatus(item);
       if (approval) {
         return {
@@ -122,6 +124,12 @@ function registerClient(client: PluginClientContext) {
         ],
       };
     },
+  };
+  let removeToolTransformer = client.addTimelineTransformer(toolTransformer);
+  // Once saved settings arrive, invalidate the host's cached projections.
+  const stopWaitingForToolSettings = onEnhancerPreferencesReady(() => {
+    removeToolTransformer();
+    removeToolTransformer = client.addTimelineTransformer({ ...toolTransformer });
   });
 
   const removeToolRenderer = client.addTimelineRenderer({
@@ -265,6 +273,7 @@ function registerClient(client: PluginClientContext) {
     transform({ item }) {
       if (item.type !== "assistant_message") return undefined;
       if (!getEnhancerPreferences().assistantMarkdown) return undefined;
+      if (containsComponentFence(item.text)) return undefined;
       const images = extractGeneratedImages({ ...item, text: undefined });
       if (!item.text.trim() && !images.length) return undefined;
       return {
@@ -333,6 +342,7 @@ function registerClient(client: PluginClientContext) {
     removeChatFind();
     removeToolSpacing();
     removeStepDetails();
+    stopWaitingForToolSettings();
     removeToolTransformer();
     removeToolRenderer();
     removeApprovalRenderer();
