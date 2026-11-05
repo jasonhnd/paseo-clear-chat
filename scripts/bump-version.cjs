@@ -42,8 +42,11 @@ function run(args) {
   if (Object.hasOwn(manifest, "version")) manifest.version = next;
 
   // Read every document before writing metadata, so missing files cannot cause a partial update.
+  const oldHost = current.split(".").slice(0, 3).join(".");
+  const hostChanged = oldHost !== next.split(".").slice(0, 3).join(".");
   const report = textFiles.flatMap(name => read(name).split(/\r?\n/).flatMap((line, index) =>
-    line.includes(current) ? [`${name}:${index + 1}: ${line}`] : []));
+    line.includes(current) || (hostChanged && name.startsWith("README") && line.includes(`tested%20${oldHost}`))
+      ? [`${name}:${index + 1}: ${line}`] : []));
   console.log(`Version: ${current} -> ${next}${dryRun ? " (dry run)" : ""}`);
   console.log(`Metadata to update: ${metadataFiles.join(", ")}`);
   console.log("Human edits needed:");

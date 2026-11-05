@@ -56,6 +56,21 @@ test("dry run produces the same report and leaves files byte-identical", t => {
   assert.equal(dry.stdout.replace(" (dry run)", ""), actual.stdout);
 });
 
+test("reports README badge lines only when the host version changes", t => {
+  const dir = fixture(t);
+  const readmes = documents.filter(name => name.startsWith("README"));
+  const badge = "https://img.shields.io/badge/Paseo-%3E%3D0.14.0%20%C2%B7%20tested%208.1.0-5b5bd6";
+  for (const name of readmes) fs.appendFileSync(path.join(dir, name), `${badge}\n${badge}\n`);
+  const changed = run(dir, next, "--dry-run");
+  assert.equal(changed.status, 0, changed.stderr);
+  for (const name of readmes) {
+    for (const line of [3, 4]) assert.ok(changed.stdout.includes(`${name}:${line}: ${badge}`), changed.stdout);
+  }
+  const counter = run(dir, "8.1.0.3", "--dry-run");
+  assert.equal(counter.status, 0, counter.stderr);
+  assert.ok(!counter.stdout.includes(badge), counter.stdout);
+});
+
 test("rejects bad arguments and the current version without writing", t => {
   const dir = fixture(t), before = snapshot(dir);
   for (const args of [[], ["1.2.3"], ["1.2.3.x"], ["01.2.3.4"], [next, "extra"], [next, "--dry-run", "--dry-run"], [current]]) {
