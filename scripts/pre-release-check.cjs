@@ -43,7 +43,7 @@ function fail(item, location, message) {
   console.error(`FAIL ${item}: ${location}: ${message}`);
 }
 function read(name, item) {
-  try { return fs.readFileSync(path.join(root, name), "utf8"); }
+  try { return fs.readFileSync(path.resolve(root, name), "utf8"); }
   catch (error) { fail(item, `${name}:1`, error.message); return null; }
 }
 function parse(name) {

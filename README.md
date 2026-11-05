@@ -353,7 +353,7 @@ What to know:
 
 ## Performance
 
-Measured on 2026-11-04 by the project's acceptance run: one 300-step conversation (150 tool calls and 150 status updates), opened from the sidebar, three runs per state, on a cloud test machine with 4 cores and 8 GB, using Playwright's Chromium, Clear Chat 0.15.0.2 (`bcf896b7`).
+Measured on 2026-11-04 by the project's acceptance run: one 300-step conversation (150 tool calls and 150 status updates), opened from the sidebar, three runs per state, on a cloud test machine with 4 cores and 8 GB, using Playwright's Chromium, Clear Chat at commit `bcf896b7`.
 
 | State | First screen (ms, three runs) | What the timeline shows |
 | --- | --- | --- |

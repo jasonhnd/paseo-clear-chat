@@ -13,7 +13,7 @@ Clear Chat 改变 Paseo 里 Agent 对话的显示方式，让结论一眼就能�
 
 ## 性能
 
-2026-11-04 在一段 300 步的对话（150 次工具调用）上测得，每种状态 3 次，4 核 8 GB 的云端测试机、Playwright 的 Chromium，Clear Chat 0.15.0.2：开着 Clear Chat 的首屏是 673–843 毫秒，关掉是 387–444 毫秒。Paseo 原生更快，是因为它把整轮折成一行；Clear Chat 逐步显示，这正是它的用途。测法与运行脚本写在 README 里。
+2026-11-04 在一段 300 步的对话（150 次工具调用）上测得，每种状态 3 次，4 核 8 GB 的云端测试机、Playwright 的 Chromium，Clear Chat 的提交 bcf896b7：开着 Clear Chat 的首屏是 673–843 毫秒，关掉是 387–444 毫秒。Paseo 原生更快，是因为它把整轮折成一行；Clear Chat 逐步显示，这正是它的用途。测法与运行脚本写在 README 里。
 
 ## 安装前要知道
 

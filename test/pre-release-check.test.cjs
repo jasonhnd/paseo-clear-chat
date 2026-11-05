@@ -148,6 +148,23 @@ test("optional release notes report unreleased markers with their file and line"
   assert.match(noArgument.stderr, /FAIL release date: scripts\/pre-release-check\.cjs:1:/);
 });
 
+test("release notes can be read by absolute path outside the fixture", t => {
+  const { dir } = fixture(t);
+  const notesDir = fs.mkdtempSync(path.join(root, ".tmp", "clear-chat-release-notes-"));
+  t.after(() => fs.rmSync(notesDir, { recursive: true, force: true }));
+  const notes = path.join(notesDir, "release-notes.md");
+  fs.writeFileSync(notes, `# Release\nRelease date: **${day}**\n`);
+  const matching = run(dir, ["--release-notes", notes]);
+  assert.equal(matching.status, 0, matching.stderr);
+  assert.match(matching.stdout, /PASS release date/);
+
+  fs.writeFileSync(notes, "# Release\nRelease date: **2026-11-05**\n");
+  const different = run(dir, ["--release-notes", notes]);
+  assert.equal(different.status, 1);
+  assert.ok(different.stderr.includes(`FAIL release date: ${notes}:2: date "2026-11-05" differs from tag day "${day}"`), different.stderr);
+  assert.ok(different.stderr.includes(`FAIL release date: ${notes}:2: date "2026-11-05" differs from CHANGELOG.md:1 date "${day}"`), different.stderr);
+});
+
 test("release dates must match the tag day and each other", t => {
   const { dir, write } = fixture(t);
   write("release-notes.md", `# Release\nRelease date: **${day}**\n`);

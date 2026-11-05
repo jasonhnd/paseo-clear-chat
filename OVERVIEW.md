@@ -13,7 +13,7 @@ It is a display layer, not a provider: every tool kind Paseo reports gets its ow
 
 ## Performance
 
-Measured 2026-11-04 on a 300-step conversation (150 tool calls), three runs per state, on a 4-core, 8 GB cloud test machine with Playwright's Chromium, Clear Chat 0.15.0.2: first screen 673–843 ms with Clear Chat on, 387–444 ms with it off. Native Paseo is quicker because it folds the whole turn into one row; Clear Chat shows each step, and that is what it is for. The README documents the method and the runner.
+Measured 2026-11-04 on a 300-step conversation (150 tool calls), three runs per state, on a 4-core, 8 GB cloud test machine with Playwright's Chromium, Clear Chat at commit bcf896b7: first screen 673–843 ms with Clear Chat on, 387–444 ms with it off. Native Paseo is quicker because it folds the whole turn into one row; Clear Chat shows each step, and that is what it is for. The README documents the method and the runner.
 
 ## Setup
 

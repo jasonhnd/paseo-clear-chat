@@ -36,7 +36,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Known limitations
 
 - Selecting text on a real iPhone, and an entry point for Rewind, have not been verified and are not part of this release.
-- The limitations listed under 0.15.0.1 still apply.
+- The limitations listed in the first release for Paseo 0.15.0 still apply.
 
 ## [0.15.0.2] - 2026-11-04
 
