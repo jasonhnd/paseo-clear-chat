@@ -24,7 +24,7 @@ test("published capture planning routes theme pairs to their documented director
     ]);
     assert.throws(() => createCapturePlan(`<img src="docs/images/${id}-light.png">`), /Unexpected screenshot location/);
   }
-  assert.throws(() => createCapturePlan('<img src="images/icon.png"><source srcset="images/demo-poster-dark.png"><img src="images/demo-poster.png">'), /no screenshot references/);
+  assert.throws(() => createCapturePlan('<img src="images/icon.png">'), /no screenshot references/);
 });
 
 test("all README languages retain matching published pairs alongside the separate v2 inventory", () => {
@@ -36,19 +36,18 @@ test("all README languages retain matching published pairs alongside the separat
     assert.deepEqual(files(createCapturePlan(content)), expected);
     const pictures = [...content.matchAll(/<picture>([\s\S]*?)<\/picture>/g)];
     assert.equal(pictures.filter(match => match[1].includes("docs/images/")).length, plan.filter(group => group.light.startsWith("docs/images/")).length);
-    assert.equal(pictures.length, plan.length + 1);
+    assert.equal(pictures.length, plan.length);
     for (const [, picture] of pictures) {
       const dark = picture.match(/<source media="\(prefers-color-scheme: dark\)" srcset="([^"]+-dark\.png)">/);
-      const light = picture.match(/<img[^>]+src="([^"]+(?:-light\.png|\/demo-poster\.png))">/);
+      const light = picture.match(/<img[^>]+src="([^"]+-light\.png)">/);
       assert.ok(dark && light, `${file} has a light fallback and a dark source`);
-      const expectedLight = dark[1] === "images/demo-poster-dark.png"
-        ? "images/demo-poster.png" : dark[1].replace(/-dark\.png$/, "-light.png");
+      const expectedLight = dark[1].replace(/-dark\.png$/, "-light.png");
       assert.equal(light[1], expectedLight);
     }
   }
   const actual = ["images", "docs/images"].flatMap(directory =>
     readdirSync(resolve(root, directory)).map(file => `${directory}/${file}`)).sort();
-  const extraImages = ["icon.png", "demo.mp4", "demo-poster.png", "demo-poster-dark.png", "compare-light.png", "compare-dark.png"].map(file => `images/${file}`);
+  const extraImages = ["icon.png", "compare-light.png", "compare-dark.png"].map(file => `images/${file}`);
   assert.deepEqual(actual, [...new Set([...expected, ...files(readmeV2Groups), demoCapture.light, ...extraImages])].sort());
 });
 

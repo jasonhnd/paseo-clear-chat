@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=date"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <a href="https://paseo.sh"><img alt="Paseo 0.14.0+" src="https://img.shields.io/badge/Paseo-%3E%3D0.14.0-5b5bd6"></a>
+  <a href="https://paseo.sh"><img alt="Paseo 0.14.0+、0.15.1 で確認済み" src="https://img.shields.io/badge/Paseo-%3E%3D0.14.0%20%C2%B7%20tested%200.15.1-5b5bd6"></a>
 </p>
 
 <p align="center">
@@ -24,8 +24,6 @@
 <p align="center">
   <img width="800" alt="短いデモ：エージェントがサンプルの店舗プロジェクトで送料無料の表示を直します。各ステップは状態つきの 1 行で、失敗したテストの実行には終了コードが付きます" src="images/demo.gif">
 </p>
-
-<p align="center"><sub><a href="images/demo.mp4"><picture><source media="(prefers-color-scheme: dark)" srcset="images/demo-poster-dark.png"><img width="120" alt="" src="images/demo-poster.png"></picture> 画質を上げて見る：22 秒のビデオ</a></sub></p>
 
 <p align="center"><sub>スクリーンショットとデモはすべてサンプルデータです。</sub></p>
 
