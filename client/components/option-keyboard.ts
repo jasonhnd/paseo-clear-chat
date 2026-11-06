@@ -17,6 +17,7 @@ interface KeyboardOptions {
   focusSend: () => void;
   sendFocused: () => boolean;
   setSendFocused: (focused: boolean) => void;
+  contains?: (node: Node) => boolean;
 }
 
 // The composer and the scroll area are siblings in the host. Stop at a split
@@ -31,6 +32,12 @@ function composerFor(root: HTMLElement): HTMLInputElement | HTMLTextAreaElement 
       .filter(input => (input.tagName === "TEXTAREA" || input.tagName === "INPUT") && input.getClientRects().length);
     if (inputs.length === 1) return inputs[0]!;
     if (inputs.length > 1) return null;
+    // Preserve keyboard access when the host removes the marker, provided the
+    // pane still has exactly one visible input outside the conversation.
+    const unmarked = Array.from(parent.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("textarea, input"))
+      .filter(input => !chats[0]!.contains(input) && input.getClientRects().length);
+    if (unmarked.length === 1) return unmarked[0]!;
+    if (unmarked.length > 1) return null;
   }
   return null;
 }
@@ -48,8 +55,9 @@ export function installOptionKeyboard(options: KeyboardOptions, target: Window =
     if (input.value) { options.leave(); return; }
     if (event.isComposing || event.altKey || event.ctrlKey || event.metaKey || (event.shiftKey && event.key !== "Tab")) return;
     const targetNode = event.target as HTMLElement | null;
-    if (targetNode !== input && (!targetNode || !root.contains(targetNode))) return;
-    if (targetNode !== input && targetNode?.closest('input, textarea, [contenteditable="true"]')) return;
+    const actualTarget = (event.composedPath?.()[0] ?? targetNode) as HTMLElement | null;
+    if (targetNode !== input && (!targetNode || (!root.contains(targetNode) && !options.contains?.(targetNode)))) return;
+    if (targetNode !== input && actualTarget?.closest('input, textarea, [contenteditable="true"]')) return;
     const index = session.activeQuestion;
     const question = session.set.questions[index]!;
     if (!options.entered()) {
