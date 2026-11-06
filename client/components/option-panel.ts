@@ -35,6 +35,8 @@ export function mountOptionPanel(options: Options): OptionPanel | null {
   let inputParent: HTMLElement | null = null;
   let body: HTMLElement;
   let panel: HTMLElement;
+  let scroller: HTMLElement | null = null;
+  let renderedQuestion: number | undefined;
   const cleanup = () => {
     if (disposed) return;
     disposed = true;
@@ -118,7 +120,10 @@ export function mountOptionPanel(options: Options): OptionPanel | null {
       const focused = previous.activeElement as HTMLInputElement | null;
       const focusId = focused?.getAttribute("data-testid");
       const selection = focusId === "option-note" ? [focused?.selectionStart, focused?.selectionEnd] : null;
+      const scrollTop = renderedQuestion === index ? scroller?.scrollTop ?? 0 : 0;
       panel.replaceChildren();
+      scroller = null;
+      renderedQuestion = index;
       Object.assign(panel.style, { color: tokens.foreground, background: tokens.surface1, borderColor: tokens.border, fontFamily: tokens.fontUi, fontSize: `${tokens.fs(13)}px` });
       const node = (tag: string, text?: string, id?: string) => {
         const el = document.createElement(tag);
@@ -134,6 +139,8 @@ export function mountOptionPanel(options: Options): OptionPanel | null {
         const strip = button(`${t("answerCard.summary", { total: session.set.questions.length, chosen: chosen || t("answerCard.none"), question: number(index) })} · ${t("answerCard.hintReopen")}`, "option-panel-strip", options.reopen);
         strip.className = "strip"; panel.append(strip);
       } else {
+        scroller = node("div", undefined, "option-panel-scroll");
+        scroller.className = "scroller"; panel.append(scroller);
         const header = node("div"); header.className = "header";
         session.set.questions.forEach((_, i) => {
           const tab = button(t("answerCard.question", { current: i + 1, total: session.set.questions.length }), `option-question-${i}`, () => setActiveQuestion(options.agentId, i));
@@ -141,8 +148,8 @@ export function mountOptionPanel(options: Options): OptionPanel | null {
         });
         if (chosen) header.append(node("span", `· ${chosen}`));
         header.append(node("span", t("answerCard.detected")));
-        header.append(button(t("answerCard.collapse"), "option-card-collapse", options.collapse)); panel.append(header);
-        panel.append(node("div", question.text));
+        header.append(button(t("answerCard.collapse"), "option-card-collapse", options.collapse)); scroller.append(header);
+        scroller.append(node("div", question.text));
         question.options.forEach((option, i) => {
           const selected = session.choices[index] === option.letter;
           const row = button("", `option-row-${option.letter}`, () => {
@@ -156,19 +163,19 @@ export function mountOptionPanel(options: Options): OptionPanel | null {
           if (option.recommended) { const badge = node("span", t("answerCard.recommended")); badge.className = "badge"; badge.style.color = tokens.success; badge.style.borderColor = tokens.success; row.append(badge); }
           if (selected) row.append(node("span", "✓"));
           if (options.entered() && !options.sendFocused() && session.cursor[index] === i) row.append(node("span", t("answerCard.hintEnter")));
-          panel.append(row);
+          scroller!.append(row);
         });
-        panel.append(button(t("answerCard.writeOwn"), "option-note-toggle", () => { noteOpen[index] = !noteOpen[index]; render(); }));
+        scroller.append(button(t("answerCard.writeOwn"), "option-note-toggle", () => { noteOpen[index] = !noteOpen[index]; render(); }));
         if (noteOpen[index]) {
           const note = node("input", undefined, "option-note") as HTMLInputElement;
           note.value = session.notes[index] ?? ""; note.setAttribute("aria-label", t("answerCard.noteLabel"));
-          note.oninput = () => setNote(options.agentId, index, note.value); panel.append(note);
+          note.oninput = () => setNote(options.agentId, index, note.value); scroller.append(note);
         }
-        if (session.notes[index]?.trim() && !session.choices[index]) panel.append(node("div", t("answerCard.chooseFirst"), "option-note-warning"));
-        if (index < session.set.questions.length - 1) panel.append(button(t("answerCard.next"), "option-next", () => setActiveQuestion(options.agentId, index + 1)));
-        panel.append(button(t("answerCard.notOptions"), "option-dismiss", () => dismiss(options.agentId)));
-        if (session.error) panel.append(node("div", t("answerCard.error", { reason: session.error }), "option-send-error"));
-        panel.append(node("div", [t("answerCard.hintMove"), t("answerCard.hintPick"), index === session.set.questions.length - 1 ? t("answerCard.hintSend") : t("answerCard.hintNext"), t("answerCard.hintBack")].join("  ·  "), "option-key-hints"));
+        if (session.notes[index]?.trim() && !session.choices[index]) scroller.append(node("div", t("answerCard.chooseFirst"), "option-note-warning"));
+        if (index < session.set.questions.length - 1) scroller.append(button(t("answerCard.next"), "option-next", () => setActiveQuestion(options.agentId, index + 1)));
+        scroller.append(button(t("answerCard.notOptions"), "option-dismiss", () => dismiss(options.agentId)));
+        if (session.error) scroller.append(node("div", t("answerCard.error", { reason: session.error }), "option-send-error"));
+        scroller.append(node("div", [t("answerCard.hintMove"), t("answerCard.hintPick"), index === session.set.questions.length - 1 ? t("answerCard.hintSend") : t("answerCard.hintNext"), t("answerCard.hintBack")].join("  ·  "), "option-key-hints"));
         const missing = missingQuestion(options.agentId), answer = answerText(options.agentId);
         const send = button(missing === null ? t("answerCard.send", { answer: answer ?? "" }) : t("answerCard.missing", { question: number(missing) }), "option-send", options.send);
         send.style.background = answer === null || session.sending ? tokens.surface2 : tokens.success;
@@ -176,7 +183,7 @@ export function mountOptionPanel(options: Options): OptionPanel | null {
         send.onfocus = options.focusSend;
         send.setAttribute("aria-disabled", String(answer === null || session.sending));
         const sendRow = node("div", undefined, "option-send-row");
-        Object.assign(sendRow.style, { position: "sticky", bottom: "0", background: tokens.surface1 });
+        sendRow.style.background = tokens.surface0;
         sendRow.className = "send-row"; sendRow.append(send); panel.append(sendRow);
       }
       if (focusId) {
@@ -186,6 +193,7 @@ export function mountOptionPanel(options: Options): OptionPanel | null {
       }
       position();
       if (!disposed && host) host.style.display = "block";
+      if (scroller) scroller.scrollTop = Math.min(scrollTop, Math.max(0, scroller.scrollHeight - scroller.clientHeight));
     } catch { fail(); }
   }
   function flushRedraw() {
@@ -212,7 +220,7 @@ export function mountOptionPanel(options: Options): OptionPanel | null {
     Object.assign(host.style, { all: "initial", position: "fixed", zIndex: "2147483000", display: "block" });
     const shadow = host.attachShadow({ mode: "open" });
     const style = document.createElement("style");
-    style.textContent = `:host{box-sizing:border-box} *,*::before,*::after{box-sizing:border-box} .panel{border:1px solid;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;max-height:inherit;overflow:auto;white-space:pre-wrap} .panel>*{flex-shrink:0;min-width:0} button,input{font:inherit;color:inherit;background:transparent;border:1px solid currentColor;border-radius:8px;padding:8px;min-height:44px;text-align:left} button{cursor:pointer} .header,.row{display:flex;align-items:center;gap:8px} .header{flex-wrap:wrap} .header>*{max-width:100%;overflow-wrap:anywhere} .strip{white-space:normal;overflow-wrap:anywhere} .send-row{padding-top:8px} .send-row button{width:100%} .row span:nth-child(2){flex:1} .chip,.badge{border:1px solid;border-radius:5px;padding:2px 5px} .badge{font-size:.9em}`;
+    style.textContent = `:host{box-sizing:border-box} *,*::before,*::after{box-sizing:border-box} .panel{border:1px solid;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;max-height:inherit;overflow:hidden;white-space:pre-wrap} .panel>*{min-width:0} .scroller{display:flex;flex-direction:column;gap:8px;overflow:auto;min-height:0;flex:0 1 auto} .scroller>*{flex-shrink:0;min-width:0} button,input{font:inherit;color:inherit;background:transparent;border:1px solid currentColor;border-radius:8px;padding:8px;min-height:44px;text-align:left} button{cursor:pointer} .header,.row{display:flex;align-items:center;gap:8px} .header{flex-wrap:wrap} .header>*{max-width:100%;overflow-wrap:anywhere} .strip{white-space:normal;overflow-wrap:anywhere} .send-row{padding-top:8px;flex-shrink:0} .send-row button{width:100%} .row span:nth-child(2){flex:1} .chip,.badge{border:1px solid;border-radius:5px;padding:2px 5px} .badge{font-size:.9em}`;
     panel = document.createElement("div"); panel.className = "panel"; body = panel;
     shadow.append(style, body); document.body.append(host);
     host.addEventListener("pointerdown", event => {

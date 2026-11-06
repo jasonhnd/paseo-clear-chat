@@ -13,7 +13,7 @@ function fixture(t) {
   const listeners = new Map(), mutations = [], resizes = [];
   let created = 0, throwMount = false;
   class Element {
-    constructor(tag) { this.tagName = tag.toUpperCase(); this.style = {}; this.children = []; this.attrs = {}; this.isConnected = true; this.value = ""; }
+    constructor(tag) { this.tagName = tag.toUpperCase(); this.style = {}; this.children = []; this.attrs = {}; this.isConnected = true; this.value = ""; this.scrollTop = 0; this.scrollHeight = 1000; this.clientHeight = 100; }
     setAttribute(key, value) { this.attrs[key] = value; }
     getAttribute(key) { return this.attrs[key]; }
     matches(selector) {
@@ -155,13 +155,35 @@ test("panel falls back when there is not enough room above the input root", t =>
   assert.equal(f.fallback, 1);
 });
 
-test("send row remains sticky with the panel background and header wraps", t => {
+test("send row stays outside the scrolling content and header wraps", t => {
   const f = fixture(t), panel = f.mount(), shadow = panel.host.shadow;
-  const row = shadow.find("option-send-row"), styles = shadow.children.find(child => child.tagName === "STYLE").textContent;
-  assert.equal(row.style.position, "sticky"); assert.equal(row.style.bottom, "0"); assert.equal(row.style.background, f.h.tokens.surface1);
+  const row = shadow.find("option-send-row"), scroll = shadow.find("option-panel-scroll"), styles = shadow.children.find(child => child.tagName === "STYLE").textContent;
+  assert.equal(row.parent, scroll.parent); assert.equal(scroll.parent.children.at(-1), row);
+  assert.equal(scroll.contains(row), false); assert.equal(row.style.background, f.h.tokens.surface0);
   assert.ok(row.contains(shadow.find("option-send")));
+  for (const id of ["option-question-0", "option-row-A", "option-row-B", "option-note-toggle", "option-next", "option-dismiss", "option-key-hints"]) assert.ok(scroll.contains(shadow.find(id)), id);
+  assert.match(styles, /\.panel\{[^}]*overflow:hidden/);
+  assert.match(styles, /\.scroller\{[^}]*overflow:auto;min-height:0/);
+  assert.match(styles, /\.send-row\{[^}]*flex-shrink:0/);
   assert.match(styles, /\.header\{flex-wrap:wrap\}/);
   assert.match(styles, /\.strip\{white-space:normal/);
+  shadow.find("option-card-collapse").onclick();
+  assert.ok(shadow.find("option-panel-strip")); assert.equal(shadow.find("option-panel-scroll"), null); assert.equal(shadow.find("option-send-row"), null);
+});
+
+test("redraw preserves and clamps scroll position, and changing questions resets it", t => {
+  const f = fixture(t), panel = f.mount(), shadow = panel.host.shadow;
+  shadow.find("option-panel-scroll").scrollTop = 350;
+  shadow.find("option-row-B").onclick();
+  assert.equal(shadow.find("option-panel-scroll").scrollTop, 350);
+  shadow.find("option-panel-scroll").scrollTop = 1200;
+  panel.update();
+  assert.equal(shadow.find("option-panel-scroll").scrollTop, 900);
+  shadow.find("option-next").onclick();
+  assert.equal(shadow.find("option-panel-scroll").scrollTop, 0);
+  shadow.find("option-panel-scroll").scrollTop = 300;
+  shadow.find("option-question-0").onclick();
+  assert.equal(shadow.find("option-panel-scroll").scrollTop, 0);
 });
 
 test("panel follows the composer and shares choices, notes, send and dismissal", t => {
