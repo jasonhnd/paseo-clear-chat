@@ -1,3 +1,4 @@
+import { removeOptionPanels } from "./client/components/option-panel";
 import { removeOptionKeyboards } from "./client/components/option-keyboard";
 import { messages } from "./client/messages";
 import { initializeClientTranslations, translate as t } from "./client/translation";
@@ -345,6 +346,7 @@ function registerClient(client: PluginClientContext) {
 
   return () => {
     removeOptionPills();
+    removeOptionPanels();
     removeOptionKeyboards();
     setOptionSender(null);
     removeFonts();
