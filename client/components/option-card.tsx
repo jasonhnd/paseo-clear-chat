@@ -1,9 +1,10 @@
-import React, { useState } from "react";
-import { Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { useAgent, useTranslation } from "@getpaseo/plugin/client";
 import { TextInput } from "@getpaseo/plugin/client/ui";
 import { messages } from "../messages";
 import { answerText, choose, clearChoice, dismiss, getOptionSession, missingQuestion, moveCursor, sendAnswer, setActiveQuestion, setNote, useOptionSession } from "../option-session";
+import { installOptionComposer } from "../option-composer";
 import type { ExtendedThemeTokens } from "./theme-tokens";
 
 export function OptionCard({ agentId, at, tokens }: { agentId: string; at: number; tokens: ExtendedThemeTokens }) {
@@ -13,7 +14,12 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   const { height } = useWindowDimensions();
   const [collapsed, setCollapsed] = useState(false);
   const [noteOpen, setNoteOpen] = useState<Record<number, boolean>>({});
-  if (!session || session.at !== at || session.dismissed || status === "running") return null;
+  const available = !!session && session.at === at && !session.dismissed && status !== "running";
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined" || !available) return;
+    return installOptionComposer(document, agentId, at);
+  }, [agentId, at, available]);
+  if (!session || !available) return null;
 
   const index = session.activeQuestion;
   const question = session.set.questions[index]!;

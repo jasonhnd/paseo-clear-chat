@@ -168,3 +168,14 @@ export function formatOptionAnswer(set: OptionQuestionSet, choices: Record<numbe
   }
   return answers.join(' ');
 }
+
+export function formatPartialOptionAnswer(set: OptionQuestionSet, choices: Record<number, OptionChoice | undefined>): string {
+  const answers: string[] = [];
+  set.questions.forEach((question, index) => {
+    const choice = choices[index];
+    if (!choice || !question.options.some(option => option.letter === choice.letter)) return;
+    const note = choice.note?.replace(/\r\n|\r|\n/g, ' ').trim();
+    answers.push(`${question.number ?? ''}${choice.letter}${note ? ` (${note})` : ''}`);
+  });
+  return answers.length ? answers.join(' ') + ' ' : '';
+}
