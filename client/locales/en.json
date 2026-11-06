@@ -621,6 +621,13 @@
     "notOptions": "Not options",
     "error": "Could not send: {{reason}}",
     "send": "Send {{answer}}",
-    "missing": "Choose {{question}} to send"
+    "missing": "Choose {{question}} to send",
+    "hintMove": "↑ ↓ move",
+    "hintPick": "A B C D pick",
+    "hintNext": "Tab next",
+    "hintBack": "⇧Tab back",
+    "hintSend": "Tab → Send",
+    "hintReopen": "↑ to reopen",
+    "hintEnter": "Enter"
   }
 }

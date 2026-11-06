@@ -621,6 +621,13 @@
     "notOptions": "不是选项",
     "error": "发送失败：{{reason}}",
     "send": "发送 {{answer}}",
-    "missing": "选择第 {{question}} 题后发送"
+    "missing": "选择第 {{question}} 题后发送",
+    "hintMove": "↑ ↓ 移动",
+    "hintPick": "A B C D 选择",
+    "hintNext": "Tab 下一题",
+    "hintBack": "⇧Tab 上一题",
+    "hintSend": "Tab → 发送",
+    "hintReopen": "↑ 重新展开",
+    "hintEnter": "Enter"
   }
 }
