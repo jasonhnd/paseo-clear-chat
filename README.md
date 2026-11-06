@@ -33,29 +33,28 @@
 - **Open any step.** The full input, output and error of a step open in a side panel on desktop, a popover on iPad and a bottom sheet on a phone, so a long output does not stretch the conversation. See [Phones and iPad](#phones-and-ipad).
 - **A card for every tool.** Claude, Codex and Hermes calls all get proper cards. Every tool kind Paseo reports has its own card, and Hermes tools such as `skill_view` and `memory` get dedicated rows. See [Features](#features).
 - **Speaks your language.** Clear Chat's own text follows the Paseo app language: English, Simplified Chinese or Japanese.
-- **Make it yours.** Sixteen settings: accent colour, interface and code fonts, text size, folding, the installed version and more. Settings are saved on the host, so every device connected to it shares them. See [Settings](#settings).
+- **Make it yours.** Twenty settings: accent colour, interface and code fonts, text size, folding, the installed version and more. Settings are saved on the host, so every device connected to it shares them. See [Settings](#settings).
 - **Stays fast.** In a 300-step test on a 4-core cloud machine, Clear Chat drew the first screen in 673–843 ms; with Clear Chat off, native Paseo drew it in 387–444 ms, because it folds the whole turn into one row instead of showing each step. The method is under [Performance](#performance).<sup>1</sup>
 - **Quote and reply.** Pick the quote icon on a message that contains text and send your reply as a quoted block.
 
 <sub>1. Median of five runs in headless Google Chrome on one machine. Your numbers will differ. The method is in [scripts/perf/README.md](scripts/perf/README.md).</sub>
 
-## What's new in 0.15.2.1
+## What's new in 0.15.2.2
 
-- **Replies with `ui` or `app` code blocks are left to the plugin that draws them.** If you have a plugin that turns `ui` or `app` code blocks into components (for example a generative-UI plugin), that plugin now draws those replies, so they no longer show up as code. A reply counts when a code fence starts with the word `ui` or `app`; a fence quoted inside another code block does not count. The trade-off: when no such plugin is installed, Paseo draws those replies itself, and Clear Chat's styling does not apply to them ([#206](https://github.com/jasonhnd/paseo-clear-chat/issues/206)).
-- **New setting: Leave these tools to other plugins.** Enter tool names separated by commas, and Clear Chat does not draw the rows of those tools, so another plugin can. Names are matched exactly, including upper and lower case. The list is empty by default, so nothing changes until you add a name ([#207](https://github.com/jasonhnd/paseo-clear-chat/issues/207)).
-- **The "what a plugin cannot do" table links to the official entries.** Every row now names the issue, pull request or discussion in Paseo's official repository where you can follow its progress, and a new row covers opening a file from a path you press on a remote client, such as a phone ([#204](https://github.com/jasonhnd/paseo-clear-chat/issues/204)).
-- **No more "Agent not found" in the host log when you open a sub-agent pane.** Clear Chat no longer asks the host for the timeline of the sub-agent pane's own id ([#210](https://github.com/jasonhnd/paseo-clear-chat/issues/210)).
-- **The README opens with the demo GIF and shows the Paseo version it was tested on.** The badge at the top names that version ([#199](https://github.com/jasonhnd/paseo-clear-chat/issues/199)).
+- **New setting: Hide these tools.** Enter tool names separated by commas and Clear Chat removes the rows of those tools from the chat, so a noisy tool, such as a hook that runs on every turn, no longer fills the screen. Names are matched exactly, including upper and lower case, and the list is empty by default. A call that failed, or that is waiting for your approval, is always shown. If a name is in both **Hide these tools** and **Leave these tools to other plugins**, hiding wins ([#216](https://github.com/jasonhnd/paseo-clear-chat/issues/216)).
+- **New setting: Leave these code blocks to other plugins.** Enter language names separated by commas, for example `mermaid`, and a reply that has a code block in one of those languages is drawn by the plugin that handles it, such as a diagram plugin, instead of showing as code. Names are not case sensitive, and `ui` and `app` are always included. The special name `math` also covers formulas written as `$$ … $$`, `\( … \)`, `\[ … \]` and inline `$x$`; code blocks and inline code never count. The list is empty by default. The trade-off: when no plugin draws the block, Paseo draws the reply itself and Clear Chat's styling does not apply to it ([#218](https://github.com/jasonhnd/paseo-clear-chat/issues/218)).
+- **New setting: Fold messages that start with.** Enter the beginning of the messages you want folded, one per line, for example `[Relay]`. Matching is case sensitive and ignores white space at the start of the message. A matching message shows as one line, with its first line cut at about 120 characters, the time and a **Show** button; **Show** opens the whole message and **Hide** folds it again. A message with images is not folded, the find bar still finds the folded text, and the setting needs **Enhanced prompt bubble** to be on. The list is empty by default ([#219](https://github.com/jasonhnd/paseo-clear-chat/issues/219), [#226](https://github.com/jasonhnd/paseo-clear-chat/issues/226)).
+- **New setting: Open button on web addresses.** Off by default. When it is on, a code block that holds only one `https://` address gets an **Open** button beside **Copy**. A `http://` address, or one that points to `localhost`, `127.0.0.1`, `::1` or a name ending in `.local`, does not get it ([#220](https://github.com/jasonhnd/paseo-clear-chat/issues/220)).
 
 ## Install
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.2.1
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.2.2
 ```
 
 Open Paseo’s plugins page and look for the version at the start of the Clear Chat description. Paseo 0.14.0 displays the default English description there even when the app language is changed.
 
-Clear Chat 0.15.2.1 needs Paseo 0.14.0 or later. Open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
+Clear Chat 0.15.2.2 needs Paseo 0.14.0 or later. Open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
 
 To update later:
 
@@ -104,7 +103,7 @@ A Clear Chat version is the Paseo version it is built and tested for, plus one m
 ```bash
 paseo plugin update clear-chat                 # latest on main, asks first
 paseo plugin update clear-chat --yes           # same, no question
-paseo plugin update clear-chat --ref v0.15.2.1 --yes   # pin one release
+paseo plugin update clear-chat --ref v0.15.2.2 --yes   # pin one release
 ```
 
 An update keeps your settings. A rollback to an earlier ref also keeps them, but the effect of a specific rollback on settings is not guaranteed, so back them up first if the settings matter. Removing the plugin deletes its settings.
@@ -289,8 +288,12 @@ On a message that contains text, pick the quote icon beside Copy. A panel opens 
 | Assistant markdown | Draws replies with Clear Chat's own headings, lists and code blocks. Off hands replies back to Paseo. |
 | Markdown style | Document (airy, for long answers), Compact (tighter, for short replies) or Terminal (body in the code font). |
 | Leave these tools to other plugins | Empty by default. Enter tool names separated by commas; spaces around a name are ignored and names are matched exactly, including upper and lower case. Clear Chat does not draw the rows of the tools you list, so another plugin can. |
+| Hide these tools | Empty by default. Tool names separated by commas; spaces around a name are ignored and names are matched exactly, including upper and lower case. Clear Chat removes the rows of the tools you list, except calls that failed or are waiting for your approval. If a name is also under **Leave these tools to other plugins**, hiding wins. |
+| Leave these code blocks to other plugins | Empty by default. Language names separated by commas, not case sensitive; `ui` and `app` are always included, and `math` also covers formulas. A reply with a code block in a listed language is drawn by another plugin; if none does, Paseo draws it and Clear Chat's styling does not apply. |
+| Fold messages that start with | Empty by default. One message beginning per line, case sensitive, white space at the start of the message ignored. A matching message shows as one line (its first line, about 120 characters, and the time) with **Show** and **Hide**; a message with images is never folded. Needs **Enhanced prompt bubble**; reload the chat to update messages already shown. |
+| Show an Open button on code blocks that hold only a web address | Off by default. Adds **Open** beside **Copy** on a code block whose whole content is one `https://` address; not for `http://`, `localhost`, `127.0.0.1`, `::1` or `.local` addresses. |
 
-**Installed version.** Under the title of the settings page, Clear Chat shows `Clear Chat version 0.15.2.1`. The line below it explains the value: a directory install keeps the version information already in that directory, so it can show an older release than the one you installed. If the build carries no usable version, the line shows **Unknown**.
+**Installed version.** Under the title of the settings page, Clear Chat shows `Clear Chat version 0.15.2.2`. The line below it explains the value: a directory install keeps the version information already in that directory, so it can show an older release than the one you installed. If the build carries no usable version, the line shows **Unknown**.
 
 **Custom accent colour.** Tap a swatch, or enter `#RGB` or `#RRGGBB` and press **Apply**. An invalid HEX value stays in the field with an error, and the saved colour does not change. Switching to a preset remembers your custom colour. The saved HEX value never changes; only the colour you see is darkened on light themes or lightened on dark themes when text would otherwise be hard to read. Filled buttons use black or white text, whichever has more contrast.
 
@@ -316,6 +319,10 @@ Settings are saved on the host, so every device connected to that host shares th
 | Assistant markdown | On | Every device |
 | Markdown style | Document | Every device |
 | Leave these tools to other plugins | Empty | Every device |
+| Hide these tools | Empty | Every device |
+| Leave these code blocks to other plugins | Empty | Every device |
+| Fold messages that start with | Empty | Every device; needs Enhanced prompt bubble |
+| Show an Open button on code blocks that hold only a web address | Off | Every device |
 
 The settings page also shows the installed build's version under its title, with a line explaining that a directory install keeps the version information already in that directory.
 
@@ -370,23 +377,23 @@ Clear Chat changes only how Paseo shows a conversation. Everything below is a li
 | Cannot | What to do instead | Waiting on |
 | --- | --- | --- |
 | Show pasted images in your original Hermes agents | Create the agent from the **·CC** copy of the provider; it saves the images itself | Paseo to hand pasted images to plugins before they are stripped ([#8257](https://github.com/getpaseo/paseo/discussions/8257), [#6736](https://github.com/getpaseo/paseo/pull/6736), [#4556](https://github.com/getpaseo/paseo/issues/4556)) |
-| Use Paseo's own Markdown | Turn **Assistant markdown** off for mermaid, images and the host's file-path links | The plugin SDK to expose the host's Markdown renderer (no matching official entry as of 2026-11-05) |
-| Use hardware keys in the native apps | Keyboard navigation works in a browser and the desktop app | Native key events in the plugin SDK (no matching official entry as of 2026-11-05) |
+| Use Paseo's own Markdown | For mermaid diagrams and formulas, enter `mermaid` (and `math`) under **Leave these code blocks to other plugins**; for images and the host's file-path links, turn **Assistant markdown** off | A host Markdown component has been available to plugins since Paseo 0.14.0 ([#7579](https://github.com/getpaseo/paseo/pull/7579)), but it takes content only, with no streaming controls, style overrides or parser extensions, and Clear Chat does not use it yet |
+| Use hardware keys in the native apps | Keyboard navigation works in a browser and the desktop app | Native key events in the plugin SDK (no matching official entry as of 2026-11-06) |
 | Follow Paseo's code font in the native apps | iOS and iPadOS use Menlo, Android uses the system monospace | The SDK to read the host's font settings ([#6600](https://github.com/getpaseo/paseo/discussions/6600)) |
-| Drag to select text on iOS and iPadOS | Keep **Assistant markdown** and **Enhanced prompt bubble** on and use the **Copy** buttons | Paseo to allow selection inside plugin-drawn text (no matching official entry as of 2026-11-05) |
-| Show a step's duration when the agent does not report one | Nothing to do: the row simply omits the time | Providers to send durations over ACP (no matching official entry as of 2026-11-05) |
+| Drag to select text on iOS and iPadOS | Keep **Assistant markdown** and **Enhanced prompt bubble** on and use the **Copy** buttons | Paseo to allow selection inside plugin-drawn text (no matching official entry as of 2026-11-06) |
+| Show a step's duration when the agent does not report one | Nothing to do: the row simply omits the time | Providers to send durations over ACP (no matching official entry as of 2026-11-06) |
 | Have Paseo's turn folding fold content Clear Chat drew | Use Clear Chat's own folding, and **When a collapsed step is pressed** | Paseo to include plugin content in its turn folding ([#8842](https://github.com/getpaseo/paseo/issues/8842), [#8811](https://github.com/getpaseo/paseo/pull/8811)) |
 | Follow Paseo's text size | Use Clear Chat's own **Text size** | Paseo to let plugins follow the app's font size ([#5642](https://github.com/getpaseo/paseo/discussions/5642)) |
-| Search messages that are not loaded yet | Scroll up to load older messages, then search again | A search API over unloaded history (no matching official entry as of 2026-11-05) |
+| Search messages that are not loaded yet | Scroll up to load older messages, then search again | A search API over unloaded history (no matching official entry as of 2026-11-06) |
 | **Fork chat from here**, from a message | Turn Clear Chat off in **Settings → Plugins**, then use Paseo's own message menu | The plugin API to expose Paseo's agent actions ([#7462](https://github.com/getpaseo/paseo/pull/7462), [#8290](https://github.com/getpaseo/paseo/discussions/8290)) |
 | **Copy turn** | Same: with Clear Chat off, Paseo's own **Copy turn** appears | The same plugin API ([#8290](https://github.com/getpaseo/paseo/discussions/8290)) |
 | **Copy message**, by Paseo's own menu | Clear Chat's **Copy** button copies the reply while Clear Chat draws it | The same plugin API ([#8290](https://github.com/getpaseo/paseo/discussions/8290)) |
 | **Rewind**, from a message | Turn Clear Chat off and use Paseo's own rewind | The same plugin API ([#6676](https://github.com/getpaseo/paseo/discussions/6676)) |
 | Open a file from a path you press on a remote client (a phone, or a browser on another machine) | The file opens in the file manager of the machine that runs the Paseo daemon, not on your device; copy the path instead (**Copy path** in the step menu) | Paseo to let plugin rows open files in its own file pane ([#7317](https://github.com/getpaseo/paseo/discussions/7317), [#7318](https://github.com/getpaseo/paseo/pull/7318)) |
-| Open a **·CC** conversation after Clear Chat is turned off | Turn Clear Chat back on: the conversation's saved record is written by Clear Chat | Paseo to read conversation history that a plugin wrote (no matching official entry as of 2026-11-05) |
-| Keep settings after you remove the plugin | Back up the settings before removing; removing a plugin deletes them | Paseo to keep plugin settings on removal (no matching official entry as of 2026-11-05) |
+| Open a **·CC** conversation after Clear Chat is turned off | Turn Clear Chat back on: the conversation's saved record is written by Clear Chat | Paseo to read conversation history that a plugin wrote (no matching official entry as of 2026-11-06) |
+| Keep settings after you remove the plugin | Back up the settings before removing; removing a plugin deletes them | Paseo to keep plugin settings on removal (no matching official entry as of 2026-11-06) |
 
-Numbers are issues, pull requests and discussions in Paseo's official repository (`getpaseo/paseo`). Progress is theirs to report; the list is as of 2026-11-05.
+Numbers are issues, pull requests and discussions in Paseo's official repository (`getpaseo/paseo`). Progress is theirs to report; the list is as of 2026-11-06.
 
 ## Privacy and data on the host
 
@@ -413,6 +420,8 @@ Numbers are issues, pull requests and discussions in Paseo's official repository
 
 **Can I use Clear Chat next to a plugin that draws charts or other tool rows?** Yes, with two limits. A reply with a `ui` or `app` code block is left to the plugin that draws such blocks; when no such plugin is installed, Paseo draws the reply itself and Clear Chat's styling does not apply to it. For other plugins that draw tool rows, list the tool names under **Leave these tools to other plugins** in the settings.
 
+**Can my diagram or formula plugin draw its diagrams and formulas?** Yes. Enter `mermaid` (and `math` for formulas) under **Leave these code blocks to other plugins**, then reload the chat. A reply that has such a block is drawn by that plugin; other replies keep Clear Chat's look. If no plugin draws the block, Paseo draws it as plain code and Clear Chat's styling does not apply to it.
+
 **Which Paseo versions work?** 0.14.0 or later. Clear Chat was installed on a Paseo 0.15.2 host and checked there (the product items, the page layout and the sub-agent pane); items not listed have not been checked on 0.15.2. Paseo 0.13 has an older, untested path described under [Install](#install).
 
 ## Troubleshooting
@@ -420,7 +429,7 @@ Numbers are issues, pull requests and discussions in Paseo's official repository
 | Problem | What to do |
 |---|---|
 | Installing through the Cafe plugin fails, or Paseo reports a missing Shiki dependency such as `@shikijs/core`. | Retry with the Paseo CLI command in [Install](#install), using the same repository and release ref. Clear Chat installs its dependencies with `npm ci --include=dev`, so Node.js and npm must be available on the daemon host, and its network must reach the npm registry. If you manage the checkout yourself, run `npm ci --include=dev` there before retrying. |
-| Installation stops because the plugin needs a newer Paseo version. | For Clear Chat 0.15.2.1, update Paseo on the daemon host and all connected apps to 0.14.0 or later. For older hosts, see the [Install](#install) section for the Paseo 0.13 commands and their untested-status warning, and the separate Paseo 0.12 instructions. |
+| Installation stops because the plugin needs a newer Paseo version. | For Clear Chat 0.15.2.2, update Paseo on the daemon host and all connected apps to 0.14.0 or later. For older hosts, see the [Install](#install) section for the Paseo 0.13 commands and their untested-status warning, and the separate Paseo 0.12 instructions. |
 | Paseo rejects the plugin version, or Clear Chat says plugin settings or timeline support is missing. | Update Paseo on the daemon host and in every connected app, then reload Clear Chat. The Paseo version Clear Chat needs is declared in `paseo-plugin.json`. |
 | Clear Chat cannot start because plugin registration failed. | Update Paseo and reload Clear Chat. If it still fails, back up the plugin settings before you reinstall from the CLI. |
 | Clear Chat cannot read its settings from the host. | Reconnect to the host and choose **Retry** in **Settings → Plugins → Clear Chat**. If it still fails, check that the daemon can access the plugin settings folder. |
@@ -455,7 +464,7 @@ If the `beautiful-chat` settings folder does not exist, you never changed Beauti
 **2. Install**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.2.1
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.2.2
 ```
 
 **3. Check, then remove the old plugin**
