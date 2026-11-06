@@ -506,6 +506,20 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
             style={[styles.toolNamesInput, { color: tokens.foreground, borderColor: tokens.border, fontFamily: tokens.fontUi }]}
           />
         </View>
+        <View style={[styles.row, { borderTopColor: tokens.borderSubtle }]}>
+          <Text style={[styles.rowTitle, { color: tokens.foreground, fontFamily: tokens.fontUi }]}>{t("settings.hiddenTools.label")}</Text>
+          <Text style={[styles.rowDescription, { color: tokens.foregroundMuted, fontFamily: tokens.fontUi }]}>{t("settings.hiddenTools.description")}</Text>
+          <TextInput
+            accessibilityLabel={t("settings.hiddenTools.label")}
+            accessibilityHint={t("settings.hiddenTools.description")}
+            value={preferences.hiddenTools}
+            onChangeText={(hiddenTools) => { void updateEnhancerPreferences({ hiddenTools }); }}
+            autoCapitalize="none"
+            autoCorrect={false}
+            spellCheck={false}
+            style={[styles.toolNamesInput, { color: tokens.foreground, borderColor: tokens.border, fontFamily: tokens.fontUi }]}
+          />
+        </View>
         <ToggleRow
           title={t("settings.foldSteps.label")}
           description={t("settings.foldSteps.description")}

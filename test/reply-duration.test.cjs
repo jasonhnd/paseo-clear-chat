@@ -241,3 +241,17 @@ test("late timing results cannot move to a different host with matching message 
   assert.doesNotMatch(h.text(h.draw({ type: LiveAssistantRenderer, props })), /Worked for /);
   h.unmount();
 });
+
+test("hidden tool projection leaves the canonical Worked for duration unchanged", async () => {
+  const source = timingHost();
+  const h = createToolHarness("web", { ...source, markdown: true, replyFooter: true, preferences: { hiddenTools: "Bash" } });
+  const hidden = entries.find(entry => entry.item.type === "tool_call" && entry.item.name === "Bash");
+  const transformer = h.transformers.get("tool_call");
+  assert.deepEqual(transformer.transform({ item: hidden.item, phase: "complete" }), { items: [] });
+  const last = entries.at(-1);
+  const mounted = h.mount(last.item, false, { timestamp: new Date(last.timestamp) });
+  await settle();
+  assert.match(h.text(mounted.render()), /Worked for 21s/);
+  assert.equal(source.requests[0].projection, "canonical");
+  h.unmount();
+});

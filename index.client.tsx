@@ -90,8 +90,13 @@ function registerClient(client: PluginClientContext) {
     query: { itemType: "tool_call" },
     transform({ item, phase }) {
       if (item.type !== "tool_call") return undefined;
-      if (getEnhancerPreferences().delegatedTools.split(",").some((name) => name.trim() !== "" && name.trim() === item.name)) return undefined;
+      const preferences = getEnhancerPreferences();
       const approval = projectedApprovalStatus(item);
+      const status: string = item.status;
+      const waitingForApproval = ["waiting", "pending", "awaiting_approval", "pending_approval", "waiting_for_approval"].includes(status);
+      const failed = status === "failed" || status === "error" || item.error != null;
+      if (!approval && !waitingForApproval && !failed && preferences.hiddenTools.split(",").some((name) => name.trim() !== "" && name.trim() === item.name)) return { items: [] };
+      if (preferences.delegatedTools.split(",").some((name) => name.trim() !== "" && name.trim() === item.name)) return undefined;
       if (approval) {
         return {
           items: [{

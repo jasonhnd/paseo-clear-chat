@@ -566,3 +566,38 @@ test("delegated tool names match exactly and survive reload and reset", async ()
   freshCleanup();
   cleanup();
 });
+
+test("hidden tool names match exactly, preserve failures and approvals, and survive reload and reset", async () => {
+  const server = host({ legacyMigrated: true });
+  const first = harness();
+  const cleanup = first.contribute(server.rpc);
+  await new Promise(setImmediate);
+  const transform = (client, item) => client.transformers.get("omp-enhanced-tool-call").transform({ item, phase: "complete" });
+  const call = (name, extra = {}) => ({ type: "tool_call", name, status: "completed", callId: name, detail: { type: "shell", command: "true" }, ...extra });
+  const kind = (item) => transform(first, item)?.items[0]?.kind;
+  for (const name of ["shell", "read", "Shell", ""]) assert.equal(kind(call(name)), "omp-tool-call");
+  await first.preferences.updateEnhancerPreferences({ hiddenTools: " shell, , read_file ," });
+  assert.deepEqual(transform(first, call("shell")), { items: [] });
+  assert.deepEqual(transform(first, call("read_file")), { items: [] });
+  for (const name of ["Shell", "read", ""]) assert.equal(kind(call(name)), "omp-tool-call");
+  assert.deepEqual(transform(first, call("shell", { status: "running" })), { items: [] });
+  for (const extra of [{ status: "failed" }, { status: "error" }, { error: "failure" }, { error: {} }, { status: "waiting" }, { status: "pending" }, { status: "awaiting_approval" }, { status: "pending_approval" }, { status: "waiting_for_approval" }]) {
+    assert.equal(kind(call("shell", extra)), "omp-tool-call", JSON.stringify(extra));
+  }
+  const approval = require("./fixtures/real-hermes-approvals.json").items.find(item => item.name?.startsWith("edit-approval-"));
+  await first.preferences.updateEnhancerPreferences({ hiddenTools: `shell, ${approval.name}`, delegatedTools: "shell" });
+  for (const status of ["completed", "waiting", "failed"]) assert.equal(kind({ ...approval, status }), "omp-approval");
+  assert.deepEqual(transform(first, call("shell")), { items: [] });
+  assert.equal(transform(first, call("shell", { status: "failed" })), undefined);
+  const fresh = harness();
+  const freshCleanup = fresh.contribute(server.rpc);
+  await new Promise(setImmediate);
+  assert.equal(fresh.preferences.getEnhancerPreferences().hiddenTools, `shell, ${approval.name}`);
+  assert.deepEqual(transform(fresh, call("shell")), { items: [] });
+  await fresh.preferences.resetEnhancerPreferences();
+  assert.equal(fresh.preferences.getEnhancerPreferences().hiddenTools, "");
+  assert.equal(transform(fresh, call("shell")).items[0].kind, "omp-tool-call");
+  assert.deepEqual(server.values.preferences, {});
+  freshCleanup();
+  cleanup();
+});
