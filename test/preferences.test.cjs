@@ -673,3 +673,113 @@ test("answer card setting persists, resets and ignores browser snapshots", async
   await reloaded.initializeEnhancerPreferences(server.rpc);
   assert.equal(reloaded.getEnhancerPreferences().showAnswerCard, false);
 });
+
+const optionReply = "1) Pick?\nA One\nB Two\n\nI recommend B";
+
+test("dismissed replies survive reload, remain agent-specific, and reset", async () => {
+  const server = host();
+  const snapshot = JSON.stringify({ dismissedOptionReplies: [{ agentId: "browser", at: 1 }] });
+  const first = harness("web", snapshot);
+  const store = first.load("client/option-session.ts");
+  await first.preferences.initializeEnhancerPreferences(server.rpc);
+  assert.deepEqual(first.preferences.getEnhancerPreferences().dismissedOptionReplies, []);
+  store.publishAssistantReply("a", { at: 10, text: optionReply });
+  store.dismiss("a");
+  assert.equal(store.getOptionSession("a"), null);
+  await first.preferences.updateEnhancerPreferences({});
+  assert.deepEqual(server.values.preferences.dismissedOptionReplies, [{ agentId: "a", at: 10 }]);
+
+  const fresh = harness("web", snapshot);
+  const reloaded = fresh.load("client/option-session.ts");
+  await fresh.preferences.initializeEnhancerPreferences(server.rpc);
+  reloaded.publishAssistantReply("a", { at: 10, text: optionReply });
+  reloaded.publishAssistantReply("b", { at: 10, text: optionReply });
+  assert.equal(reloaded.getOptionSession("a"), null);
+  assert.ok(reloaded.getOptionSession("b"));
+  reloaded.publishAssistantReply("a", { at: 11, text: optionReply });
+  assert.ok(reloaded.getOptionSession("a"));
+  assert.deepEqual(fresh.preferences.getEnhancerPreferences().dismissedOptionReplies, [{ agentId: "a", at: 10 }]);
+  await fresh.preferences.resetEnhancerPreferences();
+  const reset = harness("web", snapshot);
+  await reset.preferences.initializeEnhancerPreferences(server.rpc);
+  assert.deepEqual(reset.preferences.getEnhancerPreferences().dismissedOptionReplies, []);
+  assert.equal(server.values.preferences.dismissedOptionReplies, undefined);
+});
+
+test("dismissal history keeps the last 100 entries", async () => {
+  const server = host({ legacyMigrated: true });
+  const h = harness();
+  const store = h.load("client/option-session.ts");
+  await h.preferences.initializeEnhancerPreferences(server.rpc);
+  for (let at = 1; at <= 101; at++) {
+    store.publishAssistantReply("a", { at, text: optionReply });
+    store.dismiss("a");
+  }
+  await h.preferences.updateEnhancerPreferences({});
+  const entries = server.values.preferences.dismissedOptionReplies;
+  assert.equal(entries.length, 100);
+  assert.deepEqual(entries[0], { agentId: "a", at: 2 });
+  assert.deepEqual(entries.at(-1), { agentId: "a", at: 101 });
+  const fresh = harness();
+  const reloaded = fresh.load("client/option-session.ts");
+  await fresh.preferences.initializeEnhancerPreferences(server.rpc);
+  reloaded.publishAssistantReply("a", { at: 1, text: optionReply });
+  assert.ok(reloaded.getOptionSession("a"));
+  reloaded.publishAssistantReply("a", { at: 2, text: optionReply });
+  assert.equal(reloaded.getOptionSession("a"), null);
+});
+
+test("a failed dismissal save stays silent and hides the session", async () => {
+  const server = host({ legacyMigrated: true });
+  const h = harness();
+  const store = h.load("client/option-session.ts");
+  await h.preferences.initializeEnhancerPreferences(server.rpc);
+  server.failWrites = true;
+  store.publishAssistantReply("a", { at: 10, text: optionReply });
+  store.dismiss("a");
+  await new Promise(setImmediate);
+  assert.equal(store.getOptionSession("a"), null);
+  assert.equal(h.preferences.getEnhancerPreferencesError(), null);
+  store.publishAssistantReply("a", { at: 10, text: optionReply });
+  assert.equal(store.getOptionSession("a"), null);
+});
+
+test("late settings remove matching early sessions while preserving newer and other agents' replies", async () => {
+  const server = host({ preferences: { dismissedOptionReplies: [{ agentId: "a", at: 10 }, { agentId: "c", at: 10 }] }, legacyMigrated: true });
+  const h = harness();
+  const store = h.load("client/option-session.ts");
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const loading = h.preferences.initializeEnhancerPreferences(async (...args) => { await gate; return server.rpc(...args); });
+  for (const agentId of ["a", "b", "c"]) store.publishAssistantReply(agentId, { at: 10, text: optionReply });
+  store.publishAssistantReply("c", { at: 11, text: optionReply });
+  assert.ok(store.getOptionSession("a"));
+  const edit = h.preferences.updateEnhancerPreferences({ accent: "jade" });
+  release();
+  await loading;
+  assert.equal(store.getOptionSession("a"), null);
+  assert.ok(store.getOptionSession("b"));
+  assert.equal(store.getOptionSession("c").at, 11);
+  await edit;
+});
+
+test("a dismissal queued during loading merges with saved history and respects a later reset", async () => {
+  const server = host({ preferences: { dismissedOptionReplies: [{ agentId: "saved", at: 1 }] }, legacyMigrated: true });
+  const h = harness();
+  const store = h.load("client/option-session.ts");
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const loading = h.preferences.initializeEnhancerPreferences(async (...args) => { await gate; return server.rpc(...args); });
+  store.publishAssistantReply("new", { at: 2, text: optionReply });
+  store.dismiss("new");
+  release();
+  await loading;
+  await h.preferences.updateEnhancerPreferences({});
+  assert.deepEqual(server.values.preferences.dismissedOptionReplies, [{ agentId: "saved", at: 1 }, { agentId: "new", at: 2 }]);
+
+  store.publishAssistantReply("new", { at: 3, text: optionReply });
+  store.dismiss("new");
+  await h.preferences.resetEnhancerPreferences();
+  assert.deepEqual(h.preferences.getEnhancerPreferences().dismissedOptionReplies, []);
+  assert.equal(server.values.preferences.dismissedOptionReplies, undefined);
+});

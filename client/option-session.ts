@@ -1,6 +1,7 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { formatOptionAnswer, parseOptionQuestions } from "./option-questions";
 import type { OptionChoice, OptionQuestionSet } from "./option-questions";
+import { getEnhancerPreferences, onEnhancerPreferencesReady, saveDismissedOptionReply } from "./preferences";
 
 export interface OptionSession {
   at: number;
@@ -54,6 +55,18 @@ export function getOptionSession(agentId: string): OptionSession | null {
   return snapshots.get(agentId) ?? null;
 }
 
+function isDismissed(agentId: string, at: number): boolean {
+  return getEnhancerPreferences().dismissedOptionReplies.some(entry => entry.agentId === agentId && entry.at === at);
+}
+
+onEnhancerPreferencesReady(() => {
+  let changed = false;
+  for (const [agentId, session] of snapshots) {
+    if (isDismissed(agentId, session.at)) changed = snapshots.delete(agentId) || changed;
+  }
+  if (changed) notify();
+});
+
 export function useOptionSession(agentId: string): OptionSession | null {
   const read = useCallback(() => getOptionSession(agentId), [agentId]);
   return useSyncExternalStore(subscribeOptionSession, read, read);
@@ -62,7 +75,7 @@ export function useOptionSession(agentId: string): OptionSession | null {
 export function publishAssistantReply(agentId: string, reply: { at: number; text: string }): void {
   if (!Number.isFinite(reply.at) || reply.at <= (replies.get(agentId) ?? -Infinity)) return;
   replies.set(agentId, reply.at);
-  const set = reply.at >= (messages.get(agentId) ?? -Infinity) ? parseOptionQuestions(reply.text) : null;
+  const set = !isDismissed(agentId, reply.at) && reply.at >= (messages.get(agentId) ?? -Infinity) ? parseOptionQuestions(reply.text) : null;
   if (!set) {
     if (snapshots.delete(agentId)) notify();
     return;
@@ -137,8 +150,15 @@ export function moveCursor(agentId: string, questionIndex: number, delta: number
   });
 }
 
-export function dismiss(agentId: string): void {
+export function retireOptionSession(agentId: string): void {
   if (snapshots.delete(agentId)) notify();
+}
+
+export function dismiss(agentId: string): void {
+  const session = snapshots.get(agentId);
+  if (!session) return;
+  retireOptionSession(agentId);
+  void saveDismissedOptionReply(agentId, session.at);
 }
 
 export function missingQuestion(agentId: string): number | null {
