@@ -21,6 +21,7 @@ import { MessageOutput } from "../message-output";
 import type { ToolExpansionIdentity } from "../../tool-expansion-store";
 import { useEnhancerPreferences } from "../../preferences";
 import { codeBlockWebAddress } from "./web-address";
+import { jumpHeadingLines } from "../../jump-chips";
 
 /**
  * The assistant's own prose, drawn by the plugin instead of the host. Three
@@ -256,7 +257,15 @@ export function MarkdownView({ text, tokens, variant, images = [], cwd, expansio
   useTranslation(messages);
   const { codeBlockOpen } = useEnhancerPreferences();
   const filePath = useReplyFilePath(cwd);
-  const blocks = useMemo(() => parseMarkdown(text), [text]);
+  const { blocks, headingIndices } = useMemo(() => {
+    const byLine = new Map(jumpHeadingLines(text).map(({ line, index }) => [line, index]));
+    const headingIndices = new Map<MdBlock, number>();
+    const blocks = parseMarkdown(text, (block, line) => {
+      const index = byLine.get(line);
+      if (index !== undefined) headingIndices.set(block, index);
+    });
+    return { blocks, headingIndices };
+  }, [text]);
   const previews = useMemo(() => {
     const inline = markdownImageKeys(blocks);
     return [...new Map([...extractGeneratedImages(text), ...images]
@@ -275,7 +284,7 @@ export function MarkdownView({ text, tokens, variant, images = [], cwd, expansio
 
   return (
     <View {...selectionSurface} style={styles.root}>
-      {blocks.map((block, index) => renderBlock(block, `b${index}`, index === 0, context))}
+      {blocks.map((block, index) => renderBlock(block, `b${index}`, index === 0, context, headingIndices.get(block)))}
       <CopyFallbackDialog text={filePath.fallbackText} onClose={() => filePath.setFallbackText(null)} tokens={tokens} />
       {/* Written reply paths are explicit, so unreadable images keep a reason and address. */}
       <GeneratedImages images={previews} cwd={cwd} tokens={tokens}
@@ -309,6 +318,7 @@ function renderBlock(
   key: string,
   first: boolean,
   context: RenderContext,
+  headingIndex?: number,
 ): React.ReactNode {
   const { styles, tokens, metrics } = context;
 
@@ -316,7 +326,7 @@ function renderBlock(
     case "heading": {
       const headingStyle = styles[HEADING_KEYS[block.level - 1] ?? "h4"];
       return (
-        <View key={key} style={first ? styles.headingBlockFirst : styles.headingBlock}>
+        <View key={key} {...(Platform.OS === "web" && headingIndex !== undefined ? { dataSet: { jumpHeading: String(headingIndex) } } : {})} style={first ? styles.headingBlockFirst : styles.headingBlock}>
           {renderFlow(block.spans, headingStyle, key, context, {
             prefix: metrics.headingHash ? (
               <Text style={styles.headingHash}>{HASH_LABELS[block.level - 1] ?? "# "}</Text>
