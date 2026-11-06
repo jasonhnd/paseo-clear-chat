@@ -23,7 +23,7 @@ function createToolHarness(platform = "ios", options = {}) {
   const noop = () => {};
   const cleanup = () => noop;
   // Body replays exercise inline cards; detail/gesture suites opt into details explicitly.
-  const preferences = { delegatedTools: "", hiddenTools: "", enhancedUserBubble: true, assistantMarkdown: true, markdownVariant: "document", textScale: 1, foldFinishedSteps: true, foldLongOutputAfter: 15, collapsedStepAction: "inline", ...options.preferences };
+  const preferences = { delegatedTools: "", hiddenTools: "", foldMessagePrefixes: "", enhancedUserBubble: true, assistantMarkdown: true, markdownVariant: "document", textScale: 1, foldFinishedSteps: true, foldLongOutputAfter: 15, collapsedStepAction: "inline", ...options.preferences };
   const getPreferences = () => options.presentationHost ? load("client/preferences.ts").getEnhancerPreferences() : preferences;
   const expansionHost = options.expansionHost ?? createExpansionHost();
   const rpcFunctions = new Map();

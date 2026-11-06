@@ -601,3 +601,22 @@ test("hidden tool names match exactly, preserve failures and approvals, and surv
   freshCleanup();
   cleanup();
 });
+
+test("message folding prefixes persist, reset, and cannot be imported from a browser snapshot", async () => {
+  const server = host();
+  const first = harness("web", JSON.stringify({ foldMessagePrefixes: "[Old]" }));
+  await first.preferences.initializeEnhancerPreferences(server.rpc);
+  assert.equal(first.preferences.getEnhancerPreferences().foldMessagePrefixes, "");
+  assert.equal(server.values.preferences.foldMessagePrefixes, undefined);
+  const value = "[Relay]\n[Report]";
+  await first.preferences.updateEnhancerPreferences({ foldMessagePrefixes: value });
+  assert.equal(server.values.preferences.foldMessagePrefixes, value);
+  const fresh = harness();
+  await fresh.preferences.initializeEnhancerPreferences(server.rpc);
+  assert.equal(fresh.preferences.getEnhancerPreferences().foldMessagePrefixes, value);
+  await fresh.preferences.resetEnhancerPreferences();
+  const reset = harness();
+  await reset.preferences.initializeEnhancerPreferences(server.rpc);
+  assert.equal(reset.preferences.getEnhancerPreferences().foldMessagePrefixes, "");
+  assert.equal(server.values.preferences.foldMessagePrefixes, undefined);
+});

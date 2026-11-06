@@ -1,5 +1,9 @@
 {
   "settings": {
+    "foldMessages": {
+      "label": "折叠以下列文字开头的消息",
+      "description": "每行输入一个开头。匹配区分大小写，并忽略消息开头的空白。仅折叠可检查图片状态的消息。需要启用增强提示气泡；重新加载聊天以更新现有消息。"
+    },
     "hiddenTools": {
       "label": "隐藏这些工具",
       "description": "输入以逗号分隔的工具名称，区分大小写。隐藏优先于交给其他插件。"
@@ -167,6 +171,10 @@
     "send": "发送"
   },
   "prompt": {
+    "show": "显示",
+    "hide": "隐藏",
+    "showMessage": "显示完整消息",
+    "hideMessage": "隐藏完整消息",
     "you": "你",
     "copyA11y": "复制提问",
     "imagesAttached": "附带 {{count}} 张图片",
