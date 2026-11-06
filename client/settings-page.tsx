@@ -589,6 +589,14 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
           tokens={tokens}
         />
 
+        <ToggleRow
+          title={t("settings.codeBlockOpen.label")}
+          description={t("settings.codeBlockOpen.description")}
+          value={preferences.codeBlockOpen}
+          onChange={(codeBlockOpen) => updateEnhancerPreferences({ codeBlockOpen })}
+          tokens={tokens}
+        />
+
         <ChoiceRow
           title={t("settings.markdownStyle.label")}
           description={t("settings.markdownStyle.description")}

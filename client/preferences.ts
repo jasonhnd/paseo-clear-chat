@@ -73,6 +73,7 @@ export interface EnhancerPreferences {
    * subset rather than a superset.
    */
   assistantMarkdown: boolean;
+  codeBlockOpen: boolean;
   /** Which look the markdown renderer uses. */
   markdownVariant: MarkdownVariantPreference;
   foldFinishedSteps: boolean;
@@ -98,6 +99,7 @@ export const DEFAULT_PREFERENCES: Readonly<EnhancerPreferences> = {
   enhancedUserBubble: true,
   selectionActions: true,
   assistantMarkdown: true,
+  codeBlockOpen: false,
   markdownVariant: "document",
   foldFinishedSteps: true,
   collapsedStepAction: "details",
@@ -143,7 +145,7 @@ function loadLegacyPreferences(): PreferenceOverrides | undefined {
     const valid: Record<string, unknown> = {};
     for (const [key, schema] of Object.entries(preferenceOverridesSchema.shape)) {
       // New host-only preferences must never come from a browser import snapshot.
-      if (["textScale", "foldFinishedSteps", "foldLongOutputAfter", "codeFontFamily", "customAccent", "customAccentEnabled", "collapsedStepAction", "delegatedTools", "hiddenTools"].includes(key)) continue;
+      if (["textScale", "foldFinishedSteps", "foldLongOutputAfter", "codeFontFamily", "customAccent", "customAccentEnabled", "collapsedStepAction", "delegatedTools", "hiddenTools", "codeBlockOpen"].includes(key)) continue;
       const parsed = schema.safeParse((candidate as Record<string, unknown>)[key]);
       if (parsed.success && parsed.data !== undefined) valid[key] = parsed.data;
     }

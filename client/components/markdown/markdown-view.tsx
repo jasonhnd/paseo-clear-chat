@@ -19,6 +19,8 @@ import { parseMarkdown, type MdAlign, type MdBlock, type MdInline, type MdListIt
 import { ImageFallback, MarkdownImage } from "./markdown-image";
 import { MessageOutput } from "../message-output";
 import type { ToolExpansionIdentity } from "../../tool-expansion-store";
+import { useEnhancerPreferences } from "../../preferences";
+import { codeBlockWebAddress } from "./web-address";
 
 /**
  * The assistant's own prose, drawn by the plugin instead of the host. Three
@@ -214,6 +216,7 @@ interface RenderContext {
   copyFilePath: boolean;
   cwd?: string | null;
   inlineWorkspacePaths: boolean;
+  codeBlockOpen: boolean;
 }
 
 /**
@@ -251,6 +254,7 @@ function scaleMetrics(metrics: VariantMetrics, scale: number): VariantMetrics {
 
 export function MarkdownView({ text, tokens, variant, images = [], cwd, expansionIdentity, inlineWorkspacePaths = true }: MarkdownViewProps) {
   useTranslation(messages);
+  const { codeBlockOpen } = useEnhancerPreferences();
   const filePath = useReplyFilePath(cwd);
   const blocks = useMemo(() => parseMarkdown(text), [text]);
   const previews = useMemo(() => {
@@ -265,8 +269,8 @@ export function MarkdownView({ text, tokens, variant, images = [], cwd, expansio
   );
   const styles = useMemo(() => buildStyles(tokens, variant, metrics), [tokens, variant, metrics]);
   const context = useMemo<RenderContext>(
-    () => ({ styles, tokens, metrics, cwd, expansionIdentity, inlineWorkspacePaths, openFilePath: filePath.openFilePath, copyFilePath: filePath.copy }),
-    [styles, tokens, metrics, cwd, expansionIdentity, inlineWorkspacePaths, filePath.openFilePath, filePath.copy],
+    () => ({ styles, tokens, metrics, cwd, expansionIdentity, inlineWorkspacePaths, codeBlockOpen, openFilePath: filePath.openFilePath, copyFilePath: filePath.copy }),
+    [styles, tokens, metrics, cwd, expansionIdentity, inlineWorkspacePaths, codeBlockOpen, filePath.openFilePath, filePath.copy],
   );
 
   return (
@@ -351,6 +355,7 @@ function renderBlock(
             {(code) => <SyntaxHighlightBlock
               code={code}
               copyText={block.code}
+              openAddress={context.codeBlockOpen ? codeBlockWebAddress(block.code) : undefined}
               // An empty info string asks for plain text instead of a guessed grammar.
               language={block.language === "" ? "plaintext" : block.language}
               tokens={tokens}
