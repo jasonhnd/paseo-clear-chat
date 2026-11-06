@@ -41,7 +41,7 @@ function fixture(t, platform = "web") {
     return tree;
   }
   function key(value, attrs = {}) {
-    const e = { key: value, target: input, prevented: false, preventDefault() { this.prevented = true; }, ...attrs };
+    const e = { key: value, target: input, prevented: false, stopped: false, preventDefault() { this.prevented = true; }, stopPropagation() { this.stopped = true; }, ...attrs };
     fakeWindow.emit("keydown", e);
     return e.prevented;
   }
@@ -111,14 +111,59 @@ test("composer text, input events, other controls and Escape", t => {
   assert.equal(key("a", { target: cardTarget }), false);
 });
 
+test("pressing the composer exits keyboard state without collapsing or consuming choice keys", t => {
+  const { h, s, input, cardTarget, sendButton, fakeWindow, draw, key } = fixture(t);
+  for (const [choiceKey, shadow] of [["a", false], ["1", true]]) {
+    let tree = draw();
+    byId(h, tree, "option-card").props.onPointerDown({ target: cardTarget });
+    byId(h, tree, "option-row-B").props.onPress();
+    assert.equal(s.getOptionSession("a").choices[0], "B");
+    byId(h, draw(), "option-send").props.onFocus();
+    assert.equal(byId(h, draw(), "option-send").props.style.borderWidth, 2);
+    fakeWindow.emit("pointerdown", shadow
+      ? { target: {}, composedPath: () => [input] }
+      : { target: input, composedPath: () => [input] });
+    tree = draw();
+    assert.ok(byId(h, tree, "option-card"));
+    assert.equal(byId(h, tree, "option-send").props.style.borderWidth, 1);
+    assert.doesNotMatch(h.text(byId(h, tree, "option-row-B")), /Enter/);
+    const event = { key: choiceKey, target: input, prevented: false, stopped: false,
+      preventDefault() { this.prevented = true; }, stopPropagation() { this.stopped = true; } };
+    fakeWindow.emit("keydown", event);
+    assert.equal(event.prevented, false); assert.equal(event.stopped, false);
+    assert.equal(s.getOptionSession("a").choices[0], "B");
+    // Clear the choice so the next pointer selection exercises the same path.
+    byId(h, tree, "option-row-B").props.onPress();
+  }
+  assert.equal(key("ArrowUp"), true);
+  sendButton.focus();
+  assert.equal(key("a"), true);
+  assert.equal(s.getOptionSession("a").choices[0], "A");
+});
+
+test("presses outside the composer and programmatic focus preserve keyboard state", t => {
+  const { h, s, input, cardTarget, fakeWindow, draw, key } = fixture(t);
+  byId(h, draw(), "option-card").props.onPointerDown({ target: cardTarget });
+  fakeWindow.emit("pointerdown", { target: cardTarget, composedPath: () => [cardTarget] });
+  fakeWindow.emit("pointerdown", { target: {}, composedPath: () => [{}] });
+  input.focus();
+  assert.equal(key("b"), true);
+  assert.equal(s.getOptionSession("a").choices[0], "B");
+  assert.equal(key("Escape"), true);
+  assert.ok(byId(h, draw(), "option-card-strip"));
+  assert.equal(key("a"), false);
+  assert.equal(s.getOptionSession("a").choices[0], "B");
+});
+
 test("click enters, hints are web-only and listeners follow lifecycle", t => {
   const f = fixture(t); const { h, draw, listeners, cardTarget, root } = f;
   assert.equal(listeners.get("keydown").size, 1);
+  assert.equal(listeners.get("pointerdown").size, 1);
   let tree = draw(); draw(); assert.equal(listeners.get("keydown").size, 1);
   assert.ok(h.text(byId(h, tree, "option-key-hints")).includes("Tab next"));
   byId(h, tree, "option-card").props.onPointerDown({ target: cardTarget });
   tree = draw(); assert.match(h.text(byId(h, tree, "option-row-B")), /Enter/);
-  h.dispose(); assert.equal(listeners.get("keydown").size, 0); assert.equal(listeners.get("input").size, 0);
+  h.dispose(); assert.equal(listeners.get("keydown").size, 0); assert.equal(listeners.get("input").size, 0); assert.equal(listeners.get("pointerdown").size, 0);
   h.unmount();
   const native = fixture(t, "ios");
   assert.equal(native.listeners.get("keydown"), undefined);
@@ -127,7 +172,7 @@ test("click enters, hints are web-only and listeners follow lifecycle", t => {
 
 test("listeners are removed when the card is removed or unmounted", t => {
   const { h, s, draw, listeners } = fixture(t);
-  s.dismiss("a"); draw(); assert.equal(listeners.get("keydown").size, 0);
+  s.dismiss("a"); draw(); assert.equal(listeners.get("keydown").size, 0); assert.equal(listeners.get("pointerdown").size, 0);
   h.unmount(); assert.equal(listeners.get("input").size, 0);
 });
 
