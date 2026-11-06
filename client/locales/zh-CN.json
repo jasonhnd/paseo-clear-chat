@@ -605,6 +605,9 @@
     "copyPathA11y": "复制文件路径：{{path}}"
   },
   "answerCard": {
+    "pillTitle": "待回答的问题",
+    "openQuestions": "待回答的问题：{{count}}",
+    "running": "请等待代理完成后再发送。",
     "question": "问题 {{current}} / {{total}}",
     "questionTab": "问题 {{question}}",
     "detected": "在最新回复中检测到选项",

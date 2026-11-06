@@ -33,6 +33,8 @@ export function subscribeOptionSession(listener: () => void): () => void {
   return () => { listeners.delete(listener); };
 }
 
+export function getOptionSessionAgents(): string[] { return [...snapshots.keys()]; }
+
 export function getOptionSession(agentId: string): OptionSession | null {
   return snapshots.get(agentId) ?? null;
 }

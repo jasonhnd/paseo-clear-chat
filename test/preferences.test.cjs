@@ -52,6 +52,7 @@ function harness(platform = "ios", legacy, current) {
       // read or write the real daemon's settings directory.
       if (id.endsWith("/settings-migration")) return { migrateHostSettings() {} };
       if (id.endsWith("/settings-page") || id.endsWith("/live-renderers")) return {};
+      if (id.endsWith("/option-pill")) return { installOptionPills: () => () => {} };
       if (id.includes("/components/")) return new Proxy({}, { get: () => () => () => {} });
       if (id.startsWith(".")) {
         const base = resolve(dirname(filename), id);

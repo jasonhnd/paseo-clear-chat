@@ -605,6 +605,9 @@
     "copyPathA11y": "Copy file path: {{path}}"
   },
   "answerCard": {
+    "pillTitle": "Open questions",
+    "openQuestions": "Open questions: {{count}}",
+    "running": "Wait for the agent to finish before sending.",
     "question": "Question {{current}} of {{total}}",
     "questionTab": "Question {{question}}",
     "detected": "Options detected in the last reply",

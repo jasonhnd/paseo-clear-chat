@@ -311,7 +311,7 @@ for (const locale of ["en", "zh-CN", "ja"]) {
     const text = readFileSync(resolve(__dirname, `../client/locales/${locale}.json`), "utf8");
     const original = text
       .replace(/,\n    "answerCard": \{\n(?:      ".*\n){2}    \}/, "")
-      .replace(/,\n  "answerCard": \{\n(?:    ".*\n){24}  \}/, "")
+      .replace(/,\n  "answerCard": \{\n(?:    ".*\n){27}  \}/, "")
       .replace(/    "foldMessages": \{\n(?:      ".*\n){2}    \},\n/, "")
       .replace(/    "show": ".*",\n    "hide": ".*",\n    "showMessage": ".*",\n    "hideMessage": ".*",\n/, "")
       .replace(/    "version": ".*",\n/, "")
