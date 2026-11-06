@@ -290,15 +290,15 @@ export function resetEnhancerPreferences(): Promise<void> {
   return enqueue(() => ({ preferences: {}, legacyMigrated: true }));
 }
 
-function subscribe(listener: () => void): () => void {
+export function subscribeEnhancerPreferences(listener: () => void): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
 }
 
 export function useEnhancerPreferences(): EnhancerPreferences {
-  return useSyncExternalStore(subscribe, getEnhancerPreferences, getEnhancerPreferences);
+  return useSyncExternalStore(subscribeEnhancerPreferences, getEnhancerPreferences, getEnhancerPreferences);
 }
 
 export function useEnhancerPreferencesError(): string | null {
-  return useSyncExternalStore(subscribe, getEnhancerPreferencesError, getEnhancerPreferencesError);
+  return useSyncExternalStore(subscribeEnhancerPreferences, getEnhancerPreferencesError, getEnhancerPreferencesError);
 }

@@ -605,6 +605,9 @@
     "copyPathA11y": "ファイルパスをコピー: {{path}}"
   },
   "answerCard": {
+    "pillTitle": "未回答の質問",
+    "openQuestions": "未回答の質問: {{count}}",
+    "running": "エージェントの完了を待ってから送信してください。",
     "question": "質問 {{current}} / {{total}}",
     "questionTab": "質問 {{question}}",
     "detected": "最新の返信に選択肢が見つかりました",
