@@ -249,8 +249,8 @@ for (const [name, change] of [["removed", f => { f.composer.isConnected = false;
 
 function cardPage(f, popover = false) {
   const Card = f.h.load("client/components/option-card.tsx").OptionCard;
-  let available = false, reads = 0, hidden = false;
-  const root = { get hidden() { return hidden; }, getClientRects: () => hidden ? [] : [1], contains: () => false, querySelector: () => null };
+  let available = false, reads = 0, hidden = false, displayed = true, ref;
+  const root = { get hidden() { return hidden; }, getClientRects: () => hidden || !displayed ? [] : [1], contains: () => false, querySelector: () => null };
   const chat = { getClientRects: () => [1], contains: node => node === root };
   const parent = root.parentElement = { parentElement: null, matches: () => false, querySelectorAll: selector => {
     if (selector.includes("agent-chat-scroll")) return [chat];
@@ -261,11 +261,49 @@ function cardPage(f, popover = false) {
   const draw = () => {
     const tree = f.h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: f.h.tokens, popover } });
     hidden = byId(tree, "option-card-strip")?.props.style.display === "none";
-    (byId(tree, "option-card") ?? byId(tree, "option-card-strip"))?.props.ref?.(root);
+    ref = (byId(tree, "option-card") ?? byId(tree, "option-card-strip"))?.props.ref;
+    ref?.(root);
     return tree;
   };
-  return { draw, byId, root, parent, setAvailable: value => { available = value; }, get reads() { return reads; } };
+  return { draw, byId, root, parent, detach: () => ref?.(null), setDisplayed: value => { displayed = value; }, setAvailable: value => { available = value; }, get reads() { return reads; } };
 }
+
+test("a detached root retries on each return only after it is displayed", t => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+  const f = fixture(t), page = cardPage(f);
+  f.composer.parentElement = page.parent;
+  page.setAvailable(true); page.draw(); f.h.flushEffects(); page.draw();
+  f.body.children[0].shadow.find("option-row-B").onclick();
+  for (let cycle = 0; cycle < 2; cycle++) {
+    page.detach(); f.mutations.at(-1).fn();
+    assert.equal(f.body.children.length, 0);
+    const reads = page.reads;
+    t.mock.timers.tick(250);
+    assert.equal(page.reads, reads);
+    page.setDisplayed(false);
+    assert.ok(page.byId(page.draw(), "option-card"));
+    t.mock.timers.tick(1000);
+    assert.equal(page.reads, reads); assert.equal(f.body.children.length, 0);
+    page.setAvailable(false); page.setDisplayed(true);
+    t.mock.timers.tick(250);
+    assert.equal(f.body.children.length, 0);
+    page.setAvailable(true); t.mock.timers.tick(250);
+    assert.equal(f.body.children.length, 1);
+    assert.equal(f.body.children[0].shadow.find("option-row-B").getAttribute("aria-pressed"), "true");
+    page.draw();
+  }
+});
+
+test("a root detached at mount waits for reattachment before looking for the composer", t => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+  const f = fixture(t), page = cardPage(f);
+  f.composer.parentElement = page.parent;
+  page.setAvailable(true); page.draw(); page.detach(); f.h.flushEffects();
+  assert.equal(page.reads, 0); assert.equal(f.body.children.length, 0);
+  t.mock.timers.tick(1000); assert.equal(page.reads, 0);
+  page.draw(); t.mock.timers.tick(250);
+  assert.equal(f.body.children.length, 1);
+});
 
 for (const hiddenProperty of ["hidden", "invisible"]) test(`a hidden ${hiddenProperty === "hidden" ? "display" : "visibility"} ancestor retries on each return`, t => {
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
@@ -311,8 +349,8 @@ test("unmount clears the visibility watch and popovers start no watch", t => {
   const f = fixture(t), page = cardPage(f);
   f.composer.parentElement = page.parent;
   page.setAvailable(true); page.draw(); f.h.flushEffects(); page.draw();
-  page.parent.hidden = true; f.mutations[0].fn(); page.draw();
-  f.h.unmount(); page.parent.hidden = false;
+  page.detach(); f.mutations[0].fn(); page.draw();
+  f.h.unmount();
   const reads = page.reads;
   t.mock.timers.tick(3000);
   assert.equal(page.reads, reads); assert.equal(f.body.children.length, 0);

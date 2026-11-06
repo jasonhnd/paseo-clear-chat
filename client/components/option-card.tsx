@@ -55,7 +55,8 @@ export function OptionCard({ agentId, at, tokens, popover = false, onSent }: { a
     let retry: ReturnType<typeof setTimeout> | undefined;
     let retryWhenShown = false;
     const pageHidden = () => {
-      for (let node = root.current?.parentElement; node; node = node.parentElement) {
+      if (!root.current) return true;
+      for (let node = root.current.parentElement; node; node = node.parentElement) {
         const style = window.getComputedStyle(node);
         if (style.display === "none" || style.visibility === "hidden") return true;
       }
@@ -85,7 +86,7 @@ export function OptionCard({ agentId, at, tokens, popover = false, onSent }: { a
     };
     attempt(Date.now() + 3000);
     const watch = setInterval(() => {
-      if (retryWhenShown && root.current && !pageHidden()) {
+      if (retryWhenShown && root.current && root.current.getClientRects().length && !pageHidden()) {
         retryWhenShown = false;
         attempt(Date.now() + 3000);
       }
