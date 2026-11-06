@@ -27,6 +27,7 @@ function createToolHarness(platform = "ios", options = {}) {
   const getPreferences = () => options.presentationHost ? load("client/preferences.ts").getEnhancerPreferences() : preferences;
   const expansionHost = options.expansionHost ?? createExpansionHost();
   const rpcFunctions = new Map();
+  const preferenceListeners = new Set();
   const timestamps = new WeakMap();
   let nextTimestamp = Date.parse("2026-01-01T12:00:00Z");
   const paseo = options.paseo ?? { agents: { ref: () => ({ refresh: async () => null }) } };
@@ -106,7 +107,7 @@ function createToolHarness(platform = "ios", options = {}) {
     Linking: { openURL: (...args) => { links.push(args[0]); return options.openURL?.(...args) ?? Promise.resolve(); } },
   };
   const stubs = {
-    "client/preferences": { initializeEnhancerPreferences: async () => {}, areEnhancerPreferencesReady: () => true, onEnhancerPreferencesReady: callback => { callback(); return noop; }, getEnhancerPreferences: () => preferences, useEnhancerPreferences: () => preferences, useEnhancerPreferencesError: () => null, updateEnhancerPreferences: async patch => Object.assign(preferences, patch), resetEnhancerPreferences: async () => {}, OUTPUT_LINE_OPTIONS: [10, 15, 30, "never"].map(value => ({ value: String(value), label: value === "never" ? "Never" : `${value} lines` })), TEXT_SIZE_OPTIONS: [], ACCENT_PRESETS: {} },
+    "client/preferences": { initializeEnhancerPreferences: async () => {}, areEnhancerPreferencesReady: () => true, onEnhancerPreferencesReady: callback => { callback(); return noop; }, getEnhancerPreferences: () => preferences, subscribeEnhancerPreferences: listener => { preferenceListeners.add(listener); return () => preferenceListeners.delete(listener); }, useEnhancerPreferences: () => preferences, useEnhancerPreferencesError: () => null, updateEnhancerPreferences: async patch => Object.assign(preferences, patch), resetEnhancerPreferences: async () => {}, OUTPUT_LINE_OPTIONS: [10, 15, 30, "never"].map(value => ({ value: String(value), label: value === "never" ? "Never" : `${value} lines` })), TEXT_SIZE_OPTIONS: [], ACCENT_PRESETS: {} },
     "client/settings-page": { ClearChatSettingsPage: noop },
     "server/settings-migration": { migrateHostSettings: noop },
     "client/image-file": { useImageFile: noop, isImagePath: path => /\.(png|jpe?g|gif|webp)$/i.test(path ?? "") },
@@ -149,6 +150,7 @@ function createToolHarness(platform = "ios", options = {}) {
     },
   };
   if (options.hubCallout) delete stubs["client/components/hub-callout"];
+  if (options.systemEnvelope) delete stubs["client/system-envelope"];
   if (options.realSelection) delete stubs["client/components/selection"];
   if (options.settingsPage) delete stubs["client/settings-page"];
   if (options.themeTokens) delete stubs["client/components/theme-tokens"];
@@ -263,6 +265,7 @@ function createToolHarness(platform = "ios", options = {}) {
   }
   const dispose = load("index.client.tsx").default({
     i18n: translations.runtime,
+    paseo,
     rpc: options.presentationHost?.rpc ?? noop,
     addSettingsScreen(value) { settingsScreens.set(value.id, value); return noop; },
     addAgentPanel(value) { panels.set(value.id, value); return noop; },
@@ -320,6 +323,7 @@ function createToolHarness(platform = "ios", options = {}) {
   const unmount = () => unmountRoot();
   return {
     settingsScreens, translations, setLocale: translations.setLocale, load, nodes, text, reveals, links, copies, toasts, imageReads, transformers, renderers, panels, panelOpens, dimensions, get preferences() { return getPreferences(); }, tokens, draw, expansionHost, unmount, dispose, flushEffects,
+    notifyPreferences() { for (const listener of preferenceListeners) listener(); },
     setPanelMounted(value) { panelMounted = value; },
     mount(item, expand = true, identity = {}) {
       unmount(); reveals.length = links.length = copies.length = imageReads.length = 0;

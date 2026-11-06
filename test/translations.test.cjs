@@ -53,6 +53,8 @@ for (const locale of ["en", "zh-CN", "ja"]) {
     const Page = h.load("client/settings-page.tsx").ClearChatSettingsPage;
     const tree = h.draw({ type: Page, props: { theme: { colors: {} } } });
     for (const text of [r.settings.title, r.settings.intro, r.settings.accent.host, r.settings.foldSteps.label, r.settings.delegatedTools.label, r.settings.delegatedTools.description, r.settings.delegatedCodeBlocks.label, r.settings.delegatedCodeBlocks.description, r.settings.hiddenTools.label, r.settings.hiddenTools.description, r.settings.codeFont.default, r.settings.textSize.large, r.settings.foldOutput.lines15, r.settings.report]) hasText(h, tree, text);
+    hasText(h, tree, r.settings.answerCard.label);
+    hasText(h, tree, r.settings.answerCard.description);
     hasText(h, tree, r.settings.codeBlockOpen.label);
     hasText(h, tree, r.settings.codeBlockOpen.description);
     hasLabel(h, tree, interpolate(r.settings.accent.optionA11y, { label: r.settings.accent.jade }));
@@ -298,16 +300,18 @@ for (const locale of ["en", "zh-CN", "ja"]) {
 }
 
 const approvedResourceHashes = {
-  // Pin the approved version note and the baseline text, including the 0.13.1.1 prompt-bubble wording.
-  "en": "dc297471839ff81fd0894fa6fd0accb3a3ac15a75ecac07103052e31cc7a4256",
-  "zh-CN": "76d70dcd9196070c328b370a232f2e85a546b72eddf8ef6667af31a42c1589a9",
-  "ja": "894c97fe26c2e53b26df15f9c1f7331510f079e21d3a94d33bde18e49222b8b6",
+  // Pin the approved baseline text, including the updated markdown setting description.
+  "en": "9250513870942c26505ba0df42d505da87857e77b0e7643fc2f862a7328c02f9",
+  "zh-CN": "870720a3f405ca494996b8f51555c03957695b2d5c437bca7405be34f54f5302",
+  "ja": "8bbbbf885b61ec6141131d4804add1cf4aa8c84a95a358517d52a052e43df275",
 };
 
 for (const locale of ["en", "zh-CN", "ja"]) {
   test(`${locale}: preserves the prior baseline after removing the added inline-section, prompt-image and Hermes setting keys`, () => {
     const text = readFileSync(resolve(__dirname, `../client/locales/${locale}.json`), "utf8");
     const original = text
+      .replace(/,\n    "answerCard": \{\n(?:      ".*\n){2}    \}/, "")
+      .replace(/,\n  "answerCard": \{\n(?:    ".*\n){27}  \}/, "")
       .replace(/    "foldMessages": \{\n(?:      ".*\n){2}    \},\n/, "")
       .replace(/    "show": ".*",\n    "hide": ".*",\n    "showMessage": ".*",\n    "hideMessage": ".*",\n/, "")
       .replace(/    "version": ".*",\n/, "")
@@ -339,3 +343,10 @@ test("all locales contain the same translation keys", () => {
   }
   for (const locale of ["zh-CN", "ja"]) assert.deepEqual(keys(resources[locale]), keys(resources.en));
 });
+
+for (const [locale, quote] of [["en", /"([^"]+)"/], ["zh-CN", /“([^”]+)”/], ["ja", /「([^」]+)」/]]) {
+  test(`${locale}: markdown description names the delegated code blocks setting`, () => {
+    const settings = resources[locale].settings;
+    assert.equal(settings.markdown.description.match(quote)?.[1], settings.delegatedCodeBlocks.label);
+  });
+}

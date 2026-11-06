@@ -52,6 +52,7 @@ function harness(platform = "ios", legacy, current) {
       // read or write the real daemon's settings directory.
       if (id.endsWith("/settings-migration")) return { migrateHostSettings() {} };
       if (id.endsWith("/settings-page") || id.endsWith("/live-renderers")) return {};
+      if (id.endsWith("/option-pill")) return { installOptionPills: () => () => {} };
       if (id.includes("/components/")) return new Proxy({}, { get: () => () => () => {} });
       if (id.startsWith(".")) {
         const base = resolve(dirname(filename), id);
@@ -654,4 +655,21 @@ test("delegated code blocks persist, reset, and are never imported from a browse
   await fresh.preferences.resetEnhancerPreferences();
   assert.equal(fresh.preferences.getEnhancerPreferences().delegatedCodeBlocks, "");
   assert.deepEqual(server.values.preferences, {});
+});
+
+test("answer card setting persists, resets and ignores browser snapshots", async () => {
+  const server = host();
+  const first = harness("web", JSON.stringify({ showAnswerCard: true })).preferences;
+  await first.initializeEnhancerPreferences(server.rpc);
+  assert.equal(first.getEnhancerPreferences().showAnswerCard, false);
+  await first.updateEnhancerPreferences({ showAnswerCard: true });
+  assert.equal(server.values.preferences.showAnswerCard, true);
+  const fresh = harness().preferences;
+  await fresh.initializeEnhancerPreferences(server.rpc);
+  assert.equal(fresh.getEnhancerPreferences().showAnswerCard, true);
+  await fresh.resetEnhancerPreferences();
+  assert.equal(fresh.getEnhancerPreferences().showAnswerCard, false);
+  const reloaded = harness().preferences;
+  await reloaded.initializeEnhancerPreferences(server.rpc);
+  assert.equal(reloaded.getEnhancerPreferences().showAnswerCard, false);
 });

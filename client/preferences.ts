@@ -80,6 +80,7 @@ export interface EnhancerPreferences {
   foldFinishedSteps: boolean;
   collapsedStepAction: CollapsedStepAction;
   foldLongOutputAfter: OutputLineLimit;
+  showAnswerCard: boolean;
   delegatedTools: string;
   delegatedCodeBlocks: string;
   hiddenTools: string;
@@ -107,6 +108,7 @@ export const DEFAULT_PREFERENCES: Readonly<EnhancerPreferences> = {
   foldFinishedSteps: true,
   collapsedStepAction: "details",
   foldLongOutputAfter: 15,
+  showAnswerCard: false,
   delegatedTools: "",
   delegatedCodeBlocks: "",
   hiddenTools: "",
@@ -149,7 +151,7 @@ function loadLegacyPreferences(): PreferenceOverrides | undefined {
     const valid: Record<string, unknown> = {};
     for (const [key, schema] of Object.entries(preferenceOverridesSchema.shape)) {
       // New host-only preferences must never come from a browser import snapshot.
-      if (["textScale", "foldFinishedSteps", "foldLongOutputAfter", "codeFontFamily", "customAccent", "customAccentEnabled", "collapsedStepAction", "delegatedTools", "delegatedCodeBlocks", "hiddenTools", "codeBlockOpen", "foldMessagePrefixes"].includes(key)) continue;
+      if (["textScale", "foldFinishedSteps", "foldLongOutputAfter", "codeFontFamily", "customAccent", "customAccentEnabled", "collapsedStepAction", "delegatedTools", "delegatedCodeBlocks", "hiddenTools", "codeBlockOpen", "foldMessagePrefixes", "showAnswerCard"].includes(key)) continue;
       const parsed = schema.safeParse((candidate as Record<string, unknown>)[key]);
       if (parsed.success && parsed.data !== undefined) valid[key] = parsed.data;
     }
@@ -288,15 +290,15 @@ export function resetEnhancerPreferences(): Promise<void> {
   return enqueue(() => ({ preferences: {}, legacyMigrated: true }));
 }
 
-function subscribe(listener: () => void): () => void {
+export function subscribeEnhancerPreferences(listener: () => void): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
 }
 
 export function useEnhancerPreferences(): EnhancerPreferences {
-  return useSyncExternalStore(subscribe, getEnhancerPreferences, getEnhancerPreferences);
+  return useSyncExternalStore(subscribeEnhancerPreferences, getEnhancerPreferences, getEnhancerPreferences);
 }
 
 export function useEnhancerPreferencesError(): string | null {
-  return useSyncExternalStore(subscribe, getEnhancerPreferencesError, getEnhancerPreferencesError);
+  return useSyncExternalStore(subscribeEnhancerPreferences, getEnhancerPreferencesError, getEnhancerPreferencesError);
 }

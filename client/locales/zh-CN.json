@@ -111,7 +111,7 @@
     },
     "markdown": {
       "label": "助手回复 Markdown",
-      "description": "用插件自己的标题、列表和带语法高亮的代码块来显示回复。插件接触不到 Paseo 的 Markdown 处理流程，所以只支持其中一部分：要看 mermaid 图、图片和主机自带的文件路径链接，请关掉这项。开着这项时，在 iOS 上不能拖动选择文字，请用复制按钮复制。"
+      "description": "用插件自己的标题、列表和带语法高亮的代码块来显示回复。插件接触不到 Paseo 的 Markdown 处理流程，所以只支持其中一部分：由其他插件画的图表和公式，请把它们画的代码块语言（例如 mermaid，公式用 math）填到“将这些代码块交给其他插件”里；只有要显示图片和主机自带的文件路径链接时才需要关掉这项。开着这项时，在 iOS 上不能拖动选择文字，请用复制按钮复制。"
     },
     "codeBlockOpen": {
       "label": "在只包含一个网址的代码块上显示“打开”按钮",
@@ -126,7 +126,11 @@
     },
     "reset": "恢复默认",
     "report": "报告问题",
-    "retry": "重试"
+    "retry": "重试",
+    "answerCard": {
+      "label": "在包含字母选项问题的回复下显示回答卡片",
+      "description": "重新加载聊天以更新现有回复。"
+    }
   },
   "startup": {
     "incompatibleHost": "Clear Chat 需要 Paseo 的插件设置和时间线支持。请更新运行 daemon 的主机和所有连着的应用上的 Paseo，再重新加载 Clear Chat。",
@@ -599,5 +603,34 @@
   "markdown": {
     "showPathA11y": "显示文件路径：{{path}}",
     "copyPathA11y": "复制文件路径：{{path}}"
+  },
+  "answerCard": {
+    "pillTitle": "待回答的问题",
+    "openQuestions": "待回答的问题：{{count}}",
+    "running": "请等待代理完成后再发送。",
+    "question": "问题 {{current}} / {{total}}",
+    "questionTab": "问题 {{question}}",
+    "detected": "在最新回复中检测到选项",
+    "collapse": "收起",
+    "reopen": "展开回答卡片",
+    "summary": "{{total}} 个问题 · 已选择 {{chosen}} · 问题 {{question}} 已打开",
+    "none": "无",
+    "optionLabel": "{{letter}}：{{text}}",
+    "recommended": "推荐",
+    "writeOwn": "自己填写",
+    "noteLabel": "回答备注",
+    "chooseFirst": "请先选择一个选项",
+    "next": "下一题",
+    "notOptions": "不是选项",
+    "error": "发送失败：{{reason}}",
+    "send": "发送 {{answer}}",
+    "missing": "选择第 {{question}} 题后发送",
+    "hintMove": "↑ ↓ 移动",
+    "hintPick": "A B C D 选择",
+    "hintNext": "Tab 下一题",
+    "hintBack": "⇧Tab 上一题",
+    "hintSend": "Tab → 发送",
+    "hintReopen": "↑ 重新展开",
+    "hintEnter": "Enter"
   }
 }

@@ -1,0 +1,186 @@
+import React, { useEffect, useRef, useState } from "react";
+import { Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import { useAgent, useTranslation } from "@getpaseo/plugin/client";
+import { TextInput } from "@getpaseo/plugin/client/ui";
+import { messages } from "../messages";
+import { answerText, choose, clearChoice, dismiss, getOptionSession, missingQuestion, moveCursor, sendAnswer, setActiveQuestion, setNote, useOptionSession } from "../option-session";
+import { installOptionKeyboard, optionComposer } from "./option-keyboard";
+import { installOptionComposer } from "../option-composer";
+import { mountOptionPanel } from "./option-panel";
+import type { OptionPanel } from "./option-panel";
+import type { ExtendedThemeTokens } from "./theme-tokens";
+
+export function OptionCard({ agentId, at, tokens, popover = false, onSent }: { agentId: string; at: number; tokens: ExtendedThemeTokens; popover?: boolean; onSent?: () => void }) {
+  const { t } = useTranslation(messages);
+  const session = useOptionSession(agentId);
+  const status = useAgent(agentId, agent => agent.status);
+  const { height } = useWindowDimensions();
+  const [collapsed, setCollapsed] = useState(false);
+  const [panelActive, setPanelActive] = useState(false);
+  const panel = useRef<OptionPanel | null>(null);
+  const panelValues = useRef({ tokens, collapsed, t });
+  const [noteOpen, setNoteOpen] = useState<Record<number, boolean>>({});
+  const root = useRef<HTMLElement | null>(null);
+  const entered = useRef(false);
+  const sendFocused = useRef(false);
+  const [keyboardEntered, setKeyboardEntered] = useState(false);
+  const [keyboardSend, setKeyboardSend] = useState(false);
+  const sendRef = useRef<() => void>(() => {});
+  panelValues.current = { tokens, collapsed, t };
+  const visible = !!session && session.at === at && !session.dismissed && (popover || status !== "running");
+  const setEntered = (value: boolean) => { entered.current = value; setKeyboardEntered(value); };
+  const setSendFocus = (value: boolean) => { sendFocused.current = value; setKeyboardSend(value); };
+  useEffect(() => {
+    if (popover || Platform.OS !== "web" || !visible || typeof window === "undefined") return;
+    return installOptionKeyboard({
+      agentId, at, root: () => root.current, allowHiddenRoot: () => !!panel.current,
+      entered: () => entered.current,
+      enter: () => { setEntered(true); setSendFocus(false); setCollapsed(false); },
+      leave: () => { setEntered(false); setSendFocus(false); setCollapsed(true); },
+      exit: () => { setEntered(false); setSendFocus(false); },
+      send: () => sendRef.current(),
+      sendFocused: () => sendFocused.current,
+      setSendFocused: setSendFocus,
+      focusSend: () => panel.current ? panel.current.focusSend() : root.current?.querySelector<HTMLElement>('[data-testid="option-send"]')?.focus(),
+      contains: node => !!panel.current?.host.contains(node),
+    });
+  }, [agentId, at, visible, popover]);
+  useEffect(() => {
+    if (popover || Platform.OS !== "web" || typeof document === "undefined" || !visible) return;
+    return installOptionComposer(document, agentId, at, () => optionComposer(root.current, !!panel.current));
+  }, [agentId, at, visible, popover]);
+  useEffect(() => {
+    if (popover || Platform.OS !== "web" || typeof document === "undefined" || typeof window === "undefined" || !visible) return;
+    let mounted: OptionPanel | null = null;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let retryWhenShown = false;
+    const pageHidden = () => {
+      if (!root.current) return true;
+      for (let node = root.current.parentElement; node; node = node.parentElement) {
+        const style = window.getComputedStyle(node);
+        if (style.display === "none" || style.visibility === "hidden") return true;
+      }
+      return false;
+    };
+    const attempt = (deadline: number) => {
+      if (Date.now() > deadline) return;
+      if (pageHidden()) { retryWhenShown = true; return; }
+      let input: HTMLInputElement | HTMLTextAreaElement | null;
+      try { input = optionComposer(root.current); } catch { return; }
+      if (!input) {
+        const remaining = deadline - Date.now();
+        if (remaining > 0) retry = setTimeout(() => attempt(deadline), Math.min(250, remaining));
+        return;
+      }
+      mounted = mountOptionPanel({
+        agentId, at, composer: () => optionComposer(root.current, !!panel.current), tokens: () => panelValues.current.tokens, t: (key, values) => panelValues.current.t(key, values),
+        collapsed: () => panelValues.current.collapsed, entered: () => entered.current, sendFocused: () => sendFocused.current,
+        enter: () => { setEntered(true); setSendFocus(false); },
+        focusSend: () => { if (entered.current) setSendFocus(true); },
+        collapse: () => { setEntered(false); setSendFocus(false); setCollapsed(true); },
+        reopen: () => setCollapsed(false), send: () => sendRef.current(),
+        fallback: () => { retryWhenShown = pageHidden(); panel.current = null; setPanelActive(false); setCollapsed(false); },
+      });
+      panel.current = mounted;
+      if (mounted) { setPanelActive(true); if (input.value) setCollapsed(true); }
+    };
+    attempt(Date.now() + 3000);
+    const watch = setInterval(() => {
+      if (!panel.current && pageHidden()) {
+        retryWhenShown = true;
+        if (retry !== undefined) { clearTimeout(retry); retry = undefined; }
+        return;
+      }
+      if (retryWhenShown && root.current && root.current.getClientRects().length && !pageHidden()) {
+        retryWhenShown = false;
+        attempt(Date.now() + 3000);
+      }
+    }, 250);
+    return () => { clearInterval(watch); if (retry !== undefined) clearTimeout(retry); mounted?.dispose(); if (panel.current === mounted) panel.current = null; setPanelActive(false); };
+  }, [agentId, at, visible, popover]);
+  useEffect(() => { panel.current?.update(); });
+  if (!session || !visible) return null;
+
+  const index = session.activeQuestion;
+  const question = session.set.questions[index]!;
+  const number = (i: number) => session.set.questions[i]!.number ?? i + 1;
+  const chosen = session.set.questions.map((_, i) => session.choices[i] ? `${session.set.questions[i]!.number ?? ""}${session.choices[i]}` : "").filter(Boolean).join(" ");
+  const missing = missingQuestion(agentId);
+  const answer = answerText(agentId);
+  const labelStyle = { color: tokens.foreground, fontFamily: tokens.fontUi, fontSize: tokens.fs(13) };
+  const mutedStyle = { ...labelStyle, color: tokens.foregroundMuted, fontSize: tokens.fs(12) };
+  const buttonStyle = { minHeight: 44, justifyContent: "center" as const, alignItems: "center" as const, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: tokens.border };
+  const send = async () => {
+    if (status === "running" || getOptionSession(agentId)?.sending || !answerText(agentId)) return;
+    const pending = sendAnswer(agentId);
+    const started = getOptionSession(agentId)?.at === at && getOptionSession(agentId)?.sending;
+    await pending;
+    const current = getOptionSession(agentId);
+    if (started && current?.at === at && !current.sending && !current.error) { onSent?.(); dismiss(agentId); }
+  };
+  sendRef.current = () => { void send(); };
+  const webProps = Platform.OS === "web" && !popover ? {
+    ref: (node: View | null) => { root.current = node as unknown as HTMLElement | null; },
+    onPointerDown: (event: import("react-native").PointerEvent) => {
+      if ((event.target as unknown as HTMLElement).closest('input, textarea, [contenteditable="true"]')) return;
+      const input = optionComposer(root.current);
+      if (!input || input.value) return;
+      if (!entered.current) {
+        const recommended = question.options.findIndex(option => option.recommended);
+        moveCursor(agentId, index, Math.max(0, recommended) - (session.cursor[index] ?? 0));
+      }
+      setEntered(true); setSendFocus(false);
+    },
+  } : {};
+  if (panelActive || collapsed) return (
+    <Pressable {...webProps} testID="option-card-strip" accessibilityRole="button" accessibilityState={{ expanded: false }} accessibilityLabel={t("answerCard.reopen")} onPress={() => setCollapsed(false)}
+      style={{ ...buttonStyle, display: panelActive ? "none" : "flex", marginTop: 10, paddingVertical: 8, backgroundColor: tokens.surface1 }}>
+      <Text style={{ ...labelStyle, textAlign: "center" }}>{t("answerCard.summary", { total: session.set.questions.length, chosen: chosen || t("answerCard.none"), question: number(index) })}
+        {Platform.OS === "web" ? <Text style={mutedStyle}>{"  "}{t("answerCard.hintReopen")}</Text> : null}
+      </Text>
+    </Pressable>
+  );
+  const end = /[!?。！？]|\.(?=\s|$)/.exec(question.text);
+  const split = end ? end.index + 1 : question.text.length;
+  return (
+    <View {...webProps} testID={popover ? "option-popover" : "option-card"} style={popover ? {} : { marginTop: 10, borderWidth: 1, borderColor: tokens.border, borderRadius: 12, backgroundColor: tokens.surface1, overflow: "hidden", maxHeight: Math.max(100, height * 0.4) }}>
+      <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+        <View style={{ padding: 12, gap: 10 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
+            {session.set.questions.map((q, i) => <Pressable key={i} testID={`option-question-${i}`} accessibilityRole="tab" accessibilityState={{ selected: i === index }} accessibilityLabel={t("answerCard.questionTab", { question: number(i) })} onPress={() => setActiveQuestion(agentId, i)} style={{ minHeight: 44, justifyContent: "center", borderBottomWidth: i === index ? 2 : 0, borderColor: tokens.success, paddingHorizontal: 4 }}>
+              <Text style={labelStyle}>{t("answerCard.question", { current: i + 1, total: session.set.questions.length })}</Text>
+            </Pressable>)}
+            {chosen ? <Text style={{ ...mutedStyle, color: tokens.success }}>· {chosen}</Text> : null}
+            <Text style={{ ...mutedStyle, flexGrow: 1, textAlign: "right" }}>{t("answerCard.detected")}</Text>
+            {!popover ? <Pressable testID="option-card-collapse" accessibilityRole="button" accessibilityState={{ expanded: true }} accessibilityLabel={t("answerCard.collapse")} onPress={() => { setEntered(false); setSendFocus(false); setCollapsed(true); }} style={buttonStyle}><Text style={mutedStyle}>{t("answerCard.collapse")}</Text></Pressable> : null}
+          </View>
+          <Text selectable style={labelStyle}><Text style={{ fontWeight: "700" }}>{question.text.slice(0, split)}</Text>{question.text.slice(split)}</Text>
+          {question.options.map((option, i) => {
+            const selected = session.choices[index] === option.letter;
+            const focused = keyboardEntered && !keyboardSend && session.cursor[index] === i;
+            const [first, ...rest] = option.text.split("\n");
+            return <Pressable key={option.letter} testID={`option-row-${option.letter}`} accessibilityRole="button" accessibilityState={{ selected }} accessibilityLabel={t("answerCard.optionLabel", { letter: option.letter, text: option.text })} onPress={() => { moveCursor(agentId, index, i - (getOptionSession(agentId)?.cursor[index] ?? 0)); if (selected) clearChoice(agentId, index); else choose(agentId, index, option.letter); }}
+              style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 8, padding: 8, borderRadius: 8, borderWidth: 1, borderColor: focused ? tokens.success : tokens.border, backgroundColor: selected ? tokens.successBg : tokens.surface2 }}>
+              <Text style={{ ...labelStyle, color: tokens.success, fontWeight: "700" }}>{option.letter}</Text>
+              <View style={{ flex: 1 }}><Text style={labelStyle}>{first}</Text>{rest.length ? <Text style={mutedStyle}>{rest.join("\n")}</Text> : null}</View>
+              {option.recommended ? <Text style={{ ...mutedStyle, color: tokens.success, flexShrink: 1 }}>{t("answerCard.recommended")}</Text> : null}
+              {selected ? <Text style={{ ...labelStyle, color: tokens.success }}>✓</Text> : null}
+              {focused ? <Text style={{ ...mutedStyle, color: tokens.success, borderWidth: 1, borderColor: tokens.success, borderRadius: 4, paddingHorizontal: 4 }}>{t("answerCard.hintEnter")}</Text> : null}
+            </Pressable>;
+          })}
+          <Pressable testID="option-note-toggle" accessibilityRole="button" accessibilityState={{ expanded: !!noteOpen[index] }} onPress={() => setNoteOpen({ ...noteOpen, [index]: !noteOpen[index] })} style={buttonStyle}><Text style={labelStyle}>{t("answerCard.writeOwn")}</Text></Pressable>
+          {noteOpen[index] ? <TextInput testID="option-note" accessibilityLabel={t("answerCard.noteLabel")} value={session.notes[index] ?? ""} onChangeText={(text: string) => setNote(agentId, index, text)} multiline={false} style={{ ...labelStyle, minHeight: 44, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: tokens.border }} /> : null}
+          {session.notes[index]?.trim() && !session.choices[index] ? <Text testID="option-note-warning" style={{ ...mutedStyle, color: tokens.warning }}>{t("answerCard.chooseFirst")}</Text> : null}
+          {index < session.set.questions.length - 1 ? <Pressable testID="option-next" accessibilityRole="button" onPress={() => setActiveQuestion(agentId, index + 1)} style={buttonStyle}><Text style={labelStyle}>{t("answerCard.next")}</Text></Pressable> : null}
+          <Pressable testID="option-dismiss" accessibilityRole="button" onPress={() => dismiss(agentId)} style={buttonStyle}><Text style={mutedStyle}>{t("answerCard.notOptions")}</Text></Pressable>
+          {session.error ? <Text testID="option-send-error" accessibilityRole="alert" style={{ ...mutedStyle, color: tokens.danger }}>{t("answerCard.error", { reason: session.error })}</Text> : null}
+          {Platform.OS === "web" && !popover ? <Text testID="option-key-hints" style={mutedStyle}>{[t("answerCard.hintMove"), t("answerCard.hintPick"), index === session.set.questions.length - 1 ? t("answerCard.hintSend") : t("answerCard.hintNext"), t("answerCard.hintBack")].join("  ·  ")}</Text> : null}
+          {status === "running" ? <Text testID="option-running" style={mutedStyle}>{t("answerCard.running")}</Text> : null}
+          <Pressable testID="option-send" accessibilityRole="button" accessibilityState={{ disabled: answer === null || session.sending || status === "running" }} disabled={(popover || Platform.OS !== "web") && (answer === null || session.sending || status === "running")} onFocus={() => { if (entered.current) setSendFocus(true); }} onPress={() => { void send(); }} style={{ ...buttonStyle, backgroundColor: answer === null || session.sending || status === "running" ? tokens.surface2 : tokens.success, borderColor: keyboardSend ? tokens.success : tokens.successBorder, borderWidth: keyboardSend ? 2 : 1 }}>
+            <Text style={{ ...labelStyle, color: answer === null || session.sending || status === "running" ? tokens.foregroundMuted : (tokens.isDark ? "#000000" : "#ffffff"), fontWeight: "700" }}>{missing === null ? t("answerCard.send", { answer: answer ?? "" }) : t("answerCard.missing", { question: number(missing) })}</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
+    </View>
+  );
+}

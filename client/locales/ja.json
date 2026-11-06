@@ -111,7 +111,7 @@
     },
     "markdown": {
       "label": "アシスタントの Markdown",
-      "description": "プラグイン独自の見出し、リスト、色分けしたコードブロックで返信を表示します。プラグインは Paseo の Markdown 処理を使えないため、対応しているのはその一部です。mermaid の図、画像、ホストのファイルパスのリンクを使うには、これをオフにしてください。オンのときは、iOS ではドラッグで文字を選べません。コピーボタンを使ってください。"
+      "description": "プラグイン独自の見出し、リスト、色分けしたコードブロックで返信を表示します。プラグインは Paseo の Markdown 処理を使えないため、対応しているのはその一部です。他のプラグインが描く図や数式は、「これらのコードブロックを他のプラグインに任せる」に、それらが描くコードブロックの言語名（例：mermaid、数式は math）を入力してください。画像とホストのファイルパスのリンクを使うときだけ、これをオフにします。オンのときは、iOS ではドラッグで文字を選べません。コピーボタンを使ってください。"
     },
     "codeBlockOpen": {
       "label": "ウェブアドレスだけのコードブロックに「開く」ボタンを表示",
@@ -126,7 +126,11 @@
     },
     "reset": "初期設定に戻す",
     "report": "問題を報告",
-    "retry": "再試行"
+    "retry": "再試行",
+    "answerCard": {
+      "label": "アルファベットの選択肢がある返信の下に回答カードを表示",
+      "description": "既存の返信を更新するにはチャットを再読み込みしてください。"
+    }
   },
   "startup": {
     "incompatibleHost": "Clear Chat には Paseo のプラグイン設定とタイムラインへの対応が必要です。daemon のホストと、つないでいるすべてのアプリの Paseo を更新してから、Clear Chat を再読み込みしてください。",
@@ -599,5 +603,34 @@
   "markdown": {
     "showPathA11y": "ファイルパスを表示: {{path}}",
     "copyPathA11y": "ファイルパスをコピー: {{path}}"
+  },
+  "answerCard": {
+    "pillTitle": "未回答の質問",
+    "openQuestions": "未回答の質問: {{count}}",
+    "running": "エージェントの完了を待ってから送信してください。",
+    "question": "質問 {{current}} / {{total}}",
+    "questionTab": "質問 {{question}}",
+    "detected": "最新の返信に選択肢が見つかりました",
+    "collapse": "折りたたむ",
+    "reopen": "回答カードを開く",
+    "summary": "{{total}} 問 · {{chosen}} を選択 · 質問 {{question}} を表示中",
+    "none": "なし",
+    "optionLabel": "{{letter}}：{{text}}",
+    "recommended": "おすすめ",
+    "writeOwn": "自分で入力",
+    "noteLabel": "回答のメモ",
+    "chooseFirst": "先に選択肢を選んでください",
+    "next": "次へ",
+    "notOptions": "選択肢ではない",
+    "error": "送信できませんでした：{{reason}}",
+    "send": "{{answer}} を送信",
+    "missing": "質問 {{question}} を選択して送信",
+    "hintMove": "↑ ↓ 移動",
+    "hintPick": "A B C D 選択",
+    "hintNext": "Tab 次へ",
+    "hintBack": "⇧Tab 戻る",
+    "hintSend": "Tab → 送信",
+    "hintReopen": "↑ で再表示",
+    "hintEnter": "Enter"
   }
 }

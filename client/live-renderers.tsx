@@ -19,7 +19,9 @@ import type { TurnUsage } from "./components/user-message";
 import { NoticeCallout } from "./components/notice-callout";
 import { useEnhancerPreferences } from "./preferences";
 import { publishHubSnapshot } from "./hub-activity";
+import { publishAssistantReply, publishUserMessage } from "./option-session";
 import { MarkdownView } from "./components/markdown/markdown-view";
+import { OptionCard } from "./components/option-card";
 import { TimelineTailHub } from "./components/hub-live";
 import { AssistantFooter } from "./components/turn-footer";
 import { SystemCard } from "./components/system-card";
@@ -393,6 +395,11 @@ export function LiveAssistantRenderer({
   // files any unclaimed `custom` message under this item kind. They are not
   // the model's words, so they are drawn as a card, not as prose.
   const envelope = useMemo(() => parseSystemEnvelope(item.data.text), [item.data.text, t]);
+  const replyText = item.data.text;
+  const replyAt = timestamp.getTime();
+  useEffect(() => {
+    if (!parseSystemEnvelope(replyText)) publishAssistantReply(agentId, { at: replyAt, text: replyText });
+  }, [agentId, replyText, replyAt]);
   const durationMs = useReplyDuration(host.id, agentId, timestamp,
     envelope ? null : { type: "assistant_message", text: item.data.text });
 
@@ -407,6 +414,7 @@ export function LiveAssistantRenderer({
       {!envelope ? (
         <AssistantFooter text={item.data.text} at={timestamp} tokens={tokens} durationMs={durationMs} agentId={agentId} />
       ) : null}
+      {!envelope && preferences.showAnswerCard ? <OptionCard key={`${agentId}:${replyAt}`} agentId={agentId} at={replyAt} tokens={tokens} /> : null}
       <TimelineTailHub
         agentId={agentId}
         tokens={tokens}
@@ -524,6 +532,11 @@ export function LiveUserMessageRenderer({
   // replay. A job result is not something the user said, so it never takes the
   // user bubble.
   const envelope = useMemo(() => parseSystemEnvelope(item.data.text), [item.data.text, t]);
+  const messageText = item.data.text;
+  const messageAt = timestamp.getTime();
+  useEffect(() => {
+    if (!parseSystemEnvelope(messageText)) publishUserMessage(agentId, messageAt);
+  }, [agentId, messageText, messageAt]);
 
   return (
     <View {...surfaceProps(hostFontEscape, promptRowAnchor(item.data.messageId))}>

@@ -77,6 +77,55 @@ test("finds recommendations in options, question text, trailing and closing line
   assert.equal(set.recommendedFound, false);
 });
 
+test("recognizes option markers without treating negations as recommendations", () => {
+  const cases = [
+    ["SQLite（推荐）", true],
+    ["SQLite (推荐)", true],
+    ["SQLite（recommended）", true],
+    ["SQLite (recommended)", true],
+    ["SQLite 推荐", true],
+    ["SQLite，推荐。", true],
+    ["SQLite, recommended.", true],
+    ["推荐，因为简单", true],
+    ["SQLite — one file. Recommended", true],
+    ["Postgres, not recommended for beginners", false],
+    ["Postgres — not recommended", false],
+    ["不推荐用 Postgres", false],
+    ["不推荐", false],
+    ["non-recommended", false],
+    ["Not Recommended.", false],
+  ];
+  for (const [option, expected] of cases) {
+    const reply = `1) Pick?\nA Other\nB ${option}`;
+    for (const hint of ["", "\n\nReply: A or B"]) {
+      const set = parse(reply + hint);
+      if (!expected && !hint) {
+        assert.equal(set, null, option);
+      } else {
+        assert.equal(set.hint, Boolean(hint), option);
+        assert.equal(set.recommendedFound, expected, option);
+        assert.deepEqual(set.questions[0].options.map(item => item.recommended), [false, expected], option);
+      }
+    }
+  }
+});
+
+test("explicit recommendations require uppercase option letters", () => {
+  for (const line of ["I recommend a different approach", "Recommended: b", "推荐 b"]) {
+    const set = parse(`1) Pick?\nA One\nB Two\n\n${line}\nReply: A`);
+    assert.equal(set.recommendedFound, false, line);
+    assert.deepEqual(set.questions[0].options.map(option => option.recommended), [false, false], line);
+  }
+  for (const line of ["I recommend B", "RECOMMENDED: Ｂ", "推荐 Ｂ"]) {
+    const set = parse(`1) Pick?\nA One\nB Two\n\n${line}`);
+    assert.deepEqual(set.questions[0].options.map(option => option.recommended), [false, true], line);
+  }
+  for (const line of ["Recommended: b", "推荐 b"]) {
+    const set = parse(`1) Pick?\nA One\nB Two (${line})\n\nReply: A`);
+    assert.equal(set.recommendedFound, false, line);
+  }
+});
+
 test("ignores fences and block quotes", () => {
   const text = `1) Pick?
 \`\`\`text
@@ -120,4 +169,15 @@ test("handles a long reply in linear time", () => {
   const result = spawnSync(process.execPath, ["-e", script], { timeout: 10000, encoding: "utf8" });
   assert.equal(result.error, undefined, result.error?.message);
   assert.equal(result.status, 0, result.stderr);
+});
+
+test("formats only valid chosen answers as a composer prefix", () => {
+  const partial = h.load("client/option-questions.ts").formatPartialOptionAnswer;
+  const set = parse("1) First?\nA One\nB Two\n\n2) Second?\nA One\nB Two\n\nReply: A");
+  assert.equal(partial(set, {}), "");
+  assert.equal(partial(set, { 1: { letter: "B" } }), "2B ");
+  assert.equal(partial(set, { 0: { letter: "A" }, 1: { letter: "B" } }), "1A 2B ");
+  assert.equal(partial(set, { 0: { letter: "A", note: " hello\nworld " } }), "1A (hello world) ");
+  assert.equal(partial(set, { 0: { letter: "Z" }, 1: { letter: "A" } }), "2A ");
+  assert.equal(partial(parse("Pick?\nA One\nB Two\nReply: A"), { 0: { letter: "B" } }), "B ");
 });
