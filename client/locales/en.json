@@ -1,5 +1,9 @@
 {
   "settings": {
+    "delegatedCodeBlocks": {
+      "label": "Leave these code blocks to other plugins",
+      "description": "Enter comma-separated language names. Names are case insensitive; math also covers formulas."
+    },
     "hiddenTools": {
       "label": "Hide these tools",
       "description": "Comma-separated, case-sensitive tool names. Hiding takes precedence over leaving tools to other plugins."

@@ -38,3 +38,34 @@ test("component fence recognition and assistant ownership", t => {
     }
   }
 });
+
+test("configured code blocks and formulas determine assistant ownership", t => {
+  const h = createToolHarness("ios", { preferences: { delegatedCodeBlocks: " , MERMAID, , math , " } });
+  t.after(() => h.dispose());
+  const detect = h.load("client/component-fences.ts").containsComponentFence;
+  const transform = text => h.transformers.get("assistant_message").transform({ item: { type: "assistant_message", text }, phase: "complete" });
+  const samples = [
+    ["```mermaid\ngraph\n```", true],
+    ["~~~Mermaid title=x\ngraph\n~~~", true],
+    ["````python\n```mermaid\ngraph\n```\n````", false],
+    ["plain reply", false],
+    ["$$ a $$", true], ["$x^2$", true], ["\\(x\\)", true], ["\\[x\\]", true],
+    ["```math\nx\n```", true],
+    ["costs $5 and $10", false], ["$5-$10", false], ["$ x $", false],
+    ["```python\n$x$\n```", false], ["`$x$`", false], ["`` $x$ ` ``", false],
+    ["~~~python\n\\(x\\)\n$$ a $$\n~~~", false],
+    ["\\$x$", false], ["\\\\(x\\)", false],
+    ["`code` and $x$", true],
+  ];
+  for (const [text, expected] of samples) {
+    assert.equal(detect(text, " , MERMAID, , math , "), expected, text);
+    assert.equal(transform(text) === undefined, expected, `transform: ${text}`);
+  }
+  const defaults = createToolHarness();
+  t.after(() => defaults.dispose());
+  for (const text of ["```mermaid\nfoo\n```", "$$ a $$", "$x$"]) {
+    assert.equal(detect(text, ""), false, `empty: ${text}`);
+    assert.equal(defaults.transformers.get("assistant_message").transform({ item: { type: "assistant_message", text }, phase: "complete" }).items[0].kind, "omp-assistant");
+  }
+  for (const text of ["```ui\n", "~~~APP\n"]) assert.equal(detect(text, ""), true);
+});
