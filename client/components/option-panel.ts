@@ -29,6 +29,7 @@ export function mountOptionPanel(options: Options): OptionPanel | null {
   let redrawPending = false;
   let unsubscribe: (() => void) | undefined;
   let disposed = false;
+  let mounted = false;
   let noteOpen: Record<number, boolean> = {};
   let input: HTMLInputElement | HTMLTextAreaElement | null = null;
   let inputParent: HTMLElement | null = null;
@@ -49,7 +50,8 @@ export function mountOptionPanel(options: Options): OptionPanel | null {
   };
   const fail = () => {
     if (disposed) return;
-    failed.add(options.agentId); cleanup(); options.fallback();
+    if (mounted) failed.add(options.agentId);
+    cleanup(); options.fallback();
   };
   function position() {
     try {
@@ -59,14 +61,39 @@ export function mountOptionPanel(options: Options): OptionPanel | null {
         if (style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse" || Number(style.opacity) === 0) throw 0;
       }
       const rect = input.getBoundingClientRect();
-      let anchorTop = rect.top;
-      let ancestor = input.parentElement;
-      for (let i = 0; ancestor && i < 6; i++, ancestor = ancestor.parentElement) {
-        const bounds = ancestor.getBoundingClientRect();
-        if (Number.isFinite(bounds.top) && Number.isFinite(bounds.height) && bounds.height < window.innerHeight * 0.4 && !ancestor.matches('[data-testid="agent-chat-scroll"]') && !ancestor.querySelector('[data-testid="agent-chat-scroll"]')) anchorTop = bounds.top;
+      const inputRoot = input.closest<HTMLElement>('[data-testid="message-input-root"]');
+      let anchorTop = inputRoot ? inputRoot.getBoundingClientRect().top : rect.top;
+      const session = getOptionSession(options.agentId);
+      if (session && session.at === options.at) {
+        const count = session.set.questions.filter((_, i) => session.choices[i] === undefined).length;
+        const label = options.t("answerCard.openQuestions", { count });
+        // Find the nearest pane containing the conversation; do not cross a split pane.
+        for (let pane = input.parentElement; pane; pane = pane.parentElement) {
+          const chats = Array.from(pane.querySelectorAll('[data-testid="agent-chat-scroll"]')).filter(chat => chat.getClientRects().length);
+          if (chats.length > 1) break;
+          if (chats.length !== 1) continue;
+          const buttons = Array.from(pane.querySelectorAll<HTMLElement>('button, [role="button"]')).filter(button => {
+            if (!button.getClientRects().length) return false;
+            for (let node: HTMLElement | null = button; node && node !== pane.parentElement; node = node.parentElement) {
+              const style = window.getComputedStyle(node);
+              if (style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse" || Number(style.opacity) === 0) return false;
+            }
+            return true;
+          });
+          const pill = buttons.find(button => button.textContent?.trim().startsWith(label));
+          if (pill) {
+            const pillRect = pill.getBoundingClientRect();
+            const center = (pillRect.top + pillRect.bottom) / 2;
+            for (const button of buttons) {
+              const bounds = button.getBoundingClientRect();
+              if (Number.isFinite(bounds.top) && Number.isFinite(bounds.bottom) && Math.abs((bounds.top + bounds.bottom) / 2 - center) <= 24) anchorTop = Math.min(anchorTop, bounds.top);
+            }
+          }
+          break;
+        }
       }
       const available = anchorTop - 8;
-      if (![rect.left, rect.right, rect.top, rect.width, rect.height, window.innerWidth, window.innerHeight].every(Number.isFinite) || rect.width <= 0 || rect.height <= 0 || rect.left < 0 || rect.right > window.innerWidth || rect.top > window.innerHeight || available < 44 || rect.bottom > window.innerHeight) throw 0;
+      if (![rect.left, rect.right, rect.top, rect.width, rect.height, anchorTop, window.innerWidth, window.innerHeight].every(Number.isFinite) || rect.width <= 0 || rect.height <= 0 || rect.left < 0 || rect.right > window.innerWidth || rect.top > window.innerHeight || available < 44 || rect.bottom > window.innerHeight) throw 0;
       Object.assign(host.style, { left: `${rect.left}px`, width: `${rect.width}px`, bottom: `${window.innerHeight - anchorTop + 8}px`, maxHeight: `${Math.min(available, window.innerHeight * 0.4)}px` });
     } catch { fail(); }
   }
@@ -95,7 +122,8 @@ export function mountOptionPanel(options: Options): OptionPanel | null {
         el.type = "button"; el.onclick = action; return el;
       };
       if (options.collapsed()) {
-        panel.append(button(`${t("answerCard.summary", { total: session.set.questions.length, chosen: chosen || t("answerCard.none"), question: number(index) })} · ${t("answerCard.hintReopen")}`, "option-panel-strip", options.reopen));
+        const strip = button(`${t("answerCard.summary", { total: session.set.questions.length, chosen: chosen || t("answerCard.none"), question: number(index) })} · ${t("answerCard.hintReopen")}`, "option-panel-strip", options.reopen);
+        strip.className = "strip"; panel.append(strip);
       } else {
         const header = node("div"); header.className = "header";
         session.set.questions.forEach((_, i) => {
@@ -137,7 +165,10 @@ export function mountOptionPanel(options: Options): OptionPanel | null {
         send.style.background = answer === null || session.sending ? tokens.surface2 : tokens.success;
         send.style.color = answer === null || session.sending ? tokens.foregroundMuted : (tokens.isDark ? "#000000" : "#ffffff");
         send.onfocus = options.focusSend;
-        send.setAttribute("aria-disabled", String(answer === null || session.sending)); panel.append(send);
+        send.setAttribute("aria-disabled", String(answer === null || session.sending));
+        const sendRow = node("div", undefined, "option-send-row");
+        Object.assign(sendRow.style, { position: "sticky", bottom: "0", background: tokens.surface1 });
+        sendRow.className = "send-row"; sendRow.append(send); panel.append(sendRow);
       }
       if (focusId) {
         const next = panel.querySelector<HTMLElement>(`[data-testid="${focusId}"]`);
@@ -171,7 +202,7 @@ export function mountOptionPanel(options: Options): OptionPanel | null {
     Object.assign(host.style, { all: "initial", position: "fixed", zIndex: "2147483000", display: "block" });
     const shadow = host.attachShadow({ mode: "open" });
     const style = document.createElement("style");
-    style.textContent = `:host{box-sizing:border-box} *,*::before,*::after{box-sizing:border-box} .panel{border:1px solid;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;max-height:inherit;overflow:auto;white-space:pre-wrap} button,input{font:inherit;color:inherit;background:transparent;border:1px solid currentColor;border-radius:8px;padding:8px;min-height:44px;text-align:left} button{cursor:pointer} .header,.row{display:flex;align-items:center;gap:8px} .header{flex-wrap:wrap} .row span:nth-child(2){flex:1} .chip,.badge{border:1px solid;border-radius:5px;padding:2px 5px} .badge{font-size:.9em}`;
+    style.textContent = `:host{box-sizing:border-box} *,*::before,*::after{box-sizing:border-box} .panel{border:1px solid;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;max-height:inherit;overflow:auto;white-space:pre-wrap} .panel>*{flex-shrink:0;min-width:0} button,input{font:inherit;color:inherit;background:transparent;border:1px solid currentColor;border-radius:8px;padding:8px;min-height:44px;text-align:left} button{cursor:pointer} .header,.row{display:flex;align-items:center;gap:8px} .header{flex-wrap:wrap} .header>*{max-width:100%;overflow-wrap:anywhere} .strip{white-space:normal;overflow-wrap:anywhere} .send-row{padding-top:8px} .send-row button{width:100%} .row span:nth-child(2){flex:1} .chip,.badge{border:1px solid;border-radius:5px;padding:2px 5px} .badge{font-size:.9em}`;
     panel = document.createElement("div"); panel.className = "panel"; body = panel;
     shadow.append(style, body); document.body.append(host);
     host.addEventListener("pointerdown", event => {
@@ -194,6 +225,7 @@ export function mountOptionPanel(options: Options): OptionPanel | null {
     window.addEventListener("pointerup", onPointerUp, true); window.addEventListener("pointercancel", onPointerCancel, true);
     timer = setInterval(position, 250);
     unsubscribe = subscribeOptionSession(render); cleanups.add(cleanup);
+    mounted = true;
     return { host, update: render, focusSend: () => panel.querySelector<HTMLElement>('[data-testid="option-send"]')?.focus(), dispose: cleanup };
   } catch { fail(); return null; }
 }
