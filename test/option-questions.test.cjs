@@ -77,6 +77,39 @@ test("finds recommendations in options, question text, trailing and closing line
   assert.equal(set.recommendedFound, false);
 });
 
+test("recognizes option markers without treating negations as recommendations", () => {
+  const cases = [
+    ["SQLite（推荐）", true],
+    ["SQLite (推荐)", true],
+    ["SQLite（recommended）", true],
+    ["SQLite (recommended)", true],
+    ["SQLite 推荐", true],
+    ["SQLite，推荐。", true],
+    ["SQLite, recommended.", true],
+    ["推荐，因为简单", true],
+    ["SQLite — one file. Recommended", true],
+    ["Postgres, not recommended for beginners", false],
+    ["Postgres — not recommended", false],
+    ["不推荐用 Postgres", false],
+    ["不推荐", false],
+    ["non-recommended", false],
+    ["Not Recommended.", false],
+  ];
+  for (const [option, expected] of cases) {
+    const reply = `1) Pick?\nA Other\nB ${option}`;
+    for (const hint of ["", "\n\nReply: A or B"]) {
+      const set = parse(reply + hint);
+      if (!expected && !hint) {
+        assert.equal(set, null, option);
+      } else {
+        assert.equal(set.hint, Boolean(hint), option);
+        assert.equal(set.recommendedFound, expected, option);
+        assert.deepEqual(set.questions[0].options.map(item => item.recommended), [false, expected], option);
+      }
+    }
+  }
+});
+
 test("explicit recommendations require uppercase option letters", () => {
   for (const line of ["I recommend a different approach", "Recommended: b", "推荐 b"]) {
     const set = parse(`1) Pick?\nA One\nB Two\n\n${line}\nReply: A`);
