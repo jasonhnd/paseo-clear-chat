@@ -21,6 +21,7 @@ import { useEnhancerPreferences } from "./preferences";
 import { publishHubSnapshot } from "./hub-activity";
 import { publishAssistantReply, publishUserMessage } from "./option-session";
 import { MarkdownView } from "./components/markdown/markdown-view";
+import { OptionCard } from "./components/option-card";
 import { TimelineTailHub } from "./components/hub-live";
 import { AssistantFooter } from "./components/turn-footer";
 import { SystemCard } from "./components/system-card";
@@ -413,6 +414,7 @@ export function LiveAssistantRenderer({
       {!envelope ? (
         <AssistantFooter text={item.data.text} at={timestamp} tokens={tokens} durationMs={durationMs} agentId={agentId} />
       ) : null}
+      {!envelope && preferences.showAnswerCard ? <OptionCard key={`${agentId}:${replyAt}`} agentId={agentId} at={replyAt} tokens={tokens} /> : null}
       <TimelineTailHub
         agentId={agentId}
         tokens={tokens}

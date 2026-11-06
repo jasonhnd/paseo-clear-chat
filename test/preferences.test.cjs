@@ -655,3 +655,20 @@ test("delegated code blocks persist, reset, and are never imported from a browse
   assert.equal(fresh.preferences.getEnhancerPreferences().delegatedCodeBlocks, "");
   assert.deepEqual(server.values.preferences, {});
 });
+
+test("answer card setting persists, resets and ignores browser snapshots", async () => {
+  const server = host();
+  const first = harness("web", JSON.stringify({ showAnswerCard: true })).preferences;
+  await first.initializeEnhancerPreferences(server.rpc);
+  assert.equal(first.getEnhancerPreferences().showAnswerCard, false);
+  await first.updateEnhancerPreferences({ showAnswerCard: true });
+  assert.equal(server.values.preferences.showAnswerCard, true);
+  const fresh = harness().preferences;
+  await fresh.initializeEnhancerPreferences(server.rpc);
+  assert.equal(fresh.getEnhancerPreferences().showAnswerCard, true);
+  await fresh.resetEnhancerPreferences();
+  assert.equal(fresh.getEnhancerPreferences().showAnswerCard, false);
+  const reloaded = harness().preferences;
+  await reloaded.initializeEnhancerPreferences(server.rpc);
+  assert.equal(reloaded.getEnhancerPreferences().showAnswerCard, false);
+});
