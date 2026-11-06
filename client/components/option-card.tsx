@@ -5,6 +5,7 @@ import { TextInput } from "@getpaseo/plugin/client/ui";
 import { messages } from "../messages";
 import { answerText, choose, clearChoice, dismiss, getOptionSession, missingQuestion, moveCursor, sendAnswer, setActiveQuestion, setNote, useOptionSession } from "../option-session";
 import { installOptionKeyboard, optionComposer } from "./option-keyboard";
+import { installOptionComposer } from "../option-composer";
 import type { ExtendedThemeTokens } from "./theme-tokens";
 
 export function OptionCard({ agentId, at, tokens }: { agentId: string; at: number; tokens: ExtendedThemeTokens }) {
@@ -35,6 +36,10 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
       setSendFocused: setSendFocus,
       focusSend: () => root.current?.querySelector<HTMLElement>('[data-testid="option-send"]')?.focus(),
     });
+  }, [agentId, at, visible]);
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined" || !visible) return;
+    return installOptionComposer(document, agentId, at);
   }, [agentId, at, visible]);
   if (!session || !visible) return null;
 
