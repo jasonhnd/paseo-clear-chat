@@ -67,12 +67,22 @@ for (const [locale, label] of [["en", "Clear Chat version"], ["zh-CN", "Clear Ch
 
 for (const [locale, label, unknown] of [["en", "Clear Chat version", "Unknown"], ["zh-CN", "Clear Chat 版本", "未知"], ["ja", "Clear Chat バージョン", "不明"]]) {
   test(`${locale}: a directory install with no generated version shows localized unknown`, t => {
-    const h = createToolHarness("ios", { locale, settingsPage: true, directoryInstall: "1.0.0.0" });
+    const h = createToolHarness("ios", { locale, settingsPage: true, directoryInstall: "1.0.0.0", packageVersionText: new Error("missing") });
     t.after(() => h.unmount());
     const tree = h.draw({ type: h.settingsScreens.get("chat-presentation").Component, props: { theme: { colors: {} } } });
     assert.equal(inlineText(h.nodes(tree, node => node.props.testID === "installed-version")[0]), `${label} ${unknown}`);
   });
 }
+
+test("a directory install with stale version metadata shows localized unknown", t => {
+  const h = createToolHarness("ios", {
+    locale: "en", settingsPage: true, directoryInstall: "1.0.0.0",
+    packageVersionText: JSON.stringify({ version: "0.13.2.1" }),
+  });
+  t.after(() => h.unmount());
+  const tree = h.draw({ type: h.settingsScreens.get("chat-presentation").Component, props: { theme: { colors: {} } } });
+  assert.equal(h.text(h.nodes(tree, node => node.props.testID === "installed-version")[0]), "Clear Chat version Unknown");
+});
 
 for (const [problem, raw] of [["missing", new Error("missing")], ["malformed JSON", "{"], ["invalid value", JSON.stringify({ version: "garbage" })]]) {
   test(`${problem} version metadata falls back without preventing settings from loading`, t => {

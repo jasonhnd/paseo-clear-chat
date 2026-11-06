@@ -176,7 +176,6 @@ function createToolHarness(platform = "ios", options = {}) {
   function load(path) {
     let filename = resolve(root, path);
     if (options.directoryInstall && filename.endsWith("/client/package-version.json")) return { version: options.directoryInstall };
-    if (options.directoryInstall && filename.endsWith("/client/package-version.svg")) throw new Error("missing generated metadata");
     if (filename.endsWith("/client/package-version.json") && Object.hasOwn(options, "packageVersionText")) {
       if (options.packageVersionText instanceof Error) throw options.packageVersionText;
       return JSON.parse(options.packageVersionText);
