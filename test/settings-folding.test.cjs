@@ -134,3 +134,19 @@ test("hidden tools setting saves, reloads, and resets with presentation settings
   assert.deepEqual(host.values.preferences, {});
   fresh.h.unmount();
 });
+
+test("code block delegation setting saves, reloads, and resets with presentation settings", async () => {
+  const host = createPresentationHost();
+  const first = await client(host);
+  const input = (h, tree) => h.nodes(tree, node => node.props.accessibilityLabel === "Leave these code blocks to other plugins")[0];
+  assert.equal(input(first.h, first.page()).props.value, "");
+  input(first.h, first.page()).props.onChangeText("mermaid, math");
+  await new Promise(setImmediate);
+  assert.equal(host.values.preferences.delegatedCodeBlocks, "mermaid, math");
+  first.h.unmount();
+  const fresh = await client(host);
+  assert.equal(input(fresh.h, fresh.page()).props.value, "mermaid, math");
+  await fresh.h.load("client/preferences.ts").resetEnhancerPreferences();
+  assert.equal(input(fresh.h, fresh.page()).props.value, "");
+  fresh.h.unmount();
+});
