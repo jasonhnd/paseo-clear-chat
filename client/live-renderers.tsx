@@ -1,8 +1,8 @@
 import { useTranslation } from "@getpaseo/plugin/client";
 import { messages } from "./messages";
 import { translatedDiagnostic } from "./translation";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View, Text, Pressable, useWindowDimensions } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { View, Text, Pressable, ScrollView, Platform, useWindowDimensions } from "react-native";
 import { useAgent, usePaseo, useRpc, useWorkspace } from "@getpaseo/plugin/client";
 import type { PluginTimelineItemProps } from "@getpaseo/plugin/client";
 import { buildThemeTokens } from "./components/theme-tokens";
@@ -21,6 +21,7 @@ import { useEnhancerPreferences } from "./preferences";
 import { publishHubSnapshot } from "./hub-activity";
 import { publishAssistantReply, publishUserMessage } from "./option-session";
 import { MarkdownView } from "./components/markdown/markdown-view";
+import { buildJumpChips, jumpHeadingLines } from "./jump-chips";
 import { OptionCard } from "./components/option-card";
 import { TimelineTailHub } from "./components/hub-live";
 import { AssistantFooter } from "./components/turn-footer";
@@ -359,6 +360,7 @@ export function LiveTodoRenderer({ item, theme }: PluginTimelineItemProps<LiveTo
 
 export interface LiveAssistantPayload {
   text: string;
+  phase?: string;
   images?: GeneratedImage[];
   messageId?: string;
 }
@@ -395,6 +397,15 @@ export function LiveAssistantRenderer({
   // files any unclaimed `custom` message under this item kind. They are not
   // the model's words, so they are drawn as a card, not as prose.
   const envelope = useMemo(() => parseSystemEnvelope(item.data.text), [item.data.text, t]);
+  const replyRoot = useRef<HTMLElement | null>(null);
+  const chips = useMemo(() => preferences.showJumpChips && item.data.phase === "complete"
+    ? buildJumpChips(item.data.text) : [], [preferences.showJumpChips, item.data.phase, item.data.text]);
+  const headingLabels = useMemo(() => chips.length ? new Map(jumpHeadingLines(item.data.text)
+    .map(({ index, heading }) => [index, heading])) : new Map<number, string>(), [chips, item.data.text]);
+  const scrollToHeading = (index: number) => {
+    const heading = replyRoot.current?.querySelector<HTMLElement>(`[data-jump-heading="${index}"]`);
+    if (typeof heading?.scrollIntoView === "function") heading.scrollIntoView({ block: "start" });
+  };
   const replyText = item.data.text;
   const replyAt = timestamp.getTime();
   useEffect(() => {
@@ -404,12 +415,23 @@ export function LiveAssistantRenderer({
     envelope ? null : { type: "assistant_message", text: item.data.text });
 
   return (
-    <View {...hostFontEscape}>
+    <View {...hostFontEscape} {...(Platform.OS === "web" ? { ref: (node: View | null) => { replyRoot.current = node as unknown as HTMLElement | null; } } : {})}>
       {envelope ? (
         <SystemCard envelope={envelope} tokens={tokens} />
       ) : (
-        <MarkdownView text={item.data.text} images={item.data.images} cwd={cwd} tokens={tokens} variant={preferences.markdownVariant}
-          expansionIdentity={{ hostId: host.id, agentId, callId: item.data.messageId, name: "assistant-message", timestamp: timestamp.getTime() }} />
+        <>
+          {chips.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} testID="jump-chips"
+            style={{ alignSelf: "stretch", flexGrow: 0, minWidth: 0, maxWidth: "100%", marginBottom: 8 }}
+            contentContainerStyle={{ gap: 8 }}>
+            {chips.map(chip => <Pressable key={chip.index} testID={`jump-chip-${chip.index}`} accessibilityRole="button"
+              accessibilityLabel={headingLabels.get(chip.index) ?? chip.label} onPress={() => scrollToHeading(chip.index)}
+              style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: 12, borderRadius: 18, borderWidth: 1, borderColor: tokens.border, backgroundColor: tokens.surface1 }}>
+              <Text style={{ color: tokens.foreground, fontSize: tokens.fs(12) }}>{chip.label}</Text>
+            </Pressable>)}
+          </ScrollView> : null}
+          <MarkdownView text={item.data.text} images={item.data.images} cwd={cwd} tokens={tokens} variant={preferences.markdownVariant}
+            expansionIdentity={{ hostId: host.id, agentId, callId: item.data.messageId, name: "assistant-message", timestamp: timestamp.getTime() }} />
+        </>
       )}
       {!envelope ? (
         <AssistantFooter text={item.data.text} at={timestamp} tokens={tokens} durationMs={durationMs} agentId={agentId} />
