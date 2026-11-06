@@ -621,6 +621,8 @@
     "notOptions": "不是选项",
     "error": "发送失败：{{reason}}",
     "send": "发送 {{answer}}",
-    "missing": "选择第 {{question}} 题后发送"
+    "missing": "选择第 {{question}} 题后发送",
+    "pill": "待回答的问题：{{count}}",
+    "running": "代理完成后即可发送。"
   }
 }

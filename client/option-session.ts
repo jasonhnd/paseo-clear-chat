@@ -37,6 +37,10 @@ export function getOptionSession(agentId: string): OptionSession | null {
   return snapshots.get(agentId) ?? null;
 }
 
+export function optionSessionAgentIds(): string[] {
+  return [...snapshots.keys()];
+}
+
 export function useOptionSession(agentId: string): OptionSession | null {
   const read = useCallback(() => getOptionSession(agentId), [agentId]);
   return useSyncExternalStore(subscribeOptionSession, read, read);
@@ -144,23 +148,25 @@ export function answerText(agentId: string): string | null {
 
 export function setOptionSender(next: Sender | null): void { sender = next; }
 
-export async function sendAnswer(agentId: string): Promise<void> {
+export async function sendAnswer(agentId: string): Promise<boolean> {
   const snapshot = snapshots.get(agentId);
   const text = answerText(agentId);
-  if (!snapshot || text === null || pending.has(agentId)) return;
+  if (!snapshot || text === null || pending.has(agentId)) return false;
   const send = sender;
   if (!send) {
     update(agentId, current => current.error === "Sender unavailable" ? current : { ...current, error: "Sender unavailable" });
-    return;
+    return false;
   }
   pending.add(agentId);
   update(agentId, current => ({ ...current, sending: true }));
   try {
     await send(agentId, text);
     update(agentId, current => current.at === snapshot.at ? { ...current, sending: false, error: null } : current);
+    return true;
   } catch (error) {
     const message = (error instanceof Error ? error.message : String(error)).replace(/\s+/g, " ").trim().slice(0, 160) || "Send failed";
     update(agentId, current => current.at === snapshot.at ? { ...current, sending: false, error: message } : current);
+    return false;
   } finally {
     pending.delete(agentId);
   }

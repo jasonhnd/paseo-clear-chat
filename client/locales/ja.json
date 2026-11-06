@@ -621,6 +621,8 @@
     "notOptions": "選択肢ではない",
     "error": "送信できませんでした：{{reason}}",
     "send": "{{answer}} を送信",
-    "missing": "質問 {{question}} を選択して送信"
+    "missing": "質問 {{question}} を選択して送信",
+    "pill": "未回答の質問：{{count}}",
+    "running": "エージェントの完了後に送信できます。"
   }
 }

@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { readFileSync } = require("node:fs");
+const { readFileSync, existsSync } = require("node:fs");
 const { createRequire } = require("node:module");
 const { dirname, resolve } = require("node:path");
 const test = require("node:test");
@@ -55,7 +55,7 @@ function harness(platform = "ios", legacy, current) {
       if (id.includes("/components/")) return new Proxy({}, { get: () => () => () => {} });
       if (id.startsWith(".")) {
         const base = resolve(dirname(filename), id);
-        return load(base + (base.endsWith(".tsx") || base.endsWith(".ts") || base.endsWith(".json") ? "" : ".ts"));
+        return load(base + (base.endsWith(".tsx") || base.endsWith(".ts") || base.endsWith(".json") ? "" : existsSync(base + ".ts") ? ".ts" : ".tsx"));
       }
       return realRequire(id);
     };

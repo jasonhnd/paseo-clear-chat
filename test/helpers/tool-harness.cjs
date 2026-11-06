@@ -17,6 +17,7 @@ function createToolHarness(platform = "ios", options = {}) {
   const reveals = [], links = [], copies = [], toasts = [], imageReads = [];
   let frame;
   const pendingEffects = [];
+  const preferenceListeners = new Set();
   const flushEffects = () => { while (pendingEffects.length) pendingEffects.shift()(); };
   const jsx = (type, props) => ({ type, props: props ?? {} });
   const passthrough = props => props.children ?? null;
@@ -106,7 +107,7 @@ function createToolHarness(platform = "ios", options = {}) {
     Linking: { openURL: (...args) => { links.push(args[0]); return options.openURL?.(...args) ?? Promise.resolve(); } },
   };
   const stubs = {
-    "client/preferences": { initializeEnhancerPreferences: async () => {}, areEnhancerPreferencesReady: () => true, onEnhancerPreferencesReady: callback => { callback(); return noop; }, getEnhancerPreferences: () => preferences, useEnhancerPreferences: () => preferences, useEnhancerPreferencesError: () => null, updateEnhancerPreferences: async patch => Object.assign(preferences, patch), resetEnhancerPreferences: async () => {}, OUTPUT_LINE_OPTIONS: [10, 15, 30, "never"].map(value => ({ value: String(value), label: value === "never" ? "Never" : `${value} lines` })), TEXT_SIZE_OPTIONS: [], ACCENT_PRESETS: {} },
+    "client/preferences": { initializeEnhancerPreferences: async () => {}, areEnhancerPreferencesReady: () => true, onEnhancerPreferencesReady: callback => { callback(); return noop; }, getEnhancerPreferences: () => preferences, subscribeEnhancerPreferences: listener => { preferenceListeners.add(listener); return () => preferenceListeners.delete(listener); }, useEnhancerPreferences: () => preferences, useEnhancerPreferencesError: () => null, updateEnhancerPreferences: async patch => Object.assign(preferences, patch), resetEnhancerPreferences: async () => {}, OUTPUT_LINE_OPTIONS: [10, 15, 30, "never"].map(value => ({ value: String(value), label: value === "never" ? "Never" : `${value} lines` })), TEXT_SIZE_OPTIONS: [], ACCENT_PRESETS: {} },
     "client/settings-page": { ClearChatSettingsPage: noop },
     "server/settings-migration": { migrateHostSettings: noop },
     "client/image-file": { useImageFile: noop, isImagePath: path => /\.(png|jpe?g|gif|webp)$/i.test(path ?? "") },
@@ -323,6 +324,7 @@ function createToolHarness(platform = "ios", options = {}) {
   return {
     settingsScreens, translations, setLocale: translations.setLocale, load, nodes, text, reveals, links, copies, toasts, imageReads, transformers, renderers, panels, panelOpens, dimensions, get preferences() { return getPreferences(); }, tokens, draw, expansionHost, unmount, dispose, flushEffects,
     setPanelMounted(value) { panelMounted = value; },
+    notifyPreferences() { for (const listener of preferenceListeners) listener(); },
     mount(item, expand = true, identity = {}) {
       unmount(); reveals.length = links.length = copies.length = imageReads.length = 0;
       if (!timestamps.has(item)) timestamps.set(item, new Date(nextTimestamp++));

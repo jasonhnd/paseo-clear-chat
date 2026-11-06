@@ -6,14 +6,14 @@ import { messages } from "../messages";
 import { answerText, choose, clearChoice, dismiss, getOptionSession, missingQuestion, moveCursor, sendAnswer, setActiveQuestion, setNote, useOptionSession } from "../option-session";
 import type { ExtendedThemeTokens } from "./theme-tokens";
 
-export function OptionCard({ agentId, at, tokens }: { agentId: string; at: number; tokens: ExtendedThemeTokens }) {
+export function OptionCard({ agentId, at, tokens, popover = false, close }: { agentId: string; at: number; tokens: ExtendedThemeTokens; popover?: boolean; close?: () => void }) {
   const { t } = useTranslation(messages);
   const session = useOptionSession(agentId);
   const status = useAgent(agentId, agent => agent.status);
   const { height } = useWindowDimensions();
   const [collapsed, setCollapsed] = useState(false);
   const [noteOpen, setNoteOpen] = useState<Record<number, boolean>>({});
-  if (!session || session.at !== at || session.dismissed || status === "running") return null;
+  if (!session || session.at !== at || session.dismissed || (!popover && status === "running")) return null;
 
   const index = session.activeQuestion;
   const question = session.set.questions[index]!;
@@ -25,14 +25,17 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   const mutedStyle = { ...labelStyle, color: tokens.foregroundMuted, fontSize: tokens.fs(12) };
   const buttonStyle = { minHeight: 44, justifyContent: "center" as const, alignItems: "center" as const, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: tokens.border };
   const send = async () => {
-    if (session.sending || !answer) return;
+    if (session.sending || status === "running" || !answer) return;
     const pending = sendAnswer(agentId);
     const started = getOptionSession(agentId)?.at === at && getOptionSession(agentId)?.sending;
-    await pending;
+    const success = await pending;
     const current = getOptionSession(agentId);
-    if (started && current?.at === at && !current.sending && !current.error) dismiss(agentId);
+    if (started && success) {
+      if (current?.at === at) dismiss(agentId);
+      close?.();
+    }
   };
-  if (collapsed) return (
+  if (collapsed && !popover) return (
     <Pressable testID="option-card-strip" accessibilityRole="button" accessibilityState={{ expanded: false }} accessibilityLabel={t("answerCard.reopen")} onPress={() => setCollapsed(false)}
       style={{ ...buttonStyle, marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 6, backgroundColor: tokens.surface1 }}>
       <Text style={labelStyle}>{t("answerCard.summary", { total: session.set.questions.length, chosen: chosen || t("answerCard.none"), question: number(index) })}</Text>
@@ -40,9 +43,10 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   );
   const end = /[!?。！？]|\.(?=\s|$)/.exec(question.text);
   const split = end ? end.index + 1 : question.text.length;
+  const Container = popover ? View : ScrollView;
   return (
-    <View testID="option-card" style={{ marginTop: 10, borderWidth: 1, borderColor: tokens.border, borderRadius: 12, backgroundColor: tokens.surface1, overflow: "hidden", maxHeight: Math.max(100, height * 0.4) }}>
-      <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+    <View testID={popover ? "option-popover" : "option-card"} style={popover ? {} : { marginTop: 10, borderWidth: 1, borderColor: tokens.border, borderRadius: 12, backgroundColor: tokens.surface1, overflow: "hidden", maxHeight: Math.max(100, height * 0.4) }}>
+      <Container {...(popover ? {} : { keyboardShouldPersistTaps: "handled", nestedScrollEnabled: true })}>
         <View style={{ padding: 12, gap: 10 }}>
           <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
             {session.set.questions.map((q, i) => <Pressable key={i} testID={`option-question-${i}`} accessibilityRole="tab" accessibilityState={{ selected: i === index }} accessibilityLabel={t("answerCard.questionTab", { question: number(i) })} onPress={() => setActiveQuestion(agentId, i)} style={{ minHeight: 44, justifyContent: "center", borderBottomWidth: i === index ? 2 : 0, borderColor: tokens.success, paddingHorizontal: 4 }}>
@@ -50,9 +54,9 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
             </Pressable>)}
             {chosen ? <Text style={{ ...mutedStyle, color: tokens.success }}>· {chosen}</Text> : null}
             <Text style={{ ...mutedStyle, flexGrow: 1, textAlign: "right" }}>{t("answerCard.detected")}</Text>
-            <Pressable testID="option-card-collapse" accessibilityRole="button" accessibilityState={{ expanded: true }} accessibilityLabel={t("answerCard.collapse")} onPress={() => setCollapsed(true)} style={buttonStyle}><Text style={mutedStyle}>{t("answerCard.collapse")}</Text></Pressable>
+            {!popover ? <Pressable testID="option-card-collapse" accessibilityRole="button" accessibilityState={{ expanded: true }} accessibilityLabel={t("answerCard.collapse")} onPress={() => setCollapsed(true)} style={buttonStyle}><Text style={mutedStyle}>{t("answerCard.collapse")}</Text></Pressable> : null}
           </View>
-          <Text selectable style={labelStyle}><Text style={{ fontWeight: "700" }}>{question.text.slice(0, split)}</Text>{question.text.slice(split)}</Text>
+          {popover ? <Text selectable accessibilityRole="header" style={{ ...labelStyle, fontWeight: "700" }}>{question.text}</Text> : <Text selectable style={labelStyle}><Text style={{ fontWeight: "700" }}>{question.text.slice(0, split)}</Text>{question.text.slice(split)}</Text>}
           {question.options.map((option, i) => {
             const selected = session.choices[index] === option.letter;
             const focused = session.cursor[index] === i;
@@ -71,11 +75,12 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
           {index < session.set.questions.length - 1 ? <Pressable testID="option-next" accessibilityRole="button" onPress={() => setActiveQuestion(agentId, index + 1)} style={buttonStyle}><Text style={labelStyle}>{t("answerCard.next")}</Text></Pressable> : null}
           <Pressable testID="option-dismiss" accessibilityRole="button" onPress={() => dismiss(agentId)} style={buttonStyle}><Text style={mutedStyle}>{t("answerCard.notOptions")}</Text></Pressable>
           {session.error ? <Text testID="option-send-error" accessibilityRole="alert" style={{ ...mutedStyle, color: tokens.danger }}>{t("answerCard.error", { reason: session.error })}</Text> : null}
-          <Pressable testID="option-send" accessibilityRole="button" accessibilityState={{ disabled: answer === null || session.sending }} disabled={answer === null || session.sending} onPress={() => { void send(); }} style={{ ...buttonStyle, backgroundColor: answer === null || session.sending ? tokens.surface2 : tokens.success, borderColor: tokens.successBorder }}>
-            <Text style={{ ...labelStyle, color: answer === null || session.sending ? tokens.foregroundMuted : (tokens.isDark ? "#000000" : "#ffffff"), fontWeight: "700" }}>{missing === null ? t("answerCard.send", { answer: answer ?? "" }) : t("answerCard.missing", { question: number(missing) })}</Text>
+          {status === "running" ? <Text testID="option-running" style={mutedStyle}>{t("answerCard.running")}</Text> : null}
+          <Pressable testID="option-send" accessibilityRole="button" accessibilityState={{ disabled: answer === null || session.sending || status === "running" }} disabled={answer === null || session.sending || status === "running"} onPress={() => { void send(); }} style={{ ...buttonStyle, backgroundColor: answer === null || session.sending || status === "running" ? tokens.surface2 : tokens.success, borderColor: tokens.successBorder }}>
+            <Text style={{ ...labelStyle, color: answer === null || session.sending || status === "running" ? tokens.foregroundMuted : (tokens.isDark ? "#000000" : "#ffffff"), fontWeight: "700" }}>{missing === null ? t("answerCard.send", { answer: answer ?? "" }) : t("answerCard.missing", { question: number(missing) })}</Text>
           </Pressable>
         </View>
-      </ScrollView>
+      </Container>
     </View>
   );
 }
