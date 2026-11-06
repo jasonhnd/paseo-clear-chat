@@ -4,6 +4,33 @@ All notable changes to Clear Chat are listed here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and each version is the Paseo version it is built and tested for plus one number that counts Clear Chat's releases for that Paseo version, for example 0.12.0.1 for the first release for Paseo 0.12.0. Releases 1.0.0 and 1.0.1 came out before this rule.
 
+## [0.15.2.2] - YYYY-MM-DD
+
+### Added
+
+- A new setting, "Hide these tools": a comma-separated list of tool names, empty by default. Clear Chat removes the rows of the tools you list, so a noisy tool, for example a hook that runs on every turn, no longer fills the chat. Names are matched exactly, including upper and lower case, and spaces and empty entries are ignored. A call that failed, an approval row and a call that is waiting for approval are always drawn. When a name is in both this list and "Leave these tools to other plugins", hiding wins. A running call may be hidden; if it later fails, its row appears ([issue #216](https://github.com/jasonhnd/paseo-clear-chat/issues/216), [PR #217](https://github.com/jasonhnd/paseo-clear-chat/pull/217)).
+- A new setting, "Leave these code blocks to other plugins": a comma-separated list of code block languages, not case sensitive, empty by default; `ui` and `app` are always included. A reply is left to other plugins when it has a top-level code block (a fence nested inside another code block does not count) whose first word is listed. The special name `math` also leaves replies that contain formulas: `$$ … $$`, `\( … \)`, `\[ … \]` and inline `$ … $` (no space after the opening or before the closing `$`, and the closing `$` is not followed by a digit); code blocks and inline code never count. Reproduced with three plugins that draw diagrams or formulas: with Assistant markdown on, a diagram block showed as a code block and a formula as raw text, while the same reply was drawn by the plugin when Clear Chat was disabled or Assistant markdown was off ([issue #218](https://github.com/jasonhnd/paseo-clear-chat/issues/218), [PR #222](https://github.com/jasonhnd/paseo-clear-chat/pull/222)).
+- A new setting, "Fold messages that start with": one message beginning per line, case sensitive, white space at the start of the message ignored, empty by default. A matching user message is drawn as one line (its first line cut at about 120 characters, the time, and a Show button) each time the chat is opened; Show opens the whole message and Hide folds it again, and both buttons have accessible labels and are at least 44 points high. A message with images or other attachments is not folded. The find bar still finds the text of a folded message. The setting needs "Enhanced prompt bubble" to be on ([issue #219](https://github.com/jasonhnd/paseo-clear-chat/issues/219), [PR #224](https://github.com/jasonhnd/paseo-clear-chat/pull/224)).
+- A new setting, "Show an Open button on code blocks that hold only a web address", off by default. When it is on, a closed code block whose whole content is exactly one `https://` address gets an Open button beside Copy. There is no button for `http://` addresses, for `localhost`, `127.0.0.1`, `[::1]` and `.local` hosts, for other schemes, for two addresses, for an address with other text, or for a code block that is still being written. Copy is unchanged, and the button is at least 44 points high ([issue #220](https://github.com/jasonhnd/paseo-clear-chat/issues/220), [PR #223](https://github.com/jasonhnd/paseo-clear-chat/pull/223)).
+
+### Fixed
+
+- "Fold messages that start with" now folds a matching message for every provider. At first it folded a message only when the pasted-image lookup could answer, which the lookup does for only some providers, so for the others nothing was folded. A message is now folded unless the lookup finds images; while the lookup is pending the message is drawn folded, and if images then arrive the row opens and stays open ([issue #226](https://github.com/jasonhnd/paseo-clear-chat/issues/226), [PR #228](https://github.com/jasonhnd/paseo-clear-chat/pull/228)).
+
+### Compatibility
+
+- Clear Chat 0.15.2.2 is the Clear Chat release for Paseo 0.15.2.
+
+### Known limitations
+
+- A matching message that carries pasted images may show folded for a moment before the image lookup answers, and then opens.
+- When no plugin draws a code block that Clear Chat leaves to other plugins, Paseo draws the reply itself and Clear Chat's styling does not apply to it.
+- The limitations listed in the previous release still apply.
+
+### Upgrading
+
+- Update an existing installation with `paseo plugin update clear-chat --ref v0.15.2.2`; the plugin reloads on its own and the Paseo daemon is not restarted. The four new settings are empty or off until you change them. Removing a plugin also removes its settings, so back them up before removing.
+
 ## [0.15.2.1] - 2026-11-06
 
 ### Added
@@ -313,6 +340,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.15.2.2]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.2.1...v0.15.2.2
 [0.15.2.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.1.1...v0.15.2.1
 [0.15.1.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.0.2...v0.15.1.1
 [0.15.0.2]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.0.1...v0.15.0.2
