@@ -80,7 +80,6 @@ interface PastedThumb {
 interface PastedList {
   images: PastedThumb[];
   total: number;
-  verified: boolean;
 }
 
 type PastedCache = PastedList | { failed: true };
@@ -136,7 +135,7 @@ function readPastedList(result: {
     });
   }
   const total = typeof result.total === "number" && Number.isFinite(result.total) ? Math.max(0, result.total) : images.length;
-  return { images, total, verified: result.reason === null };
+  return { images, total };
 }
 
 function isPastedList(value: PastedCache | null): value is PastedList {
@@ -298,7 +297,12 @@ export function UserMessage({
 
   const pastedNow = pasted?.key === cacheKey ? pasted.value : null;
   const list = isPastedList(pastedNow) ? pastedNow : null;
-  const canFold = matchesPrefix && attachmentCount === 0 && list !== null && list.verified && list.total === 0 && list.images.length === 0;
+  const foundImages = list !== null && (list.total > 0 || list.images.length > 0);
+  // Remember an image result even if the lookup key later changes for this message.
+  if (foundImages && !opened && foldKey.text === text && foldKey.messageId === messageId && foldKey.clientMessageId === clientMessageId) {
+    setOpened(true);
+  }
+  const canFold = matchesPrefix && attachmentCount === 0 && !foundImages;
   const folded = canFold && !opened && foldKey.text === text && foldKey.messageId === messageId && foldKey.clientMessageId === clientMessageId;
   const firstLine = text.split(/\r\n|\r|\n/, 1)[0] ?? "";
   const summary = Array.from(firstLine).length > 120 ? `${Array.from(firstLine).slice(0, 119).join("")}…` : firstLine;
