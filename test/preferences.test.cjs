@@ -566,3 +566,92 @@ test("delegated tool names match exactly and survive reload and reset", async ()
   freshCleanup();
   cleanup();
 });
+
+test("hidden tool names match exactly, preserve failures and approvals, and survive reload and reset", async () => {
+  const server = host({ legacyMigrated: true });
+  const first = harness();
+  const cleanup = first.contribute(server.rpc);
+  await new Promise(setImmediate);
+  const transform = (client, item) => client.transformers.get("omp-enhanced-tool-call").transform({ item, phase: "complete" });
+  const call = (name, extra = {}) => ({ type: "tool_call", name, status: "completed", callId: name, detail: { type: "shell", command: "true" }, ...extra });
+  const kind = (item) => transform(first, item)?.items[0]?.kind;
+  for (const name of ["shell", "read", "Shell", ""]) assert.equal(kind(call(name)), "omp-tool-call");
+  await first.preferences.updateEnhancerPreferences({ hiddenTools: " shell, , read_file ," });
+  assert.deepEqual(transform(first, call("shell")), { items: [] });
+  assert.deepEqual(transform(first, call("read_file")), { items: [] });
+  for (const name of ["Shell", "read", ""]) assert.equal(kind(call(name)), "omp-tool-call");
+  assert.deepEqual(transform(first, call("shell", { status: "running" })), { items: [] });
+  for (const extra of [{ status: "failed" }, { status: "error" }, { error: "failure" }, { error: {} }, { status: "waiting" }, { status: "pending" }, { status: "awaiting_approval" }, { status: "pending_approval" }, { status: "waiting_for_approval" }]) {
+    assert.equal(kind(call("shell", extra)), "omp-tool-call", JSON.stringify(extra));
+  }
+  const approval = require("./fixtures/real-hermes-approvals.json").items.find(item => item.name?.startsWith("edit-approval-"));
+  await first.preferences.updateEnhancerPreferences({ hiddenTools: `shell, ${approval.name}`, delegatedTools: "shell" });
+  for (const status of ["completed", "waiting", "failed"]) assert.equal(kind({ ...approval, status }), "omp-approval");
+  assert.deepEqual(transform(first, call("shell")), { items: [] });
+  assert.equal(transform(first, call("shell", { status: "failed" })), undefined);
+  const fresh = harness();
+  const freshCleanup = fresh.contribute(server.rpc);
+  await new Promise(setImmediate);
+  assert.equal(fresh.preferences.getEnhancerPreferences().hiddenTools, `shell, ${approval.name}`);
+  assert.deepEqual(transform(fresh, call("shell")), { items: [] });
+  await fresh.preferences.resetEnhancerPreferences();
+  assert.equal(fresh.preferences.getEnhancerPreferences().hiddenTools, "");
+  assert.equal(transform(fresh, call("shell")).items[0].kind, "omp-tool-call");
+  assert.deepEqual(server.values.preferences, {});
+  freshCleanup();
+  cleanup();
+});
+
+test("message folding prefixes persist, reset, and cannot be imported from a browser snapshot", async () => {
+  const server = host();
+  const first = harness("web", JSON.stringify({ foldMessagePrefixes: "[Old]" }));
+  await first.preferences.initializeEnhancerPreferences(server.rpc);
+  assert.equal(first.preferences.getEnhancerPreferences().foldMessagePrefixes, "");
+  assert.equal(server.values.preferences.foldMessagePrefixes, undefined);
+  const value = "[Relay]\n[Report]";
+  await first.preferences.updateEnhancerPreferences({ foldMessagePrefixes: value });
+  assert.equal(server.values.preferences.foldMessagePrefixes, value);
+  const fresh = harness();
+  await fresh.preferences.initializeEnhancerPreferences(server.rpc);
+  assert.equal(fresh.preferences.getEnhancerPreferences().foldMessagePrefixes, value);
+  await fresh.preferences.resetEnhancerPreferences();
+  const reset = harness();
+  await reset.preferences.initializeEnhancerPreferences(server.rpc);
+  assert.equal(reset.preferences.getEnhancerPreferences().foldMessagePrefixes, "");
+  assert.equal(server.values.preferences.foldMessagePrefixes, undefined);
+});
+
+test("code block Open setting persists, resets, and ignores browser snapshots", async () => {
+  const server = host();
+  const snapshot = JSON.stringify({ codeBlockOpen: true });
+  const first = harness("web", snapshot).preferences;
+  await first.initializeEnhancerPreferences(server.rpc);
+  assert.equal(first.getEnhancerPreferences().codeBlockOpen, false);
+  assert.equal(server.values.preferences.codeBlockOpen, undefined);
+  await first.updateEnhancerPreferences({ codeBlockOpen: true });
+  assert.equal(server.values.preferences.codeBlockOpen, true);
+  const reloaded = harness("web", snapshot).preferences;
+  await reloaded.initializeEnhancerPreferences(server.rpc);
+  assert.equal(reloaded.getEnhancerPreferences().codeBlockOpen, true);
+  await reloaded.resetEnhancerPreferences();
+  const reset = harness("web", snapshot).preferences;
+  await reset.initializeEnhancerPreferences(server.rpc);
+  assert.equal(reset.getEnhancerPreferences().codeBlockOpen, false);
+  assert.equal(server.values.preferences.codeBlockOpen, undefined);
+});
+
+test("delegated code blocks persist, reset, and are never imported from a browser snapshot", async () => {
+  const server = host();
+  const first = harness("web", JSON.stringify({ delegatedCodeBlocks: "math" }));
+  await first.preferences.initializeEnhancerPreferences(server.rpc);
+  assert.equal(first.preferences.getEnhancerPreferences().delegatedCodeBlocks, "");
+  const value = " Mermaid, math ";
+  await first.preferences.updateEnhancerPreferences({ delegatedCodeBlocks: value });
+  assert.equal(server.values.preferences.delegatedCodeBlocks, value);
+  const fresh = harness();
+  await fresh.preferences.initializeEnhancerPreferences(server.rpc);
+  assert.equal(fresh.preferences.getEnhancerPreferences().delegatedCodeBlocks, value);
+  await fresh.preferences.resetEnhancerPreferences();
+  assert.equal(fresh.preferences.getEnhancerPreferences().delegatedCodeBlocks, "");
+  assert.deepEqual(server.values.preferences, {});
+});

@@ -129,7 +129,9 @@ function findMatches(chat: HTMLElement, query: string): Range[] {
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
     const parent = node.parentElement;
     if (!(node instanceof Text) || !parent || !node.data.trim()) continue;
-    if (parent.closest(IGNORED) || !isVisible(parent)) continue;
+    const foldedText = parent.closest('[data-testid="folded-message-search-text"]');
+    if (parent.closest('[data-testid="folded-message-summary"]')) continue;
+    if ((!foldedText && parent.closest(IGNORED)) || !isVisible(parent)) continue;
     const block = parent.closest(BLOCK) ?? chat;
     const texts = groups.get(block) ?? [];
     texts.push(node);
@@ -246,7 +248,9 @@ export function installChatFind(): () => void {
     if (!input.value.trim()) count.textContent = "";
     else if (ranges.length) count.textContent = t("find.count", { current: current + 1, total: ranges.length });
     else count.textContent = t("find.none");
-    active?.startContainer.parentElement?.scrollIntoView({ block: "center" });
+    const parent = active?.startContainer.parentElement;
+    const foldedRow = parent?.closest('[data-testid="folded-user-message"]');
+    (foldedRow ?? parent)?.scrollIntoView({ block: "center" });
   }
 
   function search() {

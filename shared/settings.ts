@@ -22,13 +22,17 @@ export const preferenceOverridesSchema = z.object({
   frostedGlass: z.boolean().optional(),
   pointerGlow: z.boolean().optional(),
   enhancedUserBubble: z.boolean().optional(),
+  foldMessagePrefixes: z.string().optional(),
   selectionActions: z.boolean().optional(),
   assistantMarkdown: z.boolean().optional(),
+  codeBlockOpen: z.boolean().optional(),
   markdownVariant: z.enum(["document", "compact", "terminal"]).optional(),
   foldFinishedSteps: z.boolean().optional(),
   collapsedStepAction: z.enum(["details", "inline"]).optional(),
   foldLongOutputAfter: z.union([z.literal(10), z.literal(15), z.literal(30), z.literal("never")]).optional(),
   delegatedTools: z.string().optional(),
+  delegatedCodeBlocks: z.string().optional(),
+  hiddenTools: z.string().optional(),
 });
 
 const presentationSchema = z.object({
