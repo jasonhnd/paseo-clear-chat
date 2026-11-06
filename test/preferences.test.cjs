@@ -602,6 +602,25 @@ test("hidden tool names match exactly, preserve failures and approvals, and surv
   cleanup();
 });
 
+test("code block Open setting persists, resets, and ignores browser snapshots", async () => {
+  const server = host();
+  const snapshot = JSON.stringify({ codeBlockOpen: true });
+  const first = harness("web", snapshot).preferences;
+  await first.initializeEnhancerPreferences(server.rpc);
+  assert.equal(first.getEnhancerPreferences().codeBlockOpen, false);
+  assert.equal(server.values.preferences.codeBlockOpen, undefined);
+  await first.updateEnhancerPreferences({ codeBlockOpen: true });
+  assert.equal(server.values.preferences.codeBlockOpen, true);
+  const reloaded = harness("web", snapshot).preferences;
+  await reloaded.initializeEnhancerPreferences(server.rpc);
+  assert.equal(reloaded.getEnhancerPreferences().codeBlockOpen, true);
+  await reloaded.resetEnhancerPreferences();
+  const reset = harness("web", snapshot).preferences;
+  await reset.initializeEnhancerPreferences(server.rpc);
+  assert.equal(reset.getEnhancerPreferences().codeBlockOpen, false);
+  assert.equal(server.values.preferences.codeBlockOpen, undefined);
+});
+
 test("delegated code blocks persist, reset, and are never imported from a browser snapshot", async () => {
   const server = host();
   const first = harness("web", JSON.stringify({ delegatedCodeBlocks: "math" }));

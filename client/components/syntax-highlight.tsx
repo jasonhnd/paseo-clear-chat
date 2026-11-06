@@ -14,11 +14,13 @@ import { selectableSurface, unselectable } from "./selection";
 import { selectionCodeSurface, selectionSurface } from "./selection-actions";
 import { useHighlightedLines } from "../highlight";
 import type { HighlightLine, HighlightToken } from "../../shared/highlight-rpc";
+import { openLink } from "./open-link";
 
 export interface SyntaxHighlightProps {
   code: string;
   /** A folded preview still copies the complete source. */
   copyText?: string;
+  openAddress?: string;
   language?: "typescript" | "bash" | "diff" | "json" | "python" | string;
   tokens: ExtendedThemeTokens;
   showLineNumbers?: boolean;
@@ -471,6 +473,7 @@ function renderCssTokens(
 export function SyntaxHighlightBlock({
   code,
   copyText,
+  openAddress,
   language = "typescript",
   tokens,
   showLineNumbers = false,
@@ -590,6 +593,25 @@ export function SyntaxHighlightBlock({
           backgroundColor: tokens.surface2,
           flexShrink: 0,
         },
+        headerActions: {
+          flexDirection: "row",
+          flexShrink: 0,
+          alignItems: "center",
+          gap: 4,
+        },
+        openButton: {
+          minHeight: 44,
+          minWidth: 44,
+          justifyContent: "center",
+          alignItems: "center",
+        },
+        openText: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(11),
+          color: tokens.foregroundMuted,
+          fontWeight: "500",
+          ...unselectable,
+        },
         copyText: {
           fontFamily: tokens.fontUi,
           fontSize: tokens.fs(11),
@@ -660,21 +682,33 @@ export function SyntaxHighlightBlock({
               </Text>
             ) : null}
           </View>
-          <Pressable
-            onPress={handleCopy}
-            accessibilityRole="button"
-            accessibilityLabel={copied ? t("code.copiedA11y") : t("code.copyA11y")}
-            style={styles.copyButton}
-          >
-            <Pop trigger={copied}>
-              <Glyph
-                name={copied ? "Check" : "Copy"}
-                size={12}
-                color={copied ? tokens.success : tokens.foregroundMuted}
-              />
-            </Pop>
-            <Text style={styles.copyText}>{copied ? t("selection.copied") : t("code.copy")}</Text>
-          </Pressable>
+          <View style={styles.headerActions}>
+            {openAddress ? (
+              <Pressable
+                onPress={() => openLink(openAddress)}
+                accessibilityRole="button"
+                accessibilityLabel={t("code.openA11y", { address: openAddress })}
+                style={[styles.copyButton, styles.openButton]}
+              >
+                <Text style={styles.openText}>{t("code.open")}</Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              onPress={handleCopy}
+              accessibilityRole="button"
+              accessibilityLabel={copied ? t("code.copiedA11y") : t("code.copyA11y")}
+              style={styles.copyButton}
+            >
+              <Pop trigger={copied}>
+                <Glyph
+                  name={copied ? "Check" : "Copy"}
+                  size={12}
+                  color={copied ? tokens.success : tokens.foregroundMuted}
+                />
+              </Pop>
+              <Text style={styles.copyText}>{copied ? t("selection.copied") : t("code.copy")}</Text>
+            </Pressable>
+          </View>
         </View>
       )}
 

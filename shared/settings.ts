@@ -24,6 +24,7 @@ export const preferenceOverridesSchema = z.object({
   enhancedUserBubble: z.boolean().optional(),
   selectionActions: z.boolean().optional(),
   assistantMarkdown: z.boolean().optional(),
+  codeBlockOpen: z.boolean().optional(),
   markdownVariant: z.enum(["document", "compact", "terminal"]).optional(),
   foldFinishedSteps: z.boolean().optional(),
   collapsedStepAction: z.enum(["details", "inline"]).optional(),

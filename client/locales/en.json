@@ -109,6 +109,10 @@
       "label": "Assistant markdown",
       "description": "Draws the reply with the plugin's own headings, lists and syntax-highlighted code blocks. The plugin cannot reach Paseo's markdown pipeline, so its version is a subset: turn this off for mermaid diagrams, images, and the host's file-path links. On iOS, text cannot be selected by dragging when this is enabled. Use the Copy button to copy text."
     },
+    "codeBlockOpen": {
+      "label": "Show an Open button on code blocks that hold only a web address",
+      "description": "Adds an Open button for a single HTTPS address in an assistant reply."
+    },
     "markdownStyle": {
       "label": "Markdown style",
       "description": "Document is airy and built for long answers. Compact tightens the spacing for short replies. Terminal sets the body in the code face.",
@@ -556,6 +560,8 @@
     "emptySection": "Empty {{section}}."
   },
   "code": {
+    "open": "Open",
+    "openA11y": "Open {{address}}",
     "copy": "Copy",
     "copyA11y": "Copy code",
     "copiedA11y": "Code copied",

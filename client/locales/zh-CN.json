@@ -109,6 +109,10 @@
       "label": "助手回复 Markdown",
       "description": "用插件自己的标题、列表和带语法高亮的代码块来显示回复。插件接触不到 Paseo 的 Markdown 处理流程，所以只支持其中一部分：要看 mermaid 图、图片和主机自带的文件路径链接，请关掉这项。开着这项时，在 iOS 上不能拖动选择文字，请用复制按钮复制。"
     },
+    "codeBlockOpen": {
+      "label": "在只包含一个网址的代码块上显示“打开”按钮",
+      "description": "在助手回复中，为只包含一个 HTTPS 网址的代码块添加“打开”按钮。"
+    },
     "markdownStyle": {
       "label": "Markdown 样式",
       "description": "文档：行距宽松，适合长回答。紧凑：间距更小，适合短回复。终端：正文使用代码字体。",
@@ -556,6 +560,8 @@
     "emptySection": "{{section}}为空。"
   },
   "code": {
+    "open": "打开",
+    "openA11y": "打开 {{address}}",
     "copy": "复制",
     "copyA11y": "复制代码",
     "copiedA11y": "代码已复制",
