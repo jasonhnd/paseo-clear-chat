@@ -16,7 +16,11 @@ function fixture(t) {
     constructor(tag) { this.tagName = tag.toUpperCase(); this.style = {}; this.children = []; this.attrs = {}; this.isConnected = true; this.value = ""; }
     setAttribute(key, value) { this.attrs[key] = value; }
     getAttribute(key) { return this.attrs[key]; }
-    matches(selector) { return selector === "[data-composer-input]" && this.marked === true; }
+    matches(selector) {
+      if (selector === "[data-composer-input]") return this.marked === true;
+      if (selector === '[data-testid="message-input-root"]') return this.attrs["data-testid"] === "message-input-root";
+      return false;
+    }
     append(...nodes) { this.children.push(...nodes); for (const node of nodes) { node.parent = this; node.parentElement = this; } }
     replaceChildren(...nodes) { for (const child of this.children) { child.parent = null; child.parentElement = null; } this.children = []; this.append(...nodes); }
     attachShadow() { this.shadow = new Element("shadow"); this.shadow.activeElement = null; return this.shadow; }
@@ -27,9 +31,19 @@ function fixture(t) {
     querySelector(selector) { const id = /data-testid="([^"]+)"/.exec(selector)?.[1]; return this.find(id); }
     find(id) { if (this.attrs["data-testid"] === id) return this; for (const child of this.children) { const found = child.find(id); if (found) return found; } return null; }
     focus() { this.getRootNode().activeElement = this; }
-    closest() { return null; }
+    closest(selector) { for (let node = this; node; node = node.parentElement) if (node.matches(selector)) return node; return null; }
+    querySelectorAll(selector) {
+      const result = [];
+      const visit = node => {
+        if (selector === '[data-testid="agent-chat-scroll"]' && node.attrs["data-testid"] === "agent-chat-scroll") result.push(node);
+        if (selector === 'button, [role="button"]' && (node.tagName === "BUTTON" || node.attrs.role === "button")) result.push(node);
+        for (const child of node.children) visit(child);
+      };
+      for (const child of this.children) visit(child);
+      return result;
+    }
     getBoundingClientRect() { if (this.throwRect) throw Error("position"); return this.rect; }
-    getClientRects() { return [1]; }
+    getClientRects() { return this.hidden ? [] : [1]; }
   }
   global.HTMLInputElement = Element; global.HTMLTextAreaElement = Element;
   const body = new Element("body");
@@ -40,9 +54,9 @@ function fixture(t) {
   global.MutationObserver = class { constructor(fn) { this.fn = fn; mutations.push(this); } observe() {} disconnect() { this.disconnected = true; } };
   global.ResizeObserver = class { constructor(fn) { this.fn = fn; resizes.push(this); } observe() {} disconnect() { this.disconnected = true; } };
   const composer = new Element("textarea"); composer.marked = true; composer.rect = { left: 100, right: 500, top: 600, bottom: 650, width: 400, height: 50 };
-  let current = composer, collapsed = false, fallback = 0, sends = 0, entered = false;
+  let current = composer, collapsed = false, fallback = 0, sends = 0, entered = false, translate = (key, values) => `${key}${values ? ` ${JSON.stringify(values)}` : ""}`;
   const opts = { agentId: "a", at: 10, composer: () => current, tokens: () => h.tokens,
-    t: (key, values) => `${key}${values ? ` ${JSON.stringify(values)}` : ""}`, collapsed: () => collapsed,
+    t: (key, values) => translate(key, values), collapsed: () => collapsed,
     entered: () => entered, sendFocused: () => false, focusSend: () => {}, enter: () => { if (!entered) { entered = true; panel?.update(); } },
     collapse: () => { collapsed = true; panel?.update(); }, reopen: () => { collapsed = false; panel?.update(); },
     send: () => { sends++; }, fallback: () => { fallback++; collapsed = false; } };
@@ -50,7 +64,7 @@ function fixture(t) {
   const mount = () => panel = panels.mountOptionPanel(opts);
   t.after(() => { panels.removeOptionPanels(); h.unmount(); h.dispose(); for (const [key, value] of Object.entries(old)) { if (value === undefined) delete global[key]; else global[key] = value; } });
   return { h, store, panels, body, composer, listeners, mutations, resizes, mount, element: tag => new Element(tag),
-    replace: value => { current = value; }, failMount: () => { throwMount = true; },
+    replace: value => { current = value; }, translate: value => { translate = value; }, failMount: () => { throwMount = true; },
     get fallback() { return fallback; }, get created() { return created; }, get sends() { return sends; },
     get panel() { return panel; }, get collapsed() { return collapsed; } };
 }
@@ -99,34 +113,55 @@ test("pointer cancellation, timeout and keyboard clicks preserve redraw behavior
   assert.notEqual(host.shadow.find("option-row-A"), button);
 });
 
-test("panel anchors above the outermost eligible composer container and its pill", t => {
-  const f = fixture(t), inner = f.element("div"), outer = f.element("div"), pill = f.element("button");
-  inner.rect = { top: 560, height: 100 }; outer.rect = { top: 540, height: 120 };
-  pill.rect = { top: 566, bottom: 583, height: 17 };
-  inner.append(pill, f.composer); outer.append(inner);
-  const panel = f.mount();
-  assert.equal(panel.host.style.bottom, "168px");
-  assert.ok(700 - parseFloat(panel.host.style.bottom) < pill.rect.top);
+function page(f, { pill = true, inputRoot = true, other = false, language = false } = {}) {
+  window.innerHeight = 900; window.innerWidth = 1280;
+  f.composer.rect = { left: 100, right: 500, top: 785, bottom: 835, width: 400, height: 50 };
+  const pane = f.element("div"), chat = f.element("div"), root = f.element("div"), row = f.element("div");
+  chat.setAttribute("data-testid", "agent-chat-scroll");
+  root.rect = { top: 768, bottom: 850, height: 82 };
+  if (inputRoot) root.setAttribute("data-testid", "message-input-root");
+  root.append(f.composer); pane.append(chat, row, root);
+  if (language) f.translate((key, values) => key === "answerCard.openQuestions" ? `質問: ${values.count}` : key);
+  let pillButton;
+  if (pill) {
+    pillButton = f.element("div"); pillButton.setAttribute("role", "button");
+    pillButton.textContent = language ? "質問: 2" : 'answerCard.openQuestions {"count":2}';
+    pillButton.rect = { top: 726, bottom: 758, height: 32 }; row.append(pillButton);
+  }
+  if (other) {
+    const button = f.element("button"); button.rect = { top: 720, bottom: 756, height: 36 }; row.append(button);
+  }
+  return { pane, root, pillButton };
+}
+
+for (const [name, setup, top] of [
+  ["pill row", {}, 726], ["no pill", { pill: false }, 768],
+  ["no input root or pill", { pill: false, inputRoot: false }, 785],
+  ["another button in the row", { other: true }, 720],
+  ["translated pill", { language: true }, 726],
+]) test(`panel anchors above ${name}`, t => {
+  const f = fixture(t), pageElements = page(f, setup), panel = f.mount();
+  assert.equal(panel.host.style.bottom, `${900 - top + 8}px`);
+  if (pageElements.pillButton) assert.ok(900 - parseFloat(panel.host.style.bottom) < pageElements.pillButton.rect.top);
   panel.host.shadow.find("option-card-collapse").onclick();
   assert.ok(panel.host.shadow.find("option-panel-strip"));
-  assert.ok(700 - parseFloat(panel.host.style.bottom) < pill.rect.top);
+  assert.equal(panel.host.style.bottom, `${900 - top + 8}px`);
 });
 
-for (const [name, setup] of [
-  ["no container", () => {}],
-  ["a tall container", (f, parent) => { parent.rect.height = 280; parent.append(f.composer); }],
-  ["a container with the chat scroll", (f, parent) => { const chat = f.element("div"); chat.setAttribute("data-testid", "agent-chat-scroll"); parent.append(chat, f.composer); }],
-]) test(`panel uses the input anchor with ${name}`, t => {
-  const f = fixture(t), parent = f.element("div"); parent.rect = { top: 500, height: 100 };
-  setup(f, parent);
-  assert.equal(f.mount().host.style.bottom, "108px");
-});
-
-test("panel falls back when there is not enough room above the composer container", t => {
+test("panel falls back when there is not enough room above the input root", t => {
   const f = fixture(t), parent = f.element("div");
-  parent.rect = { top: 51, height: 100 }; parent.append(f.composer);
+  parent.setAttribute("data-testid", "message-input-root"); parent.rect = { top: 51, height: 100 }; parent.append(f.composer);
   assert.equal(f.mount(), null);
   assert.equal(f.fallback, 1);
+});
+
+test("send row remains sticky with the panel background and header wraps", t => {
+  const f = fixture(t), panel = f.mount(), shadow = panel.host.shadow;
+  const row = shadow.find("option-send-row"), styles = shadow.children.find(child => child.tagName === "STYLE").textContent;
+  assert.equal(row.style.position, "sticky"); assert.equal(row.style.bottom, "0"); assert.equal(row.style.background, f.h.tokens.surface1);
+  assert.ok(row.contains(shadow.find("option-send")));
+  assert.match(styles, /\.header\{flex-wrap:wrap\}/);
+  assert.match(styles, /\.strip\{white-space:normal/);
 });
 
 test("panel follows the composer and shares choices, notes, send and dismissal", t => {
@@ -149,8 +184,13 @@ for (const [name, change] of [
   ["off screen", f => { f.composer.rect.top = 20; }], ["position throws", f => { f.composer.throwRect = true; }],
   ["mount throws", f => f.failMount()], ["marker renamed", f => { f.composer.marked = false; }],
   ["marker moved to a wrapper", f => { f.composer.marked = false; }], ["non-input replacement", f => f.replace(null)],
-]) test(`fallback on ${name} without retry`, t => {
-  const f = fixture(t); change(f); assert.equal(f.mount(), null); assert.equal(f.fallback, 1); assert.equal(f.body.children.length, 0); const count = f.created; assert.equal(f.mount(), null); assert.equal(f.created, count);
+]) test(`mount-time fallback on ${name} can retry`, t => {
+  const f = fixture(t); change(f); assert.equal(f.mount(), null); assert.equal(f.fallback, 1); assert.equal(f.body.children.length, 0);
+});
+
+test("a missing composer at mount can be retried on the next mount", t => {
+  const f = fixture(t); f.replace(null); assert.equal(f.mount(), null); assert.equal(f.fallback, 1);
+  f.replace(f.composer); assert.ok(f.mount());
 });
 
 for (const [name, change] of [["removed", f => { f.composer.isConnected = false; }], ["replaced", f => f.replace({})], ["wrapped", f => { f.composer.parentElement = {}; }], ["position throws later", f => { f.composer.throwRect = true; }]]) {
