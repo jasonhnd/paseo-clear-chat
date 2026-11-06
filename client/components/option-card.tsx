@@ -37,6 +37,7 @@ export function OptionCard({ agentId, at, tokens, popover = false, onSent }: { a
       entered: () => entered.current,
       enter: () => { setEntered(true); setSendFocus(false); setCollapsed(false); },
       leave: () => { setEntered(false); setSendFocus(false); setCollapsed(true); },
+      exit: () => { setEntered(false); setSendFocus(false); },
       send: () => sendRef.current(),
       sendFocused: () => sendFocused.current,
       setSendFocused: setSendFocus,
