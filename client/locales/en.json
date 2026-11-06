@@ -111,7 +111,7 @@
     },
     "markdown": {
       "label": "Assistant markdown",
-      "description": "Draws the reply with the plugin's own headings, lists and syntax-highlighted code blocks. The plugin cannot reach Paseo's markdown pipeline, so its version is a subset: turn this off for mermaid diagrams, images, and the host's file-path links. On iOS, text cannot be selected by dragging when this is enabled. Use the Copy button to copy text."
+      "description": "Draws the reply with the plugin's own headings, lists and syntax-highlighted code blocks. The plugin cannot reach Paseo's markdown pipeline, so its version is a subset. For diagrams and formulas drawn by other plugins, list the code block languages they draw (for example mermaid, and math for formulas) under \"Leave these code blocks to other plugins\"; turn this off only for images and the host's file-path links. On iOS, text cannot be selected by dragging when this is enabled. Use the Copy button to copy text."
     },
     "codeBlockOpen": {
       "label": "Show an Open button on code blocks that hold only a web address",

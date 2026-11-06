@@ -158,3 +158,26 @@ for (const locale of ["en", "zh-CN", "ja"]) {
     assert.equal(h.text(byId(h, tree, "option-running")), strings.running);
   });
 }
+
+test("popover mount and unmount track each agent, and unload clears open flags", async t => {
+  const { h, s, registrations: pills, stop } = fixture(t);
+  h.preferences.showAnswerCard = true; h.notifyPreferences();
+  s.publishAssistantReply("a", { at: 1, text: reply });
+  s.publishAssistantReply("b", { at: 1, text: reply });
+  await flush();
+  const draw = (i, agentId) => h.draw({ type: pills[i].input.button.behavior.Content, props: { context: "agent", agentId, theme: { colors: {} }, close() {} } }, agentId);
+  draw(0, "a");
+  assert.equal(s.isOptionPopoverOpen("a"), true);
+  assert.equal(s.isOptionPopoverOpen("b"), false);
+  draw(1, "b");
+  assert.equal(s.isOptionPopoverOpen("b"), true);
+  s.publishAssistantReply("a", { at: 2, text: reply });
+  assert.equal(s.isOptionPopoverOpen("a"), true);
+  h.unmount();
+  assert.equal(s.isOptionPopoverOpen("a"), false);
+  assert.equal(s.isOptionPopoverOpen("b"), false);
+  draw(1, "b");
+  assert.equal(s.isOptionPopoverOpen("b"), true);
+  stop();
+  assert.equal(s.isOptionPopoverOpen("b"), false);
+});
