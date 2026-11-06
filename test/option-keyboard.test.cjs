@@ -18,7 +18,7 @@ function fixture(t, platform = "web") {
   const fakeWindow = {
     addEventListener(type, fn, capture) { assert.equal(capture, true); const set = listeners.get(type) ?? new Set(); set.add(fn); listeners.set(type, set); },
     removeEventListener(type, fn, capture) { assert.equal(capture, true); listeners.get(type)?.delete(fn); },
-    emit(type, event) { for (const fn of [...(listeners.get(type) ?? [])]) fn(event); },
+    emit(type, event) { for (const fn of [...(listeners.get(type) ?? [])]) { fn(event); if (event.immediatePropagationStopped) break; } },
   };
   const previous = global.window;
   global.window = fakeWindow;
@@ -40,15 +40,63 @@ function fixture(t, platform = "web") {
     node?.props.ref?.(root);
     return tree;
   }
-  function key(value, attrs = {}) {
-    const e = { key: value, target: input, prevented: false, preventDefault() { this.prevented = true; }, ...attrs };
+  function dispatchKey(value, attrs = {}) {
+    const e = { key: value, target: input, defaultPrevented: false, propagationStopped: false, immediatePropagationStopped: false,
+      preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.propagationStopped = true; },
+      stopImmediatePropagation() { this.immediatePropagationStopped = true; }, ...attrs };
     fakeWindow.emit("keydown", e);
-    return e.prevented;
+    return e;
   }
+  function key(value, attrs = {}) { return dispatchKey(value, attrs).defaultPrevented; }
   draw();
   t.after(() => { h.unmount(); h.dispose(); if (previous === undefined) delete global.window; else global.window = previous; });
-  return { h, s, input, root, cardTarget, sendButton, fakeWindow, listeners, draw, key, tree: () => tree };
+  return { h, s, input, root, cardTarget, sendButton, fakeWindow, listeners, draw, key, dispatchKey, tree: () => tree };
 }
+
+test("handled keys do not reach the host; unused keys remain available", t => {
+  const { s, input, fakeWindow, dispatchKey, draw, h } = fixture(t);
+  let hostCalls = 0;
+  fakeWindow.addEventListener("keydown", event => {
+    hostCalls++;
+    if (event.key === "ArrowUp") input.value = "previous input";
+  }, true);
+  function check(key, attrs, handled) {
+    const before = hostCalls;
+    const event = dispatchKey(key, attrs);
+    assert.equal(event.defaultPrevented, handled, key);
+    assert.equal(event.propagationStopped, handled, key);
+    assert.equal(event.immediatePropagationStopped, handled, key);
+    assert.equal(hostCalls - before, handled ? 0 : 1, key);
+  }
+
+  check("ArrowUp", {}, true); // Enter from the input.
+  assert.equal(s.getOptionSession("a").cursor[0], 1);
+  check("ArrowUp", {}, true);
+  assert.equal(s.getOptionSession("a").cursor[0], 0);
+  assert.equal(input.value, "");
+  check("ArrowDown", {}, true);
+  check("b", {}, true);
+  check("1", {}, true);
+  check("Enter", {}, true);
+  check("Tab", { shiftKey: true }, true);
+  check("ArrowRight", {}, true);
+  check("ArrowLeft", {}, true);
+  check("Tab", {}, true);
+  check("Escape", {}, true);
+  assert.ok(byId(h, draw(), "option-card-strip"));
+  check("ArrowUp", {}, true);
+  assert.equal(input.value, "");
+  check("Escape", {}, true);
+  check("ArrowDown", {}, true);
+
+  check("F1", {}, false);
+  check("z", {}, false);
+  check("ArrowDown", {}, true);
+  check("a", { ctrlKey: true }, false);
+  check("ArrowDown", { isComposing: true }, false);
+  input.value = "draft";
+  check("ArrowDown", {}, false);
+});
 
 test("entry, picks, bounded cursor and question navigation", t => {
   const f = fixture(t); const { s, key, draw, h } = f;

@@ -2,6 +2,12 @@ import { choose, getOptionSession, missingQuestion, moveCursor, setActiveQuestio
 
 const cleanups = new Set<() => void>();
 
+function consumeKey(event: KeyboardEvent): void {
+  event.preventDefault();
+  event.stopPropagation();
+  event.stopImmediatePropagation();
+}
+
 export function removeOptionKeyboards(): void {
   for (const cleanup of [...cleanups]) cleanup();
 }
@@ -64,17 +70,17 @@ export function installOptionKeyboard(options: KeyboardOptions, target: Window =
       if ((event.key === "ArrowUp" || event.key === "ArrowDown") && targetNode === input) {
         const recommended = question.options.findIndex(option => option.recommended);
         moveCursor(options.agentId, index, Math.max(0, recommended) - (session.cursor[index] ?? 0));
-        options.enter(); event.preventDefault();
+        options.enter(); consumeKey(event);
       }
       return;
     }
     if (event.key === "Escape") {
-      options.leave(); input.focus(); event.preventDefault(); return;
+      options.leave(); input.focus(); consumeKey(event); return;
     }
     if (event.key === "ArrowUp" || event.key === "ArrowDown") {
       options.setSendFocused(false);
       moveCursor(options.agentId, index, event.key === "ArrowUp" ? -1 : 1);
-      event.preventDefault(); return;
+      consumeKey(event); return;
     }
     if (event.key === "Tab" || event.key === "ArrowRight" || event.key === "ArrowLeft") {
       const backwards = event.key === "ArrowLeft" || (event.key === "Tab" && event.shiftKey);
@@ -83,7 +89,7 @@ export function installOptionKeyboard(options: KeyboardOptions, target: Window =
       else if (!backwards && index < session.set.questions.length - 1) { options.setSendFocused(false); setActiveQuestion(options.agentId, index + 1); }
       else if (!backwards && event.key === "Tab" && !options.sendFocused()) { options.setSendFocused(true); options.focusSend(); }
       else return;
-      event.preventDefault(); return;
+      consumeKey(event); return;
     }
     if (event.key === "Enter") {
       if (options.sendFocused()) {
@@ -93,7 +99,7 @@ export function installOptionKeyboard(options: KeyboardOptions, target: Window =
         if (index < session.set.questions.length - 1) setActiveQuestion(options.agentId, index + 1);
         else if (missingQuestion(options.agentId) === null) options.send();
       }
-      event.preventDefault(); return;
+      consumeKey(event); return;
     }
     const letter = /^[1-8]$/.test(event.key) ? String.fromCharCode(64 + Number(event.key)) : /^[a-h]$/i.test(event.key) ? event.key.toUpperCase() : "";
     const optionIndex = question.options.findIndex(option => option.letter === letter);
@@ -101,7 +107,7 @@ export function installOptionKeyboard(options: KeyboardOptions, target: Window =
       options.setSendFocused(false);
       moveCursor(options.agentId, index, optionIndex - (session.cursor[index] ?? 0));
       choose(options.agentId, index, letter);
-      event.preventDefault(); return;
+      consumeKey(event); return;
     }
     if (targetNode === input && event.key.length === 1) options.leave();
   };
