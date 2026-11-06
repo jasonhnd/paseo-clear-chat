@@ -20,6 +20,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Compatibility
 
 - Clear Chat 0.15.2.2 is the Clear Chat release for Paseo 0.15.2.
+- The release candidate was checked on an isolated host running Paseo 0.15.2: it installs and loads; the settings page version line reads 0.15.2.2 in English, Chinese and Japanese; the full regression suite (1,961 tests) and the type check pass; the page layout passes in 24 cases (six widths, three folding modes) and in 6 sub-agent cases; the earlier product spot checks (command steps, the reasoning card, the quote panel, file paths in inline code, the time format) still pass. With real diagram and formula plugins installed, each on its own (mermaid, pele and a math renderer), listing their names in "Leave these code blocks to other plugins" makes them draw their diagrams and formulas; with the list empty, in plain replies, for a block nested inside another code block and for text such as "costs $5 and $10", nothing changes. "Hide these tools", "Fold messages that start with" (on a base provider and on a Hermes·CC provider, including the find bar) and the Open button were checked at desktop width. Items not listed here have not been checked on Paseo 0.15.2, among them the new settings at phone width (390), a message with an attached image under the folding setting, and real models and real devices.
 
 ### Known limitations
 
