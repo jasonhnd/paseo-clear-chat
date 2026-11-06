@@ -134,7 +134,7 @@ export function parseOptionQuestions(text: string): OptionQuestionSet | null {
       text: questionText,
       options,
     };
-    let recommended = options.find((_, index) => optionLines[index]!.some(line => /(?:推荐|\brecommended\b)(?=[ \t]*(?:[).。!！]|$))/i.test(line)));
+    let recommended = options.find((_, index) => optionLines[index]!.some(line => /(?:(?<!不)推荐|(?<!\bnot[ \t]+)(?<![\w-])recommended\b)(?=[ \t]*(?:[)）,，.。!！]|$))/i.test(line)));
     if (!recommended) {
       for (const line of section.lines) {
         const letter = recommendation(line.text);
