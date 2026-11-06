@@ -621,6 +621,13 @@
     "notOptions": "選択肢ではない",
     "error": "送信できませんでした：{{reason}}",
     "send": "{{answer}} を送信",
-    "missing": "質問 {{question}} を選択して送信"
+    "missing": "質問 {{question}} を選択して送信",
+    "hintMove": "↑ ↓ 移動",
+    "hintPick": "A B C D 選択",
+    "hintNext": "Tab 次へ",
+    "hintBack": "⇧Tab 戻る",
+    "hintSend": "Tab → 送信",
+    "hintReopen": "↑ で再表示",
+    "hintEnter": "Enter"
   }
 }

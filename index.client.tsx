@@ -1,3 +1,4 @@
+import { removeOptionKeyboards } from "./client/components/option-keyboard";
 import { messages } from "./client/messages";
 import { initializeClientTranslations, translate as t } from "./client/translation";
 import type { PluginClientContext, PluginTimelineTransformerContribution } from "@getpaseo/plugin/client";
@@ -341,6 +342,7 @@ function registerClient(client: PluginClientContext) {
   });
 
   return () => {
+    removeOptionKeyboards();
     setOptionSender(null);
     removeFonts();
     removeFrost();
