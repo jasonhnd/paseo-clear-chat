@@ -532,6 +532,7 @@ export function LiveUserMessageRenderer({
       ) : (
         <UserMessage
           text={item.data.text}
+          foldPrefixes={preferences.foldMessagePrefixes}
           images={item.data.images}
           imageCount={item.data.imageCount}
           messageId={item.data.messageId}

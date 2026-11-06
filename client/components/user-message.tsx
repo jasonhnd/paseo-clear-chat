@@ -26,6 +26,7 @@ export interface TurnUsage {
 
 interface UserMessageProps {
   text: string;
+  foldPrefixes?: string;
   timestamp?: Date;
   /** Current time for deterministic timestamp rendering. */
   now?: Date;
@@ -79,6 +80,7 @@ interface PastedThumb {
 interface PastedList {
   images: PastedThumb[];
   total: number;
+  verified: boolean;
 }
 
 type PastedCache = PastedList | { failed: true };
@@ -119,6 +121,7 @@ function pastedCacheKey(hostId: string | undefined, agentId: string, messageId?:
 function readPastedList(result: {
   images?: { id?: string; thumbDataUri?: string; mime?: string; width?: number | null; height?: number | null }[];
   total?: number;
+  reason?: string | null;
 } | null | undefined): PastedCache {
   if (!result || !Array.isArray(result.images)) return { failed: true };
   const images: PastedThumb[] = [];
@@ -133,7 +136,7 @@ function readPastedList(result: {
     });
   }
   const total = typeof result.total === "number" && Number.isFinite(result.total) ? Math.max(0, result.total) : images.length;
-  return { images, total };
+  return { images, total, verified: result.reason === null };
 }
 
 function isPastedList(value: PastedCache | null): value is PastedList {
@@ -189,6 +192,7 @@ function UsageFigure({
  */
 export function UserMessage({
   text,
+  foldPrefixes = "",
   timestamp,
   now,
   images,
@@ -207,8 +211,15 @@ export function UserMessage({
   const loadImages = useRpc(promptImagesRpc);
   const loadImage = useRpc(promptImageRpc);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const [opened, setOpened] = useState(false);
+  const [foldKey, setFoldKey] = useState({ text, messageId, clientMessageId });
+  if (foldKey.text !== text || foldKey.messageId !== messageId || foldKey.clientMessageId !== clientMessageId) {
+    setFoldKey({ text, messageId, clientMessageId });
+    setOpened(false);
+  }
   const [failedImages, setFailedImages] = useState<ReadonlySet<string>>(() => new Set());
   const attachmentCount = Math.max(imageCount ?? 0, images?.length ?? 0);
+  const matchesPrefix = foldPrefixes.split(/\r?\n/).some((prefix) => prefix.trim() !== "" && text.trimStart().startsWith(prefix));
   const cacheKey = agentId ? pastedCacheKey(hostId, agentId, messageId, clientMessageId, text) : "";
   const sharesResult = pastedKeyShares(messageId, clientMessageId);
   const [pasted, setPasted] = useState<{ key: string; value: PastedCache } | null>(() => {
@@ -249,7 +260,7 @@ export function UserMessage({
         setPasted({ key: cacheKey, value: cached });
         return;
       }
-    } else if (pastedAsked.has(cacheKey)) {
+    } else if (pastedAsked.has(cacheKey) && !matchesPrefix) {
       // This text was already looked up. The result belongs to the row that
       // asked, so a later row stays blank and does not ask again.
       return;
@@ -283,10 +294,14 @@ export function UserMessage({
     return () => {
       cancelled = true;
     };
-  }, [agentId, cacheKey, clientMessageId, loadImages, messageId, text]);
+  }, [agentId, cacheKey, clientMessageId, loadImages, messageId, text, matchesPrefix]);
 
   const pastedNow = pasted?.key === cacheKey ? pasted.value : null;
   const list = isPastedList(pastedNow) ? pastedNow : null;
+  const canFold = matchesPrefix && attachmentCount === 0 && list !== null && list.verified && list.total === 0 && list.images.length === 0;
+  const folded = canFold && !opened && foldKey.text === text && foldKey.messageId === messageId && foldKey.clientMessageId === clientMessageId;
+  const firstLine = text.split(/\r\n|\r|\n/, 1)[0] ?? "";
+  const summary = Array.from(firstLine).length > 120 ? `${Array.from(firstLine).slice(0, 119).join("")}…` : firstLine;
   const shown = (list?.images ?? []).filter((image) => !hiddenThumbs.has(image.id)).slice(0, 3);
   const extra = list ? Math.max(0, list.total - Math.min(3, list.images.length)) : 0;
   const openImage = shown.find((image) => image.id === activeViewerId) ?? list?.images.find((image) => image.id === activeViewerId) ?? null;
@@ -362,7 +377,12 @@ export function UserMessage({
           ...tokens.boxShadow,
           ...selectableSurface,
         },
-        body: { flex: 1, gap: 3 },
+        body: { flex: 1, minWidth: 0, gap: 3 },
+        foldedContainer: { width: "82%", alignItems: "center" },
+        foldedRow: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 8 },
+        foldedSummary: { flex: 1, minWidth: 0 },
+        foldButton: { minHeight: 44, justifyContent: "center", paddingHorizontal: 4 },
+        searchText: { position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden" },
         metaRow: {
           flexDirection: "row",
           alignItems: "center",
@@ -485,6 +505,21 @@ export function UserMessage({
     [tokens],
   );
 
+  if (folded) {
+    return (
+      <View style={[styles.container, styles.foldedContainer]} testID="folded-user-message">
+        <View style={styles.foldedRow}>
+          <Text testID="folded-message-summary" numberOfLines={1} style={[styles.text, styles.foldedSummary]}>{summary}</Text>
+          {timestamp ? <Text style={styles.clock}>{formatReplyTime(timestamp, now)}</Text> : null}
+          <Pressable accessibilityRole="button" accessibilityLabel={t("prompt.showMessage")} accessibilityState={{ expanded: false }} onPress={() => setOpened(true)} style={styles.foldButton}>
+            <Text style={styles.clock}>{t("prompt.show")}</Text>
+          </Pressable>
+        </View>
+        {Platform.OS === "web" ? <Text testID="folded-message-search-text" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" aria-hidden style={styles.searchText}>{text}</Text> : null}
+      </View>
+    );
+  }
+
   return (
     <View {...selectionSurface} style={styles.container}>
       <CopyFallbackDialog text={fallbackText} onClose={() => setFallbackText(null)} tokens={tokens} />
@@ -520,10 +555,13 @@ export function UserMessage({
             </Pop>
           </Pressable>
           {agentId ? <QuoteReply text={text} agentId={agentId} tokens={tokens} userMessage /> : null}
+          {canFold ? <Pressable accessibilityRole="button" accessibilityLabel={t("prompt.hideMessage")} accessibilityState={{ expanded: true }} onPress={() => setOpened(false)} style={styles.foldButton}><Text style={styles.clock}>{t("prompt.hide")}</Text></Pressable> : null}
         </View>
-        <MessageOutput text={text} tokens={tokens} identity={expansionIdentity} part="prompt">
-          {(shownText) => <Text selectable style={styles.text}>{shownText}</Text>}
-        </MessageOutput>
+        {canFold ? <Text selectable style={styles.text}>{text}</Text> : (
+          <MessageOutput text={text} tokens={tokens} identity={expansionIdentity} part="prompt">
+            {(shownText) => <Text selectable style={styles.text}>{shownText}</Text>}
+          </MessageOutput>
+        )}
         {shown.length > 0 ? (
           <View style={styles.pastedRow}>
             {shown.map((image) => {

@@ -22,6 +22,7 @@ export const preferenceOverridesSchema = z.object({
   frostedGlass: z.boolean().optional(),
   pointerGlow: z.boolean().optional(),
   enhancedUserBubble: z.boolean().optional(),
+  foldMessagePrefixes: z.string().optional(),
   selectionActions: z.boolean().optional(),
   assistantMarkdown: z.boolean().optional(),
   codeBlockOpen: z.boolean().optional(),

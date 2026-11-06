@@ -1,5 +1,9 @@
 {
   "settings": {
+    "foldMessages": {
+      "label": "Fold messages that start with",
+      "description": "One prefix per line. Matching is case sensitive and ignores leading whitespace in messages. Only messages whose image status can be checked are folded. Requires Enhanced prompt bubble; reload the chat to update existing messages."
+    },
     "delegatedCodeBlocks": {
       "label": "Leave these code blocks to other plugins",
       "description": "Enter comma-separated language names. Names are case insensitive; math also covers formulas."
@@ -175,6 +179,10 @@
     "send": "Send"
   },
   "prompt": {
+    "show": "Show",
+    "hide": "Hide",
+    "showMessage": "Show full message",
+    "hideMessage": "Hide full message",
     "you": "You",
     "copyA11y": "Copy prompt",
     "imagesAttached": "{{count}} image attached",

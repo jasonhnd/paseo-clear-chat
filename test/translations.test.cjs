@@ -308,6 +308,8 @@ for (const locale of ["en", "zh-CN", "ja"]) {
   test(`${locale}: preserves the prior baseline after removing the added inline-section, prompt-image and Hermes setting keys`, () => {
     const text = readFileSync(resolve(__dirname, `../client/locales/${locale}.json`), "utf8");
     const original = text
+      .replace(/    "foldMessages": \{\n(?:      ".*\n){2}    \},\n/, "")
+      .replace(/    "show": ".*",\n    "hide": ".*",\n    "showMessage": ".*",\n    "hideMessage": ".*",\n/, "")
       .replace(/    "version": ".*",\n/, "")
       .replace(/  "quote": \{\n(?:    ".*\n){11}  \},\n/, "")
       .replace(/    "hermesCc": \{\n(?:      ".*\n){3}    \},\n/, "")

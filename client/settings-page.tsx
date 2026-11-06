@@ -587,6 +587,22 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
           tokens={tokens}
         />
 
+        <View style={[styles.row, { borderTopColor: tokens.borderSubtle }]}>
+          <Text style={[styles.rowTitle, { color: tokens.foreground, fontFamily: tokens.fontUi }]}>{t("settings.foldMessages.label")}</Text>
+          <Text style={[styles.rowDescription, { color: tokens.foregroundMuted, fontFamily: tokens.fontUi }]}>{t("settings.foldMessages.description")}</Text>
+          <TextInput
+            accessibilityLabel={t("settings.foldMessages.label")}
+            accessibilityHint={t("settings.foldMessages.description")}
+            value={preferences.foldMessagePrefixes}
+            onChangeText={(foldMessagePrefixes) => { void updateEnhancerPreferences({ foldMessagePrefixes }); }}
+            multiline
+            autoCapitalize="none"
+            autoCorrect={false}
+            spellCheck={false}
+            style={[styles.toolNamesInput, { color: tokens.foreground, borderColor: tokens.border, fontFamily: tokens.fontUi }]}
+          />
+        </View>
+
         <ToggleRow
           title={t("settings.selection.label")}
           description={t("settings.selection.description")}
