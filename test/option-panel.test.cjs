@@ -344,6 +344,27 @@ test("the card root's own hidden display does not trigger a retry after a panel 
   assert.equal(page.reads, reads); assert.equal(f.body.children.length, 0);
 });
 
+test("a panel that fails while displayed retries after each later hide and show", t => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+  const f = fixture(t), page = cardPage(f);
+  f.composer.parentElement = page.parent;
+  page.setAvailable(true); page.draw(); f.h.flushEffects(); page.draw();
+  for (let cycle = 0; cycle < 2; cycle++) {
+    f.composer.marked = false; f.mutations.at(-1).fn();
+    assert.equal(f.body.children.length, 0);
+    page.draw(); f.composer.marked = true;
+    const reads = page.reads;
+    t.mock.timers.tick(1000);
+    assert.equal(page.reads, reads); assert.equal(f.body.children.length, 0);
+    page.parent.hidden = true; t.mock.timers.tick(250);
+    page.parent.hidden = false; page.setAvailable(false); t.mock.timers.tick(250);
+    assert.equal(f.body.children.length, 0);
+    page.setAvailable(true); t.mock.timers.tick(250);
+    assert.equal(f.body.children.length, 1);
+    page.draw();
+  }
+});
+
 test("unmount clears the visibility watch and popovers start no watch", t => {
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
   const f = fixture(t), page = cardPage(f);
