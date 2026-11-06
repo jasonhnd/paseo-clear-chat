@@ -53,14 +53,22 @@ export function OptionCard({ agentId, at, tokens, popover = false, onSent }: { a
     if (popover || Platform.OS !== "web" || typeof document === "undefined" || typeof window === "undefined" || !visible) return;
     let mounted: OptionPanel | null = null;
     let retry: ReturnType<typeof setTimeout> | undefined;
-    const deadline = Date.now() + 3000;
-    const attempt = () => {
+    let retryWhenShown = false;
+    const pageHidden = () => {
+      for (let node = root.current?.parentElement; node; node = node.parentElement) {
+        const style = window.getComputedStyle(node);
+        if (style.display === "none" || style.visibility === "hidden") return true;
+      }
+      return false;
+    };
+    const attempt = (deadline: number) => {
       if (Date.now() > deadline) return;
+      if (pageHidden()) { retryWhenShown = true; return; }
       let input: HTMLInputElement | HTMLTextAreaElement | null;
       try { input = optionComposer(root.current); } catch { return; }
       if (!input) {
         const remaining = deadline - Date.now();
-        if (remaining > 0) retry = setTimeout(attempt, Math.min(250, remaining));
+        if (remaining > 0) retry = setTimeout(() => attempt(deadline), Math.min(250, remaining));
         return;
       }
       mounted = mountOptionPanel({
@@ -70,13 +78,19 @@ export function OptionCard({ agentId, at, tokens, popover = false, onSent }: { a
         focusSend: () => { if (entered.current) setSendFocus(true); },
         collapse: () => { setEntered(false); setSendFocus(false); setCollapsed(true); },
         reopen: () => setCollapsed(false), send: () => sendRef.current(),
-        fallback: () => { panel.current = null; setPanelActive(false); setCollapsed(false); },
+        fallback: () => { retryWhenShown = pageHidden(); panel.current = null; setPanelActive(false); setCollapsed(false); },
       });
       panel.current = mounted;
       if (mounted) { setPanelActive(true); if (input.value) setCollapsed(true); }
     };
-    attempt();
-    return () => { if (retry !== undefined) clearTimeout(retry); mounted?.dispose(); if (panel.current === mounted) panel.current = null; setPanelActive(false); };
+    attempt(Date.now() + 3000);
+    const watch = setInterval(() => {
+      if (retryWhenShown && root.current && !pageHidden()) {
+        retryWhenShown = false;
+        attempt(Date.now() + 3000);
+      }
+    }, 250);
+    return () => { clearInterval(watch); if (retry !== undefined) clearTimeout(retry); mounted?.dispose(); if (panel.current === mounted) panel.current = null; setPanelActive(false); };
   }, [agentId, at, visible, popover]);
   useEffect(() => { panel.current?.update(); });
   if (!session || !visible) return null;
