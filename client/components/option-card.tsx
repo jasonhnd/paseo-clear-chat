@@ -3,7 +3,7 @@ import { Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from
 import { useAgent, useTranslation } from "@getpaseo/plugin/client";
 import { TextInput } from "@getpaseo/plugin/client/ui";
 import { messages } from "../messages";
-import { answerText, choose, clearChoice, dismiss, getOptionSession, missingQuestion, moveCursor, sendAnswer, setActiveQuestion, setNote, useOptionSession } from "../option-session";
+import { answerText, choose, clearChoice, dismiss, getOptionSession, missingQuestion, moveCursor, retireOptionSession, sendAnswer, setActiveQuestion, setNote, useOptionSession } from "../option-session";
 import { installOptionKeyboard, optionComposer } from "./option-keyboard";
 import { installOptionComposer } from "../option-composer";
 import { mountOptionPanel } from "./option-panel";
@@ -116,7 +116,7 @@ export function OptionCard({ agentId, at, tokens, popover = false, onSent }: { a
     const started = getOptionSession(agentId)?.at === at && getOptionSession(agentId)?.sending;
     await pending;
     const current = getOptionSession(agentId);
-    if (started && current?.at === at && !current.sending && !current.error) { onSent?.(); dismiss(agentId); }
+    if (started && current?.at === at && !current.sending && !current.error) { onSent?.(); retireOptionSession(agentId); }
   };
   sendRef.current = () => { void send(); };
   const webProps = Platform.OS === "web" && !popover ? {
