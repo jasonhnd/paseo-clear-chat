@@ -1,18 +1,24 @@
-import React from "react";
+import React, { useEffect } from "react";
 import type { PluginButtonContentProps, PluginButtonRegistration, PluginClientContext, PluginText } from "@getpaseo/plugin/client";
 import { OptionCard } from "./components/option-card";
 import { buildThemeTokens } from "./components/theme-tokens";
-import { getOptionSession, getOptionSessionAgents, subscribeOptionSession } from "./option-session";
+import { clearOptionPopovers, getOptionSession, getOptionSessionAgents, setOptionPopoverOpen, subscribeOptionSession } from "./option-session";
 import { getEnhancerPreferences, subscribeEnhancerPreferences, useEnhancerPreferences } from "./preferences";
 import { messages } from "./messages";
 
 function QuestionPopover(props: PluginButtonContentProps) {
   const preferences = useEnhancerPreferences();
+  const agentId = props.context === "agent" ? props.agentId : null;
+  useEffect(() => {
+    if (agentId === null) return;
+    setOptionPopoverOpen(agentId, true);
+    return () => setOptionPopoverOpen(agentId, false);
+  }, [agentId]);
   if (props.context !== "agent") return null;
-  const { agentId, theme, close } = props;
-  const session = getOptionSession(agentId);
+  const { theme, close } = props;
+  const session = getOptionSession(props.agentId);
   if (!session) return null;
-  return <OptionCard agentId={agentId} at={session.at} tokens={buildThemeTokens(theme.colors, preferences)} popover onSent={close} />;
+  return <OptionCard agentId={props.agentId} at={session.at} tokens={buildThemeTokens(theme.colors, preferences)} popover onSent={close} />;
 }
 
 type Entry = { at: number; count: number; registration?: PluginButtonRegistration<PluginText> };
@@ -69,5 +75,6 @@ export function installOptionPills(client: PluginClientContext): () => void {
     disposed = true;
     stopSessions(); stopPreferences();
     for (const agentId of entries.keys()) remove(agentId);
+    clearOptionPopovers();
   };
 }

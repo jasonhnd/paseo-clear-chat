@@ -240,3 +240,42 @@ test("card and panel share collapse, typing and fallback", t => {
   f.composer.isConnected = false; f.mutations[0].fn();
   assert.ok(byId(draw(), "option-card")); f.h.flushEffects(); assert.equal(f.body.children.length, 0);
 });
+
+test("an open popover hides the panel and pauses positioning until it closes", t => {
+  const f = fixture(t), panel = f.mount(), host = panel.host;
+  f.store.setOptionPopoverOpen("b", true);
+  assert.equal(host.style.display, "block");
+  const oldRow = host.shadow.find("option-row-B");
+  host.listeners.pointerdown({ composedPath: () => [oldRow] });
+  f.store.setOptionPopoverOpen("a", true);
+  assert.equal(host.style.display, "none");
+  f.composer.throwRect = true;
+  f.resizes[0].fn(); f.mutations[0].fn();
+  f.store.choose("a", 0, "B");
+  assert.equal(host.shadow.find("option-row-B"), oldRow);
+  assert.equal(f.fallback, 0);
+  f.composer.throwRect = false;
+  f.composer.rect.left = 120; f.composer.rect.right = 520;
+  f.store.setOptionPopoverOpen("a", false);
+  assert.equal(host.style.display, "block");
+  assert.equal(host.style.left, "120px");
+  assert.notEqual(host.shadow.find("option-row-B"), oldRow);
+  assert.equal(host.shadow.find("option-row-B").getAttribute("aria-pressed"), "true");
+  panel.dispose();
+  assert.ok(f.mount());
+  assert.equal(f.fallback, 0);
+});
+
+test("a panel mounted while its popover is open stays hidden until it closes", t => {
+  const f = fixture(t);
+  f.store.setOptionPopoverOpen("a", true);
+  f.composer.throwRect = true;
+  const panel = f.mount();
+  assert.ok(panel);
+  assert.equal(panel.host.style.display, "none");
+  assert.equal(f.fallback, 0);
+  f.composer.throwRect = false;
+  f.store.setOptionPopoverOpen("a", false);
+  assert.equal(panel.host.style.display, "block");
+  assert.ok(panel.host.shadow.find("option-row-B"));
+});

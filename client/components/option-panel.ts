@@ -1,4 +1,4 @@
-import { answerText, choose, clearChoice, dismiss, getOptionSession, missingQuestion, moveCursor, setActiveQuestion, setNote, subscribeOptionSession } from "../option-session";
+import { answerText, choose, clearChoice, dismiss, getOptionSession, isOptionPopoverOpen, missingQuestion, moveCursor, setActiveQuestion, setNote, subscribeOptionSession } from "../option-session";
 import type { ExtendedThemeTokens } from "./theme-tokens";
 
 const failed = new Set<string>();
@@ -54,6 +54,7 @@ export function mountOptionPanel(options: Options): OptionPanel | null {
     cleanup(); options.fallback();
   };
   function position() {
+    if (isOptionPopoverOpen(options.agentId)) return;
     try {
       if (!host || !host.isConnected || !input || options.composer() !== input || !input.isConnected || input.parentElement !== inputParent || !input.matches("[data-composer-input]")) throw 0;
       for (let node: HTMLElement | null = input; node; node = node.parentElement) {
@@ -98,6 +99,14 @@ export function mountOptionPanel(options: Options): OptionPanel | null {
     } catch { fail(); }
   }
   function render() {
+    if (isOptionPopoverOpen(options.agentId)) {
+      if (host) host.style.display = "none";
+      pointerDown = false;
+      if (pointerTimer !== undefined) clearTimeout(pointerTimer);
+      if (releaseTimer !== undefined) clearTimeout(releaseTimer);
+      pointerTimer = undefined; releaseTimer = undefined; redrawPending = false;
+      return;
+    }
     if (pointerDown || releaseTimer !== undefined) { redrawPending = true; return; }
     try {
       const session = getOptionSession(options.agentId);
@@ -176,6 +185,7 @@ export function mountOptionPanel(options: Options): OptionPanel | null {
         if (selection && next instanceof HTMLInputElement && selection[0] != null && selection[1] != null) next.setSelectionRange(selection[0], selection[1]);
       }
       position();
+      if (!disposed && host) host.style.display = "block";
     } catch { fail(); }
   }
   function flushRedraw() {

@@ -20,6 +20,7 @@ const messages = new Map<string, number>();
 const snapshots = new Map<string, OptionSession>();
 const listeners = new Set<() => void>();
 const pending = new Set<string>();
+const openPopovers = new Set<string>();
 let sender: Sender | null = null;
 
 function notify(): void {
@@ -34,6 +35,20 @@ export function subscribeOptionSession(listener: () => void): () => void {
 }
 
 export function getOptionSessionAgents(): string[] { return [...snapshots.keys()]; }
+
+export function isOptionPopoverOpen(agentId: string): boolean { return openPopovers.has(agentId); }
+
+export function setOptionPopoverOpen(agentId: string, open: boolean): void {
+  if (open === openPopovers.has(agentId)) return;
+  if (open) openPopovers.add(agentId); else openPopovers.delete(agentId);
+  notify();
+}
+
+export function clearOptionPopovers(): void {
+  if (!openPopovers.size) return;
+  openPopovers.clear();
+  notify();
+}
 
 export function getOptionSession(agentId: string): OptionSession | null {
   return snapshots.get(agentId) ?? null;
