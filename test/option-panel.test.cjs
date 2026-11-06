@@ -5,7 +5,7 @@ const { createToolHarness } = require("./helpers/tool-harness.cjs");
 const reply = `1) Choose?\nA One\nB Two (recommended)\n\n2) Next?\nA Yes\nB No\n\nReply with a letter for each.`;
 
 function fixture(t) {
-  const h = createToolHarness("web", { agents: { a: { status: "idle" } }, deferEffects: true });
+  const h = createToolHarness("web", { agents: { a: { status: "idle" } }, deferEffects: true, themeTokens: true });
   const store = h.load("client/option-session.ts");
   const panels = h.load("client/components/option-panel.ts");
   store.publishAssistantReply("a", { at: 10, text: reply });
@@ -159,12 +159,13 @@ test("send row stays outside the scrolling content and header wraps", t => {
   const f = fixture(t), panel = f.mount(), shadow = panel.host.shadow;
   const row = shadow.find("option-send-row"), scroll = shadow.find("option-panel-scroll"), styles = shadow.children.find(child => child.tagName === "STYLE").textContent;
   assert.equal(row.parent, scroll.parent); assert.equal(scroll.parent.children.at(-1), row);
-  assert.equal(scroll.contains(row), false); assert.equal(row.style.background, f.h.tokens.surface0);
+  assert.equal(scroll.contains(row), false); assert.equal(row.style.background, shadow.children.find(child => child.className === "panel").style.background);
   assert.ok(row.contains(shadow.find("option-send")));
   for (const id of ["option-question-0", "option-row-A", "option-row-B", "option-note-toggle", "option-next", "option-dismiss", "option-key-hints"]) assert.ok(scroll.contains(shadow.find(id)), id);
   assert.match(styles, /\.panel\{[^}]*overflow:hidden/);
   assert.match(styles, /\.scroller\{[^}]*overflow:auto;min-height:0/);
   assert.match(styles, /\.send-row\{[^}]*flex-shrink:0/);
+  assert.match(styles, /\.send-row\{padding:8px 0 12px;flex-shrink:0\}/);
   assert.match(styles, /\.header\{flex-wrap:wrap\}/);
   assert.match(styles, /\.strip\{white-space:normal/);
   shadow.find("option-card-collapse").onclick();
@@ -184,6 +185,29 @@ test("redraw preserves and clamps scroll position, and changing questions resets
   shadow.find("option-panel-scroll").scrollTop = 300;
   shadow.find("option-question-0").onclick();
   assert.equal(shadow.find("option-panel-scroll").scrollTop, 0);
+});
+
+for (const theme of [
+  { name: "dark", isDark: true, surface0: "#102030", surface1: "rgba(255, 255, 255, 0.2)", surface2: "#ff000080", success: "rgba(0, 255, 0, 0.5)", panel: [63.8, 76.6, 89.4], disabled: [135.9686, 15.9373, 23.9059], enabled: [8, 143.5, 24] },
+  { name: "light", isDark: false, surface0: "#e0d0c0", surface1: "rgba(0, 0, 0, 0.1)", surface2: "rgba(0, 0, 255, 0.25)", success: "#00ff0080", panel: [201.6, 187.2, 172.8], disabled: [168, 156, 207.75], enabled: [111.5608, 231.5922, 95.6235] },
+]) test(`panel and send backgrounds are opaque and composited in the ${theme.name} theme`, t => {
+  const f = fixture(t);
+  Object.assign(f.h.tokens, theme);
+  const shadow = f.mount().host.shadow;
+  const check = (actual, expected) => {
+    const match = /^rgb\(([^)]+)\)$/.exec(actual);
+    assert.ok(match, `expected an opaque rgb colour, got ${actual}`);
+    const channels = match[1].split(",").map(Number);
+    assert.equal(channels.length, 3);
+    channels.forEach((channel, i) => assert.ok(Math.abs(channel - expected[i]) < 0.001, `${actual} channel ${i}`));
+  };
+  check(shadow.children.find(child => child.className === "panel").style.background, theme.panel);
+  check(shadow.find("option-send-row").style.background, theme.panel);
+  assert.equal(shadow.find("option-send").getAttribute("aria-disabled"), "true");
+  check(shadow.find("option-send").style.background, theme.disabled);
+  f.store.choose("a", 0, "A"); f.store.choose("a", 1, "A");
+  assert.equal(shadow.find("option-send").getAttribute("aria-disabled"), "false");
+  check(shadow.find("option-send").style.background, theme.enabled);
 });
 
 test("panel follows the composer and shares choices, notes, send and dismissal", t => {
@@ -224,17 +248,25 @@ for (const [name, change] of [["removed", f => { f.composer.isConnected = false;
 
 test("card and panel share collapse, typing and fallback", t => {
   const f = fixture(t), Card = f.h.load("client/components/option-card.tsx").OptionCard;
-  const root = { getClientRects: () => [1], contains: () => false, querySelector: () => null };
+  let rootHidden = false;
+  const root = { getClientRects: () => rootHidden ? [] : [1], contains: () => false, querySelector: () => null };
   const chat = { getClientRects: () => [1], contains: node => node === root };
-  root.parentElement = { parentElement: null, querySelectorAll: selector => selector.includes("agent-chat-scroll") ? [chat] : [f.composer] };
+  const parent = { parentElement: null, querySelectorAll: selector => selector.includes("agent-chat-scroll") ? [chat] : [f.composer] };
+  let rootReads = 0;
+  Object.defineProperty(root, "parentElement", { get() { rootReads++; return parent; } });
   const byId = (tree, id) => f.h.nodes(tree, node => node.props.testID === id)[0];
   const draw = () => {
     const tree = f.h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: f.h.tokens } });
+    rootHidden = byId(tree, "option-card-strip")?.props.style.display === "none";
     (byId(tree, "option-card") ?? byId(tree, "option-card-strip"))?.props.ref(root);
     return tree;
   };
   assert.ok(byId(draw(), "option-card")); f.h.flushEffects();
-  assert.ok(byId(draw(), "option-card-strip")); f.h.flushEffects();
+  const strip = byId(draw(), "option-card-strip");
+  assert.equal(strip.props.style.display, "none");
+  assert.equal(typeof strip.props.ref, "function");
+  rootReads = 0; f.h.flushEffects();
+  assert.ok(rootReads > 0, "the panel still locates the composer through the strip ref");
   assert.equal(f.body.children.length, 1);
   const key = (value, target, actual = target) => {
     const event = { key: value, target, composedPath: () => [actual, target], prevented: false,
@@ -261,6 +293,13 @@ test("card and panel share collapse, typing and fallback", t => {
   draw(); f.h.flushEffects(); assert.ok(f.body.children[0].shadow.find("option-panel-strip"));
   f.composer.isConnected = false; f.mutations[0].fn();
   assert.ok(byId(draw(), "option-card")); f.h.flushEffects(); assert.equal(f.body.children.length, 0);
+  byId(draw(), "option-card-collapse").props.onPress();
+  const fallbackStrip = byId(draw(), "option-card-strip");
+  assert.equal(fallbackStrip.props.style.display, "flex");
+  assert.equal(fallbackStrip.props.style.minHeight, 44);
+  assert.equal(fallbackStrip.props.style.height, undefined);
+  assert.equal(fallbackStrip.props.style.maxHeight, undefined);
+  assert.ok(fallbackStrip.props.style.paddingVertical > 0);
 });
 
 test("an open popover hides the panel and pauses positioning until it closes", t => {

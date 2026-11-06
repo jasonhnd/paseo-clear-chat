@@ -1,5 +1,5 @@
 import { answerText, choose, clearChoice, dismiss, getOptionSession, isOptionPopoverOpen, missingQuestion, moveCursor, setActiveQuestion, setNote, subscribeOptionSession } from "../option-session";
-import type { ExtendedThemeTokens } from "./theme-tokens";
+import { opaqueColor, type ExtendedThemeTokens } from "./theme-tokens";
 
 const failed = new Set<string>();
 const cleanups = new Set<() => void>();
@@ -114,6 +114,8 @@ export function mountOptionPanel(options: Options): OptionPanel | null {
       const session = getOptionSession(options.agentId);
       if (!session || session.at !== options.at || disposed) return;
       const t = options.t, tokens = options.tokens(), index = session.activeQuestion, question = session.set.questions[index]!;
+      const opaque = (color: string) => opaqueColor(color, tokens.surface0, tokens.isDark);
+      const panelBackground = opaque(tokens.surface1);
       const number = (i: number) => session.set.questions[i]!.number ?? i + 1;
       const chosen = session.set.questions.map((q, i) => session.choices[i] ? `${q.number ?? ""}${session.choices[i]}` : "").filter(Boolean).join(" ");
       const previous = panel.getRootNode() as ShadowRoot;
@@ -124,7 +126,7 @@ export function mountOptionPanel(options: Options): OptionPanel | null {
       panel.replaceChildren();
       scroller = null;
       renderedQuestion = index;
-      Object.assign(panel.style, { color: tokens.foreground, background: tokens.surface1, borderColor: tokens.border, fontFamily: tokens.fontUi, fontSize: `${tokens.fs(13)}px` });
+      Object.assign(panel.style, { color: tokens.foreground, background: panelBackground, borderColor: tokens.border, fontFamily: tokens.fontUi, fontSize: `${tokens.fs(13)}px` });
       const node = (tag: string, text?: string, id?: string) => {
         const el = document.createElement(tag);
         if (text !== undefined) el.textContent = text;
@@ -178,12 +180,12 @@ export function mountOptionPanel(options: Options): OptionPanel | null {
         scroller.append(node("div", [t("answerCard.hintMove"), t("answerCard.hintPick"), index === session.set.questions.length - 1 ? t("answerCard.hintSend") : t("answerCard.hintNext"), t("answerCard.hintBack")].join("  ·  "), "option-key-hints"));
         const missing = missingQuestion(options.agentId), answer = answerText(options.agentId);
         const send = button(missing === null ? t("answerCard.send", { answer: answer ?? "" }) : t("answerCard.missing", { question: number(missing) }), "option-send", options.send);
-        send.style.background = answer === null || session.sending ? tokens.surface2 : tokens.success;
+        send.style.background = opaque(answer === null || session.sending ? tokens.surface2 : tokens.success);
         send.style.color = answer === null || session.sending ? tokens.foregroundMuted : (tokens.isDark ? "#000000" : "#ffffff");
         send.onfocus = options.focusSend;
         send.setAttribute("aria-disabled", String(answer === null || session.sending));
         const sendRow = node("div", undefined, "option-send-row");
-        sendRow.style.background = tokens.surface0;
+        sendRow.style.background = panelBackground;
         sendRow.className = "send-row"; sendRow.append(send); panel.append(sendRow);
       }
       if (focusId) {
@@ -220,7 +222,7 @@ export function mountOptionPanel(options: Options): OptionPanel | null {
     Object.assign(host.style, { all: "initial", position: "fixed", zIndex: "2147483000", display: "block" });
     const shadow = host.attachShadow({ mode: "open" });
     const style = document.createElement("style");
-    style.textContent = `:host{box-sizing:border-box} *,*::before,*::after{box-sizing:border-box} .panel{border:1px solid;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;max-height:inherit;overflow:hidden;white-space:pre-wrap} .panel>*{min-width:0} .scroller{display:flex;flex-direction:column;gap:8px;overflow:auto;min-height:0;flex:0 1 auto} .scroller>*{flex-shrink:0;min-width:0} button,input{font:inherit;color:inherit;background:transparent;border:1px solid currentColor;border-radius:8px;padding:8px;min-height:44px;text-align:left} button{cursor:pointer} .header,.row{display:flex;align-items:center;gap:8px} .header{flex-wrap:wrap} .header>*{max-width:100%;overflow-wrap:anywhere} .strip{white-space:normal;overflow-wrap:anywhere} .send-row{padding-top:8px;flex-shrink:0} .send-row button{width:100%} .row span:nth-child(2){flex:1} .chip,.badge{border:1px solid;border-radius:5px;padding:2px 5px} .badge{font-size:.9em}`;
+    style.textContent = `:host{box-sizing:border-box} *,*::before,*::after{box-sizing:border-box} .panel{border:1px solid;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;max-height:inherit;overflow:hidden;white-space:pre-wrap} .panel>*{min-width:0} .scroller{display:flex;flex-direction:column;gap:8px;overflow:auto;min-height:0;flex:0 1 auto} .scroller>*{flex-shrink:0;min-width:0} button,input{font:inherit;color:inherit;background:transparent;border:1px solid currentColor;border-radius:8px;padding:8px;min-height:44px;text-align:left} button{cursor:pointer} .header,.row{display:flex;align-items:center;gap:8px} .header{flex-wrap:wrap} .header>*{max-width:100%;overflow-wrap:anywhere} .strip{white-space:normal;overflow-wrap:anywhere} .send-row{padding:8px 0 12px;flex-shrink:0} .send-row button{width:100%} .row span:nth-child(2){flex:1} .chip,.badge{border:1px solid;border-radius:5px;padding:2px 5px} .badge{font-size:.9em}`;
     panel = document.createElement("div"); panel.className = "panel"; body = panel;
     shadow.append(style, body); document.body.append(host);
     host.addEventListener("pointerdown", event => {

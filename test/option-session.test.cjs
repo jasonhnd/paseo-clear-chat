@@ -25,9 +25,9 @@ test("orders observations independently, retires stale replies and resets state"
   s.publishUserMessage("a", 9);
   assert.equal(s.getOptionSession("a"), initial);
   s.publishUserMessage("a", 10);
-  assert.equal(s.getOptionSession("a"), null);
+  assert.equal(s.getOptionSession("a"), initial);
   s.publishAssistantReply("a", { at: 10, text: one });
-  assert.equal(s.getOptionSession("a"), null);
+  assert.equal(s.getOptionSession("a"), initial);
   s.publishAssistantReply("a", { at: 11, text: two });
   assert.deepEqual(s.getOptionSession("a").choices, {});
   assert.deepEqual(s.getOptionSession("a").notes, {});
@@ -39,12 +39,45 @@ test("orders observations independently, retires stale replies and resets state"
   assert.equal(s.getOptionSession("a"), null);
   s.publishUserMessage("b", 20);
   s.publishAssistantReply("b", { at: 20, text: one });
-  assert.equal(s.getOptionSession("b"), null);
+  assert.ok(s.getOptionSession("b"));
   s.publishAssistantReply("b", { at: 21, text: one });
   s.publishUserMessage("b", 19);
   assert.ok(s.getOptionSession("b"));
   s.publishUserMessage("b", 22);
   assert.equal(s.getOptionSession("b"), null);
+});
+
+test("compares user and reply timestamps in either arrival order", t => {
+  const { s } = fixture(t);
+  for (const [name, replyAt, expected] of [["earlier", 99, false], ["equal", 100, true], ["later", 101, true]]) {
+    s.publishUserMessage(name, 100);
+    s.publishAssistantReply(name, { at: replyAt, text: one });
+    assert.equal(Boolean(s.getOptionSession(name)), expected, `reply ${name} than message`);
+  }
+  for (const [name, messageAt, expected] of [["earlier", 99, true], ["equal", 100, true], ["later", 101, false]]) {
+    const agent = `message-${name}`;
+    s.publishAssistantReply(agent, { at: 100, text: one });
+    const session = s.getOptionSession(agent);
+    s.publishUserMessage(agent, messageAt);
+    assert.equal(s.getOptionSession(agent), expected ? session : null, `message ${name} than reply`);
+  }
+});
+
+test("ignores non-finite and non-increasing timestamps", t => {
+  const { s } = fixture(t);
+  s.publishAssistantReply("a", { at: 100, text: one });
+  const session = s.getOptionSession("a");
+  for (const at of [NaN, Infinity, -Infinity, 99, 100]) {
+    s.publishAssistantReply("a", { at, text: two });
+    assert.equal(s.getOptionSession("a"), session);
+  }
+  s.publishUserMessage("a", 99);
+  for (const at of [NaN, Infinity, -Infinity, 98, 99]) {
+    s.publishUserMessage("a", at);
+    assert.equal(s.getOptionSession("a"), session);
+  }
+  s.publishUserMessage("a", 101);
+  assert.equal(s.getOptionSession("a"), null);
 });
 
 test("choices, notes, cursor, dismissal and formatted answers", t => {
@@ -132,9 +165,10 @@ test("notifies once per change and isolates throwing listeners", t => {
   s.moveCursor("a", 0, 1);
   s.publishUserMessage("a", 1);
   s.publishUserMessage("a", 1);
+  s.publishUserMessage("a", 2);
   assert.equal(count, 3);
   stopThrow(); stop();
-  s.publishAssistantReply("a", { at: 2, text: one });
+  s.publishAssistantReply("a", { at: 3, text: one });
   assert.equal(count, 3);
 });
 

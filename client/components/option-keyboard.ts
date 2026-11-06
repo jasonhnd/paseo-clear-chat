@@ -16,6 +16,7 @@ interface KeyboardOptions {
   agentId: string;
   at: number;
   root: () => HTMLElement | null;
+  allowHiddenRoot?: () => boolean;
   enter: () => void;
   leave: () => void;
   exit: () => void;
@@ -29,8 +30,8 @@ interface KeyboardOptions {
 
 // The composer and the scroll area are siblings in the host. Stop at a split
 // pane instead of allowing one card to control another pane's composer.
-function composerFor(root: HTMLElement): HTMLInputElement | HTMLTextAreaElement | null {
-  if (!root.getClientRects().length) return null;
+function composerFor(root: HTMLElement, allowHiddenRoot = false): HTMLInputElement | HTMLTextAreaElement | null {
+  if (!allowHiddenRoot && !root.getClientRects().length) return null;
   for (let parent = root.parentElement; parent; parent = parent.parentElement) {
     const chats = Array.from(parent.querySelectorAll('[data-testid="agent-chat-scroll"]')).filter(chat => chat.getClientRects().length);
     if (chats.length > 1) return null;
@@ -50,7 +51,7 @@ function composerFor(root: HTMLElement): HTMLInputElement | HTMLTextAreaElement 
 }
 
 export function installOptionKeyboard(options: KeyboardOptions, target: Window = window): () => void {
-  const composer = () => { const root = options.root(); return root ? composerFor(root) : null; };
+  const composer = () => { const root = options.root(); return root ? composerFor(root, options.allowHiddenRoot?.()) : null; };
   const onPointerDown = (event: PointerEvent) => {
     const input = composer();
     if (input && (event.composedPath?.()[0] ?? event.target) === input) options.exit();
@@ -130,6 +131,6 @@ export function installOptionKeyboard(options: KeyboardOptions, target: Window =
   return cleanup;
 }
 
-export function optionComposer(root: HTMLElement | null): HTMLInputElement | HTMLTextAreaElement | null {
-  return root ? composerFor(root) : null;
+export function optionComposer(root: HTMLElement | null, allowHiddenRoot = false): HTMLInputElement | HTMLTextAreaElement | null {
+  return root ? composerFor(root, allowHiddenRoot) : null;
 }

@@ -33,7 +33,7 @@ export function OptionCard({ agentId, at, tokens, popover = false, onSent }: { a
   useEffect(() => {
     if (popover || Platform.OS !== "web" || !visible || typeof window === "undefined") return;
     return installOptionKeyboard({
-      agentId, at, root: () => root.current,
+      agentId, at, root: () => root.current, allowHiddenRoot: () => !!panel.current,
       entered: () => entered.current,
       enter: () => { setEntered(true); setSendFocus(false); setCollapsed(false); },
       leave: () => { setEntered(false); setSendFocus(false); setCollapsed(true); },
@@ -52,7 +52,7 @@ export function OptionCard({ agentId, at, tokens, popover = false, onSent }: { a
   useEffect(() => {
     if (popover || Platform.OS !== "web" || typeof document === "undefined" || typeof window === "undefined" || !visible) return;
     const mounted = mountOptionPanel({
-      agentId, at, composer: () => optionComposer(root.current), tokens: () => panelValues.current.tokens, t: (key, values) => panelValues.current.t(key, values),
+      agentId, at, composer: () => optionComposer(root.current, !!panel.current), tokens: () => panelValues.current.tokens, t: (key, values) => panelValues.current.t(key, values),
       collapsed: () => panelValues.current.collapsed, entered: () => entered.current, sendFocused: () => sendFocused.current,
       enter: () => { setEntered(true); setSendFocus(false); },
       focusSend: () => { if (entered.current) setSendFocus(true); },
@@ -100,9 +100,10 @@ export function OptionCard({ agentId, at, tokens, popover = false, onSent }: { a
   } : {};
   if (panelActive || collapsed) return (
     <Pressable {...webProps} testID="option-card-strip" accessibilityRole="button" accessibilityState={{ expanded: false }} accessibilityLabel={t("answerCard.reopen")} onPress={() => setCollapsed(false)}
-      style={{ ...buttonStyle, marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 6, backgroundColor: tokens.surface1 }}>
-      <Text style={labelStyle}>{t("answerCard.summary", { total: session.set.questions.length, chosen: chosen || t("answerCard.none"), question: number(index) })}</Text>
-      {Platform.OS === "web" ? <Text style={mutedStyle}>{t("answerCard.hintReopen")}</Text> : null}
+      style={{ ...buttonStyle, display: panelActive ? "none" : "flex", marginTop: 10, paddingVertical: 8, backgroundColor: tokens.surface1 }}>
+      <Text style={{ ...labelStyle, textAlign: "center" }}>{t("answerCard.summary", { total: session.set.questions.length, chosen: chosen || t("answerCard.none"), question: number(index) })}
+        {Platform.OS === "web" ? <Text style={mutedStyle}>{"  "}{t("answerCard.hintReopen")}</Text> : null}
+      </Text>
     </Pressable>
   );
   const end = /[!?。！？]|\.(?=\s|$)/.exec(question.text);
