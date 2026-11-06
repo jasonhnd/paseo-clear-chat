@@ -12,6 +12,7 @@ interface KeyboardOptions {
   root: () => HTMLElement | null;
   enter: () => void;
   leave: () => void;
+  exit: () => void;
   entered: () => boolean;
   send: () => void;
   focusSend: () => void;
@@ -44,6 +45,10 @@ function composerFor(root: HTMLElement): HTMLInputElement | HTMLTextAreaElement 
 
 export function installOptionKeyboard(options: KeyboardOptions, target: Window = window): () => void {
   const composer = () => { const root = options.root(); return root ? composerFor(root) : null; };
+  const onPointerDown = (event: PointerEvent) => {
+    const input = composer();
+    if (input && (event.composedPath?.()[0] ?? event.target) === input) options.exit();
+  };
   const onInput = (event: Event) => {
     if (event.target === composer() && (event.target as HTMLInputElement).value) options.leave();
   };
@@ -107,10 +112,12 @@ export function installOptionKeyboard(options: KeyboardOptions, target: Window =
   };
   target.addEventListener("keydown", onKey, true);
   target.addEventListener("input", onInput, true);
+  target.addEventListener("pointerdown", onPointerDown, true);
   if (composer()?.value) options.leave();
   const cleanup = () => {
     target.removeEventListener("keydown", onKey, true);
     target.removeEventListener("input", onInput, true);
+    target.removeEventListener("pointerdown", onPointerDown, true);
     cleanups.delete(cleanup);
   };
   cleanups.add(cleanup);
