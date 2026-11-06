@@ -1,5 +1,9 @@
 {
   "settings": {
+    "hiddenTools": {
+      "label": "Hide these tools",
+      "description": "Comma-separated, case-sensitive tool names. Hiding takes precedence over leaving tools to other plugins."
+    },
     "delegatedTools": {
       "label": "Leave these tools to other plugins",
       "description": "Enter comma-separated tool names. Names are case sensitive."

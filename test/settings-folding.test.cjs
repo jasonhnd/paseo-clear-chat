@@ -117,3 +117,20 @@ test("tool delegation setting saves, reloads, and resets with presentation setti
   assert.equal(input(fresh.h, fresh.page()).props.value, "");
   fresh.h.unmount();
 });
+
+test("hidden tools setting saves, reloads, and resets with presentation settings", async () => {
+  const host = createPresentationHost();
+  const first = await client(host);
+  const input = (h, tree) => h.nodes(tree, node => node.props.accessibilityLabel === "Hide these tools")[0];
+  assert.equal(input(first.h, first.page()).props.value, "");
+  input(first.h, first.page()).props.onChangeText("shell, read_file");
+  await new Promise(setImmediate);
+  assert.equal(host.values.preferences.hiddenTools, "shell, read_file");
+  first.h.unmount();
+  const fresh = await client(host);
+  assert.equal(input(fresh.h, fresh.page()).props.value, "shell, read_file");
+  await fresh.h.load("client/preferences.ts").resetEnhancerPreferences();
+  assert.equal(input(fresh.h, fresh.page()).props.value, "");
+  assert.deepEqual(host.values.preferences, {});
+  fresh.h.unmount();
+});

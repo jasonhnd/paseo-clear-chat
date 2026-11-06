@@ -1,5 +1,9 @@
 {
   "settings": {
+    "hiddenTools": {
+      "label": "隐藏这些工具",
+      "description": "输入以逗号分隔的工具名称，区分大小写。隐藏优先于交给其他插件。"
+    },
     "delegatedTools": {
       "label": "将这些工具交给其他插件",
       "description": "输入以逗号分隔的工具名称。名称区分大小写。"

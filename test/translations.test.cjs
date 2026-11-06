@@ -52,7 +52,7 @@ for (const locale of ["en", "zh-CN", "ja"]) {
     await new Promise(setImmediate);
     const Page = h.load("client/settings-page.tsx").ClearChatSettingsPage;
     const tree = h.draw({ type: Page, props: { theme: { colors: {} } } });
-    for (const text of [r.settings.title, r.settings.intro, r.settings.accent.host, r.settings.foldSteps.label, r.settings.delegatedTools.label, r.settings.delegatedTools.description, r.settings.codeFont.default, r.settings.textSize.large, r.settings.foldOutput.lines15, r.settings.report]) hasText(h, tree, text);
+    for (const text of [r.settings.title, r.settings.intro, r.settings.accent.host, r.settings.foldSteps.label, r.settings.delegatedTools.label, r.settings.delegatedTools.description, r.settings.hiddenTools.label, r.settings.hiddenTools.description, r.settings.codeFont.default, r.settings.textSize.large, r.settings.foldOutput.lines15, r.settings.report]) hasText(h, tree, text);
     hasLabel(h, tree, interpolate(r.settings.accent.optionA11y, { label: r.settings.accent.jade }));
     h.unmount();
   });
@@ -309,6 +309,7 @@ for (const locale of ["en", "zh-CN", "ja"]) {
       .replace(/    "version": ".*",\n/, "")
       .replace(/  "quote": \{\n(?:    ".*\n){11}  \},\n/, "")
       .replace(/    "hermesCc": \{\n(?:      ".*\n){3}    \},\n/, "")
+      .replace(/    "hiddenTools": \{\n(?:      ".*\n){2}    \},\n/, "")
       .replace(/    "delegatedTools": \{\n(?:      ".*\n){2}    \},\n/, "")
       .replace(/    "imageThumbA11y": ".*",\n    "moreImages": ".*",\n    "closeImage": ".*",\n/, "")
       .replace(/    "stepsOne": ".*",\n/, "")

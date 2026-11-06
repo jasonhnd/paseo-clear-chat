@@ -79,6 +79,7 @@ export interface EnhancerPreferences {
   collapsedStepAction: CollapsedStepAction;
   foldLongOutputAfter: OutputLineLimit;
   delegatedTools: string;
+  hiddenTools: string;
 }
 
 const STORAGE_KEY = "paseo/clear-chat/preferences/v1";
@@ -102,6 +103,7 @@ export const DEFAULT_PREFERENCES: Readonly<EnhancerPreferences> = {
   collapsedStepAction: "details",
   foldLongOutputAfter: 15,
   delegatedTools: "",
+  hiddenTools: "",
 };
 
 const listeners = new Set<() => void>();
@@ -141,7 +143,7 @@ function loadLegacyPreferences(): PreferenceOverrides | undefined {
     const valid: Record<string, unknown> = {};
     for (const [key, schema] of Object.entries(preferenceOverridesSchema.shape)) {
       // New host-only preferences must never come from a browser import snapshot.
-      if (["textScale", "foldFinishedSteps", "foldLongOutputAfter", "codeFontFamily", "customAccent", "customAccentEnabled", "collapsedStepAction", "delegatedTools"].includes(key)) continue;
+      if (["textScale", "foldFinishedSteps", "foldLongOutputAfter", "codeFontFamily", "customAccent", "customAccentEnabled", "collapsedStepAction", "delegatedTools", "hiddenTools"].includes(key)) continue;
       const parsed = schema.safeParse((candidate as Record<string, unknown>)[key]);
       if (parsed.success && parsed.data !== undefined) valid[key] = parsed.data;
     }
