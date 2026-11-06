@@ -147,3 +147,13 @@ test("the disabled setting installs no listener, and removing the card cleans up
   // The harness explicitly unmounts the removed subtree when the setting changes.
   h.unmount(); h.preferences.showAnswerCard = false; draw(); assert.equal(listeners.size, 0);
 });
+
+
+test("keyboard choosing survives a renamed composer marker", t => {
+  const { root, input, key, s } = fixture(t);
+  const chat = { getClientRects: () => [1], contains: node => node === root };
+  root.parentElement.querySelectorAll = selector => selector.includes("agent-chat-scroll") ? [chat] : selector.includes("data-composer-input") ? [] : [input];
+  assert.equal(key("ArrowUp"), true);
+  assert.equal(key("a"), true);
+  assert.equal(s.getOptionSession("a").choices[0], "A");
+});

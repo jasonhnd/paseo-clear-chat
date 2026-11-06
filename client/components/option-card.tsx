@@ -6,6 +6,8 @@ import { messages } from "../messages";
 import { answerText, choose, clearChoice, dismiss, getOptionSession, missingQuestion, moveCursor, sendAnswer, setActiveQuestion, setNote, useOptionSession } from "../option-session";
 import { installOptionKeyboard, optionComposer } from "./option-keyboard";
 import { installOptionComposer } from "../option-composer";
+import { mountOptionPanel } from "./option-panel";
+import type { OptionPanel } from "./option-panel";
 import type { ExtendedThemeTokens } from "./theme-tokens";
 
 export function OptionCard({ agentId, at, tokens }: { agentId: string; at: number; tokens: ExtendedThemeTokens }) {
@@ -14,6 +16,9 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   const status = useAgent(agentId, agent => agent.status);
   const { height } = useWindowDimensions();
   const [collapsed, setCollapsed] = useState(false);
+  const [panelActive, setPanelActive] = useState(false);
+  const panel = useRef<OptionPanel | null>(null);
+  const panelValues = useRef({ tokens, collapsed, t });
   const [noteOpen, setNoteOpen] = useState<Record<number, boolean>>({});
   const root = useRef<HTMLElement | null>(null);
   const entered = useRef(false);
@@ -21,6 +26,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   const [keyboardEntered, setKeyboardEntered] = useState(false);
   const [keyboardSend, setKeyboardSend] = useState(false);
   const sendRef = useRef<() => void>(() => {});
+  panelValues.current = { tokens, collapsed, t };
   const visible = !!session && session.at === at && !session.dismissed && status !== "running";
   const setEntered = (value: boolean) => { entered.current = value; setKeyboardEntered(value); };
   const setSendFocus = (value: boolean) => { sendFocused.current = value; setKeyboardSend(value); };
@@ -34,13 +40,30 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
       send: () => sendRef.current(),
       sendFocused: () => sendFocused.current,
       setSendFocused: setSendFocus,
-      focusSend: () => root.current?.querySelector<HTMLElement>('[data-testid="option-send"]')?.focus(),
+      focusSend: () => panel.current ? panel.current.focusSend() : root.current?.querySelector<HTMLElement>('[data-testid="option-send"]')?.focus(),
+      contains: node => !!panel.current?.host.contains(node),
     });
   }, [agentId, at, visible]);
   useEffect(() => {
     if (Platform.OS !== "web" || typeof document === "undefined" || !visible) return;
     return installOptionComposer(document, agentId, at);
   }, [agentId, at, visible]);
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined" || typeof window === "undefined" || !visible) return;
+    const mounted = mountOptionPanel({
+      agentId, at, composer: () => optionComposer(root.current), tokens: () => panelValues.current.tokens, t: (key, values) => panelValues.current.t(key, values),
+      collapsed: () => panelValues.current.collapsed, entered: () => entered.current, sendFocused: () => sendFocused.current,
+      enter: () => { setEntered(true); setSendFocus(false); },
+      focusSend: () => { if (entered.current) setSendFocus(true); },
+      collapse: () => { setEntered(false); setSendFocus(false); setCollapsed(true); },
+      reopen: () => setCollapsed(false), send: () => sendRef.current(),
+      fallback: () => { panel.current = null; setPanelActive(false); setCollapsed(false); },
+    });
+    panel.current = mounted;
+    if (mounted) { setPanelActive(true); if (optionComposer(root.current)?.value) setCollapsed(true); }
+    return () => { mounted?.dispose(); if (panel.current === mounted) panel.current = null; setPanelActive(false); };
+  }, [agentId, at, visible]);
+  useEffect(() => { panel.current?.update(); });
   if (!session || !visible) return null;
 
   const index = session.activeQuestion;
@@ -74,7 +97,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
       setEntered(true); setSendFocus(false);
     },
   } : {};
-  if (collapsed) return (
+  if (panelActive || collapsed) return (
     <Pressable {...webProps} testID="option-card-strip" accessibilityRole="button" accessibilityState={{ expanded: false }} accessibilityLabel={t("answerCard.reopen")} onPress={() => setCollapsed(false)}
       style={{ ...buttonStyle, marginTop: 10, flexDirection: "row", flexWrap: "wrap", gap: 6, backgroundColor: tokens.surface1 }}>
       <Text style={labelStyle}>{t("answerCard.summary", { total: session.set.questions.length, chosen: chosen || t("answerCard.none"), question: number(index) })}</Text>
