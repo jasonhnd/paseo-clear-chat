@@ -149,6 +149,7 @@ function createToolHarness(platform = "ios", options = {}) {
     },
   };
   if (options.hubCallout) delete stubs["client/components/hub-callout"];
+  if (options.systemEnvelope) delete stubs["client/system-envelope"];
   if (options.realSelection) delete stubs["client/components/selection"];
   if (options.settingsPage) delete stubs["client/settings-page"];
   if (options.themeTokens) delete stubs["client/components/theme-tokens"];
@@ -263,6 +264,7 @@ function createToolHarness(platform = "ios", options = {}) {
   }
   const dispose = load("index.client.tsx").default({
     i18n: translations.runtime,
+    paseo,
     rpc: options.presentationHost?.rpc ?? noop,
     addSettingsScreen(value) { settingsScreens.set(value.id, value); return noop; },
     addAgentPanel(value) { panels.set(value.id, value); return noop; },

@@ -53,7 +53,7 @@ function optionLine(line: string): { letter: string; text: string } | null {
 }
 
 function recommendation(line: string): string | null {
-  const match = /(?:推荐(?:选)?[ \t]*(?:[:：][ \t]*)?|recommended[ \t]*[:：][ \t]*|\brecommend[ \t]+)([A-ZＡ-Ｚ])(?![A-Za-zＡ-Ｚａ-ｚ])/i.exec(line);
+  const match = /(?:推荐(?:选)?[ \t]*(?:[:：][ \t]*)?|[Rr][Ee][Cc][Oo][Mm][Mm][Ee][Nn][Dd][Ee][Dd][ \t]*[:：][ \t]*|\b[Rr][Ee][Cc][Oo][Mm][Mm][Ee][Nn][Dd][ \t]+)([A-HＡ-Ｈ])(?![A-Za-zＡ-Ｚａ-ｚ])/.exec(line);
   if (!match) return null;
   const code = match[1]!.toUpperCase().charCodeAt(0);
   return String.fromCharCode(code >= 0xff21 ? code - 0xff21 + 65 : code);
@@ -134,7 +134,7 @@ export function parseOptionQuestions(text: string): OptionQuestionSet | null {
       text: questionText,
       options,
     };
-    let recommended = options.find((_, index) => optionLines[index]!.some(line => !recommendation(line) && /推荐|\brecommended\b/i.test(line)));
+    let recommended = options.find((_, index) => optionLines[index]!.some(line => /(?:推荐|\brecommended\b)(?=[ \t]*(?:[).。!！]|$))/i.test(line)));
     if (!recommended) {
       for (const line of section.lines) {
         const letter = recommendation(line.text);
