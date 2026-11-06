@@ -17,15 +17,15 @@ function fixture(t) {
     setAttribute(key, value) { this.attrs[key] = value; }
     getAttribute(key) { return this.attrs[key]; }
     matches(selector) { return selector === "[data-composer-input]" && this.marked === true; }
-    append(...nodes) { this.children.push(...nodes); for (const node of nodes) node.parent = this; }
-    replaceChildren(...nodes) { this.children = []; this.append(...nodes); }
+    append(...nodes) { this.children.push(...nodes); for (const node of nodes) { node.parent = this; node.parentElement = this; } }
+    replaceChildren(...nodes) { for (const child of this.children) { child.parent = null; child.parentElement = null; } this.children = []; this.append(...nodes); }
     attachShadow() { this.shadow = new Element("shadow"); this.shadow.activeElement = null; return this.shadow; }
     getRootNode() { return this.parent?.getRootNode() ?? this; }
     remove() { this.removed = true; if (this.parent) this.parent.children = this.parent.children.filter(child => child !== this); }
     addEventListener(type, fn) { (this.listeners ??= {})[type] = fn; }
-    contains(node) { return node === this; }
+    contains(node) { return node === this || this.children.some(child => child.contains(node)); }
     querySelector(selector) { const id = /data-testid="([^"]+)"/.exec(selector)?.[1]; return this.find(id); }
-    find(id) { if (this.attrs["data-testid"] === id) return this; for (const child of this.children) { const found = child.find(id); if (found) return found; } }
+    find(id) { if (this.attrs["data-testid"] === id) return this; for (const child of this.children) { const found = child.find(id); if (found) return found; } return null; }
     focus() { this.getRootNode().activeElement = this; }
     closest() { return null; }
     getBoundingClientRect() { if (this.throwRect) throw Error("position"); return this.rect; }
@@ -43,17 +43,91 @@ function fixture(t) {
   let current = composer, collapsed = false, fallback = 0, sends = 0, entered = false;
   const opts = { agentId: "a", at: 10, composer: () => current, tokens: () => h.tokens,
     t: (key, values) => `${key}${values ? ` ${JSON.stringify(values)}` : ""}`, collapsed: () => collapsed,
-    entered: () => entered, sendFocused: () => false, focusSend: () => {}, enter: () => { entered = true; },
+    entered: () => entered, sendFocused: () => false, focusSend: () => {}, enter: () => { if (!entered) { entered = true; panel?.update(); } },
     collapse: () => { collapsed = true; panel?.update(); }, reopen: () => { collapsed = false; panel?.update(); },
     send: () => { sends++; }, fallback: () => { fallback++; collapsed = false; } };
   let panel;
   const mount = () => panel = panels.mountOptionPanel(opts);
   t.after(() => { panels.removeOptionPanels(); h.unmount(); h.dispose(); for (const [key, value] of Object.entries(old)) { if (value === undefined) delete global[key]; else global[key] = value; } });
-  return { h, store, panels, body, composer, listeners, mutations, resizes, mount,
+  return { h, store, panels, body, composer, listeners, mutations, resizes, mount, element: tag => new Element(tag),
     replace: value => { current = value; }, failMount: () => { throwMount = true; },
     get fallback() { return fallback; }, get created() { return created; }, get sends() { return sends; },
     get panel() { return panel; }, get collapsed() { return collapsed; } };
 }
+
+test("pointer press keeps the button through click and redraws after release", t => {
+  const f = fixture(t), panel = f.mount(), host = panel.host;
+  const button = host.shadow.find("option-row-B");
+  host.listeners.pointerdown({ composedPath: () => [button] });
+  assert.equal(host.shadow.find("option-row-B"), button);
+  for (const listener of f.listeners.get("pointerup")) listener({});
+  assert.equal(host.shadow.find("option-row-B"), button);
+  button.onclick();
+  assert.equal(host.shadow.find("option-row-B"), button);
+  host.listeners.click({ detail: 1 });
+  assert.equal(f.store.getOptionSession("a").choices[0], "B");
+  assert.notEqual(host.shadow.find("option-row-B"), button);
+  assert.equal(host.shadow.find("option-row-B").getAttribute("aria-pressed"), "true");
+});
+
+test("pointer cancellation, timeout and keyboard clicks preserve redraw behavior", t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const f = fixture(t), panel = f.mount(), host = panel.host;
+  let button = host.shadow.find("option-row-A");
+  host.listeners.pointerdown({ composedPath: () => [button] });
+  host.listeners.click({ detail: 0 });
+  panel.update();
+  assert.equal(host.shadow.find("option-row-A"), button);
+  for (const listener of f.listeners.get("pointercancel")) listener({});
+  assert.notEqual(host.shadow.find("option-row-A"), button);
+  button = host.shadow.find("option-row-A");
+  host.listeners.pointerdown({ composedPath: () => [button] });
+  panel.update();
+  t.mock.timers.tick(999);
+  assert.equal(host.shadow.find("option-row-A"), button);
+  t.mock.timers.tick(1);
+  assert.notEqual(host.shadow.find("option-row-A"), button);
+  button = host.shadow.find("option-row-A");
+  panel.update();
+  assert.notEqual(host.shadow.find("option-row-A"), button);
+  button = host.shadow.find("option-row-A");
+  host.listeners.pointerdown({ composedPath: () => [button] });
+  panel.update();
+  for (const listener of f.listeners.get("pointerup")) listener({});
+  assert.equal(host.shadow.find("option-row-A"), button);
+  t.mock.timers.tick(0);
+  assert.notEqual(host.shadow.find("option-row-A"), button);
+});
+
+test("panel anchors above the outermost eligible composer container and its pill", t => {
+  const f = fixture(t), inner = f.element("div"), outer = f.element("div"), pill = f.element("button");
+  inner.rect = { top: 560, height: 100 }; outer.rect = { top: 540, height: 120 };
+  pill.rect = { top: 566, bottom: 583, height: 17 };
+  inner.append(pill, f.composer); outer.append(inner);
+  const panel = f.mount();
+  assert.equal(panel.host.style.bottom, "168px");
+  assert.ok(700 - parseFloat(panel.host.style.bottom) < pill.rect.top);
+  panel.host.shadow.find("option-card-collapse").onclick();
+  assert.ok(panel.host.shadow.find("option-panel-strip"));
+  assert.ok(700 - parseFloat(panel.host.style.bottom) < pill.rect.top);
+});
+
+for (const [name, setup] of [
+  ["no container", () => {}],
+  ["a tall container", (f, parent) => { parent.rect.height = 280; parent.append(f.composer); }],
+  ["a container with the chat scroll", (f, parent) => { const chat = f.element("div"); chat.setAttribute("data-testid", "agent-chat-scroll"); parent.append(chat, f.composer); }],
+]) test(`panel uses the input anchor with ${name}`, t => {
+  const f = fixture(t), parent = f.element("div"); parent.rect = { top: 500, height: 100 };
+  setup(f, parent);
+  assert.equal(f.mount().host.style.bottom, "108px");
+});
+
+test("panel falls back when there is not enough room above the composer container", t => {
+  const f = fixture(t), parent = f.element("div");
+  parent.rect = { top: 51, height: 100 }; parent.append(f.composer);
+  assert.equal(f.mount(), null);
+  assert.equal(f.fallback, 1);
+});
 
 test("panel follows the composer and shares choices, notes, send and dismissal", t => {
   const f = fixture(t), panel = f.mount();
@@ -108,6 +182,13 @@ test("card and panel share collapse, typing and fallback", t => {
   };
   assert.equal(key("ArrowUp", f.composer), true); draw(); f.h.flushEffects();
   const host = f.body.children[0];
+  const pressed = host.shadow.find("option-row-A");
+  host.listeners.pointerdown({ composedPath: () => [pressed] });
+  draw(); f.h.flushEffects();
+  assert.equal(key("ArrowDown", f.composer), true); draw(); f.h.flushEffects();
+  assert.equal(host.shadow.find("option-row-A"), pressed);
+  for (const listener of f.listeners.get("pointercancel")) listener({});
+  assert.notEqual(host.shadow.find("option-row-A"), pressed);
   assert.equal(key("Escape", host, host.shadow.find("option-row-A")), true);
   draw(); f.h.flushEffects(); assert.ok(host.shadow.find("option-panel-strip"));
   host.shadow.find("option-panel-strip").onclick(); draw(); f.h.flushEffects();
