@@ -16,6 +16,7 @@ import { extractGeneratedImages } from "./client/generated-images";
 import { containsComponentFence } from "./client/component-fences";
 import { projectedApprovalStatus } from "./client/tool-approval";
 import { installStepDetailPanel } from "./client/components/step-detail-host";
+import { setOptionSender } from "./client/option-session";
 import {
   getEnhancerPreferences,
   initializeEnhancerPreferences,
@@ -63,6 +64,7 @@ export default function contribute(client: PluginClientContext) {
 }
 
 function registerClient(client: PluginClientContext) {
+  setOptionSender((agentId, text) => client.paseo.agents.ref(agentId).send(text));
   void initializeEnhancerPreferences((contract, input) => client.rpc(contract, input));
   // Install the bundled faces before any surface paints.
   const removeFonts = embedFonts();
@@ -339,6 +341,7 @@ function registerClient(client: PluginClientContext) {
   });
 
   return () => {
+    setOptionSender(null);
     removeFonts();
     removeFrost();
     removeShimmer();

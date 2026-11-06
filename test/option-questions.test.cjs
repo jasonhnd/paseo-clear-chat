@@ -77,6 +77,22 @@ test("finds recommendations in options, question text, trailing and closing line
   assert.equal(set.recommendedFound, false);
 });
 
+test("explicit recommendations require uppercase option letters", () => {
+  for (const line of ["I recommend a different approach", "Recommended: b", "推荐 b"]) {
+    const set = parse(`1) Pick?\nA One\nB Two\n\n${line}\nReply: A`);
+    assert.equal(set.recommendedFound, false, line);
+    assert.deepEqual(set.questions[0].options.map(option => option.recommended), [false, false], line);
+  }
+  for (const line of ["I recommend B", "RECOMMENDED: Ｂ", "推荐 Ｂ"]) {
+    const set = parse(`1) Pick?\nA One\nB Two\n\n${line}`);
+    assert.deepEqual(set.questions[0].options.map(option => option.recommended), [false, true], line);
+  }
+  for (const line of ["Recommended: b", "推荐 b"]) {
+    const set = parse(`1) Pick?\nA One\nB Two (${line})\n\nReply: A`);
+    assert.equal(set.recommendedFound, false, line);
+  }
+});
+
 test("ignores fences and block quotes", () => {
   const text = `1) Pick?
 \`\`\`text
