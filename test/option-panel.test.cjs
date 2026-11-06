@@ -202,17 +202,25 @@ for (const [name, change] of [["removed", f => { f.composer.isConnected = false;
 
 test("card and panel share collapse, typing and fallback", t => {
   const f = fixture(t), Card = f.h.load("client/components/option-card.tsx").OptionCard;
-  const root = { getClientRects: () => [1], contains: () => false, querySelector: () => null };
+  let rootHidden = false;
+  const root = { getClientRects: () => rootHidden ? [] : [1], contains: () => false, querySelector: () => null };
   const chat = { getClientRects: () => [1], contains: node => node === root };
-  root.parentElement = { parentElement: null, querySelectorAll: selector => selector.includes("agent-chat-scroll") ? [chat] : [f.composer] };
+  const parent = { parentElement: null, querySelectorAll: selector => selector.includes("agent-chat-scroll") ? [chat] : [f.composer] };
+  let rootReads = 0;
+  Object.defineProperty(root, "parentElement", { get() { rootReads++; return parent; } });
   const byId = (tree, id) => f.h.nodes(tree, node => node.props.testID === id)[0];
   const draw = () => {
     const tree = f.h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: f.h.tokens } });
+    rootHidden = byId(tree, "option-card-strip")?.props.style.display === "none";
     (byId(tree, "option-card") ?? byId(tree, "option-card-strip"))?.props.ref(root);
     return tree;
   };
   assert.ok(byId(draw(), "option-card")); f.h.flushEffects();
-  assert.ok(byId(draw(), "option-card-strip")); f.h.flushEffects();
+  const strip = byId(draw(), "option-card-strip");
+  assert.equal(strip.props.style.display, "none");
+  assert.equal(typeof strip.props.ref, "function");
+  rootReads = 0; f.h.flushEffects();
+  assert.ok(rootReads > 0, "the panel still locates the composer through the strip ref");
   assert.equal(f.body.children.length, 1);
   const key = (value, target, actual = target) => {
     const event = { key: value, target, composedPath: () => [actual, target], prevented: false,
@@ -239,6 +247,13 @@ test("card and panel share collapse, typing and fallback", t => {
   draw(); f.h.flushEffects(); assert.ok(f.body.children[0].shadow.find("option-panel-strip"));
   f.composer.isConnected = false; f.mutations[0].fn();
   assert.ok(byId(draw(), "option-card")); f.h.flushEffects(); assert.equal(f.body.children.length, 0);
+  byId(draw(), "option-card-collapse").props.onPress();
+  const fallbackStrip = byId(draw(), "option-card-strip");
+  assert.equal(fallbackStrip.props.style.display, "flex");
+  assert.equal(fallbackStrip.props.style.minHeight, 44);
+  assert.equal(fallbackStrip.props.style.height, undefined);
+  assert.equal(fallbackStrip.props.style.maxHeight, undefined);
+  assert.ok(fallbackStrip.props.style.paddingVertical > 0);
 });
 
 test("an open popover hides the panel and pauses positioning until it closes", t => {
