@@ -620,3 +620,38 @@ test("message folding prefixes persist, reset, and cannot be imported from a bro
   assert.equal(reset.preferences.getEnhancerPreferences().foldMessagePrefixes, "");
   assert.equal(server.values.preferences.foldMessagePrefixes, undefined);
 });
+
+test("code block Open setting persists, resets, and ignores browser snapshots", async () => {
+  const server = host();
+  const snapshot = JSON.stringify({ codeBlockOpen: true });
+  const first = harness("web", snapshot).preferences;
+  await first.initializeEnhancerPreferences(server.rpc);
+  assert.equal(first.getEnhancerPreferences().codeBlockOpen, false);
+  assert.equal(server.values.preferences.codeBlockOpen, undefined);
+  await first.updateEnhancerPreferences({ codeBlockOpen: true });
+  assert.equal(server.values.preferences.codeBlockOpen, true);
+  const reloaded = harness("web", snapshot).preferences;
+  await reloaded.initializeEnhancerPreferences(server.rpc);
+  assert.equal(reloaded.getEnhancerPreferences().codeBlockOpen, true);
+  await reloaded.resetEnhancerPreferences();
+  const reset = harness("web", snapshot).preferences;
+  await reset.initializeEnhancerPreferences(server.rpc);
+  assert.equal(reset.getEnhancerPreferences().codeBlockOpen, false);
+  assert.equal(server.values.preferences.codeBlockOpen, undefined);
+});
+
+test("delegated code blocks persist, reset, and are never imported from a browser snapshot", async () => {
+  const server = host();
+  const first = harness("web", JSON.stringify({ delegatedCodeBlocks: "math" }));
+  await first.preferences.initializeEnhancerPreferences(server.rpc);
+  assert.equal(first.preferences.getEnhancerPreferences().delegatedCodeBlocks, "");
+  const value = " Mermaid, math ";
+  await first.preferences.updateEnhancerPreferences({ delegatedCodeBlocks: value });
+  assert.equal(server.values.preferences.delegatedCodeBlocks, value);
+  const fresh = harness();
+  await fresh.preferences.initializeEnhancerPreferences(server.rpc);
+  assert.equal(fresh.preferences.getEnhancerPreferences().delegatedCodeBlocks, value);
+  await fresh.preferences.resetEnhancerPreferences();
+  assert.equal(fresh.preferences.getEnhancerPreferences().delegatedCodeBlocks, "");
+  assert.deepEqual(server.values.preferences, {});
+});

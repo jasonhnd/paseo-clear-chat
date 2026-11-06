@@ -4,6 +4,10 @@
       "label": "Fold messages that start with",
       "description": "One prefix per line. Matching is case sensitive and ignores leading whitespace in messages. Only messages whose image status can be checked are folded. Requires Enhanced prompt bubble; reload the chat to update existing messages."
     },
+    "delegatedCodeBlocks": {
+      "label": "Leave these code blocks to other plugins",
+      "description": "Enter comma-separated language names. Names are case insensitive; math also covers formulas."
+    },
     "hiddenTools": {
       "label": "Hide these tools",
       "description": "Comma-separated, case-sensitive tool names. Hiding takes precedence over leaving tools to other plugins."
@@ -108,6 +112,10 @@
     "markdown": {
       "label": "Assistant markdown",
       "description": "Draws the reply with the plugin's own headings, lists and syntax-highlighted code blocks. The plugin cannot reach Paseo's markdown pipeline, so its version is a subset: turn this off for mermaid diagrams, images, and the host's file-path links. On iOS, text cannot be selected by dragging when this is enabled. Use the Copy button to copy text."
+    },
+    "codeBlockOpen": {
+      "label": "Show an Open button on code blocks that hold only a web address",
+      "description": "Adds an Open button for a single HTTPS address in an assistant reply."
     },
     "markdownStyle": {
       "label": "Markdown style",
@@ -560,6 +568,8 @@
     "emptySection": "Empty {{section}}."
   },
   "code": {
+    "open": "Open",
+    "openA11y": "Open {{address}}",
     "copy": "Copy",
     "copyA11y": "Copy code",
     "copiedA11y": "Code copied",

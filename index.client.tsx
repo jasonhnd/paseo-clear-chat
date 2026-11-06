@@ -278,7 +278,7 @@ function registerClient(client: PluginClientContext) {
     transform({ item }) {
       if (item.type !== "assistant_message") return undefined;
       if (!getEnhancerPreferences().assistantMarkdown) return undefined;
-      if (containsComponentFence(item.text)) return undefined;
+      if (containsComponentFence(item.text, getEnhancerPreferences().delegatedCodeBlocks)) return undefined;
       const images = extractGeneratedImages({ ...item, text: undefined });
       if (!item.text.trim() && !images.length) return undefined;
       return {
