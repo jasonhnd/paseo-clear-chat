@@ -620,3 +620,19 @@ test("code block Open setting persists, resets, and ignores browser snapshots", 
   assert.equal(reset.getEnhancerPreferences().codeBlockOpen, false);
   assert.equal(server.values.preferences.codeBlockOpen, undefined);
 });
+
+test("delegated code blocks persist, reset, and are never imported from a browser snapshot", async () => {
+  const server = host();
+  const first = harness("web", JSON.stringify({ delegatedCodeBlocks: "math" }));
+  await first.preferences.initializeEnhancerPreferences(server.rpc);
+  assert.equal(first.preferences.getEnhancerPreferences().delegatedCodeBlocks, "");
+  const value = " Mermaid, math ";
+  await first.preferences.updateEnhancerPreferences({ delegatedCodeBlocks: value });
+  assert.equal(server.values.preferences.delegatedCodeBlocks, value);
+  const fresh = harness();
+  await fresh.preferences.initializeEnhancerPreferences(server.rpc);
+  assert.equal(fresh.preferences.getEnhancerPreferences().delegatedCodeBlocks, value);
+  await fresh.preferences.resetEnhancerPreferences();
+  assert.equal(fresh.preferences.getEnhancerPreferences().delegatedCodeBlocks, "");
+  assert.deepEqual(server.values.preferences, {});
+});

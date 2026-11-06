@@ -493,6 +493,20 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
         ) : null}
 
         <View style={[styles.row, { borderTopColor: tokens.borderSubtle }]}>
+          <Text style={[styles.rowTitle, { color: tokens.foreground, fontFamily: tokens.fontUi }]}>{t("settings.delegatedCodeBlocks.label")}</Text>
+          <Text style={[styles.rowDescription, { color: tokens.foregroundMuted, fontFamily: tokens.fontUi }]}>{t("settings.delegatedCodeBlocks.description")}</Text>
+          <TextInput
+            accessibilityLabel={t("settings.delegatedCodeBlocks.label")}
+            accessibilityHint={t("settings.delegatedCodeBlocks.description")}
+            value={preferences.delegatedCodeBlocks}
+            onChangeText={(delegatedCodeBlocks) => { void updateEnhancerPreferences({ delegatedCodeBlocks }); }}
+            autoCapitalize="none"
+            autoCorrect={false}
+            spellCheck={false}
+            style={[styles.toolNamesInput, { color: tokens.foreground, borderColor: tokens.border, fontFamily: tokens.fontUi }]}
+          />
+        </View>
+        <View style={[styles.row, { borderTopColor: tokens.borderSubtle }]}>
           <Text style={[styles.rowTitle, { color: tokens.foreground, fontFamily: tokens.fontUi }]}>{t("settings.delegatedTools.label")}</Text>
           <Text style={[styles.rowDescription, { color: tokens.foregroundMuted, fontFamily: tokens.fontUi }]}>{t("settings.delegatedTools.description")}</Text>
           <TextInput
