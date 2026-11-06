@@ -101,7 +101,8 @@ test("card and panel share collapse, typing and fallback", t => {
   assert.ok(byId(draw(), "option-card-strip")); f.h.flushEffects();
   assert.equal(f.body.children.length, 1);
   const key = (value, target, actual = target) => {
-    const event = { key: value, target, composedPath: () => [actual, target], prevented: false, preventDefault() { this.prevented = true; } };
+    const event = { key: value, target, composedPath: () => [actual, target], prevented: false,
+      preventDefault() { this.prevented = true; }, stopPropagation() {}, stopImmediatePropagation() {} };
     for (const listener of f.listeners.get("keydown")) listener(event);
     return event.prevented;
   };
