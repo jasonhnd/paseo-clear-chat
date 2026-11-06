@@ -62,7 +62,7 @@ export function useOptionSession(agentId: string): OptionSession | null {
 export function publishAssistantReply(agentId: string, reply: { at: number; text: string }): void {
   if (!Number.isFinite(reply.at) || reply.at <= (replies.get(agentId) ?? -Infinity)) return;
   replies.set(agentId, reply.at);
-  const set = reply.at > (messages.get(agentId) ?? -Infinity) ? parseOptionQuestions(reply.text) : null;
+  const set = reply.at >= (messages.get(agentId) ?? -Infinity) ? parseOptionQuestions(reply.text) : null;
   if (!set) {
     if (snapshots.delete(agentId)) notify();
     return;
@@ -79,7 +79,7 @@ export function publishUserMessage(agentId: string, at: number): void {
   if (!Number.isFinite(at) || at <= (messages.get(agentId) ?? -Infinity)) return;
   messages.set(agentId, at);
   const snapshot = snapshots.get(agentId);
-  if (snapshot && at >= snapshot.at) {
+  if (snapshot && at > snapshot.at) {
     snapshots.delete(agentId);
     notify();
   }

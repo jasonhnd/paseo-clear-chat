@@ -5,7 +5,7 @@ const { createToolHarness } = require("./helpers/tool-harness.cjs");
 const reply = `1) Choose?\nA One\nB Two (recommended)\n\n2) Next?\nA Yes\nB No\n\nReply with a letter for each.`;
 
 function fixture(t) {
-  const h = createToolHarness("web", { agents: { a: { status: "idle" } }, deferEffects: true });
+  const h = createToolHarness("web", { agents: { a: { status: "idle" } }, deferEffects: true, themeTokens: true });
   const store = h.load("client/option-session.ts");
   const panels = h.load("client/components/option-panel.ts");
   store.publishAssistantReply("a", { at: 10, text: reply });
@@ -158,10 +158,34 @@ test("panel falls back when there is not enough room above the input root", t =>
 test("send row remains sticky with the panel background and header wraps", t => {
   const f = fixture(t), panel = f.mount(), shadow = panel.host.shadow;
   const row = shadow.find("option-send-row"), styles = shadow.children.find(child => child.tagName === "STYLE").textContent;
-  assert.equal(row.style.position, "sticky"); assert.equal(row.style.bottom, "0"); assert.equal(row.style.background, f.h.tokens.surface1);
+  assert.equal(row.style.position, "sticky"); assert.equal(row.style.bottom, "0"); assert.equal(row.style.background, shadow.children.find(child => child.className === "panel").style.background);
   assert.ok(row.contains(shadow.find("option-send")));
+  assert.match(styles, /\.send-row\{padding:8px 0 12px\}/);
   assert.match(styles, /\.header\{flex-wrap:wrap\}/);
   assert.match(styles, /\.strip\{white-space:normal/);
+});
+
+for (const theme of [
+  { name: "dark", isDark: true, surface0: "#102030", surface1: "rgba(255, 255, 255, 0.2)", surface2: "#ff000080", success: "rgba(0, 255, 0, 0.5)", panel: [63.8, 76.6, 89.4], disabled: [135.9686, 15.9373, 23.9059], enabled: [8, 143.5, 24] },
+  { name: "light", isDark: false, surface0: "#e0d0c0", surface1: "rgba(0, 0, 0, 0.1)", surface2: "rgba(0, 0, 255, 0.25)", success: "#00ff0080", panel: [201.6, 187.2, 172.8], disabled: [168, 156, 207.75], enabled: [111.5608, 231.5922, 95.6235] },
+]) test(`panel and send backgrounds are opaque and composited in the ${theme.name} theme`, t => {
+  const f = fixture(t);
+  Object.assign(f.h.tokens, theme);
+  const shadow = f.mount().host.shadow;
+  const check = (actual, expected) => {
+    const match = /^rgb\(([^)]+)\)$/.exec(actual);
+    assert.ok(match, `expected an opaque rgb colour, got ${actual}`);
+    const channels = match[1].split(",").map(Number);
+    assert.equal(channels.length, 3);
+    channels.forEach((channel, i) => assert.ok(Math.abs(channel - expected[i]) < 0.001, `${actual} channel ${i}`));
+  };
+  check(shadow.children.find(child => child.className === "panel").style.background, theme.panel);
+  check(shadow.find("option-send-row").style.background, theme.panel);
+  assert.equal(shadow.find("option-send").getAttribute("aria-disabled"), "true");
+  check(shadow.find("option-send").style.background, theme.disabled);
+  f.store.choose("a", 0, "A"); f.store.choose("a", 1, "A");
+  assert.equal(shadow.find("option-send").getAttribute("aria-disabled"), "false");
+  check(shadow.find("option-send").style.background, theme.enabled);
 });
 
 test("panel follows the composer and shares choices, notes, send and dismissal", t => {
