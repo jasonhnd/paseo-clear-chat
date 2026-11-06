@@ -420,7 +420,7 @@ Numbers are issues, pull requests and discussions in Paseo's official repository
 
 **Can I use Clear Chat next to a plugin that draws charts or other tool rows?** Yes, with two limits. A reply with a `ui` or `app` code block is left to the plugin that draws such blocks; when no such plugin is installed, Paseo draws the reply itself and Clear Chat's styling does not apply to it. For other plugins that draw tool rows, list the tool names under **Leave these tools to other plugins** in the settings.
 
-**Can my diagram or formula plugin draw its diagrams and formulas?** Yes. Enter `mermaid` (and `math` for formulas) under **Leave these code blocks to other plugins**, then reload the chat. A reply that has such a block is drawn by that plugin; other replies keep Clear Chat's look. If no plugin draws the block, Paseo draws it as plain code and Clear Chat's styling does not apply to it.
+**Can my diagram or formula plugin draw its diagrams and formulas?** Yes. Enter `mermaid` (and `math` for formulas) under **Leave these code blocks to other plugins**, then reload the chat. A reply that has such a block is drawn by that plugin; other replies keep Clear Chat's look. If no plugin draws the block, Paseo draws it itself (Paseo has its own mermaid renderer, so a diagram still appears; formulas show as the original text) and Clear Chat's styling does not apply to it.
 
 **Which Paseo versions work?** 0.14.0 or later. Clear Chat was installed on a Paseo 0.15.2 host and checked there (the product items, the page layout and the sub-agent pane); items not listed have not been checked on 0.15.2. Paseo 0.13 has an older, untested path described under [Install](#install).
 
