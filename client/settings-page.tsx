@@ -620,6 +620,14 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
         />
 
         <ToggleRow
+          title={t("settings.jumpChips.label")}
+          description={t("settings.jumpChips.description")}
+          value={preferences.showJumpChips}
+          onChange={(showJumpChips) => updateEnhancerPreferences({ showJumpChips })}
+          tokens={tokens}
+        />
+
+        <ToggleRow
           title={t("settings.markdown.label")}
           description={t("settings.markdown.description")}
           value={preferences.assistantMarkdown}

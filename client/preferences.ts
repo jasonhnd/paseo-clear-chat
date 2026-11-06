@@ -81,6 +81,7 @@ export interface EnhancerPreferences {
   collapsedStepAction: CollapsedStepAction;
   foldLongOutputAfter: OutputLineLimit;
   showAnswerCard: boolean;
+  showJumpChips: boolean;
   dismissedOptionReplies: NonNullable<PreferenceOverrides["dismissedOptionReplies"]>;
   delegatedTools: string;
   delegatedCodeBlocks: string;
@@ -110,6 +111,7 @@ export const DEFAULT_PREFERENCES: Readonly<EnhancerPreferences> = {
   collapsedStepAction: "details",
   foldLongOutputAfter: 15,
   showAnswerCard: false,
+  showJumpChips: false,
   dismissedOptionReplies: [],
   delegatedTools: "",
   delegatedCodeBlocks: "",
@@ -153,7 +155,7 @@ function loadLegacyPreferences(): PreferenceOverrides | undefined {
     const valid: Record<string, unknown> = {};
     for (const [key, schema] of Object.entries(preferenceOverridesSchema.shape)) {
       // New host-only preferences must never come from a browser import snapshot.
-      if (["textScale", "foldFinishedSteps", "foldLongOutputAfter", "codeFontFamily", "customAccent", "customAccentEnabled", "collapsedStepAction", "delegatedTools", "delegatedCodeBlocks", "hiddenTools", "codeBlockOpen", "foldMessagePrefixes", "showAnswerCard", "dismissedOptionReplies"].includes(key)) continue;
+      if (["textScale", "foldFinishedSteps", "foldLongOutputAfter", "codeFontFamily", "customAccent", "customAccentEnabled", "collapsedStepAction", "delegatedTools", "delegatedCodeBlocks", "hiddenTools", "codeBlockOpen", "foldMessagePrefixes", "showAnswerCard", "showJumpChips", "dismissedOptionReplies"].includes(key)) continue;
       const parsed = schema.safeParse((candidate as Record<string, unknown>)[key]);
       if (parsed.success && parsed.data !== undefined) valid[key] = parsed.data;
     }
