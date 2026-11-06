@@ -1,10 +1,8 @@
 import { answerText, choose, clearChoice, dismiss, getOptionSession, isOptionPopoverOpen, missingQuestion, moveCursor, setActiveQuestion, setNote, subscribeOptionSession } from "../option-session";
 import { opaqueColor, type ExtendedThemeTokens } from "./theme-tokens";
 
-const failed = new Set<string>();
 const cleanups = new Set<() => void>();
-export function resetOptionPanelFailures(): void { failed.clear(); }
-export function removeOptionPanels(): void { for (const cleanup of [...cleanups]) cleanup(); failed.clear(); }
+export function removeOptionPanels(): void { for (const cleanup of [...cleanups]) cleanup(); }
 
 type Translate = (key: any, values?: any) => string;
 interface Options {
@@ -18,7 +16,6 @@ export interface OptionPanel { host: HTMLElement; update: () => void; focusSend:
 
 // The host supplies no overlay API. Fail closed if its composer contract changes.
 export function mountOptionPanel(options: Options): OptionPanel | null {
-  if (failed.has(options.agentId)) return null;
   let host: HTMLElement | null = null;
   let observer: MutationObserver | null = null;
   let resizeObserver: ResizeObserver | null = null;
@@ -29,7 +26,6 @@ export function mountOptionPanel(options: Options): OptionPanel | null {
   let redrawPending = false;
   let unsubscribe: (() => void) | undefined;
   let disposed = false;
-  let mounted = false;
   let noteOpen: Record<number, boolean> = {};
   let input: HTMLInputElement | HTMLTextAreaElement | null = null;
   let inputParent: HTMLElement | null = null;
@@ -52,7 +48,6 @@ export function mountOptionPanel(options: Options): OptionPanel | null {
   };
   const fail = () => {
     if (disposed) return;
-    if (mounted) failed.add(options.agentId);
     cleanup(); options.fallback();
   };
   function position() {
@@ -245,7 +240,6 @@ export function mountOptionPanel(options: Options): OptionPanel | null {
     window.addEventListener("pointerup", onPointerUp, true); window.addEventListener("pointercancel", onPointerCancel, true);
     timer = setInterval(position, 250);
     unsubscribe = subscribeOptionSession(render); cleanups.add(cleanup);
-    mounted = true;
     return { host, update: render, focusSend: () => panel.querySelector<HTMLElement>('[data-testid="option-send"]')?.focus(), dispose: cleanup };
   } catch { fail(); return null; }
 }

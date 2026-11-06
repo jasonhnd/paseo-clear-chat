@@ -51,18 +51,32 @@ export function OptionCard({ agentId, at, tokens, popover = false, onSent }: { a
   }, [agentId, at, visible, popover]);
   useEffect(() => {
     if (popover || Platform.OS !== "web" || typeof document === "undefined" || typeof window === "undefined" || !visible) return;
-    const mounted = mountOptionPanel({
-      agentId, at, composer: () => optionComposer(root.current, !!panel.current), tokens: () => panelValues.current.tokens, t: (key, values) => panelValues.current.t(key, values),
-      collapsed: () => panelValues.current.collapsed, entered: () => entered.current, sendFocused: () => sendFocused.current,
-      enter: () => { setEntered(true); setSendFocus(false); },
-      focusSend: () => { if (entered.current) setSendFocus(true); },
-      collapse: () => { setEntered(false); setSendFocus(false); setCollapsed(true); },
-      reopen: () => setCollapsed(false), send: () => sendRef.current(),
-      fallback: () => { panel.current = null; setPanelActive(false); setCollapsed(false); },
-    });
-    panel.current = mounted;
-    if (mounted) { setPanelActive(true); if (optionComposer(root.current)?.value) setCollapsed(true); }
-    return () => { mounted?.dispose(); if (panel.current === mounted) panel.current = null; setPanelActive(false); };
+    let mounted: OptionPanel | null = null;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const deadline = Date.now() + 3000;
+    const attempt = () => {
+      if (Date.now() > deadline) return;
+      let input: HTMLInputElement | HTMLTextAreaElement | null;
+      try { input = optionComposer(root.current); } catch { return; }
+      if (!input) {
+        const remaining = deadline - Date.now();
+        if (remaining > 0) retry = setTimeout(attempt, Math.min(250, remaining));
+        return;
+      }
+      mounted = mountOptionPanel({
+        agentId, at, composer: () => optionComposer(root.current, !!panel.current), tokens: () => panelValues.current.tokens, t: (key, values) => panelValues.current.t(key, values),
+        collapsed: () => panelValues.current.collapsed, entered: () => entered.current, sendFocused: () => sendFocused.current,
+        enter: () => { setEntered(true); setSendFocus(false); },
+        focusSend: () => { if (entered.current) setSendFocus(true); },
+        collapse: () => { setEntered(false); setSendFocus(false); setCollapsed(true); },
+        reopen: () => setCollapsed(false), send: () => sendRef.current(),
+        fallback: () => { panel.current = null; setPanelActive(false); setCollapsed(false); },
+      });
+      panel.current = mounted;
+      if (mounted) { setPanelActive(true); if (input.value) setCollapsed(true); }
+    };
+    attempt();
+    return () => { if (retry !== undefined) clearTimeout(retry); mounted?.dispose(); if (panel.current === mounted) panel.current = null; setPanelActive(false); };
   }, [agentId, at, visible, popover]);
   useEffect(() => { panel.current?.update(); });
   if (!session || !visible) return null;
