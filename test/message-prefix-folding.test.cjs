@@ -89,23 +89,67 @@ for (const locale of ["en", "zh-CN", "ja"]) {
   });
 }
 
-test("pending pasted-image lookup leaves a matching message open", async t => {
+test("a matching message folds while the image lookup is pending and opens when images arrive", async t => {
   let finish;
   const wait = new Promise(resolve => { finish = resolve; });
   const h = createToolHarness("ios", { userMessage: true, preferences: { foldMessagePrefixes: "[Relay]" }, promptImagesRpc: () => wait });
   t.after(() => h.unmount());
-  const mounted = h.mount({ type: "user_message", text: "[Relay] image" }, false);
-  assert.equal(id(h, mounted.tree, "folded-user-message"), undefined);
-  finish({ images: [], total: 1, reason: null });
+  const identity = { host: { id: "first-host" } };
+  const mounted = h.mount({ type: "user_message", text: "[Relay] image", messageId: "one" }, false, identity);
+  assert.ok(id(h, mounted.tree, "folded-user-message"));
+  finish({ images: [{ id: "image", thumbDataUri: "data:image/png;base64,c2FtcGxl", mime: "image/png", width: 1, height: 1 }], total: 1, reason: null });
   await tick();
-  assert.equal(id(h, mounted.render(), "folded-user-message"), undefined);
+  const open = mounted.render();
+  assert.equal(id(h, open, "folded-user-message"), undefined);
+  assert.ok(id(h, open, "prompt-pasted-thumb"));
+  assert.equal(label(h, open, "Hide full message"), undefined);
+  identity.host = { id: "second-host" };
+  assert.equal(id(h, mounted.render(), "folded-user-message"), undefined, "the same message stays open when its lookup key changes");
 });
 
+for (const reason of [null, "unknown_provider", "no_match", "agent_not_found", "provider_mismatch", "timeout", "lookup_failed", "ambiguous"]) {
+  test(`a matching message folds when the image lookup returns ${reason}`, async t => {
+    const { h, tree } = await mount("[Relay] text", { foldMessagePrefixes: "[Relay]" }, {}, {
+      promptImagesRpc: async () => ({ images: [], total: 0, reason }),
+    });
+    t.after(() => h.unmount());
+    assert.ok(id(h, tree, "folded-user-message"));
+  });
+}
 
-test("an unresolved image lookup keeps a matching message open", async t => {
+test("a rejected image lookup leaves a matching message folded", async t => {
   const { h, tree } = await mount("[Relay] text", { foldMessagePrefixes: "[Relay]" }, {}, {
-    promptImagesRpc: async () => ({ images: [], total: 0, reason: "unknown_provider" }),
+    promptImagesRpc: async () => { throw new Error("lookup failed"); },
   });
   t.after(() => h.unmount());
-  assert.equal(id(h, tree, "folded-user-message"), undefined);
+  assert.ok(id(h, tree, "folded-user-message"));
+});
+
+test("image counts or thumbnails independently prevent folding", async t => {
+  for (const result of [
+    { images: [], total: 1, reason: null },
+    { images: [{ id: "image", thumbDataUri: "data:image/png;base64,c2FtcGxl" }], total: 0, reason: null },
+  ]) {
+    const { h, tree } = await mount("[Relay] text", { foldMessagePrefixes: "[Relay]" }, {}, { promptImagesRpc: async () => result });
+    t.after(() => h.unmount());
+    assert.equal(id(h, tree, "folded-user-message"), undefined);
+  }
+});
+
+test("opening survives renders and resets when message text or either id changes", async t => {
+  const { h, mounted, tree } = await mount("[Relay] text", { foldMessagePrefixes: "[Relay]" });
+  t.after(() => h.unmount());
+  label(h, tree, "Show full message").props.onPress();
+  assert.ok(label(h, mounted.render(), "Hide full message"));
+  for (const data of [
+    { ...mounted.data, text: "[Relay] changed" },
+    { ...mounted.data, text: "[Relay] changed", messageId: "message-one" },
+    { ...mounted.data, text: "[Relay] changed", messageId: "message-one", clientMessageId: "client-one" },
+  ]) {
+    mounted.render(data);
+    const folded = mounted.render(data);
+    assert.ok(id(h, folded, "folded-user-message"));
+    label(h, folded, "Show full message").props.onPress();
+    assert.ok(label(h, mounted.render(data), "Hide full message"));
+  }
 });
