@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=date"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <a href="https://paseo.sh"><img alt="Paseo 0.14.0+, tested on 0.15.2" src="https://img.shields.io/badge/Paseo-%3E%3D0.14.0%20%C2%B7%20tested%200.15.2-5b5bd6"></a>
+  <a href="https://paseo.sh"><img alt="Paseo 0.14.0+, tested on 0.15.3" src="https://img.shields.io/badge/Paseo-%3E%3D0.14.0%20%C2%B7%20tested%200.15.3-5b5bd6"></a>
 </p>
 
 <p align="center">
@@ -33,28 +33,30 @@
 - **Open any step.** The full input, output and error of a step open in a side panel on desktop, a popover on iPad and a bottom sheet on a phone, so a long output does not stretch the conversation. See [Phones and iPad](#phones-and-ipad).
 - **A card for every tool.** Claude, Codex and Hermes calls all get proper cards. Every tool kind Paseo reports has its own card, and Hermes tools such as `skill_view` and `memory` get dedicated rows. See [Features](#features).
 - **Speaks your language.** Clear Chat's own text follows the Paseo app language: English, Simplified Chinese or Japanese.
-- **Make it yours.** Twenty settings: accent colour, interface and code fonts, text size, folding, the installed version and more. Settings are saved on the host, so every device connected to it shares them. See [Settings](#settings).
+- **Make it yours.** Twenty-one settings: accent colour, interface and code fonts, text size, folding, the installed version and more. Settings are saved on the host, so every device connected to it shares them. See [Settings](#settings).
 - **Stays fast.** In a 300-step test on a 4-core cloud machine, Clear Chat drew the first screen in 673–843 ms; with Clear Chat off, native Paseo drew it in 387–444 ms, because it folds the whole turn into one row instead of showing each step. The method is under [Performance](#performance).<sup>1</sup>
 - **Quote and reply.** Pick the quote icon on a message that contains text and send your reply as a quoted block.
 
 <sub>1. Median of five runs in headless Google Chrome on one machine. Your numbers will differ. The method is in [scripts/perf/README.md](scripts/perf/README.md).</sub>
 
-## What's new in 0.15.2.2
+## What's new in 0.15.3.1
 
-- **New setting: Hide these tools.** Enter tool names separated by commas and Clear Chat removes the rows of those tools from the chat, so a noisy tool, such as a hook that runs on every turn, no longer fills the screen. Names are matched exactly, including upper and lower case, and the list is empty by default. A call that failed, or that is waiting for your approval, is always shown. If a name is in both **Hide these tools** and **Leave these tools to other plugins**, hiding wins ([#216](https://github.com/jasonhnd/paseo-clear-chat/issues/216)).
-- **New setting: Leave these code blocks to other plugins.** Enter language names separated by commas, for example `mermaid`, and a reply that has a code block in one of those languages is drawn by the plugin that handles it, such as a diagram plugin, instead of showing as code. Names are not case sensitive, and `ui` and `app` are always included. The special name `math` also covers formulas written as `$$ … $$`, `\( … \)`, `\[ … \]` and inline `$x$`; code blocks and inline code never count. The list is empty by default. The trade-off: when no plugin draws the block, Paseo draws the reply itself and Clear Chat's styling does not apply to it ([#218](https://github.com/jasonhnd/paseo-clear-chat/issues/218)).
-- **New setting: Fold messages that start with.** Enter the beginning of the messages you want folded, one per line, for example `[Relay]`. Matching is case sensitive and ignores white space at the start of the message. A matching message shows as one line, with its first line cut at about 120 characters, the time and a **Show** button; **Show** opens the whole message and **Hide** folds it again. A message that Clear Chat can tell carries an image is not folded, the find bar still finds the folded text, and the setting needs **Enhanced prompt bubble** to be on. The list is empty by default ([#219](https://github.com/jasonhnd/paseo-clear-chat/issues/219), [#226](https://github.com/jasonhnd/paseo-clear-chat/issues/226)).
-- **New setting: Open button on web addresses.** Off by default. When it is on, a code block that holds only one `https://` address gets an **Open** button beside **Copy**. A `http://` address, or one that points to `localhost`, `127.0.0.1`, `::1` or a name ending in `.local`, does not get it ([#220](https://github.com/jasonhnd/paseo-clear-chat/issues/220)).
+- **New setting: an answer card for lettered questions (off by default).** When the latest reply asks numbered questions with lettered options, for example "1. Which database? A. SQLite B. Postgres", and asks you to reply in a short form or marks one option as recommended, Clear Chat shows a card under that reply. The card has a tab for each question, the options with a **Recommended** mark, **Write my own** for a note, **Next**, and **Not options** for when the reply only looked like options. The **Send** button shows the exact text it will send, such as `1B 2A`, and names the question that is still missing. The card is drawn only under the latest reply, only while the agent is not running, and a new message removes it. It works by touch and by mouse, and rows and buttons are at least 44 points high ([#235](https://github.com/jasonhnd/paseo-clear-chat/issues/235)).
+- **Keyboard control on the web and desktop.** The card takes no keys until you enter it, by clicking it or by pressing the up or down arrow while the input box is empty. Then the arrows move between options, `A` to `H` or `1` to `8` choose an option, **Enter** chooses the highlighted option and moves on (the last **Enter** sends), **Tab** or the right arrow goes to the next question (on the last question, **Tab** moves to the **Send** button) and **Shift+Tab** or the left arrow goes back, and **Esc** collapses the card and returns to the input box. As soon as the input box has text, the card collapses and every key goes to the input box ([#236](https://github.com/jasonhnd/paseo-clear-chat/issues/236)).
+- **A typed message keeps your choices.** While the card is available (it collapses by itself as soon as you type) you can choose some answers and type the rest: when you press **Enter** to send your text, the answers you chose are put in front of it, followed by a space. This happens only when the input box is not empty, you chose at least one question, Shift and Alt are not held, and no input-method composition is in progress; if the host does not send within 300 ms, the prefix is taken out again (web and desktop only). The input box is looked up in the conversation page the card belongs to, so after you have visited another conversation and come back, the chosen answers are still put in front of what you type. ([#230](https://github.com/jasonhnd/paseo-clear-chat/issues/230), [#281](https://github.com/jasonhnd/paseo-clear-chat/issues/281)).
+- **A pill above the input box shows the open questions.** While the card is available, a small pill above the input box reads "Open questions: N", where N is the number of questions you have not chosen yet. Press it to open the same picker, as a popover on wide layouts and a bottom sheet on phones, so you can still read the full wording of the questions after you scroll away. Choices are shared with the card. While the agent is running the popover can be opened but Send is disabled. The pill is not shown when the setting is off or after you press Not options ([#231](https://github.com/jasonhnd/paseo-clear-chat/issues/231)).
+- **A floating answer panel on the web and desktop.** The panel floats above the input box with the same questions, choices, keys and Send as the card; while it is shown, the card under the reply is hidden. It relies on the structure of Paseo's page: if the page is not as the panel expects (the input box cannot be found, is hidden or replaced, or has too little room above it), the panel removes itself and the card under the reply stays open, with no error message and with the keys still working. The first click on a button in the panel counts. The panel, its Send row and its Send button are drawn on opaque backgrounds, so the rows underneath do not show through; the panel is hidden while the pill's popover is open and comes back when the popover closes. The Send row sits below the scrolling part of the panel, so Send no longer covers Next, Not options or the option rows; a redraw keeps the scroll position and a new question starts at the top. If the input box is not on the page yet when the card appears, the card looks again every 250 ms for up to 3 seconds; a panel that fell back to the card, because the conversation page was hidden or because of a page structure problem, is tried again each time the conversation page is shown again (switching back to the conversation), and after a reload ([#229](https://github.com/jasonhnd/paseo-clear-chat/issues/229), [#255](https://github.com/jasonhnd/paseo-clear-chat/issues/255), [#261](https://github.com/jasonhnd/paseo-clear-chat/issues/261), [#263](https://github.com/jasonhnd/paseo-clear-chat/issues/263), [#265](https://github.com/jasonhnd/paseo-clear-chat/issues/265), [#264](https://github.com/jasonhnd/paseo-clear-chat/issues/264), [#267](https://github.com/jasonhnd/paseo-clear-chat/issues/267), [#275](https://github.com/jasonhnd/paseo-clear-chat/issues/275), [#276](https://github.com/jasonhnd/paseo-clear-chat/issues/276), [#281](https://github.com/jasonhnd/paseo-clear-chat/issues/281)).
+- **Recommendation marks are read correctly.** A mark such as `（推荐）` or `(recommended)` after an option is recognised, and "not recommended" and `不推荐` are not ([#239](https://github.com/jasonhnd/paseo-clear-chat/issues/239)).
 
 ## Install
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.2.2
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.3.1
 ```
 
 Open Paseo’s plugins page and look for the version at the start of the Clear Chat description. Paseo 0.14.0 displays the default English description there even when the app language is changed.
 
-Clear Chat 0.15.2.2 needs Paseo 0.14.0 or later. Open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
+Clear Chat 0.15.3.1 needs Paseo 0.14.0 or later. Open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
 
 To update later:
 
@@ -103,7 +105,7 @@ A Clear Chat version is the Paseo version it is built and tested for, plus one m
 ```bash
 paseo plugin update clear-chat                 # latest on main, asks first
 paseo plugin update clear-chat --yes           # same, no question
-paseo plugin update clear-chat --ref v0.15.2.2 --yes   # pin one release
+paseo plugin update clear-chat --ref v0.15.3.1 --yes   # pin one release
 ```
 
 An update keeps your settings. A rollback to an earlier ref also keeps them, but the effect of a specific rollback on settings is not guaranteed, so back them up first if the settings matter. Removing the plugin deletes its settings.
@@ -292,8 +294,9 @@ On a message that contains text, pick the quote icon beside Copy. A panel opens 
 | Leave these code blocks to other plugins | Empty by default. Language names separated by commas, not case sensitive; `ui` and `app` are always included, and `math` also covers formulas. A reply with a code block in a listed language is drawn by another plugin; if none does, Paseo draws it and Clear Chat's styling does not apply. |
 | Fold messages that start with | Empty by default. One message beginning per line, case sensitive, white space at the start of the message ignored. A matching message shows as one line (its first line, about 120 characters, and the time) with **Show** and **Hide**; a message that Clear Chat can tell carries an image is not folded; for a provider that gives Clear Chat no information about a message's images and whose image lookup cannot answer, a matching message with an attached image is folded too, and **Show** opens it. Needs **Enhanced prompt bubble**; reload the chat to update messages already shown. |
 | Show an Open button on code blocks that hold only a web address | Off by default. Adds **Open** beside **Copy** on a code block whose whole content is one `https://` address; not for `http://`, `localhost`, `127.0.0.1`, `::1` or `.local` addresses. |
+| Show an answer card under replies that ask lettered questions | Off by default. When the latest reply asks numbered questions with lettered options, a card under it lets you choose by touch, mouse or keyboard (keyboard on the web and desktop only) and sends an answer such as `1B 2A`. A pill above the input box shows how many questions are open, and on the web and desktop a floating panel shows the picker above the input box. Reload the chat to update replies already shown. |
 
-**Installed version.** Under the title of the settings page, Clear Chat shows `Clear Chat version 0.15.2.2`. The line below it explains the value: a directory install keeps the version information already in that directory, so it can show an older release than the one you installed. If the build carries no usable version, the line shows **Unknown**.
+**Installed version.** Under the title of the settings page, Clear Chat shows `Clear Chat version 0.15.3.1`. The line below it explains the value: a directory install keeps the version information already in that directory, so it can show an older release than the one you installed. If the build carries no usable version, the line shows **Unknown**.
 
 **Custom accent colour.** Tap a swatch, or enter `#RGB` or `#RRGGBB` and press **Apply**. An invalid HEX value stays in the field with an error, and the saved colour does not change. Switching to a preset remembers your custom colour. The saved HEX value never changes; only the colour you see is darkened on light themes or lightened on dark themes when text would otherwise be hard to read. Filled buttons use black or white text, whichever has more contrast.
 
@@ -323,6 +326,7 @@ Settings are saved on the host, so every device connected to that host shares th
 | Leave these code blocks to other plugins | Empty | Every device |
 | Fold messages that start with | Empty | Every device; needs Enhanced prompt bubble |
 | Show an Open button on code blocks that hold only a web address | Off | Every device |
+| Show an answer card under replies that ask lettered questions | Off | Every device; keyboard control, typed-message choices and the floating panel on the web and desktop only |
 
 The settings page also shows the installed build's version under its title, with a line explaining that a directory install keeps the version information already in that directory.
 
@@ -397,7 +401,7 @@ Numbers are issues, pull requests and discussions in Paseo's official repository
 
 ## Privacy and data on the host
 
-- Clear Chat reads the conversation Paseo already shows and changes only how it is displayed. It does not send conversation content off the host, to agent providers or to any other service.
+- Clear Chat reads the conversation Paseo already shows and changes only how it is displayed. It does not send conversation content off the host, to agent providers or to any other service. The exception is the messages you send yourself: **Send** on the answer card and a quote reply go, like a message you type, through Paseo to the agent of the current chat.
 - Images in a reply that point to a web address are loaded by the app or browser from that address, as in a web page. Clicking a link opens it in your browser or the matching app.
 - On the host, the plugin's daemon side reads local image files a conversation refers to, highlights code locally, and opens files in the host's file manager when you ask.
 - Saved Hermes·CC images live in `plugin-data/clear-chat/hermes-cc-images` (2 GiB cap, oldest deleted first); the matching records live in `hermes-cc-history` next to it (64 MiB per conversation, 1 GiB in total, oldest conversation dropped first).
@@ -422,14 +426,16 @@ Numbers are issues, pull requests and discussions in Paseo's official repository
 
 **Can my diagram or formula plugin draw its diagrams and formulas?** Yes. Enter `mermaid` (and `math` for formulas) under **Leave these code blocks to other plugins**, then reload the chat. A reply that has such a block is drawn by that plugin; other replies keep Clear Chat's look. If no plugin draws the block, Paseo draws it itself (Paseo has its own mermaid renderer, so a diagram still appears; formulas show as the original text) and Clear Chat's styling does not apply to it.
 
-**Which Paseo versions work?** 0.14.0 or later. Clear Chat was installed on a Paseo 0.15.2 host and checked there (the product items, the page layout and the sub-agent pane); items not listed have not been checked on 0.15.2. Paseo 0.13 has an older, untested path described under [Install](#install).
+**Why do I not see the answer card?** The setting must be on. The latest reply must ask numbered questions with lettered options that start at A and follow without gaps, at least two options per question, and either ask you to reply in a short form (for example "reply with 1B 2A") or mark an option as recommended. The agent must not be running, and a newer message of yours hides the card. Questions inside a code block or a quotation are ignored. If an ordinary list is taken for options, press **Not options**.
+
+**Which Paseo versions work?** 0.14.0 or later. Clear Chat was installed and checked on a Paseo 0.15.3 host (the product items, the page layout, the sub-agent pane, the answer card and the floating panel), and the answer card and the floating panel were also checked on Paseo 0.15.2; the other items have not been checked on 0.15.2. Paseo 0.13 has an older, untested path described under [Install](#install).
 
 ## Troubleshooting
 
 | Problem | What to do |
 |---|---|
 | Installing through the Cafe plugin fails, or Paseo reports a missing Shiki dependency such as `@shikijs/core`. | Retry with the Paseo CLI command in [Install](#install), using the same repository and release ref. Clear Chat installs its dependencies with `npm ci --include=dev`, so Node.js and npm must be available on the daemon host, and its network must reach the npm registry. If you manage the checkout yourself, run `npm ci --include=dev` there before retrying. |
-| Installation stops because the plugin needs a newer Paseo version. | For Clear Chat 0.15.2.2, update Paseo on the daemon host and all connected apps to 0.14.0 or later. For older hosts, see the [Install](#install) section for the Paseo 0.13 commands and their untested-status warning, and the separate Paseo 0.12 instructions. |
+| Installation stops because the plugin needs a newer Paseo version. | For Clear Chat 0.15.3.1, update Paseo on the daemon host and all connected apps to 0.14.0 or later. For older hosts, see the [Install](#install) section for the Paseo 0.13 commands and their untested-status warning, and the separate Paseo 0.12 instructions. |
 | Paseo rejects the plugin version, or Clear Chat says plugin settings or timeline support is missing. | Update Paseo on the daemon host and in every connected app, then reload Clear Chat. The Paseo version Clear Chat needs is declared in `paseo-plugin.json`. |
 | Clear Chat cannot start because plugin registration failed. | Update Paseo and reload Clear Chat. If it still fails, back up the plugin settings before you reinstall from the CLI. |
 | Clear Chat cannot read its settings from the host. | Reconnect to the host and choose **Retry** in **Settings → Plugins → Clear Chat**. If it still fails, check that the daemon can access the plugin settings folder. |
@@ -464,7 +470,7 @@ If the `beautiful-chat` settings folder does not exist, you never changed Beauti
 **2. Install**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.2.2
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.3.1
 ```
 
 **3. Check, then remove the old plugin**
