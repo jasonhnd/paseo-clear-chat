@@ -22,7 +22,6 @@ import { publishHubSnapshot } from "./hub-activity";
 import { publishAssistantReply, publishUserMessage } from "./option-session";
 import { MarkdownView } from "./components/markdown/markdown-view";
 import { OptionCard } from "./components/option-card";
-import { resetOptionPanelFailures } from "./components/option-panel";
 import { TimelineTailHub } from "./components/hub-live";
 import { AssistantFooter } from "./components/turn-footer";
 import { SystemCard } from "./components/system-card";
@@ -390,8 +389,6 @@ export function LiveAssistantRenderer({
 
   // Copy belongs to this reply, even when another item or conversation owns
   // the global hub tail. Canonical turn timing belongs only to the final reply.
-  useEffect(() => { if (!preferences.showAnswerCard) resetOptionPanelFailures(); }, [preferences.showAnswerCard]);
-
   const itemKey = `assistant:${timestamp.getTime()}`;
 
   // Job results, IRC relays and reminders arrive as replies because the host

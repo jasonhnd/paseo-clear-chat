@@ -239,11 +239,78 @@ test("a missing composer at mount can be retried on the next mount", t => {
   f.replace(f.composer); assert.ok(f.mount());
 });
 
-for (const [name, change] of [["removed", f => { f.composer.isConnected = false; }], ["replaced", f => f.replace({})], ["wrapped", f => { f.composer.parentElement = {}; }], ["position throws later", f => { f.composer.throwRect = true; }]]) {
+for (const [name, change] of [["removed", f => { f.composer.isConnected = false; }], ["hidden", f => { f.composer.hidden = true; }], ["replaced", f => f.replace({})], ["wrapped", f => { f.composer.parentElement = {}; }], ["position throws later", f => { f.composer.throwRect = true; }]]) {
   test(`fallback when composer is ${name}`, t => {
-    const f = fixture(t); assert.ok(f.mount()); change(f); f.mutations[0].fn(); assert.equal(f.fallback, 1); assert.equal(f.body.children.length, 0); assert.equal(f.listeners.get("resize").size, 0); const count = f.created; assert.equal(f.mount(), null); assert.equal(f.created, count);
+    const f = fixture(t); assert.ok(f.mount()); change(f); f.mutations[0].fn(); assert.equal(f.fallback, 1); assert.equal(f.body.children.length, 0); assert.equal(f.listeners.get("resize").size, 0);
+    f.composer.isConnected = true; f.composer.hidden = false; f.composer.parentElement = null; f.composer.throwRect = false; f.replace(f.composer);
+    assert.ok(f.mount());
   });
 }
+
+function cardPage(f) {
+  const Card = f.h.load("client/components/option-card.tsx").OptionCard;
+  let available = false, reads = 0, hidden = false;
+  const root = { getClientRects: () => hidden ? [] : [1], contains: () => false, querySelector: () => null };
+  const chat = { getClientRects: () => [1], contains: node => node === root };
+  root.parentElement = { parentElement: null, querySelectorAll: selector => {
+    if (selector.includes("agent-chat-scroll")) return [chat];
+    reads++; return available ? [f.composer] : [];
+  } };
+  const byId = (tree, id) => f.h.nodes(tree, node => node.props.testID === id)[0];
+  const draw = () => {
+    const tree = f.h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: f.h.tokens } });
+    hidden = byId(tree, "option-card-strip")?.props.style.display === "none";
+    (byId(tree, "option-card") ?? byId(tree, "option-card-strip"))?.props.ref(root);
+    return tree;
+  };
+  return { draw, byId, setAvailable: value => { available = value; }, get reads() { return reads; } };
+}
+
+test("a card mounts its panel when the composer appears during the retry window", t => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const f = fixture(t), page = cardPage(f);
+  assert.ok(page.byId(page.draw(), "option-card")); f.h.flushEffects();
+  t.mock.timers.tick(250); t.mock.timers.tick(250); t.mock.timers.tick(100);
+  page.setAvailable(true); t.mock.timers.tick(150);
+  assert.equal(f.body.children.length, 1);
+  assert.equal(page.byId(page.draw(), "option-card-strip").props.style.display, "none");
+});
+
+test("a mount-time miss stops at three seconds and a new card tries again", t => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const f = fixture(t), page = cardPage(f);
+  assert.ok(page.byId(page.draw(), "option-card")); f.h.flushEffects();
+  for (let i = 0; i < 12; i++) t.mock.timers.tick(250);
+  const reads = page.reads;
+  page.setAvailable(true); t.mock.timers.tick(1000);
+  assert.equal(page.reads, reads); assert.equal(f.body.children.length, 0);
+  assert.ok(page.byId(page.draw(), "option-card"));
+  f.h.unmount(); page.draw(); f.h.flushEffects();
+  assert.equal(f.body.children.length, 1);
+});
+
+test("unmounting a card cancels a pending composer retry", t => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const f = fixture(t), page = cardPage(f);
+  page.draw(); f.h.flushEffects(); t.mock.timers.tick(250);
+  f.h.unmount(); const reads = page.reads;
+  page.setAvailable(true); t.mock.timers.tick(3000);
+  assert.equal(page.reads, reads); assert.equal(f.body.children.length, 0);
+});
+
+test("a card does not retry after its mounted panel fails", t => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const f = fixture(t), page = cardPage(f);
+  page.setAvailable(true); page.draw(); f.h.flushEffects();
+  assert.equal(f.body.children.length, 1);
+  f.composer.isConnected = false; f.mutations[0].fn();
+  assert.ok(page.byId(page.draw(), "option-card")); f.h.flushEffects();
+  f.composer.isConnected = true; const reads = page.reads;
+  t.mock.timers.tick(3000);
+  assert.equal(page.reads, reads); assert.equal(f.body.children.length, 0);
+  f.h.unmount(); page.draw(); f.h.flushEffects();
+  assert.equal(f.body.children.length, 1);
+});
 
 
 test("card and panel share collapse, typing and fallback", t => {
