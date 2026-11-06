@@ -164,6 +164,12 @@ function composite(foreground: string, background: string): string {
   return `rgb(${channel(color.r, base.r)}, ${channel(color.g, base.g)}, ${channel(color.b, base.b)})`;
 }
 
+/** Resolve a theme colour over an opaque base for surfaces that must hide content behind them. */
+export function opaqueColor(color: string, surface: string, isDark: boolean): string {
+  const base = composite(surface, isDark ? "#000000" : "#ffffff");
+  return composite(color, base);
+}
+
 function luminance(color: string): number {
   const rgba = parseColor(color);
   if (!rgba) return 0;
