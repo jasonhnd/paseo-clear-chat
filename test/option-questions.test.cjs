@@ -170,3 +170,14 @@ test("handles a long reply in linear time", () => {
   assert.equal(result.error, undefined, result.error?.message);
   assert.equal(result.status, 0, result.stderr);
 });
+
+test("formats only valid chosen answers as a composer prefix", () => {
+  const partial = h.load("client/option-questions.ts").formatPartialOptionAnswer;
+  const set = parse("1) First?\nA One\nB Two\n\n2) Second?\nA One\nB Two\n\nReply: A");
+  assert.equal(partial(set, {}), "");
+  assert.equal(partial(set, { 1: { letter: "B" } }), "2B ");
+  assert.equal(partial(set, { 0: { letter: "A" }, 1: { letter: "B" } }), "1A 2B ");
+  assert.equal(partial(set, { 0: { letter: "A", note: " hello\nworld " } }), "1A (hello world) ");
+  assert.equal(partial(set, { 0: { letter: "Z" }, 1: { letter: "A" } }), "2A ");
+  assert.equal(partial(parse("Pick?\nA One\nB Two\nReply: A"), { 0: { letter: "B" } }), "B ");
+});
