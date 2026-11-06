@@ -47,7 +47,7 @@ export function OptionCard({ agentId, at, tokens, popover = false, onSent }: { a
   }, [agentId, at, visible, popover]);
   useEffect(() => {
     if (popover || Platform.OS !== "web" || typeof document === "undefined" || !visible) return;
-    return installOptionComposer(document, agentId, at);
+    return installOptionComposer(document, agentId, at, () => optionComposer(root.current, !!panel.current));
   }, [agentId, at, visible, popover]);
   useEffect(() => {
     if (popover || Platform.OS !== "web" || typeof document === "undefined" || typeof window === "undefined" || !visible) return;
@@ -86,6 +86,11 @@ export function OptionCard({ agentId, at, tokens, popover = false, onSent }: { a
     };
     attempt(Date.now() + 3000);
     const watch = setInterval(() => {
+      if (!panel.current && pageHidden()) {
+        retryWhenShown = true;
+        if (retry !== undefined) { clearTimeout(retry); retry = undefined; }
+        return;
+      }
       if (retryWhenShown && root.current && root.current.getClientRects().length && !pageHidden()) {
         retryWhenShown = false;
         attempt(Date.now() + 3000);

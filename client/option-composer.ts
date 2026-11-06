@@ -1,14 +1,7 @@
 import { formatPartialOptionAnswer } from "./option-questions";
 import { getOptionSession } from "./option-session";
 
-const selector = "[data-composer-input]";
 type Composer = HTMLInputElement | HTMLTextAreaElement;
-
-function composer(doc: Document): Composer | null {
-  const marked = doc.querySelector(selector);
-  const input = marked?.matches("textarea, input") ? marked : marked?.querySelector("textarea, input");
-  return input instanceof HTMLTextAreaElement || input instanceof HTMLInputElement ? input : null;
-}
 
 function setValue(input: Composer, value: string): void {
   const prototype = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -20,7 +13,7 @@ function setValue(input: Composer, value: string): void {
 
 // Install only while the matching card is available. The capture listener runs
 // before the host's key handler without consuming or changing the key event.
-export function installOptionComposer(doc: Document, agentId: string, at: number): () => void {
+export function installOptionComposer(doc: Document, agentId: string, at: number, composer: () => Composer | null): () => void {
   let pending: { input: Composer; prefix: string; timer: ReturnType<typeof setTimeout> } | null = null;
 
   function cancelPending(): void {
@@ -31,7 +24,7 @@ export function installOptionComposer(doc: Document, agentId: string, at: number
   }
 
   function observeDraft(): void {
-    if (pending && (composer(doc) !== pending.input || !pending.input.value.startsWith(pending.prefix))) cancelPending();
+    if (pending && (composer() !== pending.input || !pending.input.value.startsWith(pending.prefix))) cancelPending();
   }
 
   function removePrefix(): void {
@@ -39,7 +32,7 @@ export function installOptionComposer(doc: Document, agentId: string, at: number
     if (!current) return;
     cancelPending();
     const { input, prefix } = current;
-    if (composer(doc) !== input || !input.value.startsWith(prefix)) return;
+    if (composer() !== input || !input.value.startsWith(prefix)) return;
     const start = input.selectionStart ?? input.value.length;
     const end = input.selectionEnd ?? start;
     try {
@@ -50,7 +43,7 @@ export function installOptionComposer(doc: Document, agentId: string, at: number
 
   function onKey(event: KeyboardEvent): void {
     if (pending || event.key !== "Enter" || event.shiftKey || event.isComposing || event.altKey || event.defaultPrevented) return;
-    const input = composer(doc);
+    const input = composer();
     if (!input || event.target !== input || !input.value) return;
     const session = getOptionSession(agentId);
     if (!session || session.at !== at || session.dismissed || session.sending) return;
@@ -65,9 +58,9 @@ export function installOptionComposer(doc: Document, agentId: string, at: number
     let written = false;
     try {
       input.setSelectionRange(0, 0);
-      if (composer(doc) !== input || input.value !== original) return;
+      if (composer() !== input || input.value !== original) return;
       const inserted = doc.execCommand("insertText", false, prefix);
-      if (composer(doc) !== input) {
+      if (composer() !== input) {
         if (input.value !== original) setValue(input, original);
         return;
       }
@@ -75,9 +68,9 @@ export function installOptionComposer(doc: Document, agentId: string, at: number
         written = input.value === expected;
       } else {
         if (input.value !== original) setValue(input, original);
-        if (composer(doc) === input && input.value === original) {
+        if (composer() === input && input.value === original) {
           setValue(input, expected);
-          written = composer(doc) === input && input.value === expected;
+          written = composer() === input && input.value === expected;
         }
       }
     } catch { /* Restore below and leave the key to the host. */ }

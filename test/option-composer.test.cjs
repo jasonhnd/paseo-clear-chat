@@ -8,10 +8,11 @@ function fixture(t, { card = false } = {}) {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const previous = { HTMLInputElement: global.HTMLInputElement, HTMLTextAreaElement: global.HTMLTextAreaElement, document: global.document };
   class Input {
-    constructor(value = "typed") { this._value = value; this.selectionStart = this.selectionEnd = value.length; this.listeners = new Set(); }
+    constructor(value = "typed") { this.tagName = "INPUT"; this._value = value; this.selectionStart = this.selectionEnd = value.length; this.listeners = new Set(); }
     get value() { return this._value; }
     set value(v) { this._value = v; }
     matches(selector) { return selector === "textarea, input"; }
+    getClientRects() { return [1]; }
     setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; this.onSelect?.(); }
     addEventListener(type, fn) { if (type === "input") this.listeners.add(fn); }
     removeEventListener(type, fn) { if (type === "input") this.listeners.delete(fn); }
@@ -37,9 +38,16 @@ function fixture(t, { card = false } = {}) {
   let draw;
   if (card) {
     const Renderer = h.load("client/live-renderers.tsx").LiveAssistantRenderer;
-    draw = () => h.draw({ type: Renderer, props: { agentId: "a", host: { id: "host" }, item: { data: { text: reply } }, timestamp: new Date(10), theme: { colors: {} } } });
+    const root = { getClientRects: () => [1] };
+    const chat = { getClientRects: () => [1], contains: node => node === root };
+    root.parentElement = { parentElement: null, querySelectorAll: selector => selector.includes("agent-chat-scroll") ? [chat] : marked ? [marked] : [] };
+    draw = () => {
+      const tree = h.draw({ type: Renderer, props: { agentId: "a", host: { id: "host" }, item: { data: { text: reply } }, timestamp: new Date(10), theme: { colors: {} } } });
+      h.nodes(tree, node => node.props.testID === "option-card" || node.props.testID === "option-card-strip")[0]?.props.ref?.(root);
+      return tree;
+    };
     draw();
-  } else cleanup = h.load("client/option-composer.ts").installOptionComposer(doc, "a", 10);
+  } else cleanup = h.load("client/option-composer.ts").installOptionComposer(doc, "a", 10, () => marked);
   function key(options = {}) {
     const event = { key: "Enter", shiftKey: false, isComposing: false, altKey: false, defaultPrevented: false, target: marked, ...options };
     for (const fn of [...listeners]) fn(event);
@@ -109,13 +117,25 @@ test("changed page structure leaves the draft and key alone", t => {
   const f = fixture(t);
   const original = f.input;
   f.input = null; assert.equal(f.key({ target: original }).defaultPrevented, false); assert.equal(original.value, "typed");
-  f.input = { matches: () => false, querySelector: () => null, textContent: "typed" };
-  assert.equal(f.key().defaultPrevented, false); assert.equal(f.input.textContent, "typed");
   f.input = original;
   const replacement = new f.Input("typed");
   original.onSelect = () => { f.input = replacement; };
   assert.equal(f.key().defaultPrevented, false);
   assert.equal(original.value, "typed"); assert.equal(replacement.value, "typed");
+});
+
+test("uses the card's input when another marked input comes first, and skips an unavailable pane", t => {
+  const f = fixture(t);
+  const input = f.input, hidden = new f.Input("hidden draft");
+  f.doc.querySelector = () => hidden;
+  assert.equal(f.key().defaultPrevented, false);
+  assert.equal(input.value, "1A typed");
+  assert.equal(hidden.value, "hidden draft");
+  t.mock.timers.tick(300);
+  f.input = null;
+  assert.equal(f.key({ target: input }).defaultPrevented, false);
+  assert.equal(input.value, "typed");
+  assert.equal(hidden.value, "hidden draft");
 });
 
 test("native setter fallback updates the host and removes a pending prefix", t => {
