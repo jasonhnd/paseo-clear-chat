@@ -48,7 +48,7 @@ function fixture(t) {
   global.HTMLInputElement = Element; global.HTMLTextAreaElement = Element;
   const body = new Element("body");
   global.document = { body, addEventListener() {}, removeEventListener() {}, querySelector() { return null; }, createElement(tag) { created++; if (throwMount) throw Error("mount"); return new Element(tag); } };
-  global.window = { innerWidth: 900, innerHeight: 700, getComputedStyle: node => ({ display: node.hidden ? "none" : "block", visibility: "visible", opacity: "1" }),
+  global.window = { innerWidth: 900, innerHeight: 700, getComputedStyle: node => ({ display: node.hidden ? "none" : "block", visibility: node.invisible ? "hidden" : "visible", opacity: "1" }),
     addEventListener(type, fn) { const set = listeners.get(type) ?? new Set(); set.add(fn); listeners.set(type, set); },
     removeEventListener(type, fn) { listeners.get(type)?.delete(fn); } };
   global.MutationObserver = class { constructor(fn) { this.fn = fn; mutations.push(this); } observe() {} disconnect() { this.disconnected = true; } };
@@ -247,24 +247,81 @@ for (const [name, change] of [["removed", f => { f.composer.isConnected = false;
   });
 }
 
-function cardPage(f) {
+function cardPage(f, popover = false) {
   const Card = f.h.load("client/components/option-card.tsx").OptionCard;
   let available = false, reads = 0, hidden = false;
-  const root = { getClientRects: () => hidden ? [] : [1], contains: () => false, querySelector: () => null };
+  const root = { get hidden() { return hidden; }, getClientRects: () => hidden ? [] : [1], contains: () => false, querySelector: () => null };
   const chat = { getClientRects: () => [1], contains: node => node === root };
-  root.parentElement = { parentElement: null, querySelectorAll: selector => {
+  const parent = root.parentElement = { parentElement: null, matches: () => false, querySelectorAll: selector => {
     if (selector.includes("agent-chat-scroll")) return [chat];
+    if (selector === 'button, [role="button"]') return [];
     reads++; return available ? [f.composer] : [];
   } };
   const byId = (tree, id) => f.h.nodes(tree, node => node.props.testID === id)[0];
   const draw = () => {
-    const tree = f.h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: f.h.tokens } });
+    const tree = f.h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: f.h.tokens, popover } });
     hidden = byId(tree, "option-card-strip")?.props.style.display === "none";
-    (byId(tree, "option-card") ?? byId(tree, "option-card-strip"))?.props.ref(root);
+    (byId(tree, "option-card") ?? byId(tree, "option-card-strip"))?.props.ref?.(root);
     return tree;
   };
-  return { draw, byId, setAvailable: value => { available = value; }, get reads() { return reads; } };
+  return { draw, byId, root, parent, setAvailable: value => { available = value; }, get reads() { return reads; } };
 }
+
+for (const hiddenProperty of ["hidden", "invisible"]) test(`a hidden ${hiddenProperty === "hidden" ? "display" : "visibility"} ancestor retries on each return`, t => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+  const f = fixture(t), page = cardPage(f);
+  f.composer.parentElement = page.parent;
+  page.setAvailable(true); page.draw(); f.h.flushEffects();
+  page.draw(); assert.equal(page.root.hidden, true);
+  f.body.children[0].shadow.find("option-row-B").onclick();
+  for (let cycle = 0; cycle < 2; cycle++) {
+    page.parent[hiddenProperty] = true; f.mutations.at(-1).fn();
+    assert.equal(f.body.children.length, 0);
+    assert.ok(page.byId(page.draw(), "option-card"));
+    const reads = page.reads;
+    t.mock.timers.tick(1000);
+    assert.equal(page.reads, reads); assert.equal(f.body.children.length, 0);
+    page.parent[hiddenProperty] = false;
+    if (cycle === 0) page.setAvailable(false);
+    t.mock.timers.tick(250);
+    if (cycle === 0) {
+      assert.equal(f.body.children.length, 0);
+      page.setAvailable(true); t.mock.timers.tick(250);
+    }
+    assert.equal(f.body.children.length, 1);
+    assert.equal(f.body.children[0].shadow.find("option-row-B").getAttribute("aria-pressed"), "true");
+    page.draw();
+  }
+});
+
+test("the card root's own hidden display does not trigger a retry after a panel failure", t => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+  const f = fixture(t), page = cardPage(f);
+  page.setAvailable(true); page.draw(); f.h.flushEffects(); page.draw();
+  assert.equal(page.root.hidden, true);
+  f.composer.isConnected = false; f.mutations[0].fn();
+  page.draw(); f.composer.isConnected = true;
+  const reads = page.reads;
+  t.mock.timers.tick(3000);
+  assert.equal(page.reads, reads); assert.equal(f.body.children.length, 0);
+});
+
+test("unmount clears the visibility watch and popovers start no watch", t => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+  const f = fixture(t), page = cardPage(f);
+  f.composer.parentElement = page.parent;
+  page.setAvailable(true); page.draw(); f.h.flushEffects(); page.draw();
+  page.parent.hidden = true; f.mutations[0].fn(); page.draw();
+  f.h.unmount(); page.parent.hidden = false;
+  const reads = page.reads;
+  t.mock.timers.tick(3000);
+  assert.equal(page.reads, reads); assert.equal(f.body.children.length, 0);
+  const interval = global.setInterval;
+  let intervals = 0;
+  global.setInterval = (...args) => { intervals++; return interval(...args); };
+  try { const popover = cardPage(f, true); popover.draw(); f.h.flushEffects(); assert.equal(intervals, 0); }
+  finally { global.setInterval = interval; }
+});
 
 test("a card mounts its panel when the composer appears during the retry window", t => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
