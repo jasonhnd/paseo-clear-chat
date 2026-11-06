@@ -126,7 +126,11 @@
     },
     "reset": "Reset defaults",
     "report": "Report a problem",
-    "retry": "Retry"
+    "retry": "Retry",
+    "answerCard": {
+      "label": "Show an answer card under replies that ask lettered questions",
+      "description": "Reload the chat to update existing replies."
+    }
   },
   "startup": {
     "incompatibleHost": "Clear Chat requires Paseo plugin settings and timeline support. Update Paseo on the daemon host and all connected apps, then reload Clear Chat.",
@@ -599,5 +603,24 @@
   "markdown": {
     "showPathA11y": "Show file path: {{path}}",
     "copyPathA11y": "Copy file path: {{path}}"
+  },
+  "answerCard": {
+    "question": "Question {{current}} of {{total}}",
+    "questionTab": "Question {{question}}",
+    "detected": "Options detected in the last reply",
+    "collapse": "Collapse",
+    "reopen": "Reopen answer card",
+    "summary": "{{total}} questions · {{chosen}} chosen · Q{{question}} open",
+    "none": "none",
+    "optionLabel": "{{letter}}: {{text}}",
+    "recommended": "Recommended",
+    "writeOwn": "Write my own",
+    "noteLabel": "Answer note",
+    "chooseFirst": "Choose an option first",
+    "next": "Next",
+    "notOptions": "Not options",
+    "error": "Could not send: {{reason}}",
+    "send": "Send {{answer}}",
+    "missing": "Choose {{question}} to send"
   }
 }

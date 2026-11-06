@@ -53,6 +53,8 @@ for (const locale of ["en", "zh-CN", "ja"]) {
     const Page = h.load("client/settings-page.tsx").ClearChatSettingsPage;
     const tree = h.draw({ type: Page, props: { theme: { colors: {} } } });
     for (const text of [r.settings.title, r.settings.intro, r.settings.accent.host, r.settings.foldSteps.label, r.settings.delegatedTools.label, r.settings.delegatedTools.description, r.settings.delegatedCodeBlocks.label, r.settings.delegatedCodeBlocks.description, r.settings.hiddenTools.label, r.settings.hiddenTools.description, r.settings.codeFont.default, r.settings.textSize.large, r.settings.foldOutput.lines15, r.settings.report]) hasText(h, tree, text);
+    hasText(h, tree, r.settings.answerCard.label);
+    hasText(h, tree, r.settings.answerCard.description);
     hasText(h, tree, r.settings.codeBlockOpen.label);
     hasText(h, tree, r.settings.codeBlockOpen.description);
     hasLabel(h, tree, interpolate(r.settings.accent.optionA11y, { label: r.settings.accent.jade }));
@@ -308,6 +310,8 @@ for (const locale of ["en", "zh-CN", "ja"]) {
   test(`${locale}: preserves the prior baseline after removing the added inline-section, prompt-image and Hermes setting keys`, () => {
     const text = readFileSync(resolve(__dirname, `../client/locales/${locale}.json`), "utf8");
     const original = text
+      .replace(/,\n    "answerCard": \{\n(?:      ".*\n){2}    \}/, "")
+      .replace(/,\n  "answerCard": \{\n(?:    ".*\n){17}  \}/, "")
       .replace(/    "foldMessages": \{\n(?:      ".*\n){2}    \},\n/, "")
       .replace(/    "show": ".*",\n    "hide": ".*",\n    "showMessage": ".*",\n    "hideMessage": ".*",\n/, "")
       .replace(/    "version": ".*",\n/, "")
