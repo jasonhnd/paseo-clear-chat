@@ -127,6 +127,10 @@
     "reset": "Reset defaults",
     "report": "Report a problem",
     "retry": "Retry",
+    "jumpChips": {
+      "label": "Show jump chips on long replies",
+      "description": "Finished long replies get a row of chips that jump to each heading, on phones and everywhere else. Nothing is folded."
+    },
     "answerCard": {
       "label": "Show an answer card under replies that ask lettered questions",
       "description": "Reload the chat to update existing replies."

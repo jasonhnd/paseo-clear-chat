@@ -150,3 +150,20 @@ test("code block delegation setting saves, reloads, and resets with presentation
   assert.equal(input(fresh.h, fresh.page()).props.value, "");
   fresh.h.unmount();
 });
+
+test("jump chips toggle saves, reloads, and resets through the settings page", async () => {
+  const host = createPresentationHost();
+  const first = await client(host);
+  const jumpChips = (h, tree) => h.nodes(tree, node => node.props.accessibilityLabel === "Show jump chips on long replies")[0];
+  assert.equal(jumpChips(first.h, first.page()).props.accessibilityState.checked, false);
+  await jumpChips(first.h, first.page()).props.onPress();
+  assert.equal(host.values.preferences.showJumpChips, true);
+  first.h.unmount();
+
+  const fresh = await client(host);
+  assert.equal(jumpChips(fresh.h, fresh.page()).props.accessibilityState.checked, true);
+  await option(fresh.h, fresh.page(), "Reset defaults").props.onPress();
+  assert.equal(jumpChips(fresh.h, fresh.page()).props.accessibilityState.checked, false);
+  assert.deepEqual(host.values.preferences, {});
+  fresh.h.unmount();
+});
