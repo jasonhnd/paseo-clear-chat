@@ -628,6 +628,14 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
         />
 
         <ToggleRow
+          title={t("settings.keepItemLineBreaks.label")}
+          description={t("settings.keepItemLineBreaks.description")}
+          value={preferences.keepItemLineBreaks}
+          onChange={(keepItemLineBreaks) => updateEnhancerPreferences({ keepItemLineBreaks })}
+          tokens={tokens}
+        />
+
+        <ToggleRow
           title={t("settings.markdown.label")}
           description={t("settings.markdown.description")}
           value={preferences.assistantMarkdown}

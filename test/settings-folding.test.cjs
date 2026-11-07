@@ -167,3 +167,25 @@ test("jump chips toggle saves, reloads, and resets through the settings page", a
   assert.deepEqual(host.values.preferences, {});
   fresh.h.unmount();
 });
+
+test("option line break toggle follows jump chips and saves, reloads, and resets", async () => {
+  const host = createPresentationHost();
+  const first = await client(host);
+  const label = "Keep each option on its own line";
+  const control = (h, tree) => h.nodes(tree, node => node.props.accessibilityLabel === label)[0];
+  const switches = first.h.nodes(first.page(), node => node.props.accessibilityRole === "switch");
+  const jumpIndex = switches.findIndex(node => node.props.accessibilityLabel === "Show jump chips on long replies");
+  assert.notEqual(jumpIndex, -1);
+  assert.equal(switches[jumpIndex + 1].props.accessibilityLabel, label);
+  assert.equal(control(first.h, first.page()).props.accessibilityState.checked, false);
+  await control(first.h, first.page()).props.onPress();
+  assert.equal(host.values.preferences.keepItemLineBreaks, true);
+  first.h.unmount();
+
+  const fresh = await client(host);
+  assert.equal(control(fresh.h, fresh.page()).props.accessibilityState.checked, true);
+  await option(fresh.h, fresh.page(), "Reset defaults").props.onPress();
+  assert.equal(control(fresh.h, fresh.page()).props.accessibilityState.checked, false);
+  assert.deepEqual(host.values.preferences, {});
+  fresh.h.unmount();
+});

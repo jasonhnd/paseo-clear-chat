@@ -803,3 +803,24 @@ test("jump chips setting persists, resets, and ignores browser snapshots", async
   await reloaded.initializeEnhancerPreferences(server.rpc);
   assert.equal(reloaded.getEnhancerPreferences().showJumpChips, false);
 });
+
+test("option line break setting persists, resets, and ignores browser snapshots", async () => {
+  const server = host();
+  const snapshot = JSON.stringify({ keepItemLineBreaks: true });
+  const first = harness("web", snapshot).preferences;
+  assert.equal(first.getEnhancerPreferences().keepItemLineBreaks, false);
+  await first.initializeEnhancerPreferences(server.rpc);
+  assert.equal(first.getEnhancerPreferences().keepItemLineBreaks, false);
+  assert.equal(server.values.preferences.keepItemLineBreaks, undefined);
+  await first.updateEnhancerPreferences({ keepItemLineBreaks: true });
+  assert.equal(server.values.preferences.keepItemLineBreaks, true);
+  const fresh = harness("web", snapshot).preferences;
+  await fresh.initializeEnhancerPreferences(server.rpc);
+  assert.equal(fresh.getEnhancerPreferences().keepItemLineBreaks, true);
+  await fresh.resetEnhancerPreferences();
+  assert.equal(fresh.getEnhancerPreferences().keepItemLineBreaks, false);
+  assert.deepEqual(server.values.preferences, {});
+  const reloaded = harness("web", snapshot).preferences;
+  await reloaded.initializeEnhancerPreferences(server.rpc);
+  assert.equal(reloaded.getEnhancerPreferences().keepItemLineBreaks, false);
+});
