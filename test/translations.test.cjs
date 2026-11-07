@@ -58,6 +58,9 @@ for (const locale of ["en", "zh-CN", "ja"]) {
     hasText(h, tree, r.settings.jumpChips.label);
     hasText(h, tree, r.settings.jumpChips.description);
     hasLabel(h, tree, r.settings.jumpChips.label);
+    hasText(h, tree, r.settings.keepItemLineBreaks.label);
+    hasText(h, tree, r.settings.keepItemLineBreaks.description);
+    hasLabel(h, tree, r.settings.keepItemLineBreaks.label);
     hasText(h, tree, r.settings.codeBlockOpen.label);
     hasText(h, tree, r.settings.codeBlockOpen.description);
     hasLabel(h, tree, interpolate(r.settings.accent.optionA11y, { label: r.settings.accent.jade }));
@@ -313,6 +316,7 @@ for (const locale of ["en", "zh-CN", "ja"]) {
   test(`${locale}: preserves the prior baseline after removing the added inline-section, prompt-image and Hermes setting keys`, () => {
     const text = readFileSync(resolve(__dirname, `../client/locales/${locale}.json`), "utf8");
     const original = text
+      .replace(/    "keepItemLineBreaks": \{\n(?:      ".*\n){2}    \},\n/, "")
       .replace(/    "jumpChips": \{\n(?:      ".*\n){2}    \},\n/, "")
       .replace(/,\n    "answerCard": \{\n(?:      ".*\n){2}    \}/, "")
       .replace(/,\n  "answerCard": \{\n(?:    ".*\n){27}  \}/, "")
