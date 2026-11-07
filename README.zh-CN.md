@@ -41,7 +41,7 @@
 
 ## 这一版新增（0.15.3.3）
 
-- **新设置：让每个选项单独占一行（默认关）。** 新设置 **让每个选项单独占一行**（Keep each option on its own line）。打开后，回复里以大写字母 A 到 H 加点或右括号开头的行（例如 `A.`、`B)`，或全角的 `C）`、`D、`）会各占一行，不再和上一行连成一段；普通段落、引用里，以及编号列表项的续行（编号的问题后面跟着字母行）都一样。其余内容照旧，设置关着时回复和上一版完全一样。小写字母、H 以后的字母，以及 `e.g.` 这类写法不算。已经显示的旧回复，重新加载聊天后才会按新设置重画；新的回复马上按新设置显示（[#304](https://github.com/jasonhnd/paseo-clear-chat/issues/304)、[PR #308](https://github.com/jasonhnd/paseo-clear-chat/pull/308)、[#305](https://github.com/jasonhnd/paseo-clear-chat/issues/305)、[PR #307](https://github.com/jasonhnd/paseo-clear-chat/pull/307)、[#306](https://github.com/jasonhnd/paseo-clear-chat/issues/306)、[PR #309](https://github.com/jasonhnd/paseo-clear-chat/pull/309)）。
+- **新设置：让每个选项单独占一行（默认关）。** 新设置 **让每个选项单独占一行**（Keep each option on its own line）。打开后，回复里以大写字母 A 到 H 加点或右括号开头的行（例如 `A.`、`B)`，或全角的 `C）`、`D、`）会各占一行，不再和上一行连成一段；普通段落、引用里，以及编号列表项的续行（编号的问题后面跟着字母行）都一样。其余内容照旧，设置关着时回复和上一版完全一样。小写字母、H 以后的字母，以及 `e.g.` 这类写法不算。已经显示的旧回复，重新加载聊天后才会按新设置重画；新的回复马上按新设置显示。设置打开时，以单个大写字母 A 到 H 加点或括号开头的一行，即使是普通句子（例如 `A. Smith wrote this`）也会单独成行；不想这样就把这个设置关着。（[#304](https://github.com/jasonhnd/paseo-clear-chat/issues/304)、[PR #308](https://github.com/jasonhnd/paseo-clear-chat/pull/308)、[#305](https://github.com/jasonhnd/paseo-clear-chat/issues/305)、[PR #307](https://github.com/jasonhnd/paseo-clear-chat/pull/307)、[#306](https://github.com/jasonhnd/paseo-clear-chat/issues/306)、[PR #309](https://github.com/jasonhnd/paseo-clear-chat/pull/309)）。
 
 ### 之前几版新增的
 

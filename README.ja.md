@@ -41,7 +41,7 @@
 
 ## この版の新機能（0.15.3.3）
 
-- **新しい設定：選択肢を 1 行ずつ表示（初期値はオフ）。** 新しい設定 **選択肢を 1 行ずつ表示**（Keep each option on its own line）。オンにすると、返信の中で大文字の A〜H にピリオドまたは閉じ括弧が続く行（例：`A.`、`B)`、全角の `C）`、`D、`）が、前の行と 1 つの段落につながらず 1 行ずつ表示されます。通常の段落、引用、番号つきリスト項目の続きの文（番号つきの質問のあとにアルファベットの行が続く場合）でも同じです。それ以外は今までどおりで、オフのときは返信の見た目は前のリリースとまったく同じです。小文字、H より後の文字、`e.g.` のような書き方は対象外です。すでに表示されている返信は、チャットを再読み込みしたあとに新しい設定で描き直されます。新しい返信はすぐ新しい設定で表示されます（[#304](https://github.com/jasonhnd/paseo-clear-chat/issues/304)、[PR #308](https://github.com/jasonhnd/paseo-clear-chat/pull/308)、[#305](https://github.com/jasonhnd/paseo-clear-chat/issues/305)、[PR #307](https://github.com/jasonhnd/paseo-clear-chat/pull/307)、[#306](https://github.com/jasonhnd/paseo-clear-chat/issues/306)、[PR #309](https://github.com/jasonhnd/paseo-clear-chat/pull/309)）。
+- **新しい設定：選択肢を 1 行ずつ表示（初期値はオフ）。** 新しい設定 **選択肢を 1 行ずつ表示**（Keep each option on its own line）。オンにすると、返信の中で大文字の A〜H にピリオドまたは閉じ括弧が続く行（例：`A.`、`B)`、全角の `C）`、`D、`）が、前の行と 1 つの段落につながらず 1 行ずつ表示されます。通常の段落、引用、番号つきリスト項目の続きの文（番号つきの質問のあとにアルファベットの行が続く場合）でも同じです。それ以外は今までどおりで、オフのときは返信の見た目は前のリリースとまったく同じです。小文字、H より後の文字、`e.g.` のような書き方は対象外です。すでに表示されている返信は、チャットを再読み込みしたあとに新しい設定で描き直されます。新しい返信はすぐ新しい設定で表示されます。設定をオンにすると、大文字 1 文字の A〜H にピリオドか括弧が続いて始まる行は、普通の文であっても（例：`A. Smith wrote this`）1 行ずつ表示されます。そうしたくないときは、この設定をオフのままにしてください。（[#304](https://github.com/jasonhnd/paseo-clear-chat/issues/304)、[PR #308](https://github.com/jasonhnd/paseo-clear-chat/pull/308)、[#305](https://github.com/jasonhnd/paseo-clear-chat/issues/305)、[PR #307](https://github.com/jasonhnd/paseo-clear-chat/pull/307)、[#306](https://github.com/jasonhnd/paseo-clear-chat/issues/306)、[PR #309](https://github.com/jasonhnd/paseo-clear-chat/pull/309)）。
 
 ### 以前のリリースで追加されたもの
 
