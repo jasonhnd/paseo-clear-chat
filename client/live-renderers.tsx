@@ -420,7 +420,7 @@ export function LiveAssistantRenderer({
         <SystemCard envelope={envelope} tokens={tokens} />
       ) : (
         <>
-          {chips.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} testID="jump-chips"
+          {Platform.OS === "web" && chips.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} testID="jump-chips"
             style={{ alignSelf: "stretch", flexGrow: 0, minWidth: 0, maxWidth: "100%", marginBottom: 8 }}
             contentContainerStyle={{ gap: 8 }}>
             {chips.map(chip => <Pressable key={chip.index} testID={`jump-chip-${chip.index}`} accessibilityRole="button"
