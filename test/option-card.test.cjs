@@ -141,8 +141,8 @@ test("popover bounds its scrolling middle while keeping the header and send row 
   const scrollOf = tree => h.nodes(tree, node => node.type === "ScrollView")[0];
   let tree = draw();
   let scroll = scrollOf(tree);
-  assert.equal(POPOVER_MAX_HEIGHT_RATIO, 0.75);
-  assert.equal(byId(h, tree, "option-popover").props.style.maxHeight, 844 * POPOVER_MAX_HEIGHT_RATIO);
+  assert.equal(POPOVER_MAX_HEIGHT_RATIO, 0.65);
+  assert.equal(byId(h, tree, "option-popover").props.style.maxHeight, 844 * 0.65);
   assert.deepEqual(scroll.props.style, { flexShrink: 1, minHeight: 0 });
   for (const id of ["option-question-0", "option-question-1", "option-send"]) {
     assert.ok(byId(h, tree, id));
