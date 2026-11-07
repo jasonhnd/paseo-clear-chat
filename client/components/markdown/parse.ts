@@ -81,7 +81,11 @@ const MAX_INLINE_DEPTH = 4;
 /** Two spaces, or a trailing backslash, are the author asking for a new line. */
 const HARD_BREAK_RE = /(?: {2,}|\\)$/;
 
-export function parseMarkdown(text: string, onHeading?: (block: MdBlock, line: number) => void): MdBlock[] {
+export function parseMarkdown(
+  text: string,
+  onHeading?: (block: MdBlock, line: number) => void,
+  options?: { keepItemBreaks?: boolean },
+): MdBlock[] {
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
   const blocks: MdBlock[] = [];
   let index = 0;
@@ -118,12 +122,12 @@ export function parseMarkdown(text: string, onHeading?: (block: MdBlock, line: n
     }
 
     if (QUOTE_RE.test(line)) {
-      index = readQuote(lines, index, blocks);
+      index = readQuote(lines, index, blocks, options?.keepItemBreaks);
       continue;
     }
 
     if (BULLET_RE.test(line) || ORDERED_RE.test(line)) {
-      index = readList(lines, index, blocks);
+      index = readList(lines, index, blocks, options?.keepItemBreaks);
       continue;
     }
 
@@ -132,7 +136,7 @@ export function parseMarkdown(text: string, onHeading?: (block: MdBlock, line: n
       continue;
     }
 
-    index = readParagraph(lines, index, blocks);
+    index = readParagraph(lines, index, blocks, options?.keepItemBreaks);
   }
 
   return blocks;
@@ -191,7 +195,7 @@ function readFence(lines: string[], start: number, match: RegExpExecArray, out: 
  * marker of its own — reads as the next paragraph instead, which is what an
  * assistant that forgot the marker actually meant.
  */
-function readQuote(lines: string[], start: number, out: MdBlock[]): number {
+function readQuote(lines: string[], start: number, out: MdBlock[], keepItemBreaks?: boolean): number {
   const collected: string[] = [];
   let index = start;
 
@@ -213,13 +217,13 @@ function readQuote(lines: string[], start: number, out: MdBlock[]): number {
   let run: string[] = [];
   for (const line of collected) {
     if (line.trim() === "") {
-      if (run.length > 0) paragraphs.push(parseInline(joinSoft(run)));
+      if (run.length > 0) paragraphs.push(parseInline(joinSoft(run, keepItemBreaks)));
       run = [];
       continue;
     }
     run.push(line);
   }
-  if (run.length > 0) paragraphs.push(parseInline(joinSoft(run)));
+  if (run.length > 0) paragraphs.push(parseInline(joinSoft(run, keepItemBreaks)));
 
   out.push({ kind: "quote", paragraphs });
   return index === start ? start + 1 : index;
@@ -239,7 +243,7 @@ interface RawItem {
  * those are three different things on screen even when no blank line separates
  * them.
  */
-function readList(lines: string[], start: number, out: MdBlock[]): number {
+function readList(lines: string[], start: number, out: MdBlock[], keepItemBreaks?: boolean): number {
   const items: RawItem[] = [];
   // Each entry is the indent column of one open level, so nesting follows what
   // the author actually typed instead of assuming two spaces per level.
@@ -301,7 +305,7 @@ function readList(lines: string[], start: number, out: MdBlock[]): number {
     // left text is the paragraph that follows the list.
     if (blankSeen && indentWidth(raw) < 2) break;
     if (blankSeen && startsBlock(lines, index)) break;
-    previous.text = `${previous.text} ${raw.trim()}`;
+    previous.text = `${previous.text}${keepItemBreaks && isLetteredOption(raw) ? "\n" : " "}${raw.trim()}`;
     blankSeen = false;
     index++;
   }
@@ -459,7 +463,7 @@ function splitCells(line: string): string[] {
   return cells;
 }
 
-function readParagraph(lines: string[], start: number, out: MdBlock[]): number {
+function readParagraph(lines: string[], start: number, out: MdBlock[], keepItemBreaks?: boolean): number {
   const collected: string[] = [];
   let index = start;
 
@@ -472,24 +476,36 @@ function readParagraph(lines: string[], start: number, out: MdBlock[]): number {
   }
 
   if (collected.length === 0) return start + 1;
-  out.push({ kind: "paragraph", spans: parseInline(joinSoft(collected)) });
+  out.push({ kind: "paragraph", spans: parseInline(joinSoft(collected, keepItemBreaks)) });
   return index;
 }
 
 /**
  * Markdown's soft break is a space, so hard-wrapped prose reflows to the card's
  * width instead of keeping the author's column. Only an explicit two-space or
- * backslash ending survives as a real line break.
+ * backslash ending survives as a real line break unless option breaks are enabled.
  */
-function joinSoft(lines: string[]): string {
+function joinSoft(lines: string[], keepItemBreaks?: boolean): string {
   let out = "";
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index] ?? "";
     const hard = HARD_BREAK_RE.test(line);
     out += line.replace(TRAILING_SPACE_RE, "").replace(/\\$/, "");
-    if (index < lines.length - 1) out += hard ? "\n" : " ";
+    if (index < lines.length - 1) {
+      out += hard || (keepItemBreaks && isLetteredOption(lines[index + 1] ?? "")) ? "\n" : " ";
+    }
   }
   return out;
+}
+
+
+/** Lettered choices are prose in markdown, but may be kept on separate lines. */
+function isLetteredOption(line: string): boolean {
+  const match = /^[ \t]*[*_]*[A-H]([.)）、])[*_]*(.*)$/.exec(line);
+  if (match === null) return false;
+  const rest = match[2] ?? "";
+  if ((match[1] === "." || match[1] === ")") && !/^[ \t]/.test(rest)) return false;
+  return rest.trim() !== "";
 }
 
 function isWordChar(ch: string): boolean {

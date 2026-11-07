@@ -255,7 +255,7 @@ function scaleMetrics(metrics: VariantMetrics, scale: number): VariantMetrics {
 
 export function MarkdownView({ text, tokens, variant, images = [], cwd, expansionIdentity, inlineWorkspacePaths = true }: MarkdownViewProps) {
   useTranslation(messages);
-  const { codeBlockOpen } = useEnhancerPreferences();
+  const { codeBlockOpen, keepItemLineBreaks } = useEnhancerPreferences();
   const filePath = useReplyFilePath(cwd);
   const { blocks, headingIndices } = useMemo(() => {
     const byLine = new Map(jumpHeadingLines(text).map(({ line, index }) => [line, index]));
@@ -263,9 +263,9 @@ export function MarkdownView({ text, tokens, variant, images = [], cwd, expansio
     const blocks = parseMarkdown(text, (block, line) => {
       const index = byLine.get(line);
       if (index !== undefined) headingIndices.set(block, index);
-    });
+    }, { keepItemBreaks: keepItemLineBreaks });
     return { blocks, headingIndices };
-  }, [text]);
+  }, [text, keepItemLineBreaks]);
   const previews = useMemo(() => {
     const inline = markdownImageKeys(blocks);
     return [...new Map([...extractGeneratedImages(text), ...images]

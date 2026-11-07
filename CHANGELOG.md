@@ -4,6 +4,34 @@ All notable changes to Clear Chat are listed here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and each version is the Paseo version it is built and tested for plus one number that counts Clear Chat's releases for that Paseo version, for example 0.12.0.1 for the first release for Paseo 0.12.0. Releases 1.0.0 and 1.0.1 came out before this rule.
 
+## [0.15.3.3] - 2026-11-08
+
+### Added
+
+- A new setting, "Keep each option on its own line", off by default (English, Simplified Chinese and Japanese; saved and restored like the other settings, cleared by Reset defaults, never imported from a browser snapshot). Clear Chat joins the lines of one paragraph of a reply with a space, so a reply that lists options on separate lines (`A. …`, `B. …`, `C. …`) ran together into one block of text. With the setting on, a line that looks like a lettered option keeps a real line break before it, in three places: in a plain paragraph, in the paragraphs of a quotation, and in the text that continues a list item (for example a numbered question followed by lettered lines). A lettered option line starts, after optional spaces or tabs and optional `*` or `_` marks, with one capital letter from A to H, then `.` or `)` followed by at least one space or tab and then text, or the full-width `）` or `、` followed by text; a closing `*` or `_` right after the marker is allowed, so `**A.** text` counts. Lower-case letters, letters after H and forms such as `e.g.` or `A.B.` do not count, and a line that continues an option line is joined to it with a space as before. Headings, code blocks, rules, tables, lists that start with a marker and quotations are read as before. With the setting off (the default) replies are drawn exactly as in the previous release; replies that are already shown are redrawn after the chat is reloaded, and new replies follow the setting at once ([issue #304](https://github.com/jasonhnd/paseo-clear-chat/issues/304), [PR #308](https://github.com/jasonhnd/paseo-clear-chat/pull/308), [issue #305](https://github.com/jasonhnd/paseo-clear-chat/issues/305), [PR #307](https://github.com/jasonhnd/paseo-clear-chat/pull/307), [issue #306](https://github.com/jasonhnd/paseo-clear-chat/issues/306), [PR #309](https://github.com/jasonhnd/paseo-clear-chat/pull/309)).
+
+### Compatibility
+
+- Clear Chat 0.15.3.3 is the Clear Chat release for Paseo 0.15.3.
+- The release candidate was checked on an isolated host running Paseo 0.15.3: it installs and loads. With the setting off, a set of fixture replies (lettered lines one per line, lettered lines under a numbered question, ordinary multi-line paragraphs, lines with `e.g.` and a lower-case `a.`, lettered lines inside a quotation, lettered lines inside a code fence, bold and full-width lettered lines, and a sentence that starts with `A. Smith`) gives the same text nodes and the same number of displayed lines in this release as in the previous release, case by case. With the setting on, each lettered line is on its own line and ordinary paragraphs and code fences are unchanged; this was read at desktop width and at 390 px wide, and the page has no horizontal overflow. The settings page shows the setting name in English, Chinese and Japanese, and it is off by default; the setting is still there after a reload, and Reset defaults turns it off again. The jump chips of the previous release still work in a reply of more than 3,000 characters (a row of 5 chips, and pressing one scrolls to its heading). The full test suite (2,091 tests) and the type check pass. Not checked: real model replies, input-method composition, and a run in the native phone apps.
+
+### Known limitations
+
+- The answer card is off by default, and it works by touch, mouse and keyboard only on the web and desktop; the native phone apps give plugins no key events, so there it works by touch only.
+- Key handling and the typed-message prefix rely on the structure of Paseo's page (the marked input box and the chat area). If a Paseo upgrade changes that structure, the keys do nothing and your typed message is sent unchanged, while touch and mouse still work.
+- The floating panel relies on the structure of Paseo's page, which a Paseo upgrade can change. When it cannot be placed it is not shown and the card under the reply stays open instead; the panel is tried again the next time the conversation page is shown again (when you switch back to the conversation) or after a reload. A short transient layout, such as a very short window, can also trigger this.
+- A plain list can be read as options when it looks like lettered questions with an answer hint or a recommendation; press Not options to dismiss the card.
+- On a narrow window (390 px wide), the popover opened from the question pill did not close on Esc in our check; a click outside the popover closes it, and on a wide window Esc closes it. It is not known whether this comes from the host or from Clear Chat.
+- With Clear Chat on, Paseo's own Chat display modes (Full, Collapse tool calls, Collapse turns) do not change how the conversations drawn by Clear Chat look, because Clear Chat draws every row itself; it folds finished steps and long output by its own settings. With Clear Chat off, the three modes work as usual.
+- At desktop width, in the web page or the desktop app, pressing Space while a jump chip has focus does not scroll: Paseo handles that key first, so the chip does not receive it (Paseo's own buttons behave the same way at that width). Enter and a mouse click work, and at narrow widths Space works too.
+- Only a capital letter from A to H counts as an option line for the new setting; lower-case letters, letters after H and forms such as `e.g.` do not.
+- When the setting is on, a line that starts with a single capital letter from A to H and a dot or a bracket is put on its own line even if it is an ordinary sentence (for example `A. Smith wrote this`); keep the setting off if you do not want that.
+- The limitations listed in the previous release still apply.
+
+### Upgrading
+
+- Update an existing installation with `paseo plugin update clear-chat --ref v0.15.3.3`; the plugin reloads on its own and the Paseo daemon is not restarted. The new setting is off until you turn it on. Removing a plugin also removes its settings, so back them up before removing.
+
 ## [0.15.3.2] - 2026-11-07
 
 ### Added
@@ -418,6 +446,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.15.3.3]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.3.2...v0.15.3.3
 [0.15.3.2]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.3.1...v0.15.3.2
 [0.15.3.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.2.2...v0.15.3.1
 [0.15.2.2]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.2.1...v0.15.2.2

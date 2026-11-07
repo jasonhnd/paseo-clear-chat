@@ -127,6 +127,10 @@
     "reset": "Reset defaults",
     "report": "Report a problem",
     "retry": "Retry",
+    "keepItemLineBreaks": {
+      "label": "Keep each option on its own line",
+      "description": "Lines that start with a letter such as A. or B. stay on their own lines instead of running together into one paragraph."
+    },
     "jumpChips": {
       "label": "Show jump chips on long replies",
       "description": "Finished long replies get a row of chips that jump to each heading, in the web page and the desktop app. Nothing is folded."

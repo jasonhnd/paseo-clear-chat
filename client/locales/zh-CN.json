@@ -127,6 +127,10 @@
     "reset": "恢复默认",
     "report": "报告问题",
     "retry": "重试",
+    "keepItemLineBreaks": {
+      "label": "让每个选项单独占一行",
+      "description": "以 A.、B. 这类字母开头的行会各占一行，不再连成一段。"
+    },
     "jumpChips": {
       "label": "在长回复中显示跳转标签",
       "description": "已完成的长回复会显示一排标签，可跳转到各个标题；可在网页和桌面应用中使用。内容不会被折叠。"
