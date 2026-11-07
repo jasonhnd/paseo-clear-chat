@@ -10,7 +10,7 @@ import { mountOptionPanel } from "./option-panel";
 import type { OptionPanel } from "./option-panel";
 import type { ExtendedThemeTokens } from "./theme-tokens";
 
-export const POPOVER_MAX_HEIGHT_RATIO = 0.75;
+export const POPOVER_MAX_HEIGHT_RATIO = 0.65;
 
 export function OptionCard({ agentId, at, tokens, popover = false, onSent }: { agentId: string; at: number; tokens: ExtendedThemeTokens; popover?: boolean; onSent?: () => void }) {
   const { t } = useTranslation(messages);
