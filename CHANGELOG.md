@@ -4,6 +4,42 @@ All notable changes to Clear Chat are listed here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and each version is the Paseo version it is built and tested for plus one number that counts Clear Chat's releases for that Paseo version, for example 0.12.0.1 for the first release for Paseo 0.12.0. Releases 1.0.0 and 1.0.1 came out before this rule.
 
+## [0.15.3.2] - 2026-11-DD
+
+### Added
+
+- The "Not options" choice on the answer card is remembered after the chat is reloaded. Before, pressing Not options hid the card only until the chat was reloaded, because the reply is parsed again after a reload. Now the reply is kept in a list in the saved settings on the host: up to 100 replies (each is identified by the agent and the time of the reply), the oldest dropped first. A reply on that list gets no card, no pill and no floating panel after a reload; a newer reply of the same agent is not affected, and two agents do not affect each other. Sending an answer does not add a reply to the list, only the Not options button does. "Reset defaults" empties the list, and a settings snapshot imported from a browser never supplies it. The list is not a visible setting: it has no row on the settings page. If saving fails, the card is still hidden on this page and nothing is shown; a reply that arrives before the saved settings have loaded is removed again when they are ready, so a dismissed card does not show once loading ends ([issue #252](https://github.com/jasonhnd/paseo-clear-chat/issues/252), [PR #287](https://github.com/jasonhnd/paseo-clear-chat/pull/287)).
+- A new setting, "Show jump chips on long replies", off by default (English, Simplified Chinese and Japanese; saved and restored like the other settings, cleared by Reset defaults, never imported from a browser snapshot). With it on, a finished reply of at least 3,000 characters with at least three headings (levels 1 to 3, outside fenced code blocks) gets a row of chips above its text: one chip per heading, at most 8, the label cut at 24 characters (with an ellipsis), the row scrolls sideways, and each chip is a button labelled with the heading and at least 44 points high. Pressing a chip scrolls the reply to that heading; if the heading or the scrolling call is not available, nothing happens and no error is shown. No chips are drawn while the reply is still being written, because in our check the host pulled the chat list back to the bottom within a second while the agent was writing; the reply text is never folded, shortened or changed. The chip row is drawn only in the web page and the desktop app; in the native apps nothing is drawn, with the setting on or off, and the reply text is unchanged. With the setting off nothing is drawn ([issue #259](https://github.com/jasonhnd/paseo-clear-chat/issues/259), [PR #292](https://github.com/jasonhnd/paseo-clear-chat/pull/292), [PR #293](https://github.com/jasonhnd/paseo-clear-chat/pull/293), [PR #295](https://github.com/jasonhnd/paseo-clear-chat/pull/295), [issue #296](https://github.com/jasonhnd/paseo-clear-chat/issues/296), [PR #298](https://github.com/jasonhnd/paseo-clear-chat/pull/298)).
+
+### Fixed
+
+- On a phone, the popover opened from the pill (a bottom sheet) keeps the question tabs, with the chosen answers, fixed at its top and the Send row fixed at its bottom, while the question text, the options, Write my own, Next, Not options and the error text scroll in between; the popover's height is limited to a share of the screen height. Before, on a 390 x 844 page the popover was taller than the screen and did not scroll by itself, and the tabs scrolled away with the content. The height limit was lowered once more so that the whole Send row ends inside a phone screen ([issue #294](https://github.com/jasonhnd/paseo-clear-chat/issues/294), [PR #297](https://github.com/jasonhnd/paseo-clear-chat/pull/297)). Touch targets stay at least 44 points; the wide layout, the card under the reply and the floating panel do not change ([issue #258](https://github.com/jasonhnd/paseo-clear-chat/issues/258), [PR #291](https://github.com/jasonhnd/paseo-clear-chat/pull/291)).
+
+### Changed
+
+- The introduction page (OVERVIEW.md and OVERVIEW.zh-CN.md) now says where a pasted image is read from and which data folders are kept. To show a pasted image in the prompt bubble, the server looks the message up in the local conversation records of the provider that runs the chat, read-only and only when exactly one message matches: Codex records under CODEX_HOME (default ~/.codex), Claude records under CLAUDE_CONFIG_DIR (default ~/.claude, the projects folder), and, for a ·CC provider copy, Clear Chat's own image store. It never writes to, copies or locks those records, opens files without following symbolic links, reads only regular image files (png, jpg, jpeg, webp, gif) of at most 8 MiB inside the expected folders, and returns the image only to the Clear Chat page in your Paseo. A ·CC provider copy keeps three things under plugin-data/clear-chat in the Paseo home on the host: a record of the conversation, the images you paste, and the list of model and mode options of that provider. This describes how Clear Chat already worked; no behaviour changed.
+- The README table "What a plugin cannot do" now says that, with Clear Chat on, Paseo's own Chat display modes (Full, Collapse tool calls, Collapse turns) do not change the conversations drawn by Clear Chat, and that turning Clear Chat off gives the three modes back. This describes how Clear Chat already worked; no behaviour changed.
+
+### Compatibility
+
+- Clear Chat 0.15.3.2 is the Clear Chat release for Paseo 0.15.3.
+- The release candidate was checked on an isolated host running Paseo 0.15.3: it installs and loads; the settings page version line reads 0.15.3.2 in English, Chinese and Japanese; the plugin runs (state running) and the daemon log has no error-level entries; compared with Paseo 0.15.2 the public interface of the plugin and client packages is the same (no export removed). The full test suite (2,073 tests) and the type check pass. The interface was read through item by item in all three languages: failed command steps, a successful command, a failed read, the reasoning card, the time format, the quote panel in dark and light, file paths in inline code, the setting that leaves code blocks to other plugins and the input box. Not checked: real model replies, input-method composition, and a run in the native phone apps.
+
+### Known limitations
+
+- The answer card is off by default, and it works by touch, mouse and keyboard only on the web and desktop; the native phone apps give plugins no key events, so there it works by touch only.
+- Key handling and the typed-message prefix rely on the structure of Paseo's page (the marked input box and the chat area). If a Paseo upgrade changes that structure, the keys do nothing and your typed message is sent unchanged, while touch and mouse still work.
+- The floating panel relies on the structure of Paseo's page, which a Paseo upgrade can change. When it cannot be placed it is not shown and the card under the reply stays open instead; the panel is tried again the next time the conversation page is shown again (when you switch back to the conversation) or after a reload. A short transient layout, such as a very short window, can also trigger this.
+- A plain list can be read as options when it looks like lettered questions with an answer hint or a recommendation; press Not options to dismiss the card.
+- On a narrow window (390 px wide), the popover opened from the question pill did not close on Esc in our check; a click outside the popover closes it, and on a wide window Esc closes it. It is not known whether this comes from the host or from Clear Chat.
+- With Clear Chat on, Paseo's own Chat display modes (Full, Collapse tool calls, Collapse turns) do not change how the conversations drawn by Clear Chat look, because Clear Chat draws every row itself; it folds finished steps and long output by its own settings. With Clear Chat off, the three modes work as usual.
+- At desktop width, in the web page or the desktop app, pressing Space while a jump chip has focus does not scroll: Paseo handles that key first, so the chip does not receive it (Paseo's own buttons behave the same way at that width). Enter and a mouse click work, and at narrow widths Space works too.
+- The limitations listed in the previous release still apply, except the one about a card dismissed with Not options appearing again after a reload, which no longer applies.
+
+### Upgrading
+
+- Update an existing installation with `paseo plugin update clear-chat --ref v0.15.3.2`; the plugin reloads on its own and the Paseo daemon is not restarted. The new setting is off until you turn it on. Removing a plugin also removes its settings, so back them up before removing.
+
 ## [0.15.3.1] - 2026-11-07
 
 ### Added
@@ -382,6 +418,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.15.3.2]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.3.1...v0.15.3.2
 [0.15.3.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.2.2...v0.15.3.1
 [0.15.2.2]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.2.1...v0.15.2.2
 [0.15.2.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.1.1...v0.15.2.1
