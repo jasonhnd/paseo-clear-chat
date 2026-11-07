@@ -129,3 +129,80 @@ for (const locale of ["en", "zh-CN", "ja"]) {
     assert.equal(byId(h, tree, "option-card-collapse").props.accessibilityLabel, strings.collapse);
   });
 }
+
+test("popover bounds its scrolling middle while keeping the header and send row visible", async t => {
+  const agents = { a: { status: "idle" } };
+  const h = createToolHarness("ios", { dimensions: { height: 844 }, agents });
+  t.after(() => { h.unmount(); h.dispose(); });
+  const s = h.load("client/option-session.ts");
+  const { OptionCard: Card, POPOVER_MAX_HEIGHT_RATIO } = h.load("client/components/option-card.tsx");
+  s.publishAssistantReply("a", { at: 10, text: reply });
+  const draw = (popover = true) => h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens, popover } });
+  const scrollOf = tree => h.nodes(tree, node => node.type === "ScrollView")[0];
+  let tree = draw();
+  let scroll = scrollOf(tree);
+  assert.equal(POPOVER_MAX_HEIGHT_RATIO, 0.65);
+  assert.equal(byId(h, tree, "option-popover").props.style.maxHeight, 844 * 0.65);
+  assert.deepEqual(scroll.props.style, { flexShrink: 1, minHeight: 0 });
+  for (const id of ["option-question-0", "option-question-1", "option-send"]) {
+    assert.ok(byId(h, tree, id));
+    assert.equal(byId(h, scroll, id), undefined);
+  }
+  for (const id of ["option-row-A", "option-row-B", "option-note-toggle", "option-next", "option-dismiss"]) assert.ok(byId(h, scroll, id));
+  assert.match(h.text(scroll), /Which storage\?\s+More details\./);
+  assert.match(h.text(tree), /detected/i);
+  assert.doesNotMatch(h.text(scroll), /detected/i);
+  for (const id of ["option-question-0", "option-question-1", "option-row-A", "option-row-B", "option-note-toggle", "option-next", "option-dismiss", "option-send"]) {
+    const node = byId(h, tree, id);
+    assert.ok(node.props.style.minHeight >= 44, id);
+    // Rows and full-width buttons stretch to the available width; tabs set a minimum width.
+    if (id.startsWith("option-question-") || !id.startsWith("option-row-")) assert.ok(node.props.style.minWidth >= 44, id);
+  }
+  let send = byId(h, tree, "option-send");
+  assert.equal(send.props.disabled, true);
+  assert.equal(send.props.accessibilityState.disabled, true);
+  byId(h, tree, "option-note-toggle").props.onPress();
+  tree = draw();
+  byId(h, tree, "option-note").props.onChangeText("note");
+  tree = draw();
+  assert.ok(byId(h, scrollOf(tree), "option-note"));
+  assert.ok(byId(h, scrollOf(tree), "option-note-warning"));
+  s.choose("a", 0, "B"); s.choose("a", 1, "A");
+  tree = draw();
+  assert.equal(byId(h, tree, "option-send").props.disabled, false);
+  let reject;
+  s.setOptionSender(() => new Promise((_, fail) => { reject = fail; }));
+  byId(h, tree, "option-send").props.onPress();
+  assert.equal(byId(h, draw(), "option-send").props.disabled, true);
+  reject(new Error("Unavailable"));
+  await flush();
+  tree = draw();
+  assert.ok(byId(h, scrollOf(tree), "option-send-error"));
+  assert.equal(byId(h, tree, "option-send").props.disabled, false);
+  agents.a.status = "running";
+  tree = draw(); scroll = scrollOf(tree);
+  assert.ok(byId(h, tree, "option-running"));
+  assert.equal(byId(h, scroll, "option-running"), undefined);
+  assert.equal(byId(h, tree, "option-send").props.disabled, true);
+  assert.equal(byId(h, tree, "option-send").props.accessibilityState.disabled, true);
+  h.dimensions.height = 200;
+  assert.equal(byId(h, draw(), "option-popover").props.style.maxHeight, 200);
+});
+
+test("card keeps its existing height and controls inside the scroll view", t => {
+  const h = createToolHarness("ios", { dimensions: { height: 640 }, agents: { a: { status: "idle" } } });
+  t.after(() => { h.unmount(); h.dispose(); });
+  const s = h.load("client/option-session.ts");
+  const Card = h.load("client/components/option-card.tsx").OptionCard;
+  s.publishAssistantReply("a", { at: 10, text: reply });
+  const draw = () => h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } });
+  let tree = draw();
+  const card = byId(h, tree, "option-card");
+  const scroll = h.nodes(card, node => node.type === "ScrollView")[0];
+  assert.equal(card.props.style.maxHeight, 640 * 0.4);
+  assert.equal(scroll.props.style, undefined);
+  for (const id of ["option-question-0", "option-question-1", "option-card-collapse", "option-row-A", "option-row-B", "option-note-toggle", "option-next", "option-dismiss", "option-send"]) assert.ok(byId(h, scroll, id), id);
+  h.dimensions.height = 200;
+  tree = draw();
+  assert.equal(byId(h, tree, "option-card").props.style.maxHeight, 100);
+});

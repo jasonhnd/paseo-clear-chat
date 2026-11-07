@@ -281,7 +281,7 @@ function registerClient(client: PluginClientContext) {
   const removeAssistantTransformer = addTextTransformer<"assistant_message">(client, {
     id: "omp-enhanced-assistant",
     query: { itemType: "assistant_message" },
-    transform({ item }) {
+    transform({ item, phase }) {
       if (item.type !== "assistant_message") return undefined;
       if (!getEnhancerPreferences().assistantMarkdown) return undefined;
       if (containsComponentFence(item.text, getEnhancerPreferences().delegatedCodeBlocks)) return undefined;
@@ -293,7 +293,7 @@ function registerClient(client: PluginClientContext) {
             type: "plugin" as const,
             kind: "omp-assistant",
             version: 1,
-            data: { text: item.text, images: toJsonValue(images), ...(item.messageId ? { messageId: item.messageId } : {}) },
+            data: { text: item.text, phase, images: toJsonValue(images), ...(item.messageId ? { messageId: item.messageId } : {}) },
           },
         ],
       };
@@ -303,7 +303,7 @@ function registerClient(client: PluginClientContext) {
   const removeAssistantRenderer = client.addTimelineRenderer({
     kind: "omp-assistant",
     version: 1,
-    schema: z.object({ text: z.string(), images: z.array(z.object({ source: z.string(), path: z.string().optional() })).optional(), messageId: z.string().optional() }),
+    schema: z.object({ text: z.string(), phase: z.string().optional(), images: z.array(z.object({ source: z.string(), path: z.string().optional() })).optional(), messageId: z.string().optional() }),
     Component: LiveAssistantRenderer,
   });
 

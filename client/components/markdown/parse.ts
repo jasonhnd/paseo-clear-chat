@@ -81,7 +81,7 @@ const MAX_INLINE_DEPTH = 4;
 /** Two spaces, or a trailing backslash, are the author asking for a new line. */
 const HARD_BREAK_RE = /(?: {2,}|\\)$/;
 
-export function parseMarkdown(text: string): MdBlock[] {
+export function parseMarkdown(text: string, onHeading?: (block: MdBlock, line: number) => void): MdBlock[] {
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
   const blocks: MdBlock[] = [];
   let index = 0;
@@ -104,7 +104,9 @@ export function parseMarkdown(text: string): MdBlock[] {
       const hashes = (heading[1] ?? "#").length;
       const level = (hashes > 4 ? 4 : hashes) as MdHeadingLevel;
       const title = (heading[2] ?? "").replace(TRAILING_SPACE_RE, "");
-      blocks.push({ kind: "heading", level, spans: parseInline(title) });
+      const block: MdBlock = { kind: "heading", level, spans: parseInline(title) };
+      blocks.push(block);
+      onHeading?.(block, index);
       index++;
       continue;
     }

@@ -81,6 +81,8 @@ export interface EnhancerPreferences {
   collapsedStepAction: CollapsedStepAction;
   foldLongOutputAfter: OutputLineLimit;
   showAnswerCard: boolean;
+  showJumpChips: boolean;
+  dismissedOptionReplies: NonNullable<PreferenceOverrides["dismissedOptionReplies"]>;
   delegatedTools: string;
   delegatedCodeBlocks: string;
   hiddenTools: string;
@@ -109,6 +111,8 @@ export const DEFAULT_PREFERENCES: Readonly<EnhancerPreferences> = {
   collapsedStepAction: "details",
   foldLongOutputAfter: 15,
   showAnswerCard: false,
+  showJumpChips: false,
+  dismissedOptionReplies: [],
   delegatedTools: "",
   delegatedCodeBlocks: "",
   hiddenTools: "",
@@ -151,7 +155,7 @@ function loadLegacyPreferences(): PreferenceOverrides | undefined {
     const valid: Record<string, unknown> = {};
     for (const [key, schema] of Object.entries(preferenceOverridesSchema.shape)) {
       // New host-only preferences must never come from a browser import snapshot.
-      if (["textScale", "foldFinishedSteps", "foldLongOutputAfter", "codeFontFamily", "customAccent", "customAccentEnabled", "collapsedStepAction", "delegatedTools", "delegatedCodeBlocks", "hiddenTools", "codeBlockOpen", "foldMessagePrefixes", "showAnswerCard"].includes(key)) continue;
+      if (["textScale", "foldFinishedSteps", "foldLongOutputAfter", "codeFontFamily", "customAccent", "customAccentEnabled", "collapsedStepAction", "delegatedTools", "delegatedCodeBlocks", "hiddenTools", "codeBlockOpen", "foldMessagePrefixes", "showAnswerCard", "showJumpChips", "dismissedOptionReplies"].includes(key)) continue;
       const parsed = schema.safeParse((candidate as Record<string, unknown>)[key]);
       if (parsed.success && parsed.data !== undefined) valid[key] = parsed.data;
     }
@@ -165,6 +169,7 @@ let preferences: EnhancerPreferences = { ...DEFAULT_PREFERENCES };
 let invoke: PluginClientContext["rpc"] | undefined;
 let pending = Promise.resolve();
 let localVersion = 0;
+let resetVersion = 0;
 let ready = false;
 let storageError: string | null = null;
 
@@ -228,15 +233,21 @@ async function savePreferences(
   throw new SettingsFailure(STARTUP_MESSAGES.settingsConflict);
 }
 
+function applySavedPreferences(values: PresentationSettings, version: number, reset: number): void {
+  // A queued edit must not be replaced by an older read/write response.
+  if (version === localVersion) preferences = { ...DEFAULT_PREFERENCES, ...values.preferences };
+  else if (reset === resetVersion) preferences = { ...preferences, dismissedOptionReplies: values.preferences.dismissedOptionReplies ?? [] };
+  ready = true;
+  storageError = null;
+  publish();
+}
+
 function enqueue(change: (values: PresentationSettings) => PresentationSettings): Promise<void> {
   const version = localVersion;
+  const reset = resetVersion;
   pending = pending.then(async () => {
     const values = await savePreferences(change);
-    // A queued edit must not be replaced by an older read/write response.
-    if (version === localVersion) preferences = { ...DEFAULT_PREFERENCES, ...values.preferences };
-    ready = true;
-    storageError = null;
-    publish();
+    applySavedPreferences(values, version, reset);
   }).catch((error: unknown) => {
     storageError = error instanceof SettingsFailure ? error.message : STARTUP_MESSAGES.settingsRead;
     publish();
@@ -281,8 +292,29 @@ export function updateEnhancerPreferences(update: Partial<EnhancerPreferences>):
   }));
 }
 
+export function saveDismissedOptionReply(agentId: string, at: number): Promise<void> {
+  const version = localVersion;
+  const reset = resetVersion;
+  pending = pending.then(async () => {
+    const values = await savePreferences((current) => ({
+      ...current,
+      preferences: {
+        ...current.preferences,
+        dismissedOptionReplies: [
+          ...(current.preferences.dismissedOptionReplies ?? []).filter(entry => entry.agentId !== agentId || entry.at !== at),
+          { agentId, at },
+        ].slice(-100),
+      },
+      legacyMigrated: true,
+    }));
+    applySavedPreferences(values, version, reset);
+  }).catch(() => { /* Dismissal remains effective locally if persistence fails. */ });
+  return pending;
+}
+
 export function resetEnhancerPreferences(): Promise<void> {
   localVersion += 1;
+  resetVersion += 1;
   preferences = { ...DEFAULT_PREFERENCES };
   publish();
   // SDK reset would also clear the migration marker, so write an empty set of

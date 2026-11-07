@@ -3,12 +3,14 @@ import { Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from
 import { useAgent, useTranslation } from "@getpaseo/plugin/client";
 import { TextInput } from "@getpaseo/plugin/client/ui";
 import { messages } from "../messages";
-import { answerText, choose, clearChoice, dismiss, getOptionSession, missingQuestion, moveCursor, sendAnswer, setActiveQuestion, setNote, useOptionSession } from "../option-session";
+import { answerText, choose, clearChoice, dismiss, getOptionSession, missingQuestion, moveCursor, retireOptionSession, sendAnswer, setActiveQuestion, setNote, useOptionSession } from "../option-session";
 import { installOptionKeyboard, optionComposer } from "./option-keyboard";
 import { installOptionComposer } from "../option-composer";
 import { mountOptionPanel } from "./option-panel";
 import type { OptionPanel } from "./option-panel";
 import type { ExtendedThemeTokens } from "./theme-tokens";
+
+export const POPOVER_MAX_HEIGHT_RATIO = 0.65;
 
 export function OptionCard({ agentId, at, tokens, popover = false, onSent }: { agentId: string; at: number; tokens: ExtendedThemeTokens; popover?: boolean; onSent?: () => void }) {
   const { t } = useTranslation(messages);
@@ -109,14 +111,14 @@ export function OptionCard({ agentId, at, tokens, popover = false, onSent }: { a
   const answer = answerText(agentId);
   const labelStyle = { color: tokens.foreground, fontFamily: tokens.fontUi, fontSize: tokens.fs(13) };
   const mutedStyle = { ...labelStyle, color: tokens.foregroundMuted, fontSize: tokens.fs(12) };
-  const buttonStyle = { minHeight: 44, justifyContent: "center" as const, alignItems: "center" as const, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: tokens.border };
+  const buttonStyle = { minHeight: 44, ...(popover ? { minWidth: 44 } : {}), justifyContent: "center" as const, alignItems: "center" as const, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: tokens.border };
   const send = async () => {
     if (status === "running" || getOptionSession(agentId)?.sending || !answerText(agentId)) return;
     const pending = sendAnswer(agentId);
     const started = getOptionSession(agentId)?.at === at && getOptionSession(agentId)?.sending;
     await pending;
     const current = getOptionSession(agentId);
-    if (started && current?.at === at && !current.sending && !current.error) { onSent?.(); dismiss(agentId); }
+    if (started && current?.at === at && !current.sending && !current.error) { onSent?.(); retireOptionSession(agentId); }
   };
   sendRef.current = () => { void send(); };
   const webProps = Platform.OS === "web" && !popover ? {
@@ -142,18 +144,30 @@ export function OptionCard({ agentId, at, tokens, popover = false, onSent }: { a
   );
   const end = /[!?。！？]|\.(?=\s|$)/.exec(question.text);
   const split = end ? end.index + 1 : question.text.length;
+  const header = (
+    <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
+      {session.set.questions.map((q, i) => <Pressable key={i} testID={`option-question-${i}`} accessibilityRole="tab" accessibilityState={{ selected: i === index }} accessibilityLabel={t("answerCard.questionTab", { question: number(i) })} onPress={() => setActiveQuestion(agentId, i)} style={{ minHeight: 44, ...(popover ? { minWidth: 44 } : {}), justifyContent: "center", borderBottomWidth: i === index ? 2 : 0, borderColor: tokens.success, paddingHorizontal: 4 }}>
+        <Text style={labelStyle}>{t("answerCard.question", { current: i + 1, total: session.set.questions.length })}</Text>
+      </Pressable>)}
+      {chosen ? <Text style={{ ...mutedStyle, color: tokens.success }}>· {chosen}</Text> : null}
+      <Text style={{ ...mutedStyle, flexGrow: 1, textAlign: "right" }}>{t("answerCard.detected")}</Text>
+      {!popover ? <Pressable testID="option-card-collapse" accessibilityRole="button" accessibilityState={{ expanded: true }} accessibilityLabel={t("answerCard.collapse")} onPress={() => { setEntered(false); setSendFocus(false); setCollapsed(true); }} style={buttonStyle}><Text style={mutedStyle}>{t("answerCard.collapse")}</Text></Pressable> : null}
+    </View>
+  );
+  const sendRow = (
+    <>
+      {status === "running" ? <Text testID="option-running" style={mutedStyle}>{t("answerCard.running")}</Text> : null}
+      <Pressable testID="option-send" accessibilityRole="button" accessibilityState={{ disabled: answer === null || session.sending || status === "running" }} disabled={(popover || Platform.OS !== "web") && (answer === null || session.sending || status === "running")} onFocus={() => { if (entered.current) setSendFocus(true); }} onPress={() => { void send(); }} style={{ ...buttonStyle, backgroundColor: answer === null || session.sending || status === "running" ? tokens.surface2 : tokens.success, borderColor: keyboardSend ? tokens.success : tokens.successBorder, borderWidth: keyboardSend ? 2 : 1 }}>
+        <Text style={{ ...labelStyle, color: answer === null || session.sending || status === "running" ? tokens.foregroundMuted : (tokens.isDark ? "#000000" : "#ffffff"), fontWeight: "700" }}>{missing === null ? t("answerCard.send", { answer: answer ?? "" }) : t("answerCard.missing", { question: number(missing) })}</Text>
+      </Pressable>
+    </>
+  );
   return (
-    <View {...webProps} testID={popover ? "option-popover" : "option-card"} style={popover ? {} : { marginTop: 10, borderWidth: 1, borderColor: tokens.border, borderRadius: 12, backgroundColor: tokens.surface1, overflow: "hidden", maxHeight: Math.max(100, height * 0.4) }}>
-      <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+    <View {...webProps} testID={popover ? "option-popover" : "option-card"} style={popover ? { maxHeight: Math.max(200, height * POPOVER_MAX_HEIGHT_RATIO) } : { marginTop: 10, borderWidth: 1, borderColor: tokens.border, borderRadius: 12, backgroundColor: tokens.surface1, overflow: "hidden", maxHeight: Math.max(100, height * 0.4) }}>
+      {popover ? <View style={{ paddingHorizontal: 12, paddingTop: 12 }}>{header}</View> : null}
+      <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled style={popover ? { flexShrink: 1, minHeight: 0 } : undefined}>
         <View style={{ padding: 12, gap: 10 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
-            {session.set.questions.map((q, i) => <Pressable key={i} testID={`option-question-${i}`} accessibilityRole="tab" accessibilityState={{ selected: i === index }} accessibilityLabel={t("answerCard.questionTab", { question: number(i) })} onPress={() => setActiveQuestion(agentId, i)} style={{ minHeight: 44, justifyContent: "center", borderBottomWidth: i === index ? 2 : 0, borderColor: tokens.success, paddingHorizontal: 4 }}>
-              <Text style={labelStyle}>{t("answerCard.question", { current: i + 1, total: session.set.questions.length })}</Text>
-            </Pressable>)}
-            {chosen ? <Text style={{ ...mutedStyle, color: tokens.success }}>· {chosen}</Text> : null}
-            <Text style={{ ...mutedStyle, flexGrow: 1, textAlign: "right" }}>{t("answerCard.detected")}</Text>
-            {!popover ? <Pressable testID="option-card-collapse" accessibilityRole="button" accessibilityState={{ expanded: true }} accessibilityLabel={t("answerCard.collapse")} onPress={() => { setEntered(false); setSendFocus(false); setCollapsed(true); }} style={buttonStyle}><Text style={mutedStyle}>{t("answerCard.collapse")}</Text></Pressable> : null}
-          </View>
+          {!popover ? header : null}
           <Text selectable style={labelStyle}><Text style={{ fontWeight: "700" }}>{question.text.slice(0, split)}</Text>{question.text.slice(split)}</Text>
           {question.options.map((option, i) => {
             const selected = session.choices[index] === option.letter;
@@ -175,12 +189,10 @@ export function OptionCard({ agentId, at, tokens, popover = false, onSent }: { a
           <Pressable testID="option-dismiss" accessibilityRole="button" onPress={() => dismiss(agentId)} style={buttonStyle}><Text style={mutedStyle}>{t("answerCard.notOptions")}</Text></Pressable>
           {session.error ? <Text testID="option-send-error" accessibilityRole="alert" style={{ ...mutedStyle, color: tokens.danger }}>{t("answerCard.error", { reason: session.error })}</Text> : null}
           {Platform.OS === "web" && !popover ? <Text testID="option-key-hints" style={mutedStyle}>{[t("answerCard.hintMove"), t("answerCard.hintPick"), index === session.set.questions.length - 1 ? t("answerCard.hintSend") : t("answerCard.hintNext"), t("answerCard.hintBack")].join("  ·  ")}</Text> : null}
-          {status === "running" ? <Text testID="option-running" style={mutedStyle}>{t("answerCard.running")}</Text> : null}
-          <Pressable testID="option-send" accessibilityRole="button" accessibilityState={{ disabled: answer === null || session.sending || status === "running" }} disabled={(popover || Platform.OS !== "web") && (answer === null || session.sending || status === "running")} onFocus={() => { if (entered.current) setSendFocus(true); }} onPress={() => { void send(); }} style={{ ...buttonStyle, backgroundColor: answer === null || session.sending || status === "running" ? tokens.surface2 : tokens.success, borderColor: keyboardSend ? tokens.success : tokens.successBorder, borderWidth: keyboardSend ? 2 : 1 }}>
-            <Text style={{ ...labelStyle, color: answer === null || session.sending || status === "running" ? tokens.foregroundMuted : (tokens.isDark ? "#000000" : "#ffffff"), fontWeight: "700" }}>{missing === null ? t("answerCard.send", { answer: answer ?? "" }) : t("answerCard.missing", { question: number(missing) })}</Text>
-          </Pressable>
+          {!popover ? sendRow : null}
         </View>
       </ScrollView>
+      {popover ? <View style={{ paddingHorizontal: 12, paddingBottom: 12, gap: 10 }}>{sendRow}</View> : null}
     </View>
   );
 }
