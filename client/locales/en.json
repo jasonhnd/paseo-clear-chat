@@ -129,7 +129,7 @@
     "retry": "Retry",
     "jumpChips": {
       "label": "Show jump chips on long replies",
-      "description": "Finished long replies get a row of chips that jump to each heading, on phones and everywhere else. Nothing is folded."
+      "description": "Finished long replies get a row of chips that jump to each heading, in the web page and the desktop app. Nothing is folded."
     },
     "answerCard": {
       "label": "Show an answer card under replies that ask lettered questions",

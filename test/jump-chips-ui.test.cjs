@@ -6,8 +6,8 @@ const title = "A heading long enough to need truncation";
 const reply = `# First\n\`\`\`\n# Hidden\n\`\`\`\n  # Indented\n## ${title}\n### Third\n${"body ".repeat(700)}`;
 const byId = (h, tree, id) => h.nodes(tree, node => node.props.testID === id)[0];
 
-function fixture(t) {
-  const h = createToolHarness("web", { markdown: true, preferences: { showJumpChips: true }, width: 390 });
+function fixture(t, platform = "web") {
+  const h = createToolHarness(platform, { markdown: true, preferences: { showJumpChips: true }, width: 390 });
   t.after(() => { h.unmount(); h.dispose(); });
   const transformer = h.transformers.get("assistant_message");
   const Renderer = h.load("client/live-renderers.tsx").LiveAssistantRenderer;
@@ -18,6 +18,21 @@ function fixture(t) {
     return h.draw({ type: Renderer, props: { agentId: "a", host: { id: "host" }, item, timestamp: new Date(10), theme: { colors: {} } } });
   };
   return { h, draw };
+}
+
+for (const platform of ["ios", "android"]) {
+  test(`${platform}: finished long replies have no chips with the setting on or off`, t => {
+    const { h, draw } = fixture(t, platform);
+    const enabled = draw();
+    assert.equal(byId(h, enabled, "jump-chips"), undefined);
+    const enabledText = h.text(enabled);
+    assert.ok(enabledText.includes("First"));
+    assert.ok(enabledText.includes(title));
+    h.preferences.showJumpChips = false;
+    const disabled = draw();
+    assert.equal(byId(h, disabled, "jump-chips"), undefined);
+    assert.equal(h.text(disabled), enabledText);
+  });
 }
 
 test("chips appear only for enabled, finished long replies and preserve the reply", t => {
