@@ -4,12 +4,6 @@ All notable changes to Clear Chat are listed here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and each version is the Paseo version it is built and tested for plus one number that counts Clear Chat's releases for that Paseo version, for example 0.12.0.1 for the first release for Paseo 0.12.0. Releases 1.0.0 and 1.0.1 came out before this rule.
 
-## Unreleased
-
-### Fixed
-
-- A line with a punctuation marker counts as an option only when the line immediately above has the preceding letter or the line immediately below has the following letter, so an isolated sentence such as `A. Smith wrote this` stays in its paragraph.
-
 ## [0.15.3.4] - 2026-11-08
 
 ### Added

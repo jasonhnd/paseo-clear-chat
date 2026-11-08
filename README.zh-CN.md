@@ -39,10 +39,6 @@
 
 <sub>1. 在一台机器上用无头 Google Chrome 跑 5 次取中位数。你的结果会不一样。测法见 [scripts/perf/README.md](scripts/perf/README.md)（英文）。</sub>
 
-## 尚未发布
-
-- 带标点的行只有在紧邻的上一行或下一行是前一个或后一个字母的选项时才算选项，所以单独的 `A. Smith wrote this` 会留在原段落中。
-
 ## 这一版新增（0.15.3.4）
 
 - **「让每个选项单独占一行」认得实际的写法了。** 开着 **让每个选项单独占一行**（Keep each option on its own line）时，大写字母后面紧跟**全角空格**（`A　先做`）、**全角冒号**（`A：先做`）或**半角冒号加空格**（`A: 先做`）的行也会各占一行；字母也可以是全角大写 `Ａ` 到 `Ｈ`，点和括号写法（`A.`、`B)`、`C）`、`D、`）照旧算。只有「字母后面只跟一个半角空格」这一种（`A 先做`）要上下相邻的一行是它的前一个或后一个字母才算，所以以 `A ` 开头的普通句子不会被单独切开。设置关着时，回复和上一版画得完全一样。这个设置默认关（[#315](https://github.com/jasonhnd/paseo-clear-chat/issues/315)、[PR #319](https://github.com/jasonhnd/paseo-clear-chat/pull/319)、[#323](https://github.com/jasonhnd/paseo-clear-chat/issues/323)、[PR #327](https://github.com/jasonhnd/paseo-clear-chat/pull/327)、[#332](https://github.com/jasonhnd/paseo-clear-chat/issues/332)、[PR #333](https://github.com/jasonhnd/paseo-clear-chat/pull/333)）。
@@ -51,7 +47,7 @@
 
 ### 之前几版新增的
 
-- **新设置：让每个选项单独占一行（默认关）。** 新设置 **让每个选项单独占一行**（Keep each option on its own line）。打开后，回复里以大写字母 A 到 H 加点或右括号开头的行（例如 `A.`、`B)`，或全角的 `C）`、`D、`）会各占一行，不再和上一行连成一段；普通段落、引用里，以及编号列表项的续行（编号的问题后面跟着字母行）都一样。其余内容照旧，设置关着时回复和上一版完全一样。小写字母、H 以后的字母，以及 `e.g.` 这类写法不算。已经显示的旧回复，重新加载聊天后才会按新设置重画；新的回复马上按新设置显示。（[#304](https://github.com/jasonhnd/paseo-clear-chat/issues/304)、[PR #308](https://github.com/jasonhnd/paseo-clear-chat/pull/308)、[#305](https://github.com/jasonhnd/paseo-clear-chat/issues/305)、[PR #307](https://github.com/jasonhnd/paseo-clear-chat/pull/307)、[#306](https://github.com/jasonhnd/paseo-clear-chat/issues/306)、[PR #309](https://github.com/jasonhnd/paseo-clear-chat/pull/309)）。
+- **新设置：让每个选项单独占一行（默认关）。** 新设置 **让每个选项单独占一行**（Keep each option on its own line）。打开后，回复里以大写字母 A 到 H 加点或右括号开头的行（例如 `A.`、`B)`，或全角的 `C）`、`D、`）会各占一行，不再和上一行连成一段；普通段落、引用里，以及编号列表项的续行（编号的问题后面跟着字母行）都一样。其余内容照旧，设置关着时回复和上一版完全一样。小写字母、H 以后的字母，以及 `e.g.` 这类写法不算。已经显示的旧回复，重新加载聊天后才会按新设置重画；新的回复马上按新设置显示。设置打开时，以单个大写字母 A 到 H 加点或括号开头的一行，即使是普通句子（例如 `A. Smith wrote this`）也会单独成行；不想这样就把这个设置关着。（[#304](https://github.com/jasonhnd/paseo-clear-chat/issues/304)、[PR #308](https://github.com/jasonhnd/paseo-clear-chat/pull/308)、[#305](https://github.com/jasonhnd/paseo-clear-chat/issues/305)、[PR #307](https://github.com/jasonhnd/paseo-clear-chat/pull/307)、[#306](https://github.com/jasonhnd/paseo-clear-chat/issues/306)、[PR #309](https://github.com/jasonhnd/paseo-clear-chat/pull/309)）。
 - **「不是选项」重新加载后仍然记得。** 普通列表被当成选项时，点 **不是选项** 就能把这条回复下面的卡片收掉；现在重新加载聊天后它仍然收着，小条和浮动面板对这条回复也不会再出现。Clear Chat 把最多 100 条这样的回复记在主机上保存的设置里（先丢最旧的）；点 **恢复默认** 会清空。更新的回复不受影响，发送答案也不会往这个列表里加（[#252](https://github.com/jasonhnd/paseo-clear-chat/issues/252)）。
 - **手机上的小条弹层：页签和发送行固定。** 手机上点小条打开的弹层，现在把题目页签固定在顶部、发送行固定在底部，题干和选项在中间滚动；以前页签会随内容滚走。弹层的高度限制在屏幕高度的一定比例内，触摸目标仍然至少 44 点（[#258](https://github.com/jasonhnd/paseo-clear-chat/issues/258)、[PR #291](https://github.com/jasonhnd/paseo-clear-chat/pull/291)、[#294](https://github.com/jasonhnd/paseo-clear-chat/issues/294)、[PR #297](https://github.com/jasonhnd/paseo-clear-chat/pull/297)）。
 - **长回复顶部的跳转标签（默认关）。** 新设置 **在长回复中显示跳转标签**（Show jump chips on long replies）。打开后，写完的回复如果有 3000 字以上、至少 3 个一到三级标题，文字上方会出现一排标签，每个标题一个，最多 8 个；标签上是标题（最多 24 个字符），点一下，回复就滚到那个标题。Agent 还在输出时不显示标签。可在网页和桌面应用中使用，原生手机应用上不显示；回复的文字不会被折叠或删掉（[#259](https://github.com/jasonhnd/paseo-clear-chat/issues/259)、[#296](https://github.com/jasonhnd/paseo-clear-chat/issues/296)）。

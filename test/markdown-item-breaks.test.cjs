@@ -67,6 +67,14 @@ test("punctuated markers require an adjacent consecutive option line", () => {
   }
 });
 
+test("a dotted sentence alone in its paragraph stays put, and a numbered question still splits", () => {
+  const [paragraph] = parseWithBreaks("First paragraph of prose.\nA. Smith wrote this.\nLast paragraph of prose.");
+  assert.equal(textOf(paragraph), "First paragraph of prose. A. Smith wrote this. Last paragraph of prose.");
+  const [list] = parseWithBreaks("1. Question\nA. 先做\nB. 先做");
+  assert.equal(list.kind, "list");
+  assert.equal(textOf(list.items[0]), "Question\nA. 先做\nB. 先做");
+});
+
 test("punctuated markers do not cross list items or quote paragraphs", () => {
   const [list] = parseWithBreaks("1. Intro\nA. Smith wrote this\n2. B. Another sentence");
   assert.deepEqual(list.items.map(textOf), ["Intro A. Smith wrote this", "B. Another sentence"]);

@@ -39,10 +39,6 @@
 
 <sub>1. 1 台のマシンでヘッドレスの Google Chrome を 5 回動かした中央値です。環境によって結果は変わります。測り方は [scripts/perf/README.md](scripts/perf/README.md)（英語）にあります。</sub>
 
-## 未リリース
-
-- 句読点付きの行は、すぐ上か下の行が前後の文字の選択肢であるときだけ選択肢として扱うため、単独の `A. Smith wrote this` は元の段落に残ります。
-
 ## この版の新機能（0.15.3.4）
 
 - **「選択肢を 1 行ずつ表示」が実際の書き方を読むようになりました。** 設定をオンにしているとき、大文字のあとに**全角スペース**（`A　まずこれ`）、**全角コロン**（`A：まずこれ`）、**半角コロンとスペース**（`A: まずこれ`）が続く行も 1 行ずつ表示されます。文字は全角大文字 `Ａ`〜`Ｈ` でもよく、ピリオドと括弧の形（`A.`、`B)`、`C）`、`D、`）はこれまでどおりです。「大文字のあとに半角スペースだけ」の形（`A まずこれ`）は、すぐ上か下の行が順番どおりの前後の文字であるときだけ数えます。そのため `A ` で始まる普通の文が 1 行に切り出されることはありません。設定がオフのときの表示は前のリリースとまったく同じです。この設定の初期値はオフです（[#315](https://github.com/jasonhnd/paseo-clear-chat/issues/315)、[PR #319](https://github.com/jasonhnd/paseo-clear-chat/pull/319)、[#323](https://github.com/jasonhnd/paseo-clear-chat/issues/323)、[PR #327](https://github.com/jasonhnd/paseo-clear-chat/pull/327)、[#332](https://github.com/jasonhnd/paseo-clear-chat/issues/332)、[PR #333](https://github.com/jasonhnd/paseo-clear-chat/pull/333)）。
@@ -51,7 +47,7 @@
 
 ### 以前のリリースで追加されたもの
 
-- **新しい設定：選択肢を 1 行ずつ表示（初期値はオフ）。** 新しい設定 **選択肢を 1 行ずつ表示**（Keep each option on its own line）。オンにすると、返信の中で大文字の A〜H にピリオドまたは閉じ括弧が続く行（例：`A.`、`B)`、全角の `C）`、`D、`）が、前の行と 1 つの段落につながらず 1 行ずつ表示されます。通常の段落、引用、番号つきリスト項目の続きの文（番号つきの質問のあとにアルファベットの行が続く場合）でも同じです。それ以外は今までどおりで、オフのときは返信の見た目は前のリリースとまったく同じです。小文字、H より後の文字、`e.g.` のような書き方は対象外です。すでに表示されている返信は、チャットを再読み込みしたあとに新しい設定で描き直されます。新しい返信はすぐ新しい設定で表示されます。（[#304](https://github.com/jasonhnd/paseo-clear-chat/issues/304)、[PR #308](https://github.com/jasonhnd/paseo-clear-chat/pull/308)、[#305](https://github.com/jasonhnd/paseo-clear-chat/issues/305)、[PR #307](https://github.com/jasonhnd/paseo-clear-chat/pull/307)、[#306](https://github.com/jasonhnd/paseo-clear-chat/issues/306)、[PR #309](https://github.com/jasonhnd/paseo-clear-chat/pull/309)）。
+- **新しい設定：選択肢を 1 行ずつ表示（初期値はオフ）。** 新しい設定 **選択肢を 1 行ずつ表示**（Keep each option on its own line）。オンにすると、返信の中で大文字の A〜H にピリオドまたは閉じ括弧が続く行（例：`A.`、`B)`、全角の `C）`、`D、`）が、前の行と 1 つの段落につながらず 1 行ずつ表示されます。通常の段落、引用、番号つきリスト項目の続きの文（番号つきの質問のあとにアルファベットの行が続く場合）でも同じです。それ以外は今までどおりで、オフのときは返信の見た目は前のリリースとまったく同じです。小文字、H より後の文字、`e.g.` のような書き方は対象外です。すでに表示されている返信は、チャットを再読み込みしたあとに新しい設定で描き直されます。新しい返信はすぐ新しい設定で表示されます。設定をオンにすると、大文字 1 文字の A～H にピリオドか括弧が続いて始まる行は、普通の文であっても（例：`A. Smith wrote this`）1 行ずつ表示されます。そうしたくないときは、この設定をオフのままにしてください。（[#304](https://github.com/jasonhnd/paseo-clear-chat/issues/304)、[PR #308](https://github.com/jasonhnd/paseo-clear-chat/pull/308)、[#305](https://github.com/jasonhnd/paseo-clear-chat/issues/305)、[PR #307](https://github.com/jasonhnd/paseo-clear-chat/pull/307)、[#306](https://github.com/jasonhnd/paseo-clear-chat/issues/306)、[PR #309](https://github.com/jasonhnd/paseo-clear-chat/pull/309)）。
 - **「選択肢ではない」は再読み込みのあとも覚えています。** 普通のリストが選択肢と誤認されたときは **選択肢ではない** を押すと、その返信の下のカードを閉じられます。これからは、チャットを再読み込みしても閉じたままで、入力欄の上のタブと浮動パネルもその返信には出ません。Clear Chat はこうした返信を最大 100 件、ホストに保存された設定に記録します（古いものから削除）。**初期設定に戻す** で消去されます。新しい返信には影響せず、答えを送信してもこの一覧には加わりません（[#252](https://github.com/jasonhnd/paseo-clear-chat/issues/252)）。
 - **スマートフォンのポップオーバー：タブと送信行を固定。** スマートフォンでタブから開くポップオーバーは、質問のタブを上に、送信行を下に固定し、質問文と選択肢はその間でスクロールします。以前はタブが内容と一緒にスクロールして見えなくなっていました。ポップオーバーの高さは画面の高さに対する一定の割合に制限され、タッチ操作の対象は引き続き 44 ポイント以上です（[#258](https://github.com/jasonhnd/paseo-clear-chat/issues/258)、[PR #291](https://github.com/jasonhnd/paseo-clear-chat/pull/291)、[#294](https://github.com/jasonhnd/paseo-clear-chat/issues/294)、[PR #297](https://github.com/jasonhnd/paseo-clear-chat/pull/297)）。
 - **長い返信の上のジャンプチップ（初期値はオフ）。** 新しい設定 **長い返信にジャンプチップを表示**（Show jump chips on long replies）。オンにすると、書き終えた返信が 3000 文字以上で、見出し（レベル 1〜3）が 3 つ以上あるとき、本文の上にチップが 1 行並びます。見出し 1 つにつき 1 つで、最大 8 個です。チップには見出し（24 文字まで）が表示され、押すとその見出しまで返信がスクロールします。エージェントがまだ書いている間はチップは出ません。ウェブページとデスクトップアプリで使えます。ネイティブのスマートフォンアプリには表示されません。返信の文章が折りたたまれたり削られたりすることはありません（[#259](https://github.com/jasonhnd/paseo-clear-chat/issues/259)、[#296](https://github.com/jasonhnd/paseo-clear-chat/issues/296)）。
