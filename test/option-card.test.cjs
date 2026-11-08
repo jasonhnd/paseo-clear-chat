@@ -24,6 +24,14 @@ function fixture(t) {
   return { h, s, agents, draw };
 }
 
+test("outer frame has no horizontal margin or fixed width", t => {
+  const { h, draw } = fixture(t);
+  const style = byId(h, draw(), "option-card").props.style;
+  for (const property of ["marginHorizontal", "marginLeft", "marginRight", "width"]) {
+    assert.equal(style[property], undefined, property);
+  }
+});
+
 test("inline card advances only for a first choice and changes an existing choice in place", t => {
   const { h, s, draw } = fixture(t);
   let tree = draw();
