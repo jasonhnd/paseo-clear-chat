@@ -19,7 +19,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Known limitations
 
-- A line that starts with a capital letter and a dot is still put on its own line when the setting is on, even if it is an ordinary sentence (for example `A. Smith wrote this`); keep the setting off if you do not want that.
 - At desktop width, in the web page or the desktop app, pressing Space while a jump chip has focus does not scroll: Paseo handles that key first, so the chip does not receive it (Paseo's own buttons behave the same way at that width). Enter and a mouse click work, and at narrow widths Space works too.
 - The answer card treats a half-width colon with no space after it as a marker, which the reading behind the option-line setting does not; the two have differed since the card was added and this release does not change that.
 - A bold line with trailing spaces after the closing `**` is not taken as an anchor; this can be relaxed in a later release if it gets in the way.
@@ -46,7 +45,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - With Clear Chat on, Paseo's own Chat display modes (Full, Collapse tool calls, Collapse turns) do not change how the conversations drawn by Clear Chat look, because Clear Chat draws every row itself; it folds finished steps and long output by its own settings. With Clear Chat off, the three modes work as usual.
 - At desktop width, in the web page or the desktop app, pressing Space while a jump chip has focus does not scroll: Paseo handles that key first, so the chip does not receive it (Paseo's own buttons behave the same way at that width). Enter and a mouse click work, and at narrow widths Space works too.
 - Only a capital letter from A to H counts as an option line for the new setting; lower-case letters, letters after H and forms such as `e.g.` do not.
-- When the setting is on, a line that starts with a single capital letter from A to H and a dot or a bracket is put on its own line even if it is an ordinary sentence (for example `A. Smith wrote this`); keep the setting off if you do not want that.
 - The limitations listed in the previous release still apply.
 
 ### Upgrading
