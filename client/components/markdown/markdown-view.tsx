@@ -18,8 +18,10 @@ import { GeneratedImages } from "../generated-images";
 import { parseMarkdown, type MdAlign, type MdBlock, type MdInline, type MdListItem } from "./parse";
 import { ImageFallback, MarkdownImage } from "./markdown-image";
 import { MessageOutput } from "../message-output";
+import { outputWouldFold } from "../tool-output";
+import { fencedSource, OfficialMarkdownBlock } from "./official-block";
 import type { ToolExpansionIdentity } from "../../tool-expansion-store";
-import { useEnhancerPreferences } from "../../preferences";
+import { useEnhancerPreferences, type OutputLineLimit } from "../../preferences";
 import { codeBlockWebAddress } from "./web-address";
 import { jumpHeadingLines } from "../../jump-chips";
 
@@ -218,6 +220,7 @@ interface RenderContext {
   cwd?: string | null;
   inlineWorkspacePaths: boolean;
   codeBlockOpen: boolean;
+  foldLongOutputAfter: OutputLineLimit;
 }
 
 /**
@@ -255,7 +258,7 @@ function scaleMetrics(metrics: VariantMetrics, scale: number): VariantMetrics {
 
 export function MarkdownView({ text, tokens, variant, images = [], cwd, expansionIdentity, inlineWorkspacePaths = true }: MarkdownViewProps) {
   useTranslation(messages);
-  const { codeBlockOpen, keepItemLineBreaks } = useEnhancerPreferences();
+  const { codeBlockOpen, keepItemLineBreaks, foldLongOutputAfter } = useEnhancerPreferences();
   const filePath = useReplyFilePath(cwd);
   const { blocks, headingIndices } = useMemo(() => {
     const byLine = new Map(jumpHeadingLines(text).map(({ line, index }) => [line, index]));
@@ -282,8 +285,8 @@ export function MarkdownView({ text, tokens, variant, images = [], cwd, expansio
   );
   const styles = useMemo(() => buildStyles(tokens, variant, metrics), [tokens, variant, metrics]);
   const context = useMemo<RenderContext>(
-    () => ({ styles, tokens, metrics, cwd, expansionIdentity, inlineWorkspacePaths, codeBlockOpen, openFilePath: filePath.openFilePath, copyFilePath: filePath.copy }),
-    [styles, tokens, metrics, cwd, expansionIdentity, inlineWorkspacePaths, codeBlockOpen, filePath.openFilePath, filePath.copy],
+    () => ({ styles, tokens, metrics, cwd, expansionIdentity, inlineWorkspacePaths, codeBlockOpen, foldLongOutputAfter, openFilePath: filePath.openFilePath, copyFilePath: filePath.copy }),
+    [styles, tokens, metrics, cwd, expansionIdentity, inlineWorkspacePaths, codeBlockOpen, foldLongOutputAfter, filePath.openFilePath, filePath.copy],
   );
 
   return (
@@ -362,9 +365,8 @@ function renderBlock(
         </View>
       );
 
-    case "code":
-      return (
-        <View key={key} style={styles.codeBlock}>
+    case "code": {
+      const fallback = (
           <MessageOutput text={block.code} tokens={tokens} identity={context.expansionIdentity} part={key}>
             {(code) => <SyntaxHighlightBlock
               code={code}
@@ -377,8 +379,17 @@ function renderBlock(
               showLineNumbers={metrics.codeLineNumbers}
             />}
           </MessageOutput>
+      );
+      const delegate = block.language.toLowerCase() !== "mermaid"
+        && !(context.codeBlockOpen && codeBlockWebAddress(block.code))
+        && !metrics.codeLineNumbers
+        && !outputWouldFold(block.code, context.foldLongOutputAfter);
+      return (
+        <View key={key} style={styles.codeBlock}>
+          {delegate ? <OfficialMarkdownBlock text={fencedSource(block.code, block.language)} fallback={fallback} /> : fallback}
         </View>
       );
+    }
 
     case "rule":
       return <View key={key} style={styles.rule} />;
