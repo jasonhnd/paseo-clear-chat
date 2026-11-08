@@ -236,3 +236,57 @@ test("auto-advance finds the next unanswered question and wraps", t => {
   s.choose("a", 1, "B");
   assert.equal(s.getOptionSession("a").activeQuestion, 1);
 });
+
+
+test("reconstructs answered frames when history arrives out of order", t => {
+  const { s } = fixture(t);
+  s.publishUserMessage("a", 40, "B");
+  s.publishAssistantReply("a", { at: 30, text: one });
+  s.publishAssistantReply("a", { at: 10, text: two });
+  s.publishUserMessage("a", 20, "1B 2A");
+  assert.equal(s.getOptionSession("a", 10).answeredText, "1B 2A");
+  assert.deepEqual(s.getOptionSession("a", 10).choices, { 0: "B", 1: "A" });
+  assert.equal(s.getOptionSession("a", 30).answeredText, "B");
+  assert.deepEqual(s.getOptionSession("a", 30).choices, { 0: "B" });
+  s.publishAssistantReply("a", { at: 50, text: "plain" });
+  assert.equal(s.getOptionSession("a"), null);
+  assert.equal(s.getOptionSession("a", 10).readOnly, true);
+  assert.equal(s.getOptionSession("a", 30).readOnly, true);
+});
+
+test("typed prose does not mark a previously selected option as the answer", t => {
+  const { s } = fixture(t);
+  s.publishAssistantReply("a", { at: 1, text: one });
+  s.choose("a", 0, "B");
+  s.publishUserMessage("a", 2, "Let's discuss this first.");
+  assert.deepEqual(s.getOptionSession("a").choices, {});
+  assert.equal(s.getOptionSession("a").answeredText, "Let's discuss this first.");
+  s.clearChoice("a", 0); s.setNote("a", 0, "changed"); s.setActiveQuestion("a", 0); s.moveCursor("a", 0, -1); s.dismiss("a");
+  assert.equal(s.getOptionSession("a").answeredText, "Let's discuss this first.");
+});
+
+test("an intervening reply corrects an out-of-order answer association", t => {
+  const { s } = fixture(t);
+  s.publishAssistantReply("a", { at: 10, text: one });
+  s.publishUserMessage("a", 30, "B");
+  s.publishAssistantReply("a", { at: 20, text: two });
+  assert.equal(s.getOptionSession("a", 10), null);
+  assert.equal(s.getOptionSession("a", 20).answeredText, "B");
+});
+
+
+test("a sent answer keeps its selections when the user message arrives before send resolves", async t => {
+  const { s } = fixture(t);
+  s.publishAssistantReply("a", { at: 1, text: one });
+  s.choose("a", 0, "B");
+  s.setNote("a", 0, "note");
+  let resolve;
+  s.setOptionSender(() => new Promise(r => { resolve = r; }));
+  const pending = s.sendAnswer("a");
+  s.publishAssistantReply("a", { at: 3, text: "plain" });
+  s.publishUserMessage("a", 2, "1B (note)");
+  assert.equal(s.getOptionSession("a", 1).choices[0], "B");
+  resolve(); await pending;
+  assert.equal(s.getOptionSession("a", 1).choices[0], "B");
+  assert.equal(s.getOptionSession("a", 1).answeredText, "1B (note)");
+});

@@ -77,20 +77,68 @@ test("disabled Send is marked inaccessible and cannot be focused", t => {
   assert.equal(send.props.accessibilityState.disabled, false);
 });
 
-test("typed messages make the matching card read-only and newer replies replace it", t => {
+test("typed answers leave a read-only frame beside a new operable frame", t => {
   const { h, s, draw } = fixture(t);
   draw();
-  byId(h, draw(), "option-row-B").props.onPress();
-  s.publishUserMessage("a", 11);
+  s.publishUserMessage("a", 11, "1B 2A");
   let tree = draw();
   assert.equal(byId(h, tree, "option-card").props.accessibilityState.disabled, true);
-  assert.equal(byId(h, tree, "option-row-A").props.disabled, true);
-  assert.equal(byId(h, tree, "option-send").props.disabled, true);
-  byId(h, tree, "option-question-0").props.onPress();
-  assert.equal(s.getOptionSession("a").choices[0], "B");
+  assert.equal(byId(h, tree, "option-row-B").props.accessibilityState.selected, true);
+  assert.match(h.text(byId(h, tree, "option-row-B")), /✓/);
+  assert.equal(h.text(byId(h, tree, "option-question-0")), "✓ File (recommended)");
+  assert.equal(h.text(byId(h, tree, "option-question-1")), "✓ Yes");
+  assert.equal(h.text(byId(h, tree, "option-answered")), "Answered in the chat: 1B 2A");
+  for (const id of ["option-send", "option-hint", "option-dismiss"]) assert.equal(byId(h, tree, id), undefined);
+  assert.equal(byId(h, tree, "option-row-B").props.onPress, undefined);
+  assert.equal(byId(h, tree, "option-question-0").props.onPress, undefined);
   s.publishAssistantReply("a", { at: 12, text: reply });
+  tree = draw();
+  assert.ok(byId(h, tree, "option-answered"));
+  const newer = draw(12);
+  assert.ok(byId(h, newer, "option-send"));
+  byId(h, newer, "option-row-A").props.onPress();
+  assert.equal(s.getOptionSession("a").choices[0], "A");
+  assert.equal(s.getOptionSession("a", 10).choices[0], "B");
+  s.publishAssistantReply("a", { at: 13, text: "Ordinary reply" });
+  assert.ok(byId(h, draw(), "option-answered"));
+  assert.equal(byId(h, draw(12), "option-card"), undefined);
+});
+
+test("Not options dismisses only the current frame and stays dismissed", t => {
+  const { h, s, draw } = fixture(t);
+  const button = byId(h, draw(), "option-dismiss");
+  assert.equal(h.text(button), "Not options");
+  assert.equal(button.props.style.minHeight, 44);
+  assert.equal(button.props.accessibilityRole, "button");
+  button.props.onPress();
   assert.equal(byId(h, draw(), "option-card"), undefined);
-  assert.ok(byId(h, draw(12), "option-card"));
+  s.publishAssistantReply("a", { at: 10, text: reply });
+  assert.equal(byId(h, draw(), "option-card"), undefined);
+  assert.ok(byId(h, draw(11), "option-dismiss"));
+});
+
+test("read-only frames ignore keyboard, clicks and focus", t => {
+  const h = createToolHarness("web", { agents: { a: { status: "idle" } } });
+  t.after(() => { h.unmount(); h.dispose(); });
+  const s = h.load("client/option-session.ts");
+  const Card = h.load("client/components/option-card.tsx").OptionCard;
+  s.publishAssistantReply("a", { at: 10, text: reply });
+  s.publishUserMessage("a", 11, "1B 2A");
+  const tree = h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } });
+  const before = s.getOptionSession("a", 10);
+  let prevented = false;
+  for (const key of ["ArrowDown", "ArrowUp", "Enter"]) {
+    byId(h, tree, "option-card").props.onKeyDown({ key, target: { closest: () => true }, nativeEvent: {}, preventDefault: () => { prevented = true; }, stopPropagation() {} });
+  }
+  for (const id of ["option-row-A", "option-row-B", "option-question-0", "option-question-1"]) {
+    const props = byId(h, tree, id).props;
+    assert.equal(props.onPress, undefined);
+    assert.equal(props.onFocus, undefined);
+    assert.equal(props.focusable, undefined);
+  }
+  assert.equal(prevented, false);
+  s.choose("a", 0, "A"); s.moveCursor("a", 0, 1); s.setActiveQuestion("a", 1);
+  assert.equal(s.getOptionSession("a", 10), before);
 });
 
 test("failed sends remain retryable; successful sends leave a read-only card", async t => {
@@ -101,12 +149,14 @@ test("failed sends remain retryable; successful sends leave a read-only card", a
   s.setOptionSender((agent, answer) => { calls.push([agent, answer]); return new Promise((_, fail) => { reject = fail; }); });
   byId(h, draw(), "option-send").props.onPress();
   assert.equal(byId(h, draw(), "option-send").props.disabled, true);
+  assert.equal(byId(h, draw(), "option-dismiss"), undefined);
   reject(new Error("Unavailable")); await flush();
   assert.match(h.text(byId(h, draw(), "option-send-error")), /Unavailable/);
   s.setOptionSender(async (agent, answer) => { calls.push([agent, answer]); });
   byId(h, draw(), "option-send").props.onPress(); await flush();
   assert.deepEqual(calls, [["a", "1B 2A"], ["a", "1B 2A"]]);
   assert.equal(byId(h, draw(), "option-card").props.accessibilityState.disabled, true);
+  assert.equal(h.text(byId(h, draw(), "option-answered")), "Answered in the chat: 1B 2A");
 });
 
 test("the setting and reply identity control visibility", t => {

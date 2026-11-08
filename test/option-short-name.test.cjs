@@ -12,7 +12,7 @@ test("derives a short name from the question title", () => {
   assert.equal(optionShortName("Which storage should the first version use?", 1), "Storage");
   assert.equal(optionShortName("Do you want Postgres?", 1), "Postgres");
   assert.equal(optionShortName("Should we use Postgres?", 1), "Postgres");
-  assert.equal(optionShortName("What do you want to use for storage?", 1), "For storage");
-  assert.equal(optionShortName("Please choose a deployment region?", 1), "A deployment regi…");
+  assert.equal(optionShortName("What do you want to use for storage?", 1), "Storage");
+  assert.equal(optionShortName("Please choose a deployment region?", 1), "Deployment region");
   assert.equal(optionShortName("Which?", 3), "Question 3");
 });
