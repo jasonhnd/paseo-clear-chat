@@ -1,4 +1,5 @@
 import React, { useEffect } from "react";
+import { Platform } from "react-native";
 import type { PluginButtonContentProps, PluginButtonRegistration, PluginClientContext, PluginText } from "@getpaseo/plugin/client";
 import { OptionCard } from "./components/option-card";
 import { buildThemeTokens } from "./components/theme-tokens";
@@ -9,14 +10,31 @@ import { messages } from "./messages";
 function QuestionPopover(props: PluginButtonContentProps) {
   const preferences = useEnhancerPreferences();
   const agentId = props.context === "agent" ? props.agentId : null;
+  const session = agentId === null ? null : getOptionSession(agentId);
+  const close = props.close;
   useEffect(() => {
     if (agentId === null) return;
     setOptionPopoverOpen(agentId, true);
     return () => setOptionPopoverOpen(agentId, false);
   }, [agentId]);
+  useEffect(() => {
+    const doc = globalThis.document;
+    if (Platform.OS !== "web" || !doc || !session) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing || event.repeat ||
+        event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      const target = event.composedPath()[0] as Element | undefined;
+      if (target?.closest?.('input, textarea, [contenteditable]:not([contenteditable="false"])')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+    };
+    // The host handles Escape before it reaches the page for wide popovers.
+    doc.addEventListener("keydown", onKey);
+    return () => doc.removeEventListener("keydown", onKey);
+  }, [close, !!session]);
   if (props.context !== "agent") return null;
-  const { theme, close } = props;
-  const session = getOptionSession(props.agentId);
+  const { theme } = props;
   if (!session) return null;
   return <OptionCard agentId={props.agentId} at={session.at} tokens={buildThemeTokens(theme.colors, preferences)} popover onSent={close} />;
 }
