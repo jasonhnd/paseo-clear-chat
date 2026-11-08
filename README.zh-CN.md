@@ -39,14 +39,19 @@
 
 <sub>1. 在一台机器上用无头 Google Chrome 跑 5 次取中位数。你的结果会不一样。测法见 [scripts/perf/README.md](scripts/perf/README.md)（英文）。</sub>
 
-## 这一版新增（0.15.3.4）
+## 这一版新增（0.15.3.5）
+
+- **答题卡按 `A3` 这类题号分题了。** 题号写成「大写字母加数字」的回复（`A3 …`、`A4 …`，加粗的 `**A3**` 也算），现在按题号一题一题拆开，每题只读自己的 `A`／`B`／`C` 选项；从 `C` 起或者跳号的选项列表也认，普通列表被误认时点 **不是选项** 收掉（[#353](https://github.com/jasonhnd/paseo-clear-chat/issues/353)、[PR #355](https://github.com/jasonhnd/paseo-clear-chat/pull/355)、[#337](https://github.com/jasonhnd/paseo-clear-chat/issues/337)、[PR #346](https://github.com/jasonhnd/paseo-clear-chat/pull/346)）。
+- **带点的选项行也要看邻行。** 开着 **让每个选项单独占一行** 时，以字母加点或冒号开头的行（`A.`、`A：` …）要上下相邻的一行是相邻字母的选项行才单独成行，所以 `A. Smith wrote this` 这种单独一句留在原来的段落里；一行一项写成的列表照旧各自成行（[#338](https://github.com/jasonhnd/paseo-clear-chat/issues/338)、[PR #345](https://github.com/jasonhnd/paseo-clear-chat/pull/345)）。这个设置默认关。
+- **手机宽度下 Esc 能关问题弹层了。** 390 px 宽时，从问题小条打开的弹层按 Esc 会关掉、回到输入框；电脑宽度本来就能关。其他按键没改（[#351](https://github.com/jasonhnd/paseo-clear-chat/issues/351)、[PR #352](https://github.com/jasonhnd/paseo-clear-chat/pull/352)）。
+- **答题卡动图换新了。** README 里的那张图现在是「在卡片上选答案、按 Send」的新录版本（[PR #350](https://github.com/jasonhnd/paseo-clear-chat/pull/350)、[PR #354](https://github.com/jasonhnd/paseo-clear-chat/pull/354)、[PR #356](https://github.com/jasonhnd/paseo-clear-chat/pull/356)）。
+- **仓库工具（写给维护者）。** 发版前的检查不再因为安装时留下的版本文件而失败（[#335](https://github.com/jasonhnd/paseo-clear-chat/issues/335)、[PR #347](https://github.com/jasonhnd/paseo-clear-chat/pull/347)）；`paseo-plugin.json` 去掉了 0.15.3 宿主不读的 `translations` 段（[#336](https://github.com/jasonhnd/paseo-clear-chat/issues/336)、[PR #343](https://github.com/jasonhnd/paseo-clear-chat/pull/343)）。
+
+### 之前几版新增的
 
 - **「让每个选项单独占一行」认得实际的写法了。** 开着 **让每个选项单独占一行**（Keep each option on its own line）时，以大写字母开头、后面跟着下面任意一种标记的行会各占一行：点、半角右括号、全角 `）`、顿号 `、`、半角或全角冒号、制表符、全角空格、半角空格（例如 `A. 先做`、`A) 先做`、`A、先做`、`A: 先做`、`A：先做`、`A　先做`）。字母前面允许有空格、制表符和 `*`／`_` 标记；字母可以是半角 A 到 H，也可以是全角 `Ａ` 到 `Ｈ`。点和半角括号、半角冒号后面必须跟一个空格或制表符，其他标记后面不用；制表符和全角空格本身就够。其余标记还要求紧邻的上一行或下一行是相邻字母的选项行（`A` 行下面是 `B`，或 `B` 行上面是 `A`），那一行用哪种标记写法都行，标点类标记下全角字母和半角字母算同一个。所以单独一行、以字母加点开头的普通句子，以及以 `A ` 开头的普通句子，都不会被单独切开。普通段落、引用里，以及编号列表项的续行里都一样。设置关着时，回复和上一版画得完全一样。这个设置默认关（[#315](https://github.com/jasonhnd/paseo-clear-chat/issues/315)、[PR #319](https://github.com/jasonhnd/paseo-clear-chat/pull/319)、[#323](https://github.com/jasonhnd/paseo-clear-chat/issues/323)、[PR #327](https://github.com/jasonhnd/paseo-clear-chat/pull/327)、[#332](https://github.com/jasonhnd/paseo-clear-chat/issues/332)、[PR #333](https://github.com/jasonhnd/paseo-clear-chat/pull/333)）。
 - **答题卡认得用全角空格写的选项。** 写成 `A　先做` 或 `A：先做` 的选项，现在和点、括号、顿号、冒号这几种写法一样会被认出来，用这种写法写的列表也会出答题卡。答题卡出现的回复比以前多了；普通列表被当成选项时，点 **不是选项** 收掉即可（[#316](https://github.com/jasonhnd/paseo-clear-chat/issues/316)、[PR #320](https://github.com/jasonhnd/paseo-clear-chat/pull/320)）。
 - **更多回复会有跳转标签了。** 整行只有一个加粗短语的行现在也算锚点，所以用加粗小标题写的回复，文字上方会出现一排标签：门槛降到 1200 字、至少 2 个锚点（原来是 3000 字、3 个标题）。加粗行要自己起一段才算；回复里给加粗锚点做了和标题一样的标记，点标签能滚到它对应的那一段。最多 8 个标签，每个锚点一个，每个截到 24 字；不会折叠或删掉任何内容。仍然只在网页和桌面应用里画，手机原生应用不画（[#317](https://github.com/jasonhnd/paseo-clear-chat/issues/317)、[PR #321](https://github.com/jasonhnd/paseo-clear-chat/pull/321)、[#322](https://github.com/jasonhnd/paseo-clear-chat/issues/322)、[PR #325](https://github.com/jasonhnd/paseo-clear-chat/pull/325)、[#318](https://github.com/jasonhnd/paseo-clear-chat/issues/318)、[PR #329](https://github.com/jasonhnd/paseo-clear-chat/pull/329)）。
-
-### 之前几版新增的
-
 - **新设置：让每个选项单独占一行（默认关）。** 新设置 **让每个选项单独占一行**（Keep each option on its own line）。打开后，回复里以大写字母 A 到 H 加点或右括号开头的行（例如 `A.`、`B)`，或全角的 `C）`、`D、`）会各占一行，不再和上一行连成一段；普通段落、引用里，以及编号列表项的续行（编号的问题后面跟着字母行）都一样。其余内容照旧，设置关着时回复和上一版完全一样。小写字母、H 以后的字母，以及 `e.g.` 这类写法不算。已经显示的旧回复，重新加载聊天后才会按新设置重画；新的回复马上按新设置显示。设置打开时，以单个大写字母 A 到 H 加点或括号开头的一行，即使是普通句子（例如 `A. Smith wrote this`）也会单独成行；不想这样就把这个设置关着。（[#304](https://github.com/jasonhnd/paseo-clear-chat/issues/304)、[PR #308](https://github.com/jasonhnd/paseo-clear-chat/pull/308)、[#305](https://github.com/jasonhnd/paseo-clear-chat/issues/305)、[PR #307](https://github.com/jasonhnd/paseo-clear-chat/pull/307)、[#306](https://github.com/jasonhnd/paseo-clear-chat/issues/306)、[PR #309](https://github.com/jasonhnd/paseo-clear-chat/pull/309)）。
 - **「不是选项」重新加载后仍然记得。** 普通列表被当成选项时，点 **不是选项** 就能把这条回复下面的卡片收掉；现在重新加载聊天后它仍然收着，小条和浮动面板对这条回复也不会再出现。Clear Chat 把最多 100 条这样的回复记在主机上保存的设置里（先丢最旧的）；点 **恢复默认** 会清空。更新的回复不受影响，发送答案也不会往这个列表里加（[#252](https://github.com/jasonhnd/paseo-clear-chat/issues/252)）。
 - **手机上的小条弹层：页签和发送行固定。** 手机上点小条打开的弹层，现在把题目页签固定在顶部、发送行固定在底部，题干和选项在中间滚动；以前页签会随内容滚走。弹层的高度限制在屏幕高度的一定比例内，触摸目标仍然至少 44 点（[#258](https://github.com/jasonhnd/paseo-clear-chat/issues/258)、[PR #291](https://github.com/jasonhnd/paseo-clear-chat/pull/291)、[#294](https://github.com/jasonhnd/paseo-clear-chat/issues/294)、[PR #297](https://github.com/jasonhnd/paseo-clear-chat/pull/297)）。
@@ -66,12 +71,12 @@
 ## 安装
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.3.4
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.3.5
 ```
 
 打开 Paseo 的插件页面，在 Clear Chat 的说明开头查看版本号。Paseo 0.14.0 在这里显示默认英文说明，即使切换应用语言也是如此。
 
-Clear Chat 0.15.3.4 需要 Paseo 0.14.0 或更新的版本。打开 **Settings → Plugins → Clear Chat**，可以选颜色、字体和折叠方式。
+Clear Chat 0.15.3.5 需要 Paseo 0.14.0 或更新的版本。打开 **Settings → Plugins → Clear Chat**，可以选颜色、字体和折叠方式。
 
 以后要更新：
 
@@ -120,7 +125,7 @@ Clear Chat 的版本号＝这一版对应、测过的 Paseo 版本，再加一�
 ```bash
 paseo plugin update clear-chat                 # 跟 main 上的最新版，改之前会问
 paseo plugin update clear-chat --yes           # 同上，不再问
-paseo plugin update clear-chat --ref v0.15.3.4 --yes   # 固定到某个版本
+paseo plugin update clear-chat --ref v0.15.3.5 --yes   # 固定到某个版本
 ```
 
 升级会保留你的设置。回退到更早的版本一般也保留，但某一次回退对设置的影响没有保证，设置重要的话先备份。卸载插件会删掉它的设置。
@@ -313,7 +318,7 @@ Ctrl/Cmd+F 打开查找栏。只搜当前显示出来的文字：折叠的步骤
 | 在长回复中显示跳转标签（Show jump chips on long replies） | 默认关。写完的回复有 1200 字以上、至少 2 个锚点时，文字上方出现一排标签，每个锚点一个（最多 8 个），点一下回复就滚到那一段。锚点是 1 到 3 级标题，或者整行只有一个加粗短语、自己起一段的行。可在网页和桌面应用中使用，原生手机应用上不显示。内容不会被折叠。 |
 | 让每个选项单独占一行（Keep each option on its own line） | 默认关。以大写字母（A 到 H，也可以是全角 Ａ 到 Ｈ）开头、后面跟着点、括号、顿号 `、`、冒号、制表符、全角空格或半角空格（例如 `A.`、`B)`、`A、文字`、`A: 文字`、`A：文字`、`A　文字`）的行会各占一行，不再连成一段。点和半角括号、半角冒号后面要有空格或制表符，其他标记后面不用；制表符和全角空格本身就够，其余标记还要求紧邻的上一行或下一行是相邻字母的选项行。只对 Clear Chat 自己画的回复生效，所以要开着 **助手回复 Markdown**。在同一个窗口里切换开关，已经显示的回复会立刻重画；换到别的窗口或设备，就要重新加载聊天才会重画。 |
 
-**已安装版本。** 设置页标题下面显示 `Clear Chat 版本 0.15.3.4`，再下面一行说明这个值的来历：从目录安装时会沿用该目录里已有的版本信息，因此可能显示比你安装的更旧的版本。构建里没有可用的版本信息时，这一行显示 **未知**（Unknown）。
+**已安装版本。** 设置页标题下面显示 `Clear Chat 版本 0.15.3.5`，再下面一行说明这个值的来历：从目录安装时会沿用该目录里已有的版本信息，因此可能显示比你安装的更旧的版本。构建里没有可用的版本信息时，这一行显示 **未知**（Unknown）。
 
 **自定强调色。** 点一个色块，或输入 `#RGB`、`#RRGGBB` 后按 **应用**（Apply）。HEX 写错时会留在输入框里并提示错误，已保存的颜色不变。切换到预设色后，你的自定颜色仍会记住。保存的 HEX 值始终不变；只有文字可能看不清时，显示出来的颜色才会在浅色主题下调深、在深色主题下调浅。实心按钮上的文字用黑或白，哪个对比度高用哪个。
 
@@ -448,14 +453,14 @@ Clear Chat 只改变 Paseo 显示对话的方式。下面每一条都是插件�
 
 **为什么看不到回答卡片？** 设置要开着。最新回复要有带编号的问题，选项是从 A 开始、连续不断的字母，每题至少两个选项，并且要你用简短形式回复（例如「回 1B 2A」）或标出了推荐项。Agent 不能在运行，你发了更新的消息也会让卡片消失。代码块和引用里的问题会被忽略。普通列表被当成选项时，点 **不是选项**；这个选择在重新加载聊天后仍然记得。
 
-**支持哪些 Paseo 版本？** 0.14.0 或更新。Clear Chat 已在 Paseo 0.15.3 的主机上安装、加载，并跑完整测试（2,103 项）；最低仍是 Paseo 0.14.0。上一版在 Paseo 0.15.3 上验过的项目列在 CHANGELOG 里。Paseo 0.13 有一条旧的、未实测的路径，写在[安装](#安装)里。
+**支持哪些 Paseo 版本？** 0.14.0 或更新。Clear Chat 已在 Paseo 0.15.3 的主机上安装、加载，并跑完整测试（2,107 项）；最低仍是 Paseo 0.14.0。上一版在 Paseo 0.15.3 上验过的项目列在 CHANGELOG 里。Paseo 0.13 有一条旧的、未实测的路径，写在[安装](#安装)里。
 
 ## 常见问题
 
 | 问题 | 怎么办 |
 |---|---|
 | 用 Cafe 插件安装失败，或 Paseo 提示缺少 `@shikijs/core` 等 Shiki 依赖。 | 用[安装](#安装)里的 Paseo CLI 命令重试，仓库和版本标签保持不变。Clear Chat 用 `npm ci --include=dev` 安装依赖，所以运行 daemon 的主机上要有 Node.js 和 npm，网络也要能连到 npm 仓库。如果代码目录是你自己管理的，请先在那里运行 `npm ci --include=dev` 再重试。 |
-| 安装停止，提示插件需要更新的 Paseo 版本。 | 使用 Clear Chat 0.15.3.4 时，请把 daemon 主机和所有连接的应用升级到 Paseo 0.14.0 或更新。旧宿主请看[安装](#安装)中的 Paseo 0.13 命令及其未实测提示，以及单独的 Paseo 0.12 说明。 |
+| 安装停止，提示插件需要更新的 Paseo 版本。 | 使用 Clear Chat 0.15.3.5 时，请把 daemon 主机和所有连接的应用升级到 Paseo 0.14.0 或更新。旧宿主请看[安装](#安装)中的 Paseo 0.13 命令及其未实测提示，以及单独的 Paseo 0.12 说明。 |
 | Paseo 拒绝这个插件版本，或 Clear Chat 提示缺少插件设置或时间线支持。 | 把运行 daemon 的主机和所有连着的应用都更新到新版 Paseo，再重新加载 Clear Chat。Clear Chat 需要的 Paseo 版本写在 `paseo-plugin.json` 里。 |
 | 插件注册失败，Clear Chat 启动不了。 | 更新 Paseo，再重新加载 Clear Chat。还不行的话，先备份插件设置，再用 CLI 重新安装。 |
 | Clear Chat 读不到主机上的设置。 | 重新连接主机，在 **Settings → Plugins → Clear Chat** 里点 **重试**（Retry）。还不行的话，检查 daemon 能不能访问插件设置文件夹。 |
@@ -490,7 +495,7 @@ cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_back
 **2. 安装**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.3.4
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.3.5
 ```
 
 **3. 确认后卸载旧插件**

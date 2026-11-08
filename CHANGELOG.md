@@ -4,6 +4,35 @@ All notable changes to Clear Chat are listed here.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and each version is the Paseo version it is built and tested for plus one number that counts Clear Chat's releases for that Paseo version, for example 0.12.0.1 for the first release for Paseo 0.12.0. Releases 1.0.0 and 1.0.1 came out before this rule.
 
+## [0.15.3.5] - 2026-11-08
+
+### Added
+
+- The answer card splits a reply by `A3`-style question numbers: a reply that numbers its questions with a capital letter and digits (`A3 …`, and the bold `**A3**` form too) is read question by question, and each question's own `A`/`B`/`C` options are read; before, such a reply was read as one long run of options and no card appeared ([issue #353](https://github.com/jasonhnd/paseo-clear-chat/issues/353), [PR #355](https://github.com/jasonhnd/paseo-clear-chat/pull/355)). An option list that does not start at `A` or that skips a letter is read as well ([issue #337](https://github.com/jasonhnd/paseo-clear-chat/issues/337), [PR #346](https://github.com/jasonhnd/paseo-clear-chat/pull/346)), and **Not options** still dismisses a list that only looks like options.
+- Esc closes the question popover at 390 px, where the key reaches the page: the popover opened from the question pill closes and the input box gets the focus back, as at desktop width ([issue #351](https://github.com/jasonhnd/paseo-clear-chat/issues/351), [PR #352](https://github.com/jasonhnd/paseo-clear-chat/pull/352)).
+
+### Changed
+
+- A dotted option line now needs the neighbouring-line check that the plain-space form already had: with the option-line setting on, a line whose marker is a letter and a dot or a colon (`A.`, `A：` …) keeps its own line only when the line just above or below is the option line of the neighbouring letter, so a lone sentence such as `A. Smith wrote this` stays in its paragraph ([issue #338](https://github.com/jasonhnd/paseo-clear-chat/issues/338), [PR #345](https://github.com/jasonhnd/paseo-clear-chat/pull/345)). The README and the settings table state the rule as it now behaves.
+
+### Internal
+
+- The pre-release check no longer fails on the version file that an install leaves in the checkout ([issue #335](https://github.com/jasonhnd/paseo-clear-chat/issues/335), [PR #347](https://github.com/jasonhnd/paseo-clear-chat/pull/347)).
+- `paseo-plugin.json` no longer carries the `translations` block, which the 0.15.3 host ignores; the localised listing text belongs in the plugin-registry submission ([issue #336](https://github.com/jasonhnd/paseo-clear-chat/issues/336), [PR #343](https://github.com/jasonhnd/paseo-clear-chat/pull/343)).
+- The answer-card recording in the README was replaced with one recorded at 1280×800 and scaled to 800×500, showing the answers being chosen and Send pressed ([PR #350](https://github.com/jasonhnd/paseo-clear-chat/pull/350), [PR #354](https://github.com/jasonhnd/paseo-clear-chat/pull/354), [PR #356](https://github.com/jasonhnd/paseo-clear-chat/pull/356)).
+
+### Compatibility
+
+- Clear Chat 0.15.3.5 is the Clear Chat release for Paseo 0.15.3.
+- The release candidate was checked on an isolated host running Paseo 0.15.3: it installs and loads. The answer card appears on a reply whose questions are numbered `A3`/`A4` and sends the chosen letters, and a lone `A. Smith wrote this` line stays in its paragraph with the option-line setting on. The pre-release check and the manifest change were exercised on the tag-day run. The full test suite (2,107 tests) and the type check pass. Not checked: real model replies, input-method composition, and a run in the native phone apps.
+
+### Known limitations
+
+- At desktop width, in the web page or the desktop app, pressing Space while a jump chip has focus does not scroll: Paseo handles that key first, so the chip does not receive it (Paseo's own buttons behave the same way at that width). Enter and a mouse click work, and at narrow widths Space works too.
+- The answer card treats a half-width colon with no space after it as a marker, which the reading behind the option-line setting does not; the two have differed since the card was added and this release does not change that.
+- A bold line with trailing spaces after the closing `**` is not taken as an anchor; this can be relaxed in a later release if it gets in the way.
+- The limitations listed in the previous release still apply.
+
 ## [0.15.3.4] - 2026-11-08
 
 ### Added

@@ -39,14 +39,19 @@
 
 <sub>1. Median of five runs in headless Google Chrome on one machine. Your numbers will differ. The method is in [scripts/perf/README.md](scripts/perf/README.md).</sub>
 
-## What's new in 0.15.3.4
+## What's new in 0.15.3.5
+
+- **The answer card splits a reply by `A3`-style question numbers.** A reply that numbers its questions with a capital letter and digits (`A3 …`, `A4 …`, and the bold `**A3**` form too) is now read question by question, each with its own `A`/`B`/`C` options; an option list that starts at `C` or skips a letter is read as well, and **Not options** still dismisses a list that only looks like options ([#353](https://github.com/jasonhnd/paseo-clear-chat/issues/353), [PR #355](https://github.com/jasonhnd/paseo-clear-chat/pull/355), [#337](https://github.com/jasonhnd/paseo-clear-chat/issues/337), [PR #346](https://github.com/jasonhnd/paseo-clear-chat/pull/346)).
+- **A dotted option line needs a neighbouring line.** With **Keep each option on its own line** on, a line whose marker is a letter and a dot or a colon (`A.`, `A：` …) keeps its own line only when the line just above or below is the option line of the neighbouring letter, so a lone sentence such as `A. Smith wrote this` stays in its paragraph; a list written one option per line still breaks ([#338](https://github.com/jasonhnd/paseo-clear-chat/issues/338), [PR #345](https://github.com/jasonhnd/paseo-clear-chat/pull/345)). The setting is off by default.
+- **Esc closes the question popover at phone width.** At 390 px the popover opened from the question pill closes on Esc and returns you to the input box; at desktop width it closed already. No other key changed ([#351](https://github.com/jasonhnd/paseo-clear-chat/issues/351), [PR #352](https://github.com/jasonhnd/paseo-clear-chat/pull/352)).
+- **A new recording of the answer card.** The picture in this README now shows the answers being chosen on the card and Send pressed ([PR #350](https://github.com/jasonhnd/paseo-clear-chat/pull/350), [PR #354](https://github.com/jasonhnd/paseo-clear-chat/pull/354), [PR #356](https://github.com/jasonhnd/paseo-clear-chat/pull/356)).
+- **Repository tooling (for maintainers).** The pre-release check no longer fails on the version file an install leaves in the checkout ([#335](https://github.com/jasonhnd/paseo-clear-chat/issues/335), [PR #347](https://github.com/jasonhnd/paseo-clear-chat/pull/347)), and `paseo-plugin.json` no longer carries the `translations` block that the 0.15.3 host ignores ([#336](https://github.com/jasonhnd/paseo-clear-chat/issues/336), [PR #343](https://github.com/jasonhnd/paseo-clear-chat/pull/343)).
+
+### Added in earlier releases
 
 - **The "Keep each option on its own line" setting reads the markers people actually type.** When the setting is on, a line keeps its own line when it starts, after optional spaces or tabs and optional `*` or `_` marks, with a capital letter followed by one of these markers: a dot, a half-width right bracket, a full-width `）`, `、`, a half-width or full-width colon, a tab, a full-width space, or a plain space (`A. take the first one`, `A) take the first one`, `A、take the first one`, `A: take the first one`, `A：take the first one`, `A　take the first one`). The letter may be a half-width `A` to `H` or a full-width `Ａ` to `Ｈ`; after a dot, a half-width bracket or a half-width colon there must be a space or a tab, and the other markers need nothing after them. A tab or a full-width space is enough on its own. Every other marker also needs a line just above or just below that is an option line for the neighbouring letter in order (a `B` line after an `A` line, or an `A` line before a `B` line), written with any of these markers; with the punctuation markers a full-width letter matches its half-width form. So a lone sentence that starts with a letter and a dot, or an ordinary sentence that begins with `A `, is not split from its paragraph. This holds in an ordinary paragraph, in a quotation, and in the text that continues a numbered list item. With the setting off the text is drawn exactly as in the previous release. The setting is off by default  ([#315](https://github.com/jasonhnd/paseo-clear-chat/issues/315), [PR #319](https://github.com/jasonhnd/paseo-clear-chat/pull/319), [#323](https://github.com/jasonhnd/paseo-clear-chat/issues/323), [PR #327](https://github.com/jasonhnd/paseo-clear-chat/pull/327), [#332](https://github.com/jasonhnd/paseo-clear-chat/issues/332), [PR #333](https://github.com/jasonhnd/paseo-clear-chat/pull/333)).
 - **The answer card reads an option written with a full-width space.** An option written `A　take the first one` or `A：take the first one` is now read the way the dot, bracket, `、` and `:` forms already were, so lists typed that way get the card. It is offered on more replies than before; when an ordinary list is taken for options, press **Not options** to dismiss it ([#316](https://github.com/jasonhnd/paseo-clear-chat/issues/316), [PR #320](https://github.com/jasonhnd/paseo-clear-chat/pull/320)).
 - **Jump chips on more replies.** A line that is one bold phrase and nothing else now counts as an anchor, so a reply written with bold lead-ins gets a row of chips above it: chips appear from 1,200 characters with at least 2 anchors (before: 3,000 characters with three headings). A bold line counts only when it starts its own paragraph, and the reply marks bold anchors the way it marks headings, so pressing a chip scrolls to the block it was built from. Up to 8 chips, one per anchor, each cut at 24 characters; nothing is folded or removed. It is still drawn in the web page and the desktop app only, not in the native phone apps ([#317](https://github.com/jasonhnd/paseo-clear-chat/issues/317), [PR #321](https://github.com/jasonhnd/paseo-clear-chat/pull/321), [#322](https://github.com/jasonhnd/paseo-clear-chat/issues/322), [PR #325](https://github.com/jasonhnd/paseo-clear-chat/pull/325), [#318](https://github.com/jasonhnd/paseo-clear-chat/issues/318), [PR #329](https://github.com/jasonhnd/paseo-clear-chat/pull/329)).
-
-### Added in earlier releases
-
 - **New setting: keep each option on its own line (off by default).** A new setting, **Keep each option on its own line**. When it is on, a line in a reply that starts with a capital letter from A to H followed by a dot or a closing bracket (for example `A.`, `B)`, or the full-width `C）` and `D、`) stays on its own line instead of running together with the line before it into one paragraph. This holds in an ordinary paragraph, in a quotation, and in the text that continues a numbered list item (a numbered question followed by lettered lines). Everything else is drawn as before, and with the setting off replies look exactly as they did in the previous release. Lower-case letters, letters after H and forms such as `e.g.` do not count. Replies that are already shown are redrawn after you reload the chat; new replies follow the setting at once. When the setting is on, a line that starts with a single capital letter from A to H and a dot or a bracket is put on its own line even if it is an ordinary sentence (for example `A. Smith wrote this`); keep the setting off if you do not want that. ([#304](https://github.com/jasonhnd/paseo-clear-chat/issues/304), [PR #308](https://github.com/jasonhnd/paseo-clear-chat/pull/308), [#305](https://github.com/jasonhnd/paseo-clear-chat/issues/305), [PR #307](https://github.com/jasonhnd/paseo-clear-chat/pull/307), [#306](https://github.com/jasonhnd/paseo-clear-chat/issues/306), [PR #309](https://github.com/jasonhnd/paseo-clear-chat/pull/309)).
 - **"Not options" is remembered after a reload.** When an ordinary list was taken for options, press **Not options** to hide the card for that reply; it now stays hidden after you reload the chat, and the pill and the floating panel stay away for that reply too. Clear Chat keeps up to 100 such replies in the saved settings on the host (the oldest are dropped first); **Reset defaults** forgets them. A newer reply is not affected, and sending an answer does not add to the list ([#252](https://github.com/jasonhnd/paseo-clear-chat/issues/252)).
 - **Phone popover: the tabs and Send stay in view.** On a phone, the popover opened from the pill now keeps the question tabs fixed at its top and the Send row fixed at its bottom, while the question text and the options scroll in between; before, the tabs scrolled away with the content. The popover's height is limited to a share of the screen height, and touch targets stay at least 44 points ([#258](https://github.com/jasonhnd/paseo-clear-chat/issues/258), [PR #291](https://github.com/jasonhnd/paseo-clear-chat/pull/291), [#294](https://github.com/jasonhnd/paseo-clear-chat/issues/294), [PR #297](https://github.com/jasonhnd/paseo-clear-chat/pull/297)).
@@ -66,12 +71,12 @@
 ## Install
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.3.4
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.3.5
 ```
 
 Open Paseo’s plugins page and look for the version at the start of the Clear Chat description. Paseo 0.14.0 displays the default English description there even when the app language is changed.
 
-Clear Chat 0.15.3.4 needs Paseo 0.14.0 or later. Open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
+Clear Chat 0.15.3.5 needs Paseo 0.14.0 or later. Open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
 
 To update later:
 
@@ -120,7 +125,7 @@ A Clear Chat version is the Paseo version it is built and tested for, plus one m
 ```bash
 paseo plugin update clear-chat                 # latest on main, asks first
 paseo plugin update clear-chat --yes           # same, no question
-paseo plugin update clear-chat --ref v0.15.3.4 --yes   # pin one release
+paseo plugin update clear-chat --ref v0.15.3.5 --yes   # pin one release
 ```
 
 An update keeps your settings. A rollback to an earlier ref also keeps them, but the effect of a specific rollback on settings is not guaranteed, so back them up first if the settings matter. Removing the plugin deletes its settings.
@@ -313,7 +318,7 @@ On a message that contains text, pick the quote icon beside Copy. A panel opens 
 | Show jump chips on long replies | Off by default. A finished reply of at least 1,200 characters with at least 2 anchors gets a row of chips above its text, one per anchor (up to 8); pressing a chip scrolls the reply to that block. An anchor is a heading of level 1 to 3, or a line that is one bold phrase and starts its own paragraph. Works in the web page and the desktop app; not shown in the native phone apps. Nothing is folded. |
 | Keep each option on its own line | Off by default. Lines whose marker is a capital letter (A to H, also full-width Ａ to Ｈ) followed by a dot, a bracket, `、`, a colon, a tab, a full-width space or a plain space (such as `A.`, `B)`, `A、text`, `A: text`, `A：text`, `A　text`) stay on their own lines instead of running together into one paragraph. A dot, a half-width bracket or a half-width colon needs a space or a tab after it, and the other markers need nothing after them. A tab or a full-width space is enough on its own; every other marker also needs a line just above or just below that is an option line for the neighbouring letter in order. It applies to the replies Clear Chat draws, so Assistant markdown must be on. Switching the setting in the same window redraws replies at once; in another window or on another device, reload the chat to see them redrawn. |
 
-**Installed version.** Under the title of the settings page, Clear Chat shows `Clear Chat version 0.15.3.4`. The line below it explains the value: a directory install keeps the version information already in that directory, so it can show an older release than the one you installed. If the build carries no usable version, the line shows **Unknown**.
+**Installed version.** Under the title of the settings page, Clear Chat shows `Clear Chat version 0.15.3.5`. The line below it explains the value: a directory install keeps the version information already in that directory, so it can show an older release than the one you installed. If the build carries no usable version, the line shows **Unknown**.
 
 **Custom accent colour.** Tap a swatch, or enter `#RGB` or `#RRGGBB` and press **Apply**. An invalid HEX value stays in the field with an error, and the saved colour does not change. Switching to a preset remembers your custom colour. The saved HEX value never changes; only the colour you see is darkened on light themes or lightened on dark themes when text would otherwise be hard to read. Filled buttons use black or white text, whichever has more contrast.
 
@@ -448,14 +453,14 @@ Numbers are issues, pull requests and discussions in Paseo's official repository
 
 **Why do I not see the answer card?** The setting must be on. The latest reply must ask numbered questions with lettered options that start at A and follow without gaps, at least two options per question, and either ask you to reply in a short form (for example "reply with 1B 2A") or mark an option as recommended. The agent must not be running, and a newer message of yours hides the card. Questions inside a code block or a quotation are ignored. If an ordinary list is taken for options, press **Not options**; the choice is remembered after you reload the chat.
 
-**Which Paseo versions work?** 0.14.0 or later. Clear Chat was installed and loaded on a Paseo 0.15.3 host and the full test suite ran there (2,103 tests); the minimum is still Paseo 0.14.0. The items checked on Paseo 0.15.3 for the previous release are listed in the changelog. Paseo 0.13 has an older, untested path described under [Install](#install).
+**Which Paseo versions work?** 0.14.0 or later. Clear Chat was installed and loaded on a Paseo 0.15.3 host and the full test suite ran there (2,107 tests); the minimum is still Paseo 0.14.0. The items checked on Paseo 0.15.3 for the previous release are listed in the changelog. Paseo 0.13 has an older, untested path described under [Install](#install).
 
 ## Troubleshooting
 
 | Problem | What to do |
 |---|---|
 | Installing through the Cafe plugin fails, or Paseo reports a missing Shiki dependency such as `@shikijs/core`. | Retry with the Paseo CLI command in [Install](#install), using the same repository and release ref. Clear Chat installs its dependencies with `npm ci --include=dev`, so Node.js and npm must be available on the daemon host, and its network must reach the npm registry. If you manage the checkout yourself, run `npm ci --include=dev` there before retrying. |
-| Installation stops because the plugin needs a newer Paseo version. | For Clear Chat 0.15.3.4, update Paseo on the daemon host and all connected apps to 0.14.0 or later. For older hosts, see the [Install](#install) section for the Paseo 0.13 commands and their untested-status warning, and the separate Paseo 0.12 instructions. |
+| Installation stops because the plugin needs a newer Paseo version. | For Clear Chat 0.15.3.5, update Paseo on the daemon host and all connected apps to 0.14.0 or later. For older hosts, see the [Install](#install) section for the Paseo 0.13 commands and their untested-status warning, and the separate Paseo 0.12 instructions. |
 | Paseo rejects the plugin version, or Clear Chat says plugin settings or timeline support is missing. | Update Paseo on the daemon host and in every connected app, then reload Clear Chat. The Paseo version Clear Chat needs is declared in `paseo-plugin.json`. |
 | Clear Chat cannot start because plugin registration failed. | Update Paseo and reload Clear Chat. If it still fails, back up the plugin settings before you reinstall from the CLI. |
 | Clear Chat cannot read its settings from the host. | Reconnect to the host and choose **Retry** in **Settings → Plugins → Clear Chat**. If it still fails, check that the daemon can access the plugin settings folder. |
@@ -490,7 +495,7 @@ If the `beautiful-chat` settings folder does not exist, you never changed Beauti
 **2. Install**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.3.4
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.3.5
 ```
 
 **3. Check, then remove the old plugin**
