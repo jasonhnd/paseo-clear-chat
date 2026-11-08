@@ -260,10 +260,14 @@ export function MarkdownView({ text, tokens, variant, images = [], cwd, expansio
   const { blocks, headingIndices } = useMemo(() => {
     const byLine = new Map(jumpHeadingLines(text).map(({ line, index }) => [line, index]));
     const headingIndices = new Map<MdBlock, number>();
-    const blocks = parseMarkdown(text, (block, line) => {
+    const markAnchor = (block: MdBlock, line: number) => {
       const index = byLine.get(line);
       if (index !== undefined) headingIndices.set(block, index);
-    }, { keepItemBreaks: keepItemLineBreaks });
+    };
+    const blocks = parseMarkdown(text, markAnchor, {
+      keepItemBreaks: keepItemLineBreaks,
+      onSingleLineParagraph: markAnchor,
+    });
     return { blocks, headingIndices };
   }, [text, keepItemLineBreaks]);
   const previews = useMemo(() => {
@@ -338,7 +342,7 @@ function renderBlock(
     }
 
     case "paragraph":
-      return renderFlow(block.spans, styles.paragraph, key, context);
+      return renderFlow(block.spans, styles.paragraph, key, context, { headingIndex });
 
     case "list": {
       const numberWidth = orderedColumnWidth(block.items, metrics);
@@ -520,14 +524,16 @@ function renderFlow(
   textStyle: TextStyle | TextStyle[],
   key: string,
   context: RenderContext,
-  options: { containerStyle?: ViewStyle; prefix?: React.ReactNode } = {},
+  options: { containerStyle?: ViewStyle; prefix?: React.ReactNode; headingIndex?: number } = {},
 ): React.ReactNode {
   const runs = imageRuns(spans);
+  const jumpMarker = Platform.OS === "web" && options.headingIndex !== undefined
+    ? { dataSet: { jumpHeading: String(options.headingIndex) } } : {};
   if (!runs.some(run => run.kind === "image")) {
-    return <Text key={key} selectable={canSelectInline(spans, context)} style={textStyle}>{options.prefix}{renderInline(spans, context, key)}</Text>;
+    return <Text key={key} {...jumpMarker} selectable={canSelectInline(spans, context)} style={textStyle}>{options.prefix}{renderInline(spans, context, key)}</Text>;
   }
   return (
-    <View key={key} style={[{ minWidth: 0, gap: 8 }, options.containerStyle]}>
+    <View key={key} {...jumpMarker} style={[{ minWidth: 0, gap: 8 }, options.containerStyle]}>
       {options.prefix}
       {runs.map((run, index) => run.kind === "image"
         ? <MarkdownImage key={`${key}i${index}:${run.src}`} src={run.src} alt={run.alt} cwd={context.cwd} tokens={context.tokens} />

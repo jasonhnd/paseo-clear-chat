@@ -75,3 +75,35 @@ test("headings use builder indices and pressing is scoped to the reply", t => {
   root.props.ref(null);
   assert.doesNotThrow(() => byId(h, tree, "jump-chip-1").props.onPress());
 });
+
+test("mixed heading and bold paragraph chips scroll to their own blocks", t => {
+  const { h, draw } = fixture(t);
+  const source = `# First\n\n**Second**\n\nA paragraph with **bold words** inside.\n\n**Third**\n\n${"body ".repeat(700)}`;
+  const tree = draw(source);
+  const marks = h.nodes(tree, node => node.props.dataSet?.jumpHeading !== undefined);
+  assert.deepEqual(marks.map(node => [node.props.dataSet.jumpHeading, h.text(node)]), [
+    ["0", "First"], ["1", "Second"], ["2", "Third"],
+  ]);
+  const buttons = h.nodes(byId(h, tree, "jump-chips"), node => node.type === "Pressable");
+  assert.deepEqual(buttons.map(button => button.props.accessibilityLabel), marks.map(node => h.text(node)));
+  const root = h.nodes(tree, node => typeof node.props.ref === "function")[0];
+  const scrolled = [];
+  root.props.ref({ querySelector(selector) {
+    const mark = marks.find(node => selector === `[data-jump-heading="${node.props.dataSet.jumpHeading}"]`);
+    return mark && { scrollIntoView(options) { scrolled.push([h.text(mark), options]); } };
+  } });
+  buttons.forEach(button => button.props.onPress());
+  assert.deepEqual(scrolled, ["First", "Second", "Third"].map(text => [text, { block: "start" }]));
+  h.preferences.showJumpChips = false;
+  assert.equal(byId(h, draw(source), "jump-chips"), undefined);
+  const noAnchors = draw("A paragraph with **bold words** inside." + " body".repeat(300));
+  assert.equal(byId(h, noAnchors, "jump-chips"), undefined);
+  assert.equal(h.nodes(noAnchors, node => node.props.dataSet?.jumpHeading !== undefined).length, 0);
+});
+
+test("underscore anchor lines keep their existing rendering and receive a mark", t => {
+  const { h, draw } = fixture(t);
+  const tree = draw(`__First__\n\n**Second**\n\n${"body ".repeat(700)}`);
+  const marks = h.nodes(tree, node => node.props.dataSet?.jumpHeading !== undefined);
+  assert.deepEqual(marks.map(node => [node.props.dataSet.jumpHeading, h.text(node)]), [["0", "__First__"], ["1", "Second"]]);
+});
