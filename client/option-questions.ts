@@ -112,14 +112,13 @@ export function parseOptionQuestions(text: string): OptionQuestionSet | null {
     const optionLines: string[][] = [];
     let optionStarted = false;
     let continuation = false;
-    let groupInterrupted = false;
-    let previousLineIndex: number | undefined;
     let invalid = false;
     for (const line of section.lines) {
-      if (optionStarted && line.index !== previousLineIndex! + 1) groupInterrupted = true;
       const option = optionLine(line.text);
       if (option) {
-        if (optionStarted && (groupInterrupted || option.letter <= options[options.length - 1]!.letter)) invalid = true;
+        // Letters must move forward inside one section: A, C, E counts, while B then A or a repeat does not.
+        // Blank lines and prose between options are ordinary in real replies and must not void the section.
+        if (optionStarted && option.letter <= options[options.length - 1]!.letter) invalid = true;
         optionStarted = true;
         continuation = true;
         options.push({ ...option, recommended: false });
@@ -128,12 +127,9 @@ export function parseOptionQuestions(text: string): OptionQuestionSet | null {
         before.push(line.text);
       } else if (!line.text.trim()) {
         continuation = false;
-        groupInterrupted = true;
       } else if (continuation) {
         optionLines[optionLines.length - 1]!.push(line.text.trim());
-        if (!/^[ \t　]/.test(line.text)) groupInterrupted = true;
       }
-      previousLineIndex = line.index;
     }
     if (invalid || options.length < 2) continue;
     for (let index = 0; index < options.length; index++) options[index]!.text = optionLines[index]!.join('\n');

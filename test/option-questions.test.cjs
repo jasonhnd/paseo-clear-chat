@@ -237,13 +237,22 @@ test("rejects isolated option-like prose and interrupted or invalid groups", () 
     "1) First item\n2) Second item\nReply: yes",
     "A\nThis is ordinary prose.\nReply: A",
     "A person walks in.\nThis is ordinary prose.\nReply: A",
-    "Pick?\nA One\nOrdinary prose.\nC Three\nReply: A",
-    "Pick?\nA One\n\nC Three\nReply: A",
-    "Pick?\nA One\n> hidden\nC Three\nReply: A",
     "Pick?\nC One\nC Two\nReply: C",
     "Pick?\nC One\nA Two\nReply: C",
     "1) Pick\nA One\nB Two",
   ]) assert.equal(parse(text), null, text);
+});
+
+test("prose, blank lines and quotes between options no longer void the section", () => {
+  for (const text of [
+    "Pick?\nA One\nOrdinary prose.\nC Three\nReply: A",
+    "Pick?\nA One\n\nC Three\nReply: A",
+    "Pick?\nA One\n> hidden\nC Three\nReply: A",
+  ]) {
+    const set = parse(text);
+    assert.notEqual(set, null, text);
+    assert.deepEqual(set.questions[0].options.map((option) => option.letter), ["A", "C"], text);
+  }
 });
 
 test("handles a long reply in linear time", () => {
