@@ -524,8 +524,8 @@ function isLetteredOption(line: string, previous: string, next: string): boolean
   const previousMarker = optionMarker(previous);
   const nextMarker = optionMarker(next);
   const code = marker.letter.charCodeAt(0);
-  return (previousMarker?.separator === " " && previousMarker.letter.charCodeAt(0) === code - 1)
-    || (nextMarker?.separator === " " && nextMarker.letter.charCodeAt(0) === code + 1);
+  return previousMarker?.letter.charCodeAt(0) === code - 1
+    || nextMarker?.letter.charCodeAt(0) === code + 1;
 }
 
 function isWordChar(ch: string): boolean {
