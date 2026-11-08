@@ -35,11 +35,37 @@ test("two anchors are required, including when both are headings", () => {
 });
 
 test("two bold anchors meet the inclusive length threshold", () => {
-  const anchors = "**First**\n\t__Second__";
+  const anchors = "**First**\n\n\t__Second__";
   const reply = anchors + "\n" + "x".repeat(JUMP_CHIPS_MIN_LENGTH - anchors.length - 1);
   assert.deepEqual(buildJumpChips(reply.slice(0, -1)), []);
   assert.deepEqual(buildJumpChips(reply), [
     { index: 0, label: "First" }, { index: 1, label: "Second" },
+  ]);
+});
+
+test("bold anchors start a paragraph", () => {
+  assert.deepEqual(jumpHeadingLines("paragraph\n**LazyBold**"), []);
+  assert.deepEqual(jumpHeadingLines("paragraph\n \t\n**Separate**"), [
+    { line: 2, index: 0, heading: "Separate" },
+  ]);
+  assert.deepEqual(jumpHeadingLines("**First**\n**Continuation**"), [
+    { line: 0, index: 0, heading: "First" },
+  ]);
+  const reply = [
+    "# **Heading**", "**After heading**", "#### Other heading", "__After other heading__",
+    "```", "**In fence**", "```", "**After fence**", "- - -", "**After rule**",
+    "| Head |", "| --- |", "| Row |", "**After table**", "> Quote", "**After quote**",
+    "- Item", "**In list**", "", "**After list**",
+  ].join("\n");
+  assert.deepEqual(jumpHeadingLines(reply), [
+    { line: 0, index: 0, heading: "Heading" },
+    { line: 1, index: 1, heading: "After heading" },
+    { line: 3, index: 2, heading: "After other heading" },
+    { line: 7, index: 3, heading: "After fence" },
+    { line: 9, index: 4, heading: "After rule" },
+    { line: 13, index: 5, heading: "After table" },
+    { line: 15, index: 6, heading: "After quote" },
+    { line: 19, index: 7, heading: "After list" },
   ]);
 });
 
@@ -49,22 +75,22 @@ test("bold anchors exclude fenced, table, list and quoted content and partial ph
     "| Header | Other |", "| --- | --- |", "**Table | row**", "# Table | row", "",
     "- **List item**", "  **List continuation**", "", "> **Quote**", "",
     "**A.** text", "**Trailing** prose", "**one** and **two**", "__one__ and __two__",
-    "**mixed __ markers**", "**   **", "__\t__", "**Second**",
+    "**mixed __ markers**", "**   **", "__\t__", "", "**Second**",
   ].join("\n");
   assert.deepEqual(jumpHeadingLines(reply), [
     { line: 0, index: 0, heading: "First" },
-    { line: 24, index: 1, heading: "Second" },
+    { line: 25, index: 1, heading: "Second" },
   ]);
 });
 
 test("bold labels are cleaned and shortened, and share indices with headings", () => {
-  const reply = ["# Heading", "**[Link](https://example.org) _and_ `code`**", "__`_`__", "## Next", "**" + "😀".repeat(25) + "**"].join("\n");
+  const reply = ["# Heading", "**[Link](https://example.org) _and_ `code`**", "", "__`_`__", "## Next", "**" + "😀".repeat(25) + "**"].join("\n");
   assert.deepEqual(jumpHeadingLines(reply), [
     { line: 0, index: 0, heading: "Heading" },
     { line: 1, index: 1, heading: "Link and code" },
-    { line: 2, index: 2, heading: "" },
-    { line: 3, index: 3, heading: "Next" },
-    { line: 4, index: 4, heading: "😀".repeat(25) },
+    { line: 3, index: 2, heading: "" },
+    { line: 4, index: 3, heading: "Next" },
+    { line: 5, index: 4, heading: "😀".repeat(25) },
   ]);
   assert.deepEqual(buildJumpChips(longReply(reply)), [
     { index: 0, label: "Heading" }, { index: 1, label: "Link and code" },

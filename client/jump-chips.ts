@@ -22,6 +22,7 @@ export function jumpHeadingLines(text: string): { line: number; index: number; h
     }
     if (inFence) return;
     if (inTable && line.includes("|")) return;
+    const followsTable = inTable;
     inTable = false;
     const heading = /^(#{1,3}) (.*)$/.exec(line);
     if (heading) {
@@ -31,6 +32,11 @@ export function jumpHeadingLines(text: string): { line: number; index: number; h
       if (line.trim() === "") {
         if (inList) blankInList = true;
         inTable = false;
+        return;
+      }
+      if (/^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/.test(line)) {
+        inList = false;
+        blankInList = false;
         return;
       }
       if (/^[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+/.test(line)) {
@@ -55,6 +61,9 @@ export function jumpHeadingLines(text: string): { line: number; index: number; h
     }
     const bold = heading ? null : /^[ \t]*(\*\*|__)(.+)\1$/.exec(line);
     if (!heading && (!bold || !/\S/.test(bold[2] ?? "") || /\*\*|__/.test(bold[2] ?? ""))) return;
+    const previous = lines[lineNumber - 1];
+    if (!heading && previous !== undefined && previous.trim() !== "" && !followsTable &&
+        !/^ {0,3}(?:```|~~~|#{1,6}[ \t]+|([-*_])(?:[ \t]*\1){2,}[ \t]*$|>)/.test(previous)) return;
     const source = heading ? (heading[2] ?? "").replace(/#+\s*$/, "") : (bold?.[2] ?? "");
     const cleaned = source
       .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
