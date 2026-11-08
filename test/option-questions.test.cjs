@@ -41,6 +41,30 @@ test("recognizes punctuation, full-width letters and digits, bullets and bold", 
   }
 });
 
+test("recognizes full-width spaces and existing punctuation as option separators", () => {
+  for (const first of ["A　先做", "Ａ　先做"]) {
+    const set = parse(`Pick?\n${first}\nB　先做\nC：先做\nD: 先做\nE）先做\nF、先做\n\nReply: A`);
+    assert.deepEqual(set.questions[0].options.map(({ letter, text }) => [letter, text]), [
+      ["A", "先做"], ["B", "先做"], ["C", "先做"],
+      ["D", "先做"], ["E", "先做"], ["F", "先做"],
+    ]);
+  }
+});
+
+test("full-width spaces still require text and the usual question signals", () => {
+  assert.equal(parse("Pick?\nA　\nB　先做\n\nReply: A"), null);
+  assert.equal(parse("Pick?\nA　先做\nB　\n\nReply: A"), null);
+
+  // Like an ASCII space, a full-width space can make prose look like an option;
+  // a single line alone still does not form an option question.
+  assert.equal(parse("A　person walks into a room."), null);
+  const set = parse("A　person walks into a room.\nB　person follows.\n\nReply: A");
+  assert.deepEqual(set.questions[0].options.map(({ letter, text }) => [letter, text]), [
+    ["A", "person walks into a room."], ["B", "person follows."],
+  ]);
+  assert.equal(parse("A　person walks into a room.\nB　person follows."), null);
+});
+
 test("handles an unnumbered question, continuation lines and title length", () => {
   const set = parse(`Which approach works? More context.
 Extra context.
