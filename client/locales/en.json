@@ -632,7 +632,7 @@
     "notOptions": "Not options",
     "error": "Could not send: {{reason}}",
     "send": "Send {{answer}}",
-    "missing": "Choose {{question}} to send",
+    "missing": "Choose an answer for Q{{question}}",
     "hintMove": "↑ ↓ move",
     "hintPick": "A B C D pick",
     "hintNext": "Tab next",

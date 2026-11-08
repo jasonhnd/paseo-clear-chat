@@ -11,6 +11,7 @@ export interface OptionSession {
   activeQuestion: number;
   cursor: number[];
   dismissed: boolean;
+  readOnly: boolean;
   sending: boolean;
   error: string | null;
 }
@@ -21,7 +22,6 @@ const messages = new Map<string, number>();
 const snapshots = new Map<string, OptionSession>();
 const listeners = new Set<() => void>();
 const pending = new Set<string>();
-const openPopovers = new Set<string>();
 let sender: Sender | null = null;
 
 function notify(): void {
@@ -36,20 +36,6 @@ export function subscribeOptionSession(listener: () => void): () => void {
 }
 
 export function getOptionSessionAgents(): string[] { return [...snapshots.keys()]; }
-
-export function isOptionPopoverOpen(agentId: string): boolean { return openPopovers.has(agentId); }
-
-export function setOptionPopoverOpen(agentId: string, open: boolean): void {
-  if (open === openPopovers.has(agentId)) return;
-  if (open) openPopovers.add(agentId); else openPopovers.delete(agentId);
-  notify();
-}
-
-export function clearOptionPopovers(): void {
-  if (!openPopovers.size) return;
-  openPopovers.clear();
-  notify();
-}
 
 export function getOptionSession(agentId: string): OptionSession | null {
   return snapshots.get(agentId) ?? null;
@@ -75,7 +61,7 @@ export function useOptionSession(agentId: string): OptionSession | null {
 export function publishAssistantReply(agentId: string, reply: { at: number; text: string }): void {
   if (!Number.isFinite(reply.at) || reply.at <= (replies.get(agentId) ?? -Infinity)) return;
   replies.set(agentId, reply.at);
-  const set = !isDismissed(agentId, reply.at) && reply.at >= (messages.get(agentId) ?? -Infinity) ? parseOptionQuestions(reply.text) : null;
+  const set = !isDismissed(agentId, reply.at) ? parseOptionQuestions(reply.text) : null;
   if (!set) {
     if (snapshots.delete(agentId)) notify();
     return;
@@ -83,7 +69,7 @@ export function publishAssistantReply(agentId: string, reply: { at: number; text
   snapshots.set(agentId, {
     at: reply.at, set, choices: {}, notes: {}, activeQuestion: 0,
     cursor: set.questions.map(question => Math.max(0, question.options.findIndex(option => option.recommended))),
-    dismissed: false, sending: false, error: null,
+    dismissed: false, readOnly: reply.at < (messages.get(agentId) ?? -Infinity), sending: false, error: null,
   });
   notify();
 }
@@ -93,8 +79,7 @@ export function publishUserMessage(agentId: string, at: number): void {
   messages.set(agentId, at);
   const snapshot = snapshots.get(agentId);
   if (snapshot && at > snapshot.at) {
-    snapshots.delete(agentId);
-    notify();
+    if (!snapshot.readOnly) { snapshots.set(agentId, { ...snapshot, readOnly: true }); notify(); }
   }
 }
 
@@ -109,8 +94,13 @@ function update(agentId: string, change: (snapshot: OptionSession) => OptionSess
 
 export function choose(agentId: string, questionIndex: number, letter: string): void {
   update(agentId, snapshot => {
-    if (!snapshot.set.questions[questionIndex]?.options.some(option => option.letter === letter) || snapshot.choices[questionIndex] === letter) return snapshot;
-    return { ...snapshot, choices: { ...snapshot.choices, [questionIndex]: letter } };
+    if (snapshot.readOnly || snapshot.sending || !snapshot.set.questions[questionIndex]?.options.some(option => option.letter === letter) || snapshot.choices[questionIndex] === letter) return snapshot;
+    const wasAnswered = snapshot.choices[questionIndex] !== undefined;
+    const choices = { ...snapshot.choices, [questionIndex]: letter };
+    const count = snapshot.set.questions.length;
+    const next = Array.from({ length: count }, (_, offset) => (questionIndex + 1 + offset) % count)
+      .find(i => choices[i] === undefined) ?? -1;
+    return { ...snapshot, choices, activeQuestion: wasAnswered || next < 0 ? snapshot.activeQuestion : next };
   });
 }
 
@@ -184,7 +174,7 @@ export function setOptionSender(next: Sender | null): void { sender = next; }
 export async function sendAnswer(agentId: string): Promise<void> {
   const snapshot = snapshots.get(agentId);
   const text = answerText(agentId);
-  if (!snapshot || text === null || pending.has(agentId)) return;
+  if (!snapshot || snapshot.readOnly || text === null || pending.has(agentId)) return;
   const send = sender;
   if (!send) {
     update(agentId, current => current.error === "Sender unavailable" ? current : { ...current, error: "Sender unavailable" });
@@ -194,7 +184,7 @@ export async function sendAnswer(agentId: string): Promise<void> {
   update(agentId, current => ({ ...current, sending: true }));
   try {
     await send(agentId, text);
-    update(agentId, current => current.at === snapshot.at ? { ...current, sending: false, error: null } : current);
+    update(agentId, current => current.at === snapshot.at ? { ...current, sending: false, readOnly: true, error: null } : current);
   } catch (error) {
     const message = (error instanceof Error ? error.message : String(error)).replace(/\s+/g, " ").trim().slice(0, 160) || "Send failed";
     update(agentId, current => current.at === snapshot.at ? { ...current, sending: false, error: message } : current);

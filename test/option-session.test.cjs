@@ -44,22 +44,23 @@ test("orders observations independently, retires stale replies and resets state"
   s.publishUserMessage("b", 19);
   assert.ok(s.getOptionSession("b"));
   s.publishUserMessage("b", 22);
-  assert.equal(s.getOptionSession("b"), null);
+  assert.equal(s.getOptionSession("b").readOnly, true);
 });
 
 test("compares user and reply timestamps in either arrival order", t => {
   const { s } = fixture(t);
-  for (const [name, replyAt, expected] of [["earlier", 99, false], ["equal", 100, true], ["later", 101, true]]) {
+  for (const [name, replyAt, expected] of [["earlier", 99, true], ["equal", 100, false], ["later", 101, false]]) {
     s.publishUserMessage(name, 100);
     s.publishAssistantReply(name, { at: replyAt, text: one });
-    assert.equal(Boolean(s.getOptionSession(name)), expected, `reply ${name} than message`);
+    assert.equal(s.getOptionSession(name).readOnly, expected, `reply ${name} than message`);
   }
-  for (const [name, messageAt, expected] of [["earlier", 99, true], ["equal", 100, true], ["later", 101, false]]) {
+  for (const [name, messageAt, expected] of [["earlier", 99, false], ["equal", 100, false], ["later", 101, true]]) {
     const agent = `message-${name}`;
     s.publishAssistantReply(agent, { at: 100, text: one });
     const session = s.getOptionSession(agent);
     s.publishUserMessage(agent, messageAt);
-    assert.equal(s.getOptionSession(agent), expected ? session : null, `message ${name} than reply`);
+    assert.equal(s.getOptionSession(agent).readOnly, expected, `message ${name} than reply`);
+    if (!expected) assert.equal(s.getOptionSession(agent), session);
   }
 });
 
@@ -77,7 +78,7 @@ test("ignores non-finite and non-increasing timestamps", t => {
     assert.equal(s.getOptionSession("a"), session);
   }
   s.publishUserMessage("a", 101);
-  assert.equal(s.getOptionSession("a"), null);
+  assert.equal(s.getOptionSession("a").readOnly, true);
 });
 
 test("choices, notes, cursor, dismissal and formatted answers", t => {
@@ -141,6 +142,9 @@ test("send handles pending, failures, retries, missing sender and replacement", 
   await s.sendAnswer("a");
   assert.equal(s.getOptionSession("a").error, null);
   assert.equal(s.getOptionSession("a").sending, false);
+  assert.equal(s.getOptionSession("a").readOnly, true);
+  s.publishAssistantReply("a", { at: 1.5, text: one });
+  s.choose("a", 0, "B");
   let resolve;
   s.setOptionSender(() => new Promise(r => { resolve = r; }));
   const old = s.sendAnswer("a");
@@ -201,7 +205,7 @@ test("renderer effects publish only ordinary owned messages and cleanup removes 
   draw(LiveUserMessageRenderer, "hello", 13, "user");
   draw(LiveUserMessageRenderer, "hello", 13, "user");
   assert.equal(observed.length, 3);
-  assert.equal(s.getOptionSession("a"), null);
+  assert.equal(s.getOptionSession("a").readOnly, true);
   assert.equal(count, 2);
   draw(LiveAssistantRenderer, two, 14, "reply");
   s.choose("a", 0, "A"); s.choose("a", 1, "B");
@@ -210,11 +214,25 @@ test("renderer effects publish only ordinary owned messages and cleanup removes 
   h.dispose();
   await s.sendAnswer("a");
   assert.equal(calls.length, 1);
-  assert.equal(s.getOptionSession("a").error, "Sender unavailable");
+  assert.equal(s.getOptionSession("a").readOnly, true);
   const transform = h.transformers.get("assistant_message").transform;
   h.preferences.assistantMarkdown = false;
   assert.equal(transform({ item: { type: "assistant_message", text: one } }), undefined);
   h.preferences.assistantMarkdown = true;
   h.preferences.delegatedCodeBlocks = "chart";
   assert.equal(transform({ item: { type: "assistant_message", text: `${one}\n\`\`\`chart\ndata\n\`\`\`` } }), undefined);
+});
+
+test("auto-advance finds the next unanswered question and wraps", t => {
+  const { s } = fixture(t);
+  const three = "1) First?\nA One\nB Two\n\n2) Second?\nA One\nB Two\n\n3) Third?\nA One\nB Two\n\nReply: A";
+  s.publishAssistantReply("a", { at: 1, text: three });
+  s.setActiveQuestion("a", 1);
+  s.choose("a", 1, "A");
+  assert.equal(s.getOptionSession("a").activeQuestion, 2);
+  s.choose("a", 2, "B");
+  assert.equal(s.getOptionSession("a").activeQuestion, 0);
+  s.setActiveQuestion("a", 1);
+  s.choose("a", 1, "B");
+  assert.equal(s.getOptionSession("a").activeQuestion, 1);
 });
