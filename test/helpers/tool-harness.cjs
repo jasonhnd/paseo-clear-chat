@@ -38,6 +38,9 @@ function createToolHarness(platform = "ios", options = {}) {
     return index;
   }
   const react = {
+    Component: class Component {
+      constructor(props) { this.props = props; }
+    },
     createContext(value) {
       const context = { current: value };
       context.Provider = { context };
@@ -249,6 +252,7 @@ function createToolHarness(platform = "ios", options = {}) {
         usePaseo: () => paseo,
       };
       if (id === "@getpaseo/plugin/client/ui") return {
+        ...(options.ui ?? {}),
         StreamedText: ({ text, phase, ...props }) => {
           options.onStreamedText?.({ text, phase, ...props });
           return jsx("Text", { ...props, children: text });
@@ -294,6 +298,15 @@ function createToolHarness(platform = "ios", options = {}) {
       finally { context.current = previous; }
     }
     if (typeof element.type === "function") {
+      if (element.type.prototype instanceof react.Component) {
+        const instance = new element.type(element.props);
+        try { return draw(instance.render(), `${path}.child`); }
+        catch (error) {
+          if (!element.type.getDerivedStateFromError) throw error;
+          instance.state = { ...instance.state, ...element.type.getDerivedStateFromError(error) };
+          return draw(instance.render(), `${path}.fallback`);
+        }
+      }
       const key = `${path}:${element.type.name}`;
       const owner = frames.get(key) ?? { values: [], cursor: 0, effects: new Map() };
       frames.set(key, owner); owner.cursor = 0;
