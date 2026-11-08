@@ -284,3 +284,12 @@ test("card keeps its existing height and controls inside the scroll view", t => 
   tree = draw();
   assert.equal(byId(h, tree, "option-card").props.style.maxHeight, 100);
 });
+
+test("a numbered question with no hint and no recommendation shows no card", async t => {
+  const h = createToolHarness("ios", { agents: { a: { status: "idle" } }, preferences: { showAnswerCard: true } });
+  t.after(() => { h.unmount(); h.dispose(); });
+  const Renderer = h.load("client/live-renderers.tsx").LiveAssistantRenderer;
+  const text = `1. Which database?\nA One\nB Two`;
+  const tree = h.draw({ type: Renderer, props: { agentId: "a", host: { id: "host" }, item: { data: { text } }, timestamp: new Date(77), theme: { colors: {} } } }, "reply-77");
+  assert.equal(byId(h, tree, "option-card"), undefined);
+});

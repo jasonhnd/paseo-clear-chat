@@ -163,8 +163,7 @@ export function parseOptionQuestions(text: string): OptionQuestionSet | null {
   }
   if (!questions.length) return null;
   const hint = lines.some(line => line.index > (firstQuestionIndex ?? -1) && /回法|回复|回一个字母|reply with|reply:|answer with|respond with/i.test(line.text));
-  const numberedQuestion = questions.some(question => question.number !== null && /[?？]$/.test(question.title));
-  return hint || recommendedFound || numberedQuestion ? { questions, hint, recommendedFound } : null;
+  return hint || recommendedFound ? { questions, hint, recommendedFound } : null;
 }
 
 export function formatOptionAnswer(set: OptionQuestionSet, choices: Record<number, OptionChoice | undefined>): string | null {
