@@ -501,10 +501,10 @@ function joinSoft(lines: string[], keepItemBreaks?: boolean): string {
 
 /** Lettered choices are prose in markdown, but may be kept on separate lines. */
 function isLetteredOption(line: string): boolean {
-  const match = /^[ \t]*[*_]*[A-H]([.)）、])[*_]*(.*)$/.exec(line);
+  const match = /^[ \t]*[*_]*[A-HＡ-Ｈ][*_]*([.)）、：:]|[ \t　])[*_]*(.*)$/.exec(line);
   if (match === null) return false;
   const rest = match[2] ?? "";
-  if ((match[1] === "." || match[1] === ")") && !/^[ \t]/.test(rest)) return false;
+  if ((match[1] === "." || match[1] === ")" || match[1] === ":") && !/^[ \t]/.test(rest)) return false;
   return rest.trim() !== "";
 }
 
