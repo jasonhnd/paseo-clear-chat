@@ -11,6 +11,8 @@ test("missing and disabled options retain the original call's output", () => {
     "Question\nA. First\nB. Second",
     "1. Question\nA. First\nB. Second",
     "> Question\n> A. First\n> B. Second",
+    "Question\nA　First\nB：Second\nC: Third",
+    "1. Question\nＡ First\n**Ｂ**\tSecond",
   ];
   for (const reply of replies) {
     const original = parseMarkdown(reply);
@@ -37,17 +39,20 @@ test("numbered list item continuations keep option breaks and fold wrapped text"
   assert.equal(list.items.length, 2);
   assert.equal(textOf(list.items[0]), "Question\nA. First wrapped line\nB. Second");
   assert.equal(textOf(list.items[1]), "Next");
+  const [newMarkers] = parseWithBreaks("1. Question\nＡ　First\nB: Second");
+  assert.equal(textOf(newMarkers.items[0]), "Question\nＡ　First\nB: Second");
 });
 
 test("formatted, parenthesized and full-width markers count", () => {
-  for (const line of ["**A.** text", "_B._ text", "*C)* text", "D) text", "E）text", "F、text", "\t  G.\ttext", "H） text"]) {
+  for (const line of ["**A.** text", "_B._ text", "*C)* text", "D) text", "E）text", "F、text", "\t  G.\ttext", "H） text",
+    "A　First", "B：Second", "C: Third", "D:\tFourth", "E Fifth", "F\tSixth", "Ａ　First", "Ｈ. Last", "**Ａ** First"]) {
     const [block] = parseWithBreaks(`Question\n${line}`);
     assert.equal(textOf(block), `Question\n${inlineToText(parseMarkdown(line)[0].spans)}`, line);
   }
 });
 
 test("similar prose and markers without text do not count", () => {
-  for (const line of ["e.g. text", "a. text", "I. text", "A.B.", "Also, A. text", "A.", "B) ", "C）", "D、**"]) {
+  for (const line of ["e.g. text", "a. text", "I. text", "Ｉ. text", "A.B.", "A:text", "Also, A. text", "A", "A.", "A)", "A：", "A　", "A: ", "B) ", "C）", "D、**"]) {
     const [block] = parseWithBreaks(`Question\n${line}`);
     assert.equal(textOf(block).includes("\n"), false, line);
     assert.deepEqual(parseWithBreaks(`Question\n${line}`), parseMarkdown(`Question\n${line}`), line);
@@ -55,10 +60,10 @@ test("similar prose and markers without text do not count", () => {
 });
 
 test("quoted paragraphs keep option breaks and preserve paragraph boundaries", () => {
-  const [quote] = parseWithBreaks("> Question\n> A. First\n> wrapped line\n> B. Second\n>\n> Another question\n> C、Third");
+  const [quote] = parseWithBreaks("> Question\n> A. First\n> wrapped line\n> B. Second\n>\n> Another question\n> C、Third\n> Ｄ：Fourth");
   assert.equal(quote.kind, "quote");
   assert.deepEqual(quote.paragraphs.map(inlineToText), [
-    "Question\nA. First wrapped line\nB. Second", "Another question\nC、Third",
+    "Question\nA. First wrapped line\nB. Second", "Another question\nC、Third\nＤ：Fourth",
   ]);
 });
 
