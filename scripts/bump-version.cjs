@@ -24,20 +24,16 @@ function run(args) {
   if (!isObject(lock) || !isObject(lock.packages) || !isObject(lock.packages[""]) || lock.version !== current || lock.packages[""].version !== current) {
     throw new Error("package-lock.json versions do not match package.json");
   }
-  if (!isObject(manifest) || (Object.hasOwn(manifest, "version") && manifest.version !== current) ||
-      !isObject(manifest.translations) || !Object.keys(manifest.translations).length) {
-    throw new Error("paseo-plugin.json has invalid version or translations");
+  if (!isObject(manifest) || (Object.hasOwn(manifest, "version") && manifest.version !== current)) {
+    throw new Error("paseo-plugin.json has an invalid version");
   }
-  const descriptions = [manifest, ...Object.values(manifest.translations)];
-  for (const entry of descriptions) {
-    const prefix = `v${current} · `;
-    if (!isObject(entry) || typeof entry.description !== "string" || !entry.description.startsWith(prefix)) {
-      throw new Error("paseo-plugin.json description has an invalid version prefix");
-    }
-    const wording = entry.description.slice(prefix.length);
-    if (!wording.trim() || /^v\S+\s*·/.test(wording)) throw new Error("paseo-plugin.json description has invalid wording");
-    entry.description = `v${next} · ${wording}`;
+  const prefix = `v${current} · `;
+  if (typeof manifest.description !== "string" || !manifest.description.startsWith(prefix)) {
+    throw new Error("paseo-plugin.json description has an invalid version prefix");
   }
+  const wording = manifest.description.slice(prefix.length);
+  if (!wording.trim() || /^v\S+\s*·/.test(wording)) throw new Error("paseo-plugin.json description has invalid wording");
+  manifest.description = `v${next} · ${wording}`;
   pkg.version = lock.version = lock.packages[""].version = next;
   if (Object.hasOwn(manifest, "version")) manifest.version = next;
 

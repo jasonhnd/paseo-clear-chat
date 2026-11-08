@@ -20,7 +20,7 @@ function fixture(t) {
   const write = (name, value) => fs.writeFileSync(path.join(dir, name), value);
   write("package.json", JSON.stringify({ name: "fixture", version: current }, null, 2) + "\n");
   write("package-lock.json", JSON.stringify({ version: current, packages: { "": { version: current }, dependency: { version: current } } }, null, 2) + "\n");
-  write("paseo-plugin.json", JSON.stringify({ description: `v${current} · English`, translations: { example: { description: `v${current} · Translation` }, another: { description: `v${current} · Another` } } }, null, 2) + "\n");
+  write("paseo-plugin.json", JSON.stringify({ description: `v${current} · English` }, null, 2) + "\n");
   for (const name of documents) write(name, `Needs Paseo 0.14.0 or later.\n${name} Clear Chat ${current}\n`);
   write("CHANGELOG.md", `Needs Paseo 0.14.0 or later.\n## [${current}]\n[${current}]: https://example.com/v${current}\n`);
   return dir;
@@ -38,8 +38,6 @@ test("updates all metadata and reports every matching document line", t => {
   assert.equal(lock.packages[""].version, next);
   assert.equal(lock.packages.dependency.version, current);
   assert.equal(manifest.description, `v${next} · English`);
-  assert.equal(manifest.translations.example.description, `v${next} · Translation`);
-  assert.equal(manifest.translations.another.description, `v${next} · Another`);
   for (const name of documents) assert.ok(result.stdout.includes(`${name}:2:`), name);
   assert.ok(result.stdout.includes("CHANGELOG.md:3:"));
   assert.doesNotMatch(result.stdout, /Needs Paseo 0\.14\.0 or later/);
@@ -81,15 +79,13 @@ test("rejects bad arguments and the current version without writing", t => {
 });
 
 test("validates metadata and document shapes before any writes", async t => {
-  for (const problem of ["lock mismatch", "root lock missing", "default prefix", "translation prefix", "translation shape", "manifest version", "missing document", "invalid JSON"]) {
+  for (const problem of ["lock mismatch", "root lock missing", "default prefix", "manifest version", "missing document", "invalid JSON"]) {
     await t.test(problem, t => {
       const dir = fixture(t), lockFile = path.join(dir, metadata[1]), manifestFile = path.join(dir, metadata[2]);
       const lock = JSON.parse(read(dir, metadata[1])), manifest = JSON.parse(read(dir, metadata[2]));
       if (problem === "lock mismatch") lock.version = next;
       if (problem === "root lock missing") delete lock.packages[""];
       if (problem === "default prefix") manifest.description = "unexpected";
-      if (problem === "translation prefix") manifest.translations.example.description = `v${next} · Translation`;
-      if (problem === "translation shape") manifest.translations = [];
       if (problem === "manifest version") manifest.version = next;
       fs.writeFileSync(lockFile, JSON.stringify(lock));
       fs.writeFileSync(manifestFile, JSON.stringify(manifest));

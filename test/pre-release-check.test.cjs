@@ -20,7 +20,7 @@ function fixture(t) {
   const write = (name, value) => fs.writeFileSync(path.join(dir, name), value);
   write("package.json", JSON.stringify({ version: current }));
   write("package-lock.json", JSON.stringify({ version: current, packages: { "": { version: current } } }));
-  write("paseo-plugin.json", JSON.stringify({ description: `v${current} · fixture`, translations: { example: { description: `v${current} · fixture` } } }));
+  write("paseo-plugin.json", JSON.stringify({ description: `v${current} · fixture` }));
   write("CHANGELOG.md", `## [${current}] - ${day}\n## [${prior}]\n## [${legacy}]\n`);
   for (const name of readmes) {
     const lines = fs.readFileSync(path.join(root, name), "utf8").split("\n").filter(line => line.includes(legacy));

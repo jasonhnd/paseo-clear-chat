@@ -15,7 +15,7 @@ function manifestVersion(directory, { write = false, allowStale = false } = {}) 
   if (lock.version !== version || lock.packages?.[""]?.version !== version) {
     throw new Error("package-lock.json version does not match package.json");
   }
-  const paths = [manifest, manifest.translations?.["zh-CN"]];
+  const paths = [manifest];
   let changed = false;
   for (const entry of paths) {
     if (typeof entry?.description !== "string" || !entry.description.trim()) {
