@@ -47,6 +47,36 @@ test("inline card advances only for a first choice and changes an existing choic
   assert.match(h.text(byId(h, tree, "option-send")), /Send 1A 2A/);
 });
 
+test("tabs show short names or the chosen answer", t => {
+  const { h, s, draw } = fixture(t);
+  let tree = draw();
+  assert.equal(h.text(byId(h, tree, "option-question-0")), "Q1 · Storage");
+  assert.equal(h.text(byId(h, tree, "option-question-1")), "Q2 · Ship now");
+  assert.doesNotMatch(h.text(byId(h, tree, "option-card")), /Options detected/);
+  s.choose("a", 0, "B");
+  tree = draw();
+  assert.equal(h.text(byId(h, tree, "option-question-0")), "✓ File (recommended)");
+  assert.equal(h.text(byId(h, tree, "option-question-1")), "Q2 · Ship now");
+  s.getOptionSession("a").set.questions[0].options[1].text = "An unusually long answer";
+  assert.equal(h.text(byId(h, draw(), "option-question-0")), "✓ An unusually long…");
+  byId(h, tree, "option-question-0").props.onPress();
+  assert.equal(h.text(byId(h, draw(), "option-question-0")), "Q1 · Storage");
+});
+
+test("disabled Send is marked inaccessible and cannot be focused", t => {
+  const { h, s, draw } = fixture(t);
+  let send = byId(h, draw(), "option-send");
+  assert.equal(send.props.accessibilityState.disabled, true);
+  assert.equal(send.props.disabled, true);
+  assert.equal(send.props.focusable, false);
+  assert.equal(send.props.style[0].borderStyle, "dashed");
+  assert.equal(send.props.style[0].backgroundColor, "transparent");
+  s.choose("a", 0, "A"); s.choose("a", 1, "A");
+  send = byId(h, draw(), "option-send");
+  assert.equal(send.props.focusable, true);
+  assert.equal(send.props.accessibilityState.disabled, false);
+});
+
 test("typed messages make the matching card read-only and newer replies replace it", t => {
   const { h, s, draw } = fixture(t);
   draw();
@@ -102,6 +132,11 @@ test("web focus follows first choices and arrows stay scoped to option rows", as
   const draw = () => h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } });
   const focused = [];
   let tree = draw();
+  assert.equal(h.text(byId(h, tree, "option-hint")), "↑↓ move · ↵ choose");
+  byId(h, tree, "option-row-B").props.onFocus();
+  tree = draw();
+  assert.equal(byId(h, tree, "option-row-B").props.style[1].outlineStyle, "solid");
+  assert.equal(byId(h, tree, "option-row-B").props.style[1].outlineOffset, 1);
   byId(h, tree, "option-card").props.ref({ querySelector: selector => ({ focus: () => focused.push(selector) }) });
   byId(h, tree, "option-row-B").props.onPress();
   await new Promise(resolve => setTimeout(resolve, 5));
@@ -117,6 +152,14 @@ test("web focus follows first choices and arrows stay scoped to option rows", as
   byId(h, tree, "option-row-A").props.onPress();
   await new Promise(resolve => setTimeout(resolve, 5));
   assert.match(focused.pop(), /option-send/);
+  tree = draw();
+  byId(h, tree, "option-send").props.onFocus();
+  tree = draw();
+  assert.equal(h.text(byId(h, tree, "option-hint")), "↵ send");
+  assert.equal(byId(h, tree, "option-send").props.style[1].outlineWidth, 2);
+  assert.equal(byId(h, tree, "option-send").props.style[1].outlineStyle, "solid");
+  byId(h, tree, "option-send").props.onBlur();
+  assert.equal(h.text(byId(h, draw(), "option-hint")), "↑↓ move · ↵ choose");
   byId(h, draw(), "option-question-0").props.onPress();
   byId(h, draw(), "option-row-A").props.onPress();
   await new Promise(resolve => setTimeout(resolve, 5));

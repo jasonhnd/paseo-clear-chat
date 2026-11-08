@@ -634,7 +634,7 @@
     "send": "Send {{answer}}",
     "missing": "Choose an answer for Q{{question}}",
     "hintMove": "↑ ↓ move",
-    "hintPick": "A B C D pick",
+    "hintPick": "A B C D choose",
     "hintNext": "Tab next",
     "hintBack": "⇧Tab back",
     "hintSend": "Tab → Send",
