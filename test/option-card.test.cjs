@@ -106,14 +106,12 @@ D Yellow`;
   assert.deepEqual(calls, [["a", "A3A A12B"]]);
 });
 
-test("a numbered question without a hint displays the card", t => {
+test("a numbered question without a hint and without a recommendation shows no card", t => {
   const h = createToolHarness("ios", { agents: { a: { status: "idle" } }, preferences: { showAnswerCard: true } });
   t.after(() => { h.unmount(); h.dispose(); });
   const Renderer = h.load("client/live-renderers.tsx").LiveAssistantRenderer;
   const tree = h.draw({ type: Renderer, props: { agentId: "a", host: { id: "host" }, item: { data: { text: "1. Which database?\nA One\nB Two" } }, timestamp: new Date(10), theme: { colors: {} } } }, "baseline");
-  assert.ok(byId(h, tree, "option-card"));
-  assert.match(h.text(byId(h, tree, "option-row-A")), /One/);
-  assert.match(h.text(byId(h, tree, "option-row-B")), /Two/);
+  assert.equal(byId(h, tree, "option-card"), undefined);
 });
 
 test("option selection, navigation, notes, collapse and dismissal", t => {
@@ -285,11 +283,3 @@ test("card keeps its existing height and controls inside the scroll view", t => 
   assert.equal(byId(h, tree, "option-card").props.style.maxHeight, 100);
 });
 
-test("a numbered question with no hint and no recommendation shows no card", async t => {
-  const h = createToolHarness("ios", { agents: { a: { status: "idle" } }, preferences: { showAnswerCard: true } });
-  t.after(() => { h.unmount(); h.dispose(); });
-  const Renderer = h.load("client/live-renderers.tsx").LiveAssistantRenderer;
-  const text = `1. Which database?\nA One\nB Two`;
-  const tree = h.draw({ type: Renderer, props: { agentId: "a", host: { id: "host" }, item: { data: { text } }, timestamp: new Date(77), theme: { colors: {} } } }, "reply-77");
-  assert.equal(byId(h, tree, "option-card"), undefined);
-});
