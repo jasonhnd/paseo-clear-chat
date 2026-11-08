@@ -24,7 +24,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Compatibility
 
 - Clear Chat 0.15.3.5 is the Clear Chat release for Paseo 0.15.3.
-- The release candidate was checked on an isolated host running Paseo 0.15.3: it installs and loads. The answer card appears on a reply whose questions are numbered `A3`/`A4` and sends the chosen letters, and a lone `A. Smith wrote this` line stays in its paragraph with the option-line setting on. The pre-release check and the manifest change were exercised on the tag-day run. The full test suite (2,107 tests) and the type check pass. Not checked: real model replies, input-method composition, and a run in the native phone apps.
+- The release candidate was checked on an isolated host running Paseo 0.15.3: it installs and loads. The answer card appears on a reply whose questions are numbered `A3`/`A4` and sends the chosen letters, and a lone `A. Smith wrote this` line stays in its paragraph with the option-line setting on. The pre-release check and the manifest change were exercised on the tag-day run. The full test suite (2,111 tests) and the type check pass. Not checked: real model replies, input-method composition, and a run in the native phone apps.
 
 ### Known limitations
 

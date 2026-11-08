@@ -453,7 +453,7 @@ Numbers are issues, pull requests and discussions in Paseo's official repository
 
 **Why do I not see the answer card?** The setting must be on. The latest reply must ask numbered questions with lettered options that start at A and follow without gaps, at least two options per question, and either ask you to reply in a short form (for example "reply with 1B 2A") or mark an option as recommended. The agent must not be running, and a newer message of yours hides the card. Questions inside a code block or a quotation are ignored. If an ordinary list is taken for options, press **Not options**; the choice is remembered after you reload the chat.
 
-**Which Paseo versions work?** 0.14.0 or later. Clear Chat was installed and loaded on a Paseo 0.15.3 host and the full test suite ran there (2,107 tests); the minimum is still Paseo 0.14.0. The items checked on Paseo 0.15.3 for the previous release are listed in the changelog. Paseo 0.13 has an older, untested path described under [Install](#install).
+**Which Paseo versions work?** 0.14.0 or later. Clear Chat was installed and loaded on a Paseo 0.15.3 host and the full test suite ran there (2,111 tests); the minimum is still Paseo 0.14.0. The items checked on Paseo 0.15.3 for the previous release are listed in the changelog. Paseo 0.13 has an older, untested path described under [Install](#install).
 
 ## Troubleshooting
 
