@@ -104,7 +104,8 @@ function createToolHarness(platform = "ios", options = {}) {
       onResponderTerminate: handlers.onPanResponderTerminate,
     } }) },
     Platform: { OS: platform, isPad: options.isPad ?? false }, StyleSheet: { create: value => value },
-    Animated: { Value, View: "Animated.View", timing: () => ({ start: noop, stop: noop }) },
+    Animated: { Value, View: "Animated.View", timing: options.timing ?? (() => ({ start: noop, stop: noop })) },
+    AccessibilityInfo: options.accessibilityInfo ?? { isReduceMotionEnabled: async () => false, addEventListener: () => ({ remove: noop }) },
     Linking: { openURL: (...args) => { links.push(args[0]); return options.openURL?.(...args) ?? Promise.resolve(); } },
   };
   const stubs = {

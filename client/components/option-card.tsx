@@ -5,6 +5,7 @@ import { messages } from "../messages";
 import { answerText, choose, dismiss, getOptionSession, missingQuestion, moveCursor, sendAnswer, setActiveQuestion, useOptionSession } from "../option-session";
 import { optionShortName } from "../option-short-name";
 import type { ExtendedThemeTokens } from "./theme-tokens";
+import { useReducedMotion } from "./use-reduced-motion";
 
 export function OptionCard({ agentId, at, tokens }: { agentId: string; at: number; tokens: ExtendedThemeTokens }) {
   const { t } = useTranslation(messages);
@@ -13,13 +14,18 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   const root = useRef<HTMLElement | null>(null);
   const [focused, setFocused] = useState<string | null>(null);
   const fade = useRef(new Animated.Value(1)).current;
+  const reducedMotion = useReducedMotion();
   const index = session?.activeQuestion ?? 0;
   useEffect(() => {
+    if (reducedMotion) {
+      fade.setValue(1);
+      return;
+    }
     fade.setValue(0.85);
     const animation = Animated.timing(fade, { toValue: 1, duration: 160, useNativeDriver: true });
     animation.start();
     return () => animation.stop();
-  }, [fade, index]);
+  }, [fade, index, reducedMotion]);
   if (!session || session.at !== at || session.dismissed || (status === "running" && !session.readOnly)) return null;
 
   const question = session.set.questions[index]!;
