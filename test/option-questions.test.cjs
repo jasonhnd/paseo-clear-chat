@@ -41,6 +41,56 @@ test("recognizes punctuation, full-width letters and digits, bullets and bold", 
   }
 });
 
+test("splits letter-number stems, retaining identifiers, options and recommendations", () => {
+  const set = parse(`A3 要你定的事？
+A 第一项（推荐）
+B 第二项
+C 第三项
+
+**A4** 选择下一步？
+A 第一种
+B 第二种（推荐）
+C 第三种
+
+## **Z12 Final choice?**
+A Alpha
+B Beta
+C Gamma (recommended)
+D Delta
+
+Reply with your choices.`);
+  assert.deepEqual(set.questions.map(({ number, text, options }) => ({ number, text, options })), [
+    { number: "A3", text: "要你定的事？", options: [
+      { letter: "A", text: "第一项（推荐）", recommended: true },
+      { letter: "B", text: "第二项", recommended: false },
+      { letter: "C", text: "第三项", recommended: false },
+    ] },
+    { number: "A4", text: "选择下一步？", options: [
+      { letter: "A", text: "第一种", recommended: false },
+      { letter: "B", text: "第二种（推荐）", recommended: true },
+      { letter: "C", text: "第三种", recommended: false },
+    ] },
+    { number: "Z12", text: "Final choice?", options: [
+      { letter: "A", text: "Alpha", recommended: false },
+      { letter: "B", text: "Beta", recommended: false },
+      { letter: "C", text: "Gamma (recommended)", recommended: true },
+      { letter: "D", text: "Delta", recommended: false },
+    ] },
+  ]);
+  assert.equal(format(set, { 0: { letter: "A" }, 1: { letter: "B" }, 2: { letter: "C" } }), "A3A A4B Z12C");
+  const partial = h.load("client/option-questions.ts").formatPartialOptionAnswer;
+  assert.equal(partial(set, { 1: { letter: "B" } }), "A4B ");
+});
+
+test("numbered questions with a question mark need no separate hint", () => {
+  const set = parse("1. Which database?\nA One\nB Two");
+  assert.equal(set.hint, false);
+  assert.equal(set.recommendedFound, false);
+  assert.deepEqual(set.questions[0].options.map(({ letter, text }) => [letter, text]), [["A", "One"], ["B", "Two"]]);
+  assert.equal(format(set, { 0: { letter: "B" } }), "1B");
+  assert.equal(parse("1. Database choices\nA One\nB Two"), null);
+});
+
 test("recognizes full-width spaces and existing punctuation as option separators", () => {
   for (const first of ["A　先做", "Ａ　先做"]) {
     const set = parse(`Pick?\n${first}\nB　先做\nC：先做\nD: 先做\nE）先做\nF、先做\n\nReply: A`);
@@ -95,8 +145,8 @@ test("finds recommendations in options, question text, trailing and closing line
     assert.deepEqual(set.questions[0].options.map(o => o.recommended), [false, true], text);
     assert.equal(set.recommendedFound, true);
   }
-  assert.equal(parse("1) Pick?\nA One\nB Two\n\n推荐 C"), null);
-  assert.equal(parse("1) Pick?\nA One\nB Two\nRecommended: Z"), null);
+  assert.equal(parse("1) Pick\nA One\nB Two\n\n推荐 C"), null);
+  assert.equal(parse("1) Pick\nA One\nB Two\nRecommended: Z"), null);
   const set = parse("1) Pick?\nA One\nB Two\n\nRecommended: C\nReply: A");
   assert.equal(set.recommendedFound, false);
 });
@@ -120,7 +170,7 @@ test("recognizes option markers without treating negations as recommendations", 
     ["Not Recommended.", false],
   ];
   for (const [option, expected] of cases) {
-    const reply = `1) Pick?\nA Other\nB ${option}`;
+    const reply = `1) Pick\nA Other\nB ${option}`;
     for (const hint of ["", "\n\nReply: A or B"]) {
       const set = parse(reply + hint);
       if (!expected && !hint) {
@@ -196,7 +246,7 @@ test("rejects isolated option-like prose and interrupted or invalid groups", () 
     "Pick?\nA One\n> hidden\nC Three\nReply: A",
     "Pick?\nC One\nC Two\nReply: C",
     "Pick?\nC One\nA Two\nReply: C",
-    "1) Pick?\nA One\nB Two",
+    "1) Pick\nA One\nB Two",
   ]) assert.equal(parse(text), null, text);
 });
 
@@ -206,7 +256,7 @@ test("handles a long reply in linear time", () => {
     const h = require("./test/helpers/tool-harness.cjs").createToolHarness();
     const parse = h.load("client/option-questions.ts").parseOptionQuestions;
     assert.ok(parse("x".repeat(200000) + "\\n1) Pick?\\nA One\\nB Two\\n\\nReply: A"));
-    assert.equal(parse("1) Pick?\\nA One\\nB Two\\n\\n推荐" + " ".repeat(200000) + "!"), null);
+    assert.equal(parse("1) Pick\\nA One\\nB Two\\n\\n推荐" + " ".repeat(200000) + "!"), null);
     h.dispose();
   `;
   const result = spawnSync(process.execPath, ["-e", script], { timeout: 10000, encoding: "utf8" });
