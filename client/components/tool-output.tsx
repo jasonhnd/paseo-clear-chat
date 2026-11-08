@@ -6,6 +6,15 @@ import { useEnhancerPreferences } from "../preferences";
 import { SyntaxHighlightBlock, type SyntaxHighlightProps } from "./syntax-highlight";
 import type { ExtendedThemeTokens } from "./theme-tokens";
 import { useStepDetailState } from "./step-detail-state";
+import type { OutputLineLimit } from "../preferences";
+
+function outputLines(text: string): string[] {
+  return text.replace(/\r?\n$/, "").split(/\r?\n/);
+}
+
+export function outputWouldFold(text: string, limit: OutputLineLimit): boolean {
+  return limit !== "never" && outputLines(text).length > limit;
+}
 
 export const ToolOutputVisibility = createContext<((text: string, expanded: boolean) => void) | undefined>(undefined);
 
@@ -25,8 +34,8 @@ export function ToolOutput({ text, tokens, children, expansion }: {
   const { foldLongOutputAfter: limit } = useEnhancerPreferences();
   const reportVisibility = useContext(ToolOutputVisibility);
   const [choice, setChoice] = useStepDetailState<{ limit: typeof limit; expanded: boolean } | undefined>(`output:${text}`, undefined);
-  const lines = useMemo(() => text.replace(/\r?\n$/, "").split(/\r?\n/), [text]);
-  const folded = limit !== "never" && lines.length > limit;
+  const lines = useMemo(() => outputLines(text), [text]);
+  const folded = outputWouldFold(text, limit);
   const expanded = expansion?.expanded ?? (choice?.limit === limit && choice.expanded);
   useEffect(() => {
     reportVisibility?.(text, Boolean(expanded));
