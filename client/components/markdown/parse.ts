@@ -84,7 +84,7 @@ const HARD_BREAK_RE = /(?: {2,}|\\)$/;
 export function parseMarkdown(
   text: string,
   onHeading?: (block: MdBlock, line: number) => void,
-  options?: { keepItemBreaks?: boolean },
+  options?: { keepItemBreaks?: boolean; onSingleLineParagraph?: (block: MdBlock, line: number) => void },
 ): MdBlock[] {
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
   const blocks: MdBlock[] = [];
@@ -136,7 +136,12 @@ export function parseMarkdown(
       continue;
     }
 
+    const start = index;
     index = readParagraph(lines, index, blocks, options?.keepItemBreaks);
+    if (index === start + 1) {
+      const block = blocks[blocks.length - 1];
+      if (block?.kind === "paragraph") options?.onSingleLineParagraph?.(block, start);
+    }
   }
 
   return blocks;
@@ -250,6 +255,7 @@ function readList(lines: string[], start: number, out: MdBlock[], keepItemBreaks
   const indents: number[] = [];
   let index = start;
   let blankSeen = false;
+  let previousLine = "";
   let blockOrdered: boolean | null = null;
   let blockTask: boolean | null = null;
 
@@ -294,6 +300,7 @@ function readList(lines: string[], start: number, out: MdBlock[], keepItemBreaks
       };
       if (task !== null) item.checked = (task[1] ?? " ").toLowerCase() === "x";
       items.push(item);
+      previousLine = body;
       blankSeen = false;
       index++;
       continue;
@@ -305,7 +312,8 @@ function readList(lines: string[], start: number, out: MdBlock[], keepItemBreaks
     // left text is the paragraph that follows the list.
     if (blankSeen && indentWidth(raw) < 2) break;
     if (blankSeen && startsBlock(lines, index)) break;
-    previous.text = `${previous.text}${keepItemBreaks && isLetteredOption(raw) ? "\n" : " "}${raw.trim()}`;
+    previous.text = `${previous.text}${keepItemBreaks && isLetteredOption(raw, blankSeen ? "" : previousLine, lines[index + 1] ?? "") ? "\n" : " "}${raw.trim()}`;
+    previousLine = raw;
     blankSeen = false;
     index++;
   }
@@ -492,7 +500,7 @@ function joinSoft(lines: string[], keepItemBreaks?: boolean): string {
     const hard = HARD_BREAK_RE.test(line);
     out += line.replace(TRAILING_SPACE_RE, "").replace(/\\$/, "");
     if (index < lines.length - 1) {
-      out += hard || (keepItemBreaks && isLetteredOption(lines[index + 1] ?? "")) ? "\n" : " ";
+      out += hard || (keepItemBreaks && isLetteredOption(lines[index + 1] ?? "", line, lines[index + 2] ?? "")) ? "\n" : " ";
     }
   }
   return out;
@@ -500,12 +508,24 @@ function joinSoft(lines: string[], keepItemBreaks?: boolean): string {
 
 
 /** Lettered choices are prose in markdown, but may be kept on separate lines. */
-function isLetteredOption(line: string): boolean {
-  const match = /^[ \t]*[*_]*[A-H]([.)）、])[*_]*(.*)$/.exec(line);
-  if (match === null) return false;
-  const rest = match[2] ?? "";
-  if ((match[1] === "." || match[1] === ")") && !/^[ \t]/.test(rest)) return false;
-  return rest.trim() !== "";
+function optionMarker(line: string): { letter: string; separator: string } | null {
+  const match = /^[ \t]*[*_]*([A-HＡ-Ｈ])[*_]*([.)）、：:]|[ \t　])[*_]*(.*)$/.exec(line);
+  if (match === null) return null;
+  const separator = match[2] ?? "";
+  const rest = match[3] ?? "";
+  if ((separator === "." || separator === ")" || separator === ":") && !/^[ \t]/.test(rest)) return null;
+  return rest.trim() === "" ? null : { letter: match[1] ?? "", separator };
+}
+
+function isLetteredOption(line: string, previous: string, next: string): boolean {
+  const marker = optionMarker(line);
+  if (marker === null) return false;
+  if (marker.separator !== " " || !/^[A-H]$/.test(marker.letter)) return true;
+  const previousMarker = optionMarker(previous);
+  const nextMarker = optionMarker(next);
+  const code = marker.letter.charCodeAt(0);
+  return previousMarker?.letter.charCodeAt(0) === code - 1
+    || nextMarker?.letter.charCodeAt(0) === code + 1;
 }
 
 function isWordChar(ch: string): boolean {

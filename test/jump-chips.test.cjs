@@ -2,16 +2,18 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
   JUMP_CHIPS_MIN_LENGTH,
+  JUMP_CHIPS_MIN_ANCHORS,
   JUMP_CHIPS_MAX,
   JUMP_CHIPS_LABEL_MAX,
   buildJumpChips,
+  jumpHeadingLines,
 } = require("../client/jump-chips.ts");
 
 const longReply = text => text + "\n" + "x".repeat(JUMP_CHIPS_MIN_LENGTH);
 const three = "# First\n## Second\n### Third";
 
 test("the length threshold is inclusive", () => {
-  assert.equal(JUMP_CHIPS_MIN_LENGTH, 3000);
+  assert.equal(JUMP_CHIPS_MIN_LENGTH, 1200);
   const atThreshold = three + "\n" + "x".repeat(JUMP_CHIPS_MIN_LENGTH - three.length - 1);
   assert.deepEqual(buildJumpChips(atThreshold.slice(0, -1)), []);
   assert.deepEqual(buildJumpChips(atThreshold), [
@@ -24,8 +26,54 @@ test("the length threshold is inclusive", () => {
   assert.equal(buildJumpChips(astral + "😀").length, 3);
 });
 
-test("fewer than three headings produce no chips", () => {
-  assert.deepEqual(buildJumpChips(longReply("# First\n## Second\n#### Fourth")), []);
+test("two anchors are required, including when both are headings", () => {
+  assert.equal(JUMP_CHIPS_MIN_ANCHORS, 2);
+  assert.deepEqual(buildJumpChips(longReply("# First\n#### Fourth")), []);
+  assert.deepEqual(buildJumpChips(longReply("# First\n## Second\n#### Fourth")), [
+    { index: 0, label: "First" }, { index: 1, label: "Second" },
+  ]);
+});
+
+test("two bold anchors meet the inclusive length threshold", () => {
+  const anchors = "**First**\n\n__Second__";
+  const reply = anchors + "\n" + "x".repeat(JUMP_CHIPS_MIN_LENGTH - anchors.length - 1);
+  assert.deepEqual(buildJumpChips(reply.slice(0, -1)), []);
+  assert.deepEqual(buildJumpChips(reply), [
+    { index: 0, label: "First" }, { index: 1, label: "Second" },
+  ]);
+});
+
+test("bold anchors exclude fenced, table, list and quoted content and partial phrases", () => {
+  const reply = [
+    "**First**", "```", "**Hidden in fence**", "```", "  ~~~", "__Hidden too__", "  ~~~",
+    "| Header | Other |", "| --- | --- |", "**Table | row**", "# Table | row", "",
+    "- **List item**", "  **List continuation**", "", "> **Quote**", "",
+    "**A.** text", "**Trailing** prose", "**one** and **two**", "__one__ and __two__",
+    "**mixed __ markers**", "**   **", "__\t__", "**Second**",
+  ].join("\n");
+  assert.deepEqual(jumpHeadingLines(reply), [
+    { line: 0, index: 0, heading: "First" },
+    { line: 24, index: 1, heading: "Second" },
+  ]);
+});
+
+test("bold labels are cleaned and shortened, and share indices with headings", () => {
+  const reply = ["# Heading", "", "**[Link](https://example.org) _and_ `code`**", "", "__`_`__", "", "## Next", "", "**" + "😀".repeat(25) + "**"].join("\n");
+  assert.deepEqual(jumpHeadingLines(reply), [
+    { line: 0, index: 0, heading: "Heading" },
+    { line: 2, index: 1, heading: "Link and code" },
+    { line: 4, index: 2, heading: "" },
+    { line: 6, index: 3, heading: "Next" },
+    { line: 8, index: 4, heading: "😀".repeat(25) },
+  ]);
+  assert.deepEqual(buildJumpChips(longReply(reply)), [
+    { index: 0, label: "Heading" }, { index: 1, label: "Link and code" },
+    { index: 3, label: "Next" }, { index: 4, label: "😀".repeat(24) + "…" },
+  ]);
+  const many = Array.from({ length: 10 }, (_, i) => i % 2 ? `**Bold ${i}**` : `# Heading ${i}`).join("\n");
+  assert.equal(jumpHeadingLines(many).length, 10);
+  assert.deepEqual(jumpHeadingLines(many).map(anchor => anchor.index), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  assert.equal(buildJumpChips(longReply(many)).length, 8);
 });
 
 test("only unindented level one to three headings count", () => {
@@ -78,5 +126,31 @@ test("labels remove markup and trailing hashes, and truncate by character", () =
 test("empty labels still count toward the minimum and later indices", () => {
   assert.deepEqual(buildJumpChips(longReply("# ***\n## _`_\n### Kept")), [
     { index: 2, label: "Kept" },
+  ]);
+});
+
+test("a bold line counts only when it starts a paragraph", () => {
+  assert.deepEqual(jumpHeadingLines("some paragraph\n**Lazy**"), []);
+  assert.deepEqual(jumpHeadingLines("some paragraph\n\n**Fresh**"), [{ line: 2, index: 0, heading: "Fresh" }]);
+  assert.deepEqual(jumpHeadingLines("**First line**\n\nbody"), [{ line: 0, index: 0, heading: "First line" }]);
+  assert.deepEqual(jumpHeadingLines("# Heading\n**After heading**"), [
+    { line: 0, index: 0, heading: "Heading" },
+    { line: 1, index: 1, heading: "After heading" },
+  ]);
+  assert.deepEqual(jumpHeadingLines("```\ncode\n```\n**After fence**"), [{ line: 3, index: 0, heading: "After fence" }]);
+  assert.deepEqual(jumpHeadingLines("body\n\n---\n\n**After rule**"), [{ line: 4, index: 0, heading: "After rule" }]);
+  assert.deepEqual(jumpHeadingLines("body\n\n---\n**After rule tight**"), [{ line: 3, index: 0, heading: "After rule tight" }]);
+  assert.deepEqual(jumpHeadingLines("body\n\n- item\n\n**After list**"), [{ line: 4, index: 0, heading: "After list" }]);
+  assert.deepEqual(jumpHeadingLines("> quote\n**After quote**"), [{ line: 1, index: 0, heading: "After quote" }]);
+  // a bold line inside a paragraph adds no anchor and does not break the paragraph
+  assert.deepEqual(jumpHeadingLines("body\n**Lazy**\nmore body\n\n**Fresh**"), [{ line: 4, index: 0, heading: "Fresh" }]);
+});
+
+test("the paragraph rule does not lower the anchor or length thresholds", () => {
+  assert.deepEqual(buildJumpChips("some paragraph\n**Lazy**\n" + "x".repeat(JUMP_CHIPS_MIN_LENGTH)), []);
+  assert.deepEqual(buildJumpChips("some paragraph\n**Lazy**\n\n**Fresh**\n" + "x".repeat(JUMP_CHIPS_MIN_LENGTH)), []);
+  assert.deepEqual(buildJumpChips("**One**\n\n**Two**\n" + "x".repeat(JUMP_CHIPS_MIN_LENGTH)), [
+    { index: 0, label: "One" },
+    { index: 1, label: "Two" },
   ]);
 });

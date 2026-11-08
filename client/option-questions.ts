@@ -44,7 +44,7 @@ function questionLine(line: string): { number: number; text: string } | null {
 
 function optionLine(line: string): { letter: string; text: string } | null {
   const value = stripPrefix(line, false);
-  const match = /^([A-HＡ-Ｈ])(\*\*)?([)）.、:：]|[ \t])(.*)$/.exec(value);
+  const match = /^([A-HＡ-Ｈ])(\*\*)?([)）.、:：]|[ \t　])(.*)$/.exec(value);
   if (!match) return null;
   const text = match[4]!.replace(/\*\*\s*$/, '').trim();
   if (!text) return null;
