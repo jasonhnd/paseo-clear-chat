@@ -380,13 +380,12 @@ function renderBlock(
             />}
           </MessageOutput>
       );
-      const delegate = block.language.toLowerCase() !== "mermaid"
-        && !(context.codeBlockOpen && codeBlockWebAddress(block.code))
+      const delegate = !(context.codeBlockOpen && codeBlockWebAddress(block.code))
         && !metrics.codeLineNumbers
         && !outputWouldFold(block.code, context.foldLongOutputAfter);
       return (
         <View key={key} style={styles.codeBlock}>
-          {delegate ? <OfficialMarkdownBlock text={fencedSource(block.code, block.language)} fallback={fallback} /> : fallback}
+          {delegate ? <OfficialMarkdownBlock text={fencedSource(block.code, block.language.toLowerCase() === "mermaid" ? "mermaid" : block.language)} fallback={fallback} /> : fallback}
         </View>
       );
     }

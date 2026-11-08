@@ -54,20 +54,44 @@ test("reply fences delegate only when existing behavior is preserved", t => {
   assert.equal(delegated(tree).length, 1);
   assert.equal(delegated(tree)[0].props.children, fence("ts", "const x = 1;"));
   assert.equal(own(tree).length, 0);
-  for (const language of ["mermaid", "MeRmAiD"]) {
-    tree = draw(fence(language, "graph TD"));
-    assert.equal(delegated(tree).length, 0);
-    assert.equal(own(tree).length, 1);
+  for (const language of ["mermaid", "Mermaid", "MeRmAiD"]) {
+    tree = draw(fence(language, "graph TD\nA-->B"));
+    assert.equal(delegated(tree).length, 1);
+    assert.equal(delegated(tree)[0].props.children, fence("mermaid", "graph TD\nA-->B"));
+    assert.equal(own(tree).length, 0);
   }
   h.preferences.codeBlockOpen = true;
   tree = draw(fence("text", "https://example.org/path"));
   assert.equal(delegated(tree).length, 0);
   assert.equal(own(tree).length, 1);
-  tree = draw(fence("ts", "const x = 1;"), "terminal");
+  tree = draw(fence("mermaid", "https://example.org/path"));
   assert.equal(delegated(tree).length, 0);
   assert.equal(own(tree).length, 1);
-  assert.equal(delegated(draw("```ts\nconst x = 1;")).length, 0);
+  tree = draw(fence("mermaid", "graph TD"), "terminal");
+  assert.equal(delegated(tree).length, 0);
+  assert.equal(own(tree).length, 1);
+  tree = draw("```mermaid\ngraph TD");
+  assert.equal(delegated(tree).length, 0);
+  assert.equal(own(tree).length, 0);
+  assert.ok(h.text(tree).includes("```mermaid\ngraph TD"));
 });
+
+for (const [name, Markdown] of [
+  ["missing", undefined],
+  ["throws", () => { throw new Error("host render failed"); }],
+]) {
+  test(`mermaid source and copy control survive when the host component is ${name}`, async t => {
+    const h = harness(t, { syntax: true, copyFeedback: true, ui: { Markdown } });
+    const { MarkdownView } = h.load("client/components/markdown/markdown-view.tsx");
+    const code = "graph TD\nA-->B";
+    const tree = h.draw({ type: MarkdownView, props: { text: fence("mermaid", code), tokens: h.tokens, variant: "document" } });
+    assert.ok(h.text(tree).includes(code));
+    const copy = h.nodes(tree, node => node.props.accessibilityLabel === "Copy code");
+    assert.equal(copy.length, 1);
+    await copy[0].props.onPress();
+    assert.deepEqual(h.copies, [code]);
+  });
+}
 
 test("foldable fences retain the folding control at the limit and when expanded", t => {
   const h = harness(t, { preferences: { foldLongOutputAfter: 10 } });
@@ -86,4 +110,6 @@ test("foldable fences retain the folding control at the limit and when expanded"
   assert.equal(h.nodes(tree, node => node.props.accessibilityLabel === "Show fewer lines").length, 1);
   h.preferences.foldLongOutputAfter = "never";
   assert.equal(officialNodes(draw(fence("ts", code(11)))).length, 1);
+  h.preferences.foldLongOutputAfter = 10;
+  assert.equal(officialNodes(draw(fence("mermaid", code(11)))).length, 0);
 });
