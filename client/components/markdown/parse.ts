@@ -520,12 +520,20 @@ function optionMarker(line: string): { letter: string; separator: string } | nul
 function isLetteredOption(line: string, previous: string, next: string): boolean {
   const marker = optionMarker(line);
   if (marker === null) return false;
-  if (marker.separator !== " " || !/^[A-H]$/.test(marker.letter)) return true;
+  const plainAsciiSpace = marker.separator === " " && /^[A-H]$/.test(marker.letter);
+  if (!plainAsciiSpace && !/[.)）、：:]/.test(marker.separator)) return true;
   const previousMarker = optionMarker(previous);
   const nextMarker = optionMarker(next);
-  const code = marker.letter.charCodeAt(0);
-  return previousMarker?.letter.charCodeAt(0) === code - 1
-    || nextMarker?.letter.charCodeAt(0) === code + 1;
+  // Preserve the existing ASCII-space rule; punctuation also accepts a
+  // neighboring letter written in the other character width.
+  const code = (letter: string | undefined) => {
+    if (letter === undefined) return undefined;
+    const value = letter.charCodeAt(0);
+    return !plainAsciiSpace && value >= 0xff21 && value <= 0xff28 ? value - 0xfee0 : value;
+  };
+  const current = code(marker.letter)!;
+  return code(previousMarker?.letter) === current - 1
+    || code(nextMarker?.letter) === current + 1;
 }
 
 function isWordChar(ch: string): boolean {

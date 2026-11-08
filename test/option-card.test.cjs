@@ -38,6 +38,82 @@ test("card is limited to the matching enabled and idle reply", t => {
   assert.equal(byId(h, draw(), "option-card"), undefined);
 });
 
+test("later and skipped letters render and remain selectable across display settings", t => {
+  const h = createToolHarness("ios", { width: 320, height: 640, markdown: true, agents: { a: { status: "idle" } }, preferences: { showAnswerCard: false } });
+  t.after(() => { h.unmount(); h.dispose(); });
+  const s = h.load("client/option-session.ts");
+  const Renderer = h.load("client/live-renderers.tsx").LiveAssistantRenderer;
+  const cases = [
+    ["Pick?\nC 先做\nD 后做\n\nReply: C", [["C", "先做"], ["D", "后做"]]],
+    ["Pick?\nA First\nC Third\nE Fifth\n\nReply: A", [["A", "First"], ["C", "Third"], ["E", "Fifth"]]],
+  ];
+  let at = 10;
+  for (const [text, options] of cases) {
+    const timestamp = new Date(at++);
+    const draw = () => h.draw({ type: Renderer, props: { agentId: "a", host: { id: "host" }, item: { data: { text } }, timestamp, theme: { colors: {} } } }, `reply-${timestamp.getTime()}`);
+    for (const keepItemLineBreaks of [false, true]) {
+      h.preferences.keepItemLineBreaks = keepItemLineBreaks;
+      h.preferences.showAnswerCard = false;
+      assert.equal(byId(h, draw(), "option-card"), undefined);
+      h.preferences.showAnswerCard = true;
+      let tree = draw();
+      assert.ok(byId(h, tree, "option-card"));
+      for (const [letter, label] of options) {
+        const row = byId(h, tree, `option-row-${letter}`);
+        assert.ok(row, letter);
+        assert.ok(h.text(row).includes(label));
+      }
+      const letter = options.at(-1)[0];
+      byId(h, tree, `option-row-${letter}`).props.onPress();
+      tree = draw();
+      assert.equal(s.answerText("a"), letter);
+      assert.match(h.text(byId(h, tree, "option-send")), new RegExp(`Send ${letter}`));
+      byId(h, tree, `option-row-${letter}`).props.onPress();
+    }
+  }
+});
+
+test("letter-number questions display their choices and send their original identifiers", async t => {
+  const h = createToolHarness("ios", { agents: { a: { status: "idle" } }, preferences: { showAnswerCard: true } });
+  t.after(() => { h.unmount(); h.dispose(); });
+  const s = h.load("client/option-session.ts");
+  const Renderer = h.load("client/live-renderers.tsx").LiveAssistantRenderer;
+  const text = `A3 First?
+A One (recommended)
+B Two
+C Three
+
+**A12** Second?
+A Red
+B Blue (recommended)
+C Green
+D Yellow`;
+  const draw = () => h.draw({ type: Renderer, props: { agentId: "a", host: { id: "host" }, item: { data: { text } }, timestamp: new Date(10), theme: { colors: {} } } }, "reply-10");
+  let tree = draw();
+  assert.ok(byId(h, tree, "option-card"));
+  assert.match(h.text(byId(h, tree, "option-row-A")), /One[\s\S]*Recommended/);
+  assert.match(h.text(byId(h, tree, "option-row-C")), /Three/);
+  byId(h, tree, "option-row-A").props.onPress();
+  byId(h, draw(), "option-next").props.onPress();
+  tree = draw();
+  assert.match(h.text(byId(h, tree, "option-row-B")), /Blue[\s\S]*Recommended/);
+  assert.match(h.text(byId(h, tree, "option-row-D")), /Yellow/);
+  byId(h, tree, "option-row-B").props.onPress();
+  const calls = [];
+  s.setOptionSender(async (agent, answer) => { calls.push([agent, answer]); });
+  byId(h, draw(), "option-send").props.onPress();
+  await flush();
+  assert.deepEqual(calls, [["a", "A3A A12B"]]);
+});
+
+test("a numbered question without a hint and without a recommendation shows no card", t => {
+  const h = createToolHarness("ios", { agents: { a: { status: "idle" } }, preferences: { showAnswerCard: true } });
+  t.after(() => { h.unmount(); h.dispose(); });
+  const Renderer = h.load("client/live-renderers.tsx").LiveAssistantRenderer;
+  const tree = h.draw({ type: Renderer, props: { agentId: "a", host: { id: "host" }, item: { data: { text: "1. Which database?\nA One\nB Two" } }, timestamp: new Date(10), theme: { colors: {} } } }, "baseline");
+  assert.equal(byId(h, tree, "option-card"), undefined);
+});
+
 test("option selection, navigation, notes, collapse and dismissal", t => {
   const { h, s, draw } = fixture(t);
   let tree = draw();
@@ -206,3 +282,4 @@ test("card keeps its existing height and controls inside the scroll view", t => 
   tree = draw();
   assert.equal(byId(h, tree, "option-card").props.style.maxHeight, 100);
 });
+

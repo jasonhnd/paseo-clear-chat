@@ -11,7 +11,7 @@ const root = path.resolve(__dirname, "..");
 const failed = new Set();
 const versionPattern = /^(?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*)){3}$/;
 const ignored = new Set([".git", "node_modules", ".tmp", "dist"]);
-const ignoredFiles = new Set([".showcase/showcase.js", ".showcase/tools/collect.cjs"]);
+const ignoredFiles = new Set([".showcase/showcase.js", ".showcase/tools/collect.cjs", "client/package-version.svg"]);
 // These exact lines document the older-host release and its known history.
 const legacyVersion = [0, 13, 2, 2].join(".");
 const compatibilityLines = {
@@ -79,16 +79,10 @@ const lockLines = keyLines("package-lock.json", "version");
 compare("package-lock.json", lockLines[0], "version", lock?.version, version, typeof version === "string");
 compare("package-lock.json", lockLines[1], 'packages[""].version', lock?.packages?.[""]?.version, version, typeof version === "string");
 const descriptionLines = keyLines("paseo-plugin.json", "description");
-const translations = manifest?.translations;
-if (!translations || typeof translations !== "object" || Array.isArray(translations) || !Object.keys(translations).length) {
-  fail("version consistency", "paseo-plugin.json:1", "translations are missing");
-}
-const descriptions = [["description", manifest?.description], ...Object.entries(translations || {}).map(([lang, entry]) => [`translations.${lang}.description`, entry?.description])];
-descriptions.forEach(([label, description], i) => {
-  const match = typeof description === "string" && /^v((?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*)){3}) · (.+)$/u.exec(description);
-  compare("paseo-plugin.json", descriptionLines[i], label + " prefix", match?.[1], version,
-    Boolean(match && match[2].trim() && !/^v\S+\s*·/.test(match[2]) && typeof version === "string"));
-});
+const description = manifest?.description;
+const match = typeof description === "string" && /^v((?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*)){3}) · (.+)$/u.exec(description);
+compare("paseo-plugin.json", descriptionLines[0], "description prefix", match?.[1], version,
+  Boolean(match && match[2].trim() && !/^v\S+\s*·/.test(match[2]) && typeof version === "string"));
 const changelog = read("CHANGELOG.md", "version consistency");
 if (changelog !== null) {
   const heading = /^## \[((?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*)){2,})\]/m.exec(changelog);
@@ -142,6 +136,7 @@ if (!versions.length && changelog !== null) {
 if (versions.some(value => !value || /[\r\n]/.test(value))) fail("stale version scan", "scripts/pre-release-check.cjs:1", "version arguments must be nonempty single-line strings");
 console.log(`Searching for: ${versions.map(value => JSON.stringify(value)).join(", ") || "<none>"}`);
 console.log("Excludes Git data, installed dependencies, generated build files, historical changelog sections, and documented older-host references.");
+console.log("Skipped generated install metadata: client/package-version.svg.");
 function walk(dir = "") {
   let entries;
   try { entries = fs.readdirSync(path.join(root, dir), { withFileTypes: true }); }

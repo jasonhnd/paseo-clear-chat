@@ -185,7 +185,7 @@ function build(dir, extra = {}) {
   return spawnSync(process.execPath, command[0].slice(1), { cwd: dir, encoding: "utf8", env });
 }
 
-test("managed build automatically generates both descriptions from the package version", async t => {
+test("managed build automatically generates the manifest description from the package version", async t => {
   for (const version of ["1.2.3.4", "10.20.30.40"]) {
     await t.test(version, t => {
       const dir = fixture(t), manifestFile = path.join(dir, "paseo-plugin.json");
@@ -195,38 +195,31 @@ test("managed build automatically generates both descriptions from the package v
       assertInvocation(dir);
       const manifest = read(manifestFile);
       assert.equal(read(path.join(dir, "client", "package-version.svg")).version, version);
-      for (const [actual, before] of [[manifest.description, original.description], [manifest.translations["zh-CN"].description, original.translations["zh-CN"].description]]) {
-        assert.equal(actual, `v${version} · ${before.replace(/^v\d+(?:\.\d+){3} · /, "")}`, "build must automatically generate the version prefix and preserve wording");
-      }
+      assert.equal(manifest.description, `v${version} · ${original.description.replace(/^v\d+(?:\.\d+){3} · /, "")}`, "build must automatically generate the version prefix and preserve wording");
       assert.equal(result.status, 0, result.stderr);
     });
   }
 });
 
-test("a stale prefix in either description is regenerated", async t => {
-  for (const locale of ["default", "zh-CN"]) {
-    await t.test(locale, t => {
-      const dir = fixture(t), file = path.join(dir, "paseo-plugin.json");
-      const version = read(path.join(dir, "package.json")).version;
-      const manifest = read(file), entry = locale === "default" ? manifest : manifest.translations[locale];
-      entry.description = entry.description.replace(/^v\d+(?:\.\d+){3} · /, "v1.2.3.4 · ");
-      const before = entry.description.replace(/^v\d+(?:\.\d+){3} · /, "");
-      write(file, manifest);
-      const result = build(dir);
-      assertInvocation(dir);
-      assert.equal(result.status, 0, result.stderr);
-      const updated = read(file), actual = locale === "default" ? updated : updated.translations[locale];
-      const prefix = `v${version} · `;
-      assert.ok(actual.description.startsWith(prefix), "the build must regenerate the package version prefix");
-      assert.equal(actual.description.slice(prefix.length), before, "the wording after the prefix must be preserved");
-    });
-  }
+test("a stale manifest description prefix is regenerated", t => {
+  const dir = fixture(t), file = path.join(dir, "paseo-plugin.json");
+  const version = read(path.join(dir, "package.json")).version;
+  const manifest = read(file);
+  manifest.description = manifest.description.replace(/^v\d+(?:\.\d+){3} · /, "v1.2.3.4 · ");
+  const before = manifest.description.replace(/^v\d+(?:\.\d+){3} · /, "");
+  write(file, manifest);
+  const result = build(dir);
+  assertInvocation(dir);
+  assert.equal(result.status, 0, result.stderr);
+  const updated = read(file), prefix = `v${version} · `;
+  assert.ok(updated.description.startsWith(prefix), "the build must regenerate the package version prefix");
+  assert.equal(updated.description.slice(prefix.length), before, "the wording after the prefix must be preserved");
 });
 
 test("the committed release metadata is consistent", () => manifestVersion(root));
 
 test("invalid metadata fails the install build before dependency installation", async t => {
-  for (const problem of ["missing package version", "invalid version", "lock mismatch", "root lock mismatch", "malformed lock", "missing default", "missing translation", "empty description", "missing prefix", "malformed default prefix", "malformed translation prefix", "ambiguous prefix", "ambiguous translation prefix"]) {
+  for (const problem of ["missing package version", "invalid version", "lock mismatch", "root lock mismatch", "malformed lock", "missing default", "empty description", "missing prefix", "malformed default prefix", "ambiguous prefix"]) {
     await t.test(problem, t => {
       const dir = fixture(t), pkgFile = path.join(dir, "package.json"), lockFile = path.join(dir, "package-lock.json"), manifestFile = path.join(dir, "paseo-plugin.json");
       const pkg = read(pkgFile), lock = read(lockFile), manifest = read(manifestFile);
@@ -235,13 +228,10 @@ test("invalid metadata fails the install build before dependency installation", 
       if (problem === "lock mismatch") lock.version = "1.2.3.4";
       if (problem === "root lock mismatch") lock.packages[""].version = "1.2.3.4";
       if (problem === "missing default") delete manifest.description;
-      if (problem === "missing translation") delete manifest.translations["zh-CN"].description;
       if (problem === "empty description") manifest.description = " ";
       if (problem === "missing prefix") manifest.description = "wording without a prefix";
       if (problem === "malformed default prefix") manifest.description = "v1.2.3 · wording";
-      if (problem === "malformed translation prefix") manifest.translations["zh-CN"].description = "v01.2.3.4 · wording";
       if (problem === "ambiguous prefix") manifest.description = "v1.2.3.4 · v2.3.4.5 · wording";
-      if (problem === "ambiguous translation prefix") manifest.translations["zh-CN"].description = "v1.2.3.4 · v2.3.4.5 · wording";
       write(pkgFile, pkg); write(lockFile, lock); write(manifestFile, manifest);
       if (problem === "malformed lock") fs.writeFileSync(lockFile, "{");
       const before = fs.readFileSync(manifestFile, "utf8");

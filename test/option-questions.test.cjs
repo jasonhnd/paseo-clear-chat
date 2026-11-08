@@ -41,6 +41,52 @@ test("recognizes punctuation, full-width letters and digits, bullets and bold", 
   }
 });
 
+test("splits letter-number stems, retaining identifiers, options and recommendations", () => {
+  const set = parse(`A3 要你定的事？
+A 第一项（推荐）
+B 第二项
+C 第三项
+
+**A4** 选择下一步？
+A 第一种
+B 第二种（推荐）
+C 第三种
+
+## **Z12 Final choice?**
+A Alpha
+B Beta
+C Gamma (recommended)
+D Delta
+
+Reply with your choices.`);
+  assert.deepEqual(set.questions.map(({ number, text, options }) => ({ number, text, options })), [
+    { number: "A3", text: "要你定的事？", options: [
+      { letter: "A", text: "第一项（推荐）", recommended: true },
+      { letter: "B", text: "第二项", recommended: false },
+      { letter: "C", text: "第三项", recommended: false },
+    ] },
+    { number: "A4", text: "选择下一步？", options: [
+      { letter: "A", text: "第一种", recommended: false },
+      { letter: "B", text: "第二种（推荐）", recommended: true },
+      { letter: "C", text: "第三种", recommended: false },
+    ] },
+    { number: "Z12", text: "Final choice?", options: [
+      { letter: "A", text: "Alpha", recommended: false },
+      { letter: "B", text: "Beta", recommended: false },
+      { letter: "C", text: "Gamma (recommended)", recommended: true },
+      { letter: "D", text: "Delta", recommended: false },
+    ] },
+  ]);
+  assert.equal(format(set, { 0: { letter: "A" }, 1: { letter: "B" }, 2: { letter: "C" } }), "A3A A4B Z12C");
+  const partial = h.load("client/option-questions.ts").formatPartialOptionAnswer;
+  assert.equal(partial(set, { 1: { letter: "B" } }), "A4B ");
+});
+
+test("a question mark on a numbered question is not a substitute for a hint", () => {
+  assert.equal(parse("1. Which database?\nA One\nB Two"), null);
+  assert.equal(parse("1. Database choices\nA One\nB Two"), null);
+});
+
 test("recognizes full-width spaces and existing punctuation as option separators", () => {
   for (const first of ["A　先做", "Ａ　先做"]) {
     const set = parse(`Pick?\n${first}\nB　先做\nC：先做\nD: 先做\nE）先做\nF、先做\n\nReply: A`);
@@ -95,8 +141,8 @@ test("finds recommendations in options, question text, trailing and closing line
     assert.deepEqual(set.questions[0].options.map(o => o.recommended), [false, true], text);
     assert.equal(set.recommendedFound, true);
   }
-  assert.equal(parse("1) Pick?\nA One\nB Two\n\n推荐 C"), null);
-  assert.equal(parse("1) Pick?\nA One\nB Two\nRecommended: Z"), null);
+  assert.equal(parse("1) Pick\nA One\nB Two\n\n推荐 C"), null);
+  assert.equal(parse("1) Pick\nA One\nB Two\nRecommended: Z"), null);
   const set = parse("1) Pick?\nA One\nB Two\n\nRecommended: C\nReply: A");
   assert.equal(set.recommendedFound, false);
 });
@@ -120,7 +166,7 @@ test("recognizes option markers without treating negations as recommendations", 
     ["Not Recommended.", false],
   ];
   for (const [option, expected] of cases) {
-    const reply = `1) Pick?\nA Other\nB ${option}`;
+    const reply = `1) Pick\nA Other\nB ${option}`;
     for (const hint of ["", "\n\nReply: A or B"]) {
       const set = parse(reply + hint);
       if (!expected && !hint) {
@@ -171,14 +217,42 @@ Reply: A`;
   assert.equal(parse("1) Pick?\n````\n```\nA One\nB Two\n```\n````\nReply: A"), null);
 });
 
-test("rejects ordinary lists, gaps, and unsupported lists", () => {
+test("recognizes options that start later or skip letters", () => {
+  for (const [lines, expected] of [
+    ["C 先做\nD 后做", [["C", "先做"], ["D", "后做"]]],
+    ["A First\nC Third\nE Fifth", [["A", "First"], ["C", "Third"], ["E", "Fifth"]]],
+    ["- **Ｃ** 先做\n- **Ｅ** 后做", [["C", "先做"], ["E", "后做"]]],
+  ]) {
+    const set = parse(`1) Pick?\n${lines}\n\nReply: ${expected[0][0]}`);
+    assert.deepEqual(set.questions[0].options.map(({ letter, text }) => [letter, text]), expected);
+    assert.equal(format(set, { 0: { letter: expected.at(-1)[0] } }), `1${expected.at(-1)[0]}`);
+  }
+  const recommended = parse("Pick?\nC One\nE Two\n\n推荐 E");
+  assert.deepEqual(recommended.questions[0].options.map(option => option.recommended), [false, true]);
+});
+
+test("rejects isolated option-like prose and interrupted or invalid groups", () => {
   for (const text of [
     "A user logs in. B user logs out.",
     "1) First item\n2) Second item\nReply: yes",
-    "1) Pick?\nA One\nC Three\nReply: A",
-    "1) Pick?\nB Two\nC Three\nReply: B",
-    "1) Pick?\nA One\nB Two",
+    "A\nThis is ordinary prose.\nReply: A",
+    "A person walks in.\nThis is ordinary prose.\nReply: A",
+    "Pick?\nC One\nC Two\nReply: C",
+    "Pick?\nC One\nA Two\nReply: C",
+    "1) Pick\nA One\nB Two",
   ]) assert.equal(parse(text), null, text);
+});
+
+test("prose, blank lines and quotes between options no longer void the section", () => {
+  for (const text of [
+    "Pick?\nA One\nOrdinary prose.\nC Three\nReply: A",
+    "Pick?\nA One\n\nC Three\nReply: A",
+    "Pick?\nA One\n> hidden\nC Three\nReply: A",
+  ]) {
+    const set = parse(text);
+    assert.notEqual(set, null, text);
+    assert.deepEqual(set.questions[0].options.map((option) => option.letter), ["A", "C"], text);
+  }
 });
 
 test("handles a long reply in linear time", () => {
@@ -187,7 +261,7 @@ test("handles a long reply in linear time", () => {
     const h = require("./test/helpers/tool-harness.cjs").createToolHarness();
     const parse = h.load("client/option-questions.ts").parseOptionQuestions;
     assert.ok(parse("x".repeat(200000) + "\\n1) Pick?\\nA One\\nB Two\\n\\nReply: A"));
-    assert.equal(parse("1) Pick?\\nA One\\nB Two\\n\\n推荐" + " ".repeat(200000) + "!"), null);
+    assert.equal(parse("1) Pick\\nA One\\nB Two\\n\\n推荐" + " ".repeat(200000) + "!"), null);
     h.dispose();
   `;
   const result = spawnSync(process.execPath, ["-e", script], { timeout: 10000, encoding: "utf8" });

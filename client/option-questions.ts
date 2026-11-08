@@ -1,5 +1,5 @@
 export interface OptionQuestion {
-  number: number | null;
+  number: number | string | null;
   title: string;
   text: string;
   options: { letter: string; text: string; recommended: boolean }[];
@@ -17,7 +17,7 @@ export interface OptionChoice {
 }
 
 type Line = { text: string; index: number };
-type Section = { number: number | null; lines: Line[] };
+type Section = { number: number | string | null; lines: Line[] };
 
 function stripPrefix(line: string, question: boolean): string {
   let value = line.trim();
@@ -32,8 +32,12 @@ function stripPrefix(line: string, question: boolean): string {
   return value;
 }
 
-function questionLine(line: string): { number: number; text: string } | null {
+function questionLine(line: string): { number: number | string; text: string } | null {
   const value = stripPrefix(line, true);
+  const letterNumber = /^([A-Z][0-9]+)(?:\*\*)?(?:[)）.、:：]\s*|[ \t　]+)(.*)$/.exec(value);
+  if (letterNumber && letterNumber[2]!.trim()) {
+    return { number: letterNumber[1]!, text: letterNumber[2]!.replace(/\*\*\s*$/, '').trim() };
+  }
   const match = /^([0-9０-９]+)[)）.、]\s*(.*)$/.exec(value);
   if (!match || !match[2]!.trim()) return null;
   const digits = match[1]!.replace(/[０-９]/g, digit => String(digit.charCodeAt(0) - 0xff10));
@@ -112,9 +116,11 @@ export function parseOptionQuestions(text: string): OptionQuestionSet | null {
     for (const line of section.lines) {
       const option = optionLine(line.text);
       if (option) {
+        // Letters must move forward inside one section: A, C, E counts, while B then A or a repeat does not.
+        // Blank lines and prose between options are ordinary in real replies and must not void the section.
+        if (optionStarted && option.letter <= options[options.length - 1]!.letter) invalid = true;
         optionStarted = true;
         continuation = true;
-        if (option.letter.charCodeAt(0) !== 65 + options.length) invalid = true;
         options.push({ ...option, recommended: false });
         optionLines.push([option.text]);
       } else if (!optionStarted) {

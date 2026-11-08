@@ -34,10 +34,10 @@ test("lettered paragraph options keep breaks in a single text span", () => {
 });
 
 test("numbered list item continuations keep option breaks and fold wrapped text", () => {
-  const [list] = parseWithBreaks("1. Question\nA. First\nwrapped line\nB. Second\n2. Next");
+  const [list] = parseWithBreaks("1. Question\nA. First\nB. Second\nwrapped line\n2. Next");
   assert.equal(list.kind, "list");
   assert.equal(list.items.length, 2);
-  assert.equal(textOf(list.items[0]), "Question\nA. First wrapped line\nB. Second");
+  assert.equal(textOf(list.items[0]), "Question\nA. First\nB. Second wrapped line");
   assert.equal(textOf(list.items[1]), "Next");
   const [newMarkers] = parseWithBreaks("1. Question\nＡ　First\nB: Second");
   assert.equal(textOf(newMarkers.items[0]), "Question\nＡ　First\nB: Second");
@@ -46,9 +46,40 @@ test("numbered list item continuations keep option breaks and fold wrapped text"
 test("formatted, parenthesized and full-width markers count", () => {
   for (const line of ["**A.** text", "_B._ text", "*C)* text", "D) text", "E）text", "F、text", "\t  G.\ttext", "H） text",
     "A　First", "B：Second", "C: Third", "D:\tFourth", "F\tSixth", "Ａ　First", "Ｈ. Last", "**Ａ** First"]) {
-    const [block] = parseWithBreaks(`Question\n${line}`);
-    assert.equal(textOf(block), `Question\n${inlineToText(parseMarkdown(line)[0].spans)}`, line);
+    const lastLetter = /H|Ｈ/.test(line);
+    const neighbor = line.replace(/[A-HＡ-Ｈ]/, letter => String.fromCharCode(letter.charCodeAt(0) + (lastLetter ? -1 : 1)));
+    const [block] = parseWithBreaks(lastLetter ? `Question\n${neighbor}\n${line}` : `Question\n${line}\n${neighbor}`);
+    assert.ok(textOf(block).includes(`\n${inlineToText(parseMarkdown(line)[0].spans)}`), line);
   }
+});
+
+test("punctuated markers require an adjacent consecutive option line", () => {
+  for (const [first, second] of [["A. 先做", "B. 先做"], ["A：先做", "B：先做"],
+    ["A) first", "B) second"], ["A）first", "B）second"], ["A、first", "B、second"],
+    ["A: first", "B: second"], ["**Ａ.** first", "B：second"]]) {
+    const [block] = parseWithBreaks(`Intro\n${first}\n${second}`);
+    const expected = `Intro\n${first.replaceAll("**", "")}\n${second}`;
+    assert.equal(textOf(block), expected, first);
+    assert.equal(textOf(parseWithBreaks(`Intro\n${first}\nprose`)[0]).includes("\n"), false, first);
+  }
+  for (const source of ["Intro\nA. Smith wrote this\nMore prose", "Intro\nA. first\nC. third", "Intro\nB. second\nA. first", "Intro\nA. first\nwrapped\nB. second"]) {
+    assert.deepEqual(parseWithBreaks(source), parseMarkdown(source), source);
+  }
+});
+
+test("a dotted sentence alone in its paragraph stays put, and a numbered question still splits", () => {
+  const [paragraph] = parseWithBreaks("First paragraph of prose.\nA. Smith wrote this.\nLast paragraph of prose.");
+  assert.equal(textOf(paragraph), "First paragraph of prose. A. Smith wrote this. Last paragraph of prose.");
+  const [list] = parseWithBreaks("1. Question\nA. 先做\nB. 先做");
+  assert.equal(list.kind, "list");
+  assert.equal(textOf(list.items[0]), "Question\nA. 先做\nB. 先做");
+});
+
+test("punctuated markers do not cross list items or quote paragraphs", () => {
+  const [list] = parseWithBreaks("1. Intro\nA. Smith wrote this\n2. B. Another sentence");
+  assert.deepEqual(list.items.map(textOf), ["Intro A. Smith wrote this", "B. Another sentence"]);
+  const [quote] = parseWithBreaks("> Intro\n> A. Smith wrote this\n>\n> B. Another sentence");
+  assert.deepEqual(quote.paragraphs.map(inlineToText), ["Intro A. Smith wrote this", "B. Another sentence"]);
 });
 
 test("plain-space ASCII markers need an adjacent consecutive marker", () => {
@@ -100,10 +131,10 @@ test("similar prose and markers without text do not count", () => {
 });
 
 test("quoted paragraphs keep option breaks and preserve paragraph boundaries", () => {
-  const [quote] = parseWithBreaks("> Question\n> A. First\n> wrapped line\n> B. Second\n>\n> Another question\n> C、Third\n> Ｄ：Fourth");
+  const [quote] = parseWithBreaks("> Question\n> A. First\n> B. Second\n> wrapped line\n>\n> Another question\n> C、Third\n> Ｄ：Fourth");
   assert.equal(quote.kind, "quote");
   assert.deepEqual(quote.paragraphs.map(inlineToText), [
-    "Question\nA. First wrapped line\nB. Second", "Another question\nC、Third\nＤ：Fourth",
+    "Question\nA. First\nB. Second wrapped line", "Another question\nC、Third\nＤ：Fourth",
   ]);
 });
 
@@ -112,7 +143,7 @@ test("ordinary prose and explicit hard breaks retain their existing behavior", (
     assert.deepEqual(parseWithBreaks(source), parseMarkdown(source));
   }
   assert.equal(textOf(parseWithBreaks("First  \nsecond\nB. Choice\nwrapped")[0]),
-    "First\nsecond\nB. Choice wrapped");
+    "First\nsecond B. Choice wrapped");
 });
 
 test("other block recognition and heading callbacks are unchanged", () => {

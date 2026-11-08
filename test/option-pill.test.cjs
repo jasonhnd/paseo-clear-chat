@@ -14,9 +14,9 @@ Reply with a letter for each.`;
 const flush = () => new Promise(setImmediate);
 const byId = (h, tree, id) => h.nodes(tree, node => node.props.testID === id)[0];
 
-function fixture(t) {
+function fixture(t, platform = "ios") {
   const agents = { a: { status: "idle" }, b: { status: "idle" } };
-  const h = createToolHarness("ios", { width: 320, agents, preferences: { showAnswerCard: false } });
+  const h = createToolHarness(platform, { width: 320, agents, preferences: { showAnswerCard: false } });
   const s = h.load("client/option-session.ts");
   const registrations = [];
   const client = {
@@ -32,6 +32,44 @@ function fixture(t) {
   const label = value => h.translations.runtime.resolve(value);
   return { h, s, agents, registrations, client, stop, label };
 }
+
+test("page Escape closes an open popover without taking keys from editable fields", async t => {
+  const previous = global.document;
+  const listeners = new Set();
+  global.document = {
+    addEventListener(type, fn) { if (type === "keydown") listeners.add(fn); },
+    removeEventListener(type, fn) { if (type === "keydown") listeners.delete(fn); },
+  };
+  t.after(() => { if (previous === undefined) delete global.document; else global.document = previous; });
+  const { h, s, registrations } = fixture(t, "web");
+  h.preferences.showAnswerCard = true; h.notifyPreferences();
+  s.publishAssistantReply("a", { at: 1, text: reply }); await flush();
+  const Content = registrations[0].input.button.behavior.Content;
+  let closed = 0;
+  const close = () => { closed++; };
+  const draw = () => h.draw({ type: Content, props: { context: "agent", agentId: "a", theme: { colors: {} }, close } });
+  const key = (name, attributes = {}) => {
+    const target = { closest: () => null };
+    const event = { key: name, defaultPrevented: false, composedPath: () => [target],
+      preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.stopped = true; }, ...attributes };
+    for (const listener of [...listeners]) listener(event);
+    return event;
+  };
+  draw();
+  const editable = { closest: () => ({}) };
+  assert.equal(key("Escape", { composedPath: () => [editable] }).defaultPrevented, false);
+  assert.equal(key("Escape", { isComposing: true }).defaultPrevented, false);
+  assert.equal(key("Escape", { defaultPrevented: true }).stopped, undefined);
+  assert.equal(key("Enter").defaultPrevented, false);
+  assert.equal(closed, 0);
+  const escape = key("Escape");
+  assert.equal(escape.defaultPrevented, true);
+  assert.equal(escape.stopped, true);
+  assert.equal(closed, 1);
+  h.unmount();
+  assert.equal(key("Escape").defaultPrevented, false);
+  assert.equal(closed, 1);
+});
 
 test("registers once per agent, updates counts and removes on invalidation", async t => {
   const { h, s, registrations: pills, label, stop } = fixture(t);
