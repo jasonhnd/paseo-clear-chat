@@ -557,7 +557,7 @@ export function LiveUserMessageRenderer({
   const messageText = item.data.text;
   const messageAt = timestamp.getTime();
   useEffect(() => {
-    if (!parseSystemEnvelope(messageText)) publishUserMessage(agentId, messageAt);
+    if (!parseSystemEnvelope(messageText)) publishUserMessage(agentId, messageAt, messageText);
   }, [agentId, messageText, messageAt]);
 
   return (

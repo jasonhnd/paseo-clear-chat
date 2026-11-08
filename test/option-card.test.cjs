@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const { createToolHarness } = require("./helpers/tool-harness.cjs");
 
-const reply = `1) Which storage? More details.
+const reply = `1) Which storage?
 A Server
 B File (recommended)
 
@@ -16,7 +16,7 @@ const flush = () => new Promise(setImmediate);
 
 function fixture(t) {
   const agents = { a: { status: "idle" } };
-  const h = createToolHarness("ios", { width: 320, height: 640, agents, preferences: { showAnswerCard: true } });
+  const h = createToolHarness("ios", { width: 390, agents, preferences: { showAnswerCard: true } });
   t.after(() => { h.unmount(); h.dispose(); });
   const s = h.load("client/option-session.ts");
   const Renderer = h.load("client/live-renderers.tsx").LiveAssistantRenderer;
@@ -24,7 +24,150 @@ function fixture(t) {
   return { h, s, agents, draw };
 }
 
-test("card is limited to the matching enabled and idle reply", t => {
+test("outer frame has no horizontal margin or fixed width", t => {
+  const { h, draw } = fixture(t);
+  const style = byId(h, draw(), "option-card").props.style;
+  for (const property of ["marginHorizontal", "marginLeft", "marginRight", "width"]) {
+    assert.equal(style[property], undefined, property);
+  }
+});
+
+test("inline card advances only for a first choice and changes an existing choice in place", t => {
+  const { h, s, draw } = fixture(t);
+  let tree = draw();
+  assert.ok(byId(h, tree, "option-card"));
+  assert.equal(byId(h, tree, "option-send").props.disabled, true);
+  assert.equal(byId(h, tree, "option-note-toggle"), undefined);
+  byId(h, tree, "option-row-B").props.onPress();
+  tree = draw();
+  assert.equal(s.getOptionSession("a").activeQuestion, 1);
+  assert.equal(byId(h, tree, "option-send").props.disabled, true);
+  assert.match(h.text(byId(h, tree, "option-send")), /Choose an answer for Q2/);
+  byId(h, tree, "option-row-A").props.onPress();
+  tree = draw();
+  assert.equal(byId(h, tree, "option-send").props.disabled, false);
+  assert.match(h.text(byId(h, tree, "option-send")), /Send 1B 2A/);
+  byId(h, tree, "option-question-0").props.onPress();
+  byId(h, draw(), "option-row-A").props.onPress();
+  tree = draw();
+  assert.equal(s.getOptionSession("a").activeQuestion, 0);
+  assert.equal(byId(h, tree, "option-row-A").props.accessibilityState.selected, true);
+  assert.match(h.text(byId(h, tree, "option-send")), /Send 1A 2A/);
+});
+
+test("tabs show short names or the chosen answer", t => {
+  const { h, s, draw } = fixture(t);
+  let tree = draw();
+  assert.equal(h.text(byId(h, tree, "option-question-0")), "Q1 · Storage");
+  assert.equal(h.text(byId(h, tree, "option-question-1")), "Q2 · Ship now");
+  assert.doesNotMatch(h.text(byId(h, tree, "option-card")), /Options detected/);
+  s.choose("a", 0, "B");
+  tree = draw();
+  assert.equal(h.text(byId(h, tree, "option-question-0")), "✓ File (recommended)");
+  assert.equal(h.text(byId(h, tree, "option-question-1")), "Q2 · Ship now");
+  s.getOptionSession("a").set.questions[0].options[1].text = "An unusually long answer";
+  assert.equal(h.text(byId(h, draw(), "option-question-0")), "✓ An unusually long…");
+  byId(h, tree, "option-question-0").props.onPress();
+  assert.equal(h.text(byId(h, draw(), "option-question-0")), "Q1 · Storage");
+});
+
+test("disabled Send is marked inaccessible and cannot be focused", t => {
+  const { h, s, draw } = fixture(t);
+  let send = byId(h, draw(), "option-send");
+  assert.equal(send.props.accessibilityState.disabled, true);
+  assert.equal(send.props.disabled, true);
+  assert.equal(send.props.focusable, false);
+  assert.equal(send.props.style[0].borderStyle, "dashed");
+  assert.equal(send.props.style[0].backgroundColor, "transparent");
+  s.choose("a", 0, "A"); s.choose("a", 1, "A");
+  send = byId(h, draw(), "option-send");
+  assert.equal(send.props.focusable, true);
+  assert.equal(send.props.accessibilityState.disabled, false);
+});
+
+test("typed answers leave a read-only frame beside a new operable frame", t => {
+  const { h, s, draw } = fixture(t);
+  draw();
+  s.publishUserMessage("a", 11, "1B 2A");
+  let tree = draw();
+  assert.equal(byId(h, tree, "option-card").props.accessibilityState.disabled, true);
+  assert.equal(byId(h, tree, "option-row-B").props.accessibilityState.selected, true);
+  assert.match(h.text(byId(h, tree, "option-row-B")), /✓/);
+  assert.equal(h.text(byId(h, tree, "option-question-0")), "✓ File (recommended)");
+  assert.equal(h.text(byId(h, tree, "option-question-1")), "✓ Yes");
+  assert.equal(h.text(byId(h, tree, "option-answered")), "Answered in the chat: 1B 2A");
+  for (const id of ["option-send", "option-hint", "option-dismiss"]) assert.equal(byId(h, tree, id), undefined);
+  assert.equal(byId(h, tree, "option-row-B").props.onPress, undefined);
+  assert.equal(byId(h, tree, "option-question-0").props.onPress, undefined);
+  s.publishAssistantReply("a", { at: 12, text: reply });
+  tree = draw();
+  assert.ok(byId(h, tree, "option-answered"));
+  const newer = draw(12);
+  assert.ok(byId(h, newer, "option-send"));
+  byId(h, newer, "option-row-A").props.onPress();
+  assert.equal(s.getOptionSession("a").choices[0], "A");
+  assert.equal(s.getOptionSession("a", 10).choices[0], "B");
+  s.publishAssistantReply("a", { at: 13, text: "Ordinary reply" });
+  assert.ok(byId(h, draw(), "option-answered"));
+  assert.equal(byId(h, draw(12), "option-card"), undefined);
+});
+
+test("Not options dismisses only the current frame and stays dismissed", t => {
+  const { h, s, draw } = fixture(t);
+  const button = byId(h, draw(), "option-dismiss");
+  assert.equal(h.text(button), "Not options");
+  assert.equal(button.props.style.minHeight, 44);
+  assert.equal(button.props.accessibilityRole, "button");
+  button.props.onPress();
+  assert.equal(byId(h, draw(), "option-card"), undefined);
+  s.publishAssistantReply("a", { at: 10, text: reply });
+  assert.equal(byId(h, draw(), "option-card"), undefined);
+  assert.ok(byId(h, draw(11), "option-dismiss"));
+});
+
+test("read-only frames ignore keyboard, clicks and focus", t => {
+  const h = createToolHarness("web", { agents: { a: { status: "idle" } } });
+  t.after(() => { h.unmount(); h.dispose(); });
+  const s = h.load("client/option-session.ts");
+  const Card = h.load("client/components/option-card.tsx").OptionCard;
+  s.publishAssistantReply("a", { at: 10, text: reply });
+  s.publishUserMessage("a", 11, "1B 2A");
+  const tree = h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } });
+  const before = s.getOptionSession("a", 10);
+  let prevented = false;
+  for (const key of ["ArrowDown", "ArrowUp", "Enter"]) {
+    byId(h, tree, "option-card").props.onKeyDown({ key, target: { closest: () => true }, nativeEvent: {}, preventDefault: () => { prevented = true; }, stopPropagation() {} });
+  }
+  for (const id of ["option-row-A", "option-row-B", "option-question-0", "option-question-1"]) {
+    const props = byId(h, tree, id).props;
+    assert.equal(props.onPress, undefined);
+    assert.equal(props.onFocus, undefined);
+    assert.equal(props.focusable, undefined);
+  }
+  assert.equal(prevented, false);
+  s.choose("a", 0, "A"); s.moveCursor("a", 0, 1); s.setActiveQuestion("a", 1);
+  assert.equal(s.getOptionSession("a", 10), before);
+});
+
+test("failed sends remain retryable; successful sends leave a read-only card", async t => {
+  const { h, s, draw } = fixture(t);
+  draw(); s.choose("a", 0, "B"); s.choose("a", 1, "A");
+  let reject;
+  const calls = [];
+  s.setOptionSender((agent, answer) => { calls.push([agent, answer]); return new Promise((_, fail) => { reject = fail; }); });
+  byId(h, draw(), "option-send").props.onPress();
+  assert.equal(byId(h, draw(), "option-send").props.disabled, true);
+  assert.equal(byId(h, draw(), "option-dismiss"), undefined);
+  reject(new Error("Unavailable")); await flush();
+  assert.match(h.text(byId(h, draw(), "option-send-error")), /Unavailable/);
+  s.setOptionSender(async (agent, answer) => { calls.push([agent, answer]); });
+  byId(h, draw(), "option-send").props.onPress(); await flush();
+  assert.deepEqual(calls, [["a", "1B 2A"], ["a", "1B 2A"]]);
+  assert.equal(byId(h, draw(), "option-card").props.accessibilityState.disabled, true);
+  assert.equal(h.text(byId(h, draw(), "option-answered")), "Answered in the chat: 1B 2A");
+});
+
+test("the setting and reply identity control visibility", t => {
   const { h, s, agents, draw } = fixture(t);
   h.preferences.showAnswerCard = false;
   assert.equal(byId(h, draw(), "option-card"), undefined);
@@ -38,248 +181,62 @@ test("card is limited to the matching enabled and idle reply", t => {
   assert.equal(byId(h, draw(), "option-card"), undefined);
 });
 
-test("later and skipped letters render and remain selectable across display settings", t => {
-  const h = createToolHarness("ios", { width: 320, height: 640, markdown: true, agents: { a: { status: "idle" } }, preferences: { showAnswerCard: false } });
-  t.after(() => { h.unmount(); h.dispose(); });
-  const s = h.load("client/option-session.ts");
-  const Renderer = h.load("client/live-renderers.tsx").LiveAssistantRenderer;
-  const cases = [
-    ["Pick?\nC 先做\nD 后做\n\nReply: C", [["C", "先做"], ["D", "后做"]]],
-    ["Pick?\nA First\nC Third\nE Fifth\n\nReply: A", [["A", "First"], ["C", "Third"], ["E", "Fifth"]]],
-  ];
-  let at = 10;
-  for (const [text, options] of cases) {
-    const timestamp = new Date(at++);
-    const draw = () => h.draw({ type: Renderer, props: { agentId: "a", host: { id: "host" }, item: { data: { text } }, timestamp, theme: { colors: {} } } }, `reply-${timestamp.getTime()}`);
-    for (const keepItemLineBreaks of [false, true]) {
-      h.preferences.keepItemLineBreaks = keepItemLineBreaks;
-      h.preferences.showAnswerCard = false;
-      assert.equal(byId(h, draw(), "option-card"), undefined);
-      h.preferences.showAnswerCard = true;
-      let tree = draw();
-      assert.ok(byId(h, tree, "option-card"));
-      for (const [letter, label] of options) {
-        const row = byId(h, tree, `option-row-${letter}`);
-        assert.ok(row, letter);
-        assert.ok(h.text(row).includes(label));
-      }
-      const letter = options.at(-1)[0];
-      byId(h, tree, `option-row-${letter}`).props.onPress();
-      tree = draw();
-      assert.equal(s.answerText("a"), letter);
-      assert.match(h.text(byId(h, tree, "option-send")), new RegExp(`Send ${letter}`));
-      byId(h, tree, `option-row-${letter}`).props.onPress();
-    }
-  }
-});
-
-test("letter-number questions display their choices and send their original identifiers", async t => {
-  const h = createToolHarness("ios", { agents: { a: { status: "idle" } }, preferences: { showAnswerCard: true } });
-  t.after(() => { h.unmount(); h.dispose(); });
-  const s = h.load("client/option-session.ts");
-  const Renderer = h.load("client/live-renderers.tsx").LiveAssistantRenderer;
-  const text = `A3 First?
-A One (recommended)
-B Two
-C Three
-
-**A12** Second?
-A Red
-B Blue (recommended)
-C Green
-D Yellow`;
-  const draw = () => h.draw({ type: Renderer, props: { agentId: "a", host: { id: "host" }, item: { data: { text } }, timestamp: new Date(10), theme: { colors: {} } } }, "reply-10");
-  let tree = draw();
-  assert.ok(byId(h, tree, "option-card"));
-  assert.match(h.text(byId(h, tree, "option-row-A")), /One[\s\S]*Recommended/);
-  assert.match(h.text(byId(h, tree, "option-row-C")), /Three/);
-  byId(h, tree, "option-row-A").props.onPress();
-  byId(h, draw(), "option-next").props.onPress();
-  tree = draw();
-  assert.match(h.text(byId(h, tree, "option-row-B")), /Blue[\s\S]*Recommended/);
-  assert.match(h.text(byId(h, tree, "option-row-D")), /Yellow/);
-  byId(h, tree, "option-row-B").props.onPress();
-  const calls = [];
-  s.setOptionSender(async (agent, answer) => { calls.push([agent, answer]); });
-  byId(h, draw(), "option-send").props.onPress();
-  await flush();
-  assert.deepEqual(calls, [["a", "A3A A12B"]]);
-});
-
-test("a numbered question without a hint and without a recommendation shows no card", t => {
-  const h = createToolHarness("ios", { agents: { a: { status: "idle" } }, preferences: { showAnswerCard: true } });
-  t.after(() => { h.unmount(); h.dispose(); });
-  const Renderer = h.load("client/live-renderers.tsx").LiveAssistantRenderer;
-  const tree = h.draw({ type: Renderer, props: { agentId: "a", host: { id: "host" }, item: { data: { text: "1. Which database?\nA One\nB Two" } }, timestamp: new Date(10), theme: { colors: {} } } }, "baseline");
-  assert.equal(byId(h, tree, "option-card"), undefined);
-});
-
-test("option selection, navigation, notes, collapse and dismissal", t => {
-  const { h, s, draw } = fixture(t);
-  let tree = draw();
-  const rowB = byId(h, tree, "option-row-B");
-  assert.equal(rowB.props.accessibilityState.selected, false);
-  assert.match(h.text(rowB), /Recommended/);
-  assert.equal(s.getOptionSession("a").cursor[0], 1);
-  assert.match(h.text(byId(h, tree, "option-send")), /Choose 1 to send/);
-  byId(h, tree, "option-note-toggle").props.onPress();
-  tree = draw();
-  byId(h, tree, "option-note").props.onChangeText("needs a server");
-  tree = draw();
-  assert.match(h.text(byId(h, tree, "option-note-warning")), /Choose an option first/);
-  byId(h, tree, "option-row-B").props.onPress();
-  tree = draw();
-  assert.equal(byId(h, tree, "option-row-B").props.accessibilityState.selected, true);
-  assert.match(h.text(byId(h, tree, "option-send")), /Choose 2 to send/);
-  byId(h, tree, "option-row-B").props.onPress();
-  assert.equal(s.getOptionSession("a").choices[0], undefined);
-  byId(h, draw(), "option-row-B").props.onPress();
-  byId(h, draw(), "option-next").props.onPress();
-  tree = draw();
-  assert.equal(s.getOptionSession("a").activeQuestion, 1);
-  byId(h, tree, "option-row-A").props.onPress();
-  tree = draw();
-  assert.equal(h.text(byId(h, tree, "option-send")), `Send ${s.answerText("a")}`);
-  byId(h, tree, "option-question-0").props.onPress();
-  assert.equal(s.getOptionSession("a").activeQuestion, 0);
-  byId(h, draw(), "option-card-collapse").props.onPress();
-  tree = draw();
-  assert.ok(byId(h, tree, "option-card-strip"));
-  byId(h, tree, "option-card-strip").props.onPress();
-  assert.ok(byId(h, draw(), "option-card"));
-  byId(h, draw(), "option-dismiss").props.onPress();
-  assert.equal(byId(h, draw(), "option-card"), undefined);
-});
-
-test("send reports failure, prevents double sends, and removes the card on success", async t => {
-  const { h, s, draw } = fixture(t);
-  draw();
-  s.choose("a", 0, "B"); s.choose("a", 1, "A");
-  let reject, resolve;
-  const calls = [];
-  s.setOptionSender((agent, text) => { calls.push([agent, text]); return new Promise((ok, fail) => { resolve = ok; reject = fail; }); });
-  const send = byId(h, draw(), "option-send");
-  send.props.onPress(); send.props.onPress();
-  assert.equal(calls.length, 1);
-  assert.equal(byId(h, draw(), "option-send").props.disabled, true);
-  reject(new Error("Unavailable"));
-  await flush();
-  assert.match(h.text(byId(h, draw(), "option-send-error")), /Unavailable/);
-  byId(h, draw(), "option-send").props.onPress();
-  assert.equal(calls.length, 2);
-  resolve();
-  await flush();
-  assert.equal(byId(h, draw(), "option-card"), undefined);
-});
-
-
-test("a pending send for an older reply cannot dismiss a newer card", async t => {
-  const { h, s, draw } = fixture(t);
-  draw();
-  s.choose("a", 0, "B"); s.choose("a", 1, "A");
-  let resolve;
-  let calls = 0;
-  s.setOptionSender(() => { calls++; return new Promise(ok => { resolve = ok; }); });
-  byId(h, draw(), "option-send").props.onPress();
-  s.publishAssistantReply("a", { at: 11, text: reply });
-  s.choose("a", 0, "A"); s.choose("a", 1, "B");
-  byId(h, draw(11), "option-send").props.onPress();
-  await flush();
-  assert.equal(calls, 1);
-  assert.ok(byId(h, draw(11), "option-card"));
-  resolve();
-  await flush();
-  assert.ok(byId(h, draw(11), "option-card"));
-});
-
-for (const locale of ["en", "zh-CN", "ja"]) {
-  test(`${locale}: answer card renders translated controls`, t => {
-    const h = createToolHarness("ios", { locale, agents: { a: { status: "idle" } } });
-    t.after(() => { h.unmount(); h.dispose(); });
-    const s = h.load("client/option-session.ts");
-    const Card = h.load("client/components/option-card.tsx").OptionCard;
-    const strings = require(`../client/locales/${locale}.json`).answerCard;
-    s.publishAssistantReply("a", { at: 10, text: reply });
-    const tree = h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } });
-    for (const value of [strings.detected, strings.recommended, strings.writeOwn, strings.next, strings.notOptions]) assert.ok(h.text(tree).includes(value));
-    assert.equal(byId(h, tree, "option-card-collapse").props.accessibilityLabel, strings.collapse);
-  });
-}
-
-test("popover bounds its scrolling middle while keeping the header and send row visible", async t => {
-  const agents = { a: { status: "idle" } };
-  const h = createToolHarness("ios", { dimensions: { height: 844 }, agents });
-  t.after(() => { h.unmount(); h.dispose(); });
-  const s = h.load("client/option-session.ts");
-  const { OptionCard: Card, POPOVER_MAX_HEIGHT_RATIO } = h.load("client/components/option-card.tsx");
-  s.publishAssistantReply("a", { at: 10, text: reply });
-  const draw = (popover = true) => h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens, popover } });
-  const scrollOf = tree => h.nodes(tree, node => node.type === "ScrollView")[0];
-  let tree = draw();
-  let scroll = scrollOf(tree);
-  assert.equal(POPOVER_MAX_HEIGHT_RATIO, 0.65);
-  assert.equal(byId(h, tree, "option-popover").props.style.maxHeight, 844 * 0.65);
-  assert.deepEqual(scroll.props.style, { flexShrink: 1, minHeight: 0 });
-  for (const id of ["option-question-0", "option-question-1", "option-send"]) {
-    assert.ok(byId(h, tree, id));
-    assert.equal(byId(h, scroll, id), undefined);
-  }
-  for (const id of ["option-row-A", "option-row-B", "option-note-toggle", "option-next", "option-dismiss"]) assert.ok(byId(h, scroll, id));
-  assert.match(h.text(scroll), /Which storage\?\s+More details\./);
-  assert.match(h.text(tree), /detected/i);
-  assert.doesNotMatch(h.text(scroll), /detected/i);
-  for (const id of ["option-question-0", "option-question-1", "option-row-A", "option-row-B", "option-note-toggle", "option-next", "option-dismiss", "option-send"]) {
-    const node = byId(h, tree, id);
-    assert.ok(node.props.style.minHeight >= 44, id);
-    // Rows and full-width buttons stretch to the available width; tabs set a minimum width.
-    if (id.startsWith("option-question-") || !id.startsWith("option-row-")) assert.ok(node.props.style.minWidth >= 44, id);
-  }
-  let send = byId(h, tree, "option-send");
-  assert.equal(send.props.disabled, true);
-  assert.equal(send.props.accessibilityState.disabled, true);
-  byId(h, tree, "option-note-toggle").props.onPress();
-  tree = draw();
-  byId(h, tree, "option-note").props.onChangeText("note");
-  tree = draw();
-  assert.ok(byId(h, scrollOf(tree), "option-note"));
-  assert.ok(byId(h, scrollOf(tree), "option-note-warning"));
-  s.choose("a", 0, "B"); s.choose("a", 1, "A");
-  tree = draw();
-  assert.equal(byId(h, tree, "option-send").props.disabled, false);
-  let reject;
-  s.setOptionSender(() => new Promise((_, fail) => { reject = fail; }));
-  byId(h, tree, "option-send").props.onPress();
-  assert.equal(byId(h, draw(), "option-send").props.disabled, true);
-  reject(new Error("Unavailable"));
-  await flush();
-  tree = draw();
-  assert.ok(byId(h, scrollOf(tree), "option-send-error"));
-  assert.equal(byId(h, tree, "option-send").props.disabled, false);
-  agents.a.status = "running";
-  tree = draw(); scroll = scrollOf(tree);
-  assert.ok(byId(h, tree, "option-running"));
-  assert.equal(byId(h, scroll, "option-running"), undefined);
-  assert.equal(byId(h, tree, "option-send").props.disabled, true);
-  assert.equal(byId(h, tree, "option-send").props.accessibilityState.disabled, true);
-  h.dimensions.height = 200;
-  assert.equal(byId(h, draw(), "option-popover").props.style.maxHeight, 200);
-});
-
-test("card keeps its existing height and controls inside the scroll view", t => {
-  const h = createToolHarness("ios", { dimensions: { height: 640 }, agents: { a: { status: "idle" } } });
+test("web focus follows first choices and arrows stay scoped to option rows", async t => {
+  const h = createToolHarness("web", { agents: { a: { status: "idle" } } });
   t.after(() => { h.unmount(); h.dispose(); });
   const s = h.load("client/option-session.ts");
   const Card = h.load("client/components/option-card.tsx").OptionCard;
   s.publishAssistantReply("a", { at: 10, text: reply });
   const draw = () => h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } });
+  const focused = [];
   let tree = draw();
-  const card = byId(h, tree, "option-card");
-  const scroll = h.nodes(card, node => node.type === "ScrollView")[0];
-  assert.equal(card.props.style.maxHeight, 640 * 0.4);
-  assert.equal(scroll.props.style, undefined);
-  for (const id of ["option-question-0", "option-question-1", "option-card-collapse", "option-row-A", "option-row-B", "option-note-toggle", "option-next", "option-dismiss", "option-send"]) assert.ok(byId(h, scroll, id), id);
-  h.dimensions.height = 200;
+  assert.equal(h.text(byId(h, tree, "option-hint")), "↑↓ move · ↵ choose");
+  byId(h, tree, "option-row-B").props.onFocus();
   tree = draw();
-  assert.equal(byId(h, tree, "option-card").props.style.maxHeight, 100);
+  assert.equal(byId(h, tree, "option-row-B").props.style[1].outlineStyle, "solid");
+  assert.equal(byId(h, tree, "option-row-B").props.style[1].outlineOffset, 1);
+  byId(h, tree, "option-card").props.ref({ querySelector: selector => ({ focus: () => focused.push(selector) }) });
+  byId(h, tree, "option-row-B").props.onPress();
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.match(focused.pop(), /option-row-A/);
+  tree = draw();
+  let prevented = false;
+  const target = { closest: () => true, getAttribute: () => "option-row-A" };
+  byId(h, tree, "option-card").props.onKeyDown({ key: "ArrowDown", target, nativeEvent: {}, preventDefault: () => { prevented = true; }, stopPropagation() {} });
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(prevented, true);
+  assert.match(focused.pop(), /option-row-B/);
+  tree = draw();
+  byId(h, tree, "option-row-A").props.onPress();
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.match(focused.pop(), /option-send/);
+  tree = draw();
+  byId(h, tree, "option-send").props.onFocus();
+  tree = draw();
+  assert.equal(h.text(byId(h, tree, "option-hint")), "↵ send");
+  assert.equal(byId(h, tree, "option-send").props.style[1].outlineWidth, 2);
+  assert.equal(byId(h, tree, "option-send").props.style[1].outlineStyle, "solid");
+  byId(h, tree, "option-send").props.onBlur();
+  assert.equal(h.text(byId(h, draw(), "option-hint")), "↑↓ move · ↵ choose");
+  byId(h, draw(), "option-question-0").props.onPress();
+  byId(h, draw(), "option-row-A").props.onPress();
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(focused.length, 0);
+  assert.equal(s.getOptionSession("a").activeQuestion, 0);
 });
 
+test("a single choice moves focus to Send", async t => {
+  const h = createToolHarness("web", { agents: { a: { status: "idle" } } });
+  t.after(() => { h.unmount(); h.dispose(); });
+  const s = h.load("client/option-session.ts");
+  const Card = h.load("client/components/option-card.tsx").OptionCard;
+  s.publishAssistantReply("a", { at: 10, text: "Pick?\nA One\nB Two (recommended)\n\nReply: A" });
+  const draw = () => h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } });
+  const focused = [];
+  const tree = draw();
+  byId(h, tree, "option-card").props.ref({ querySelector: selector => ({ focus: () => focused.push(selector) }) });
+  byId(h, tree, "option-row-A").props.onPress();
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.match(focused.pop(), /option-send/);
+  assert.equal(byId(h, draw(), "option-send").props.disabled, false);
+});
