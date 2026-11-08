@@ -12,6 +12,9 @@ const failed = new Set();
 const versionPattern = /^(?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*)){3}$/;
 const ignored = new Set([".git", "node_modules", ".tmp", "dist"]);
 const ignoredFiles = new Set([".showcase/showcase.js", ".showcase/tools/collect.cjs"]);
+// Written by the install/build step (scripts/settings-version.cjs) and not tracked by Git,
+// so a checkout that an older version was installed into would otherwise report it as stale.
+const generatedFiles = new Set(["client/package-version.svg"]);
 // These exact lines document the older-host release and its known history.
 const legacyVersion = [0, 13, 2, 2].join(".");
 const compatibilityLines = {
@@ -142,12 +145,14 @@ if (!versions.length && changelog !== null) {
 if (versions.some(value => !value || /[\r\n]/.test(value))) fail("stale version scan", "scripts/pre-release-check.cjs:1", "version arguments must be nonempty single-line strings");
 console.log(`Searching for: ${versions.map(value => JSON.stringify(value)).join(", ") || "<none>"}`);
 console.log("Excludes Git data, installed dependencies, generated build files, historical changelog sections, and documented older-host references.");
+const skippedGenerated = [];
 function walk(dir = "") {
   let entries;
   try { entries = fs.readdirSync(path.join(root, dir), { withFileTypes: true }); }
   catch (error) { fail("stale version scan", `${dir || "."}:1`, error.message); return []; }
   return entries.sort((a, b) => a.name.localeCompare(b.name)).flatMap(entry => {
     const name = path.posix.join(dir, entry.name);
+    if (generatedFiles.has(name)) { skippedGenerated.push(name); return []; }
     if (ignored.has(entry.name) || ignoredFiles.has(name) || name === ".showcase/.capture-temp" || name.endsWith(".tsbuildinfo")) return [];
     if (entry.isDirectory()) return walk(name);
     if (entry.isFile()) return [name];
@@ -156,6 +161,7 @@ function walk(dir = "") {
   });
 }
 const files = walk();
+console.log(`Skipped install-generated files: ${skippedGenerated.length ? skippedGenerated.join(", ") : "none"}`);
 for (const name of files) {
   let contents;
   try { contents = fs.readFileSync(path.join(root, name)); }

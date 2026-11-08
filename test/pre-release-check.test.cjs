@@ -71,6 +71,15 @@ test("default scan selects the two releases older than the package and permits d
   assert.match(stale.stderr, /FAIL stale version scan: stale\.txt:1:/);
 });
 
+test("install-generated files are skipped and named in the log", t => {
+  const { dir, write } = fixture(t);
+  fs.mkdirSync(path.join(dir, "client"), { recursive: true });
+  write("client/package-version.svg", `stale ${prior}\n`);
+  const result = run(dir);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Skipped install-generated files: client\/package-version\.svg/);
+});
+
 test("latest release compare reference permits its previous version without hiding unrelated stale strings", t => {
   const { dir, write } = fixture(t);
   write("CHANGELOG.md", `## [${current}] - ${day}\n## [${prior}]\n## [${legacy}]\n\n[${current}]: https://example.com/compare/v${prior}...v${current}\n`);
