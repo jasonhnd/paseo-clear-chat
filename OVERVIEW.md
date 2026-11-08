@@ -17,7 +17,7 @@ Measured 2026-11-04 on a 300-step conversation (150 tool calls), three runs per 
 
 ## Setup
 
-Clear Chat 0.15.3.4 needs Paseo 0.14.0 or later. For older hosts, see the [README installation guidance](README.md#install), including the untested Paseo 0.13 commands and the separate Paseo 0.12 instructions.
+Clear Chat 0.15.3.5 needs Paseo 0.14.0 or later. For older hosts, see the [README installation guidance](README.md#install), including the untested Paseo 0.13 commands and the separate Paseo 0.12 instructions.
 
 Installation runs `npm ci` on the daemon host, so Node.js and npm must be available there and the host must be able to reach the npm registry.
 
