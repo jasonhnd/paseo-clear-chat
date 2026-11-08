@@ -71,6 +71,21 @@ test("default scan selects the two releases older than the package and permits d
   assert.match(stale.stderr, /FAIL stale version scan: stale\.txt:1:/);
 });
 
+test("stale version scan reports and skips install-generated package version metadata", t => {
+  const { dir, write } = fixture(t);
+  fs.mkdirSync(path.join(dir, "client"));
+  write("client/package-version.svg", `<svg><!-- ${prior} --></svg>\n`);
+  let result = run(dir);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Skipped generated install metadata: client\/package-version\.svg\./);
+
+  write("stale.txt", `stale ${prior}\n`);
+  result = run(dir);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /FAIL stale version scan: stale\.txt:1:/);
+  assert.doesNotMatch(result.stderr, /FAIL stale version scan: client\/package-version\.svg:/);
+});
+
 test("latest release compare reference permits its previous version without hiding unrelated stale strings", t => {
   const { dir, write } = fixture(t);
   write("CHANGELOG.md", `## [${current}] - ${day}\n## [${prior}]\n## [${legacy}]\n\n[${current}]: https://example.com/compare/v${prior}...v${current}\n`);
