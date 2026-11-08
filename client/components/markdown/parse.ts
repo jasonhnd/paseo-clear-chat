@@ -84,7 +84,7 @@ const HARD_BREAK_RE = /(?: {2,}|\\)$/;
 export function parseMarkdown(
   text: string,
   onHeading?: (block: MdBlock, line: number) => void,
-  options?: { keepItemBreaks?: boolean },
+  options?: { keepItemBreaks?: boolean; onSingleLineParagraph?: (block: MdBlock, line: number) => void },
 ): MdBlock[] {
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
   const blocks: MdBlock[] = [];
@@ -136,7 +136,12 @@ export function parseMarkdown(
       continue;
     }
 
+    const start = index;
     index = readParagraph(lines, index, blocks, options?.keepItemBreaks);
+    if (index === start + 1) {
+      const block = blocks[blocks.length - 1];
+      if (block?.kind === "paragraph") options?.onSingleLineParagraph?.(block, start);
+    }
   }
 
   return blocks;
