@@ -45,10 +45,38 @@ test("numbered list item continuations keep option breaks and fold wrapped text"
 
 test("formatted, parenthesized and full-width markers count", () => {
   for (const line of ["**A.** text", "_B._ text", "*C)* text", "D) text", "E）text", "F、text", "\t  G.\ttext", "H） text",
-    "A　First", "B：Second", "C: Third", "D:\tFourth", "E Fifth", "F\tSixth", "Ａ　First", "Ｈ. Last", "**Ａ** First"]) {
+    "A　First", "B：Second", "C: Third", "D:\tFourth", "F\tSixth", "Ａ　First", "Ｈ. Last", "**Ａ** First"]) {
     const [block] = parseWithBreaks(`Question\n${line}`);
     assert.equal(textOf(block), `Question\n${inlineToText(parseMarkdown(line)[0].spans)}`, line);
   }
+});
+
+test("plain-space ASCII markers need an adjacent consecutive marker", () => {
+  const samples = [
+    ["Intro\nA new setting is here.\nMore prose.", "Intro A new setting is here. More prose."],
+    ["Intro\nA 先做\nB 先不做", "Intro\nA 先做\nB 先不做"],
+    ["Intro\nA One\nB Two\nC Three", "Intro\nA One\nB Two\nC Three"],
+    ["Intro\nA 先做\nB. 先不做", "Intro A 先做\nB. 先不做"],
+    ["Intro\nB 先做", "Intro B 先做"],
+    ["Intro\nA One\nB　Two", "Intro A One\nB　Two"],
+    ["Intro\nA One\nC Three", "Intro A One C Three"],
+    ["Intro\nB Two\nA One", "Intro B Two A One"],
+    ["Intro\n**A** One\n_B_ Two", "Intro\nA One\nB Two"],
+  ];
+  for (const [source, expected] of samples) {
+    assert.equal(textOf(parseWithBreaks(source)[0]), expected, source);
+    const disabledText = source.replaceAll("\n", " ");
+    assert.deepEqual(parseMarkdown(source, undefined, { keepItemBreaks: false }), parseMarkdown(disabledText), source);
+  }
+});
+
+test("plain-space sequences respect list items and quote paragraphs", () => {
+  const [list] = parseWithBreaks("1. Question\nA One\nB Two\n2. Next\nA Alone\n3. A First\nB Second");
+  assert.deepEqual(list.items.map(textOf), ["Question\nA One\nB Two", "Next A Alone", "A First\nB Second"]);
+  const [quote] = parseWithBreaks("> Question\n> A One\n> B Two\n>\n> A Alone\n> prose");
+  assert.deepEqual(quote.paragraphs.map(inlineToText), ["Question\nA One\nB Two", "A Alone prose"]);
+  const [separateItems] = parseWithBreaks("1. Question\nA One\n2. B Two");
+  assert.deepEqual(separateItems.items.map(textOf), ["Question A One", "B Two"]);
 });
 
 test("similar prose and markers without text do not count", () => {
