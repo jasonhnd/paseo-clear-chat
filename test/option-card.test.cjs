@@ -38,6 +38,41 @@ test("card is limited to the matching enabled and idle reply", t => {
   assert.equal(byId(h, draw(), "option-card"), undefined);
 });
 
+test("later and skipped letters render and remain selectable across display settings", t => {
+  const h = createToolHarness("ios", { width: 320, height: 640, markdown: true, agents: { a: { status: "idle" } }, preferences: { showAnswerCard: false } });
+  t.after(() => { h.unmount(); h.dispose(); });
+  const s = h.load("client/option-session.ts");
+  const Renderer = h.load("client/live-renderers.tsx").LiveAssistantRenderer;
+  const cases = [
+    ["Pick?\nC 先做\nD 后做\n\nReply: C", [["C", "先做"], ["D", "后做"]]],
+    ["Pick?\nA First\nC Third\nE Fifth\n\nReply: A", [["A", "First"], ["C", "Third"], ["E", "Fifth"]]],
+  ];
+  let at = 10;
+  for (const [text, options] of cases) {
+    const timestamp = new Date(at++);
+    const draw = () => h.draw({ type: Renderer, props: { agentId: "a", host: { id: "host" }, item: { data: { text } }, timestamp, theme: { colors: {} } } }, `reply-${timestamp.getTime()}`);
+    for (const keepItemLineBreaks of [false, true]) {
+      h.preferences.keepItemLineBreaks = keepItemLineBreaks;
+      h.preferences.showAnswerCard = false;
+      assert.equal(byId(h, draw(), "option-card"), undefined);
+      h.preferences.showAnswerCard = true;
+      let tree = draw();
+      assert.ok(byId(h, tree, "option-card"));
+      for (const [letter, label] of options) {
+        const row = byId(h, tree, `option-row-${letter}`);
+        assert.ok(row, letter);
+        assert.ok(h.text(row).includes(label));
+      }
+      const letter = options.at(-1)[0];
+      byId(h, tree, `option-row-${letter}`).props.onPress();
+      tree = draw();
+      assert.equal(s.answerText("a"), letter);
+      assert.match(h.text(byId(h, tree, "option-send")), new RegExp(`Send ${letter}`));
+      byId(h, tree, `option-row-${letter}`).props.onPress();
+    }
+  }
+});
+
 test("option selection, navigation, notes, collapse and dismissal", t => {
   const { h, s, draw } = fixture(t);
   let tree = draw();

@@ -108,22 +108,28 @@ export function parseOptionQuestions(text: string): OptionQuestionSet | null {
     const optionLines: string[][] = [];
     let optionStarted = false;
     let continuation = false;
+    let groupInterrupted = false;
+    let previousLineIndex: number | undefined;
     let invalid = false;
     for (const line of section.lines) {
+      if (optionStarted && line.index !== previousLineIndex! + 1) groupInterrupted = true;
       const option = optionLine(line.text);
       if (option) {
+        if (optionStarted && (groupInterrupted || option.letter <= options[options.length - 1]!.letter)) invalid = true;
         optionStarted = true;
         continuation = true;
-        if (option.letter.charCodeAt(0) !== 65 + options.length) invalid = true;
         options.push({ ...option, recommended: false });
         optionLines.push([option.text]);
       } else if (!optionStarted) {
         before.push(line.text);
       } else if (!line.text.trim()) {
         continuation = false;
+        groupInterrupted = true;
       } else if (continuation) {
         optionLines[optionLines.length - 1]!.push(line.text.trim());
+        if (!/^[ \t　]/.test(line.text)) groupInterrupted = true;
       }
+      previousLineIndex = line.index;
     }
     if (invalid || options.length < 2) continue;
     for (let index = 0; index < options.length; index++) options[index]!.text = optionLines[index]!.join('\n');

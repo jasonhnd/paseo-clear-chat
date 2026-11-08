@@ -171,12 +171,31 @@ Reply: A`;
   assert.equal(parse("1) Pick?\n````\n```\nA One\nB Two\n```\n````\nReply: A"), null);
 });
 
-test("rejects ordinary lists, gaps, and unsupported lists", () => {
+test("recognizes options that start later or skip letters", () => {
+  for (const [lines, expected] of [
+    ["C 先做\nD 后做", [["C", "先做"], ["D", "后做"]]],
+    ["A First\nC Third\nE Fifth", [["A", "First"], ["C", "Third"], ["E", "Fifth"]]],
+    ["- **Ｃ** 先做\n- **Ｅ** 后做", [["C", "先做"], ["E", "后做"]]],
+  ]) {
+    const set = parse(`1) Pick?\n${lines}\n\nReply: ${expected[0][0]}`);
+    assert.deepEqual(set.questions[0].options.map(({ letter, text }) => [letter, text]), expected);
+    assert.equal(format(set, { 0: { letter: expected.at(-1)[0] } }), `1${expected.at(-1)[0]}`);
+  }
+  const recommended = parse("Pick?\nC One\nE Two\n\n推荐 E");
+  assert.deepEqual(recommended.questions[0].options.map(option => option.recommended), [false, true]);
+});
+
+test("rejects isolated option-like prose and interrupted or invalid groups", () => {
   for (const text of [
     "A user logs in. B user logs out.",
     "1) First item\n2) Second item\nReply: yes",
-    "1) Pick?\nA One\nC Three\nReply: A",
-    "1) Pick?\nB Two\nC Three\nReply: B",
+    "A\nThis is ordinary prose.\nReply: A",
+    "A person walks in.\nThis is ordinary prose.\nReply: A",
+    "Pick?\nA One\nOrdinary prose.\nC Three\nReply: A",
+    "Pick?\nA One\n\nC Three\nReply: A",
+    "Pick?\nA One\n> hidden\nC Three\nReply: A",
+    "Pick?\nC One\nC Two\nReply: C",
+    "Pick?\nC One\nA Two\nReply: C",
     "1) Pick?\nA One\nB Two",
   ]) assert.equal(parse(text), null, text);
 });
