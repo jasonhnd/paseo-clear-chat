@@ -82,12 +82,8 @@ Reply with your choices.`);
   assert.equal(partial(set, { 1: { letter: "B" } }), "A4B ");
 });
 
-test("numbered questions with a question mark need no separate hint", () => {
-  const set = parse("1. Which database?\nA One\nB Two");
-  assert.equal(set.hint, false);
-  assert.equal(set.recommendedFound, false);
-  assert.deepEqual(set.questions[0].options.map(({ letter, text }) => [letter, text]), [["A", "One"], ["B", "Two"]]);
-  assert.equal(format(set, { 0: { letter: "B" } }), "1B");
+test("a question mark on a numbered question is not a substitute for a hint", () => {
+  assert.equal(parse("1. Which database?\nA One\nB Two"), null);
   assert.equal(parse("1. Database choices\nA One\nB Two"), null);
 });
 
