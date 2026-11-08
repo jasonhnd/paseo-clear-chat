@@ -73,6 +73,49 @@ test("later and skipped letters render and remain selectable across display sett
   }
 });
 
+test("letter-number questions display their choices and send their original identifiers", async t => {
+  const h = createToolHarness("ios", { agents: { a: { status: "idle" } }, preferences: { showAnswerCard: true } });
+  t.after(() => { h.unmount(); h.dispose(); });
+  const s = h.load("client/option-session.ts");
+  const Renderer = h.load("client/live-renderers.tsx").LiveAssistantRenderer;
+  const text = `A3 First?
+A One (recommended)
+B Two
+C Three
+
+**A12** Second?
+A Red
+B Blue (recommended)
+C Green
+D Yellow`;
+  const draw = () => h.draw({ type: Renderer, props: { agentId: "a", host: { id: "host" }, item: { data: { text } }, timestamp: new Date(10), theme: { colors: {} } } }, "reply-10");
+  let tree = draw();
+  assert.ok(byId(h, tree, "option-card"));
+  assert.match(h.text(byId(h, tree, "option-row-A")), /One[\s\S]*Recommended/);
+  assert.match(h.text(byId(h, tree, "option-row-C")), /Three/);
+  byId(h, tree, "option-row-A").props.onPress();
+  byId(h, draw(), "option-next").props.onPress();
+  tree = draw();
+  assert.match(h.text(byId(h, tree, "option-row-B")), /Blue[\s\S]*Recommended/);
+  assert.match(h.text(byId(h, tree, "option-row-D")), /Yellow/);
+  byId(h, tree, "option-row-B").props.onPress();
+  const calls = [];
+  s.setOptionSender(async (agent, answer) => { calls.push([agent, answer]); });
+  byId(h, draw(), "option-send").props.onPress();
+  await flush();
+  assert.deepEqual(calls, [["a", "A3A A12B"]]);
+});
+
+test("a numbered question without a hint displays the card", t => {
+  const h = createToolHarness("ios", { agents: { a: { status: "idle" } }, preferences: { showAnswerCard: true } });
+  t.after(() => { h.unmount(); h.dispose(); });
+  const Renderer = h.load("client/live-renderers.tsx").LiveAssistantRenderer;
+  const tree = h.draw({ type: Renderer, props: { agentId: "a", host: { id: "host" }, item: { data: { text: "1. Which database?\nA One\nB Two" } }, timestamp: new Date(10), theme: { colors: {} } } }, "baseline");
+  assert.ok(byId(h, tree, "option-card"));
+  assert.match(h.text(byId(h, tree, "option-row-A")), /One/);
+  assert.match(h.text(byId(h, tree, "option-row-B")), /Two/);
+});
+
 test("option selection, navigation, notes, collapse and dismissal", t => {
   const { h, s, draw } = fixture(t);
   let tree = draw();
