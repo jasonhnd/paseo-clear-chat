@@ -56,9 +56,9 @@ test("plain-space ASCII markers need an adjacent consecutive marker", () => {
     ["Intro\nA new setting is here.\nMore prose.", "Intro A new setting is here. More prose."],
     ["Intro\nA 先做\nB 先不做", "Intro\nA 先做\nB 先不做"],
     ["Intro\nA One\nB Two\nC Three", "Intro\nA One\nB Two\nC Three"],
-    ["Intro\nA 先做\nB. 先不做", "Intro A 先做\nB. 先不做"],
+    ["Intro\nA 先做\nB. 先不做", "Intro\nA 先做\nB. 先不做"],
     ["Intro\nB 先做", "Intro B 先做"],
-    ["Intro\nA One\nB　Two", "Intro A One\nB　Two"],
+    ["Intro\nA One\nB　Two", "Intro\nA One\nB　Two"],
     ["Intro\nA One\nC Three", "Intro A One C Three"],
     ["Intro\nB Two\nA One", "Intro B Two A One"],
     ["Intro\n**A** One\n_B_ Two", "Intro\nA One\nB Two"],
@@ -67,6 +67,18 @@ test("plain-space ASCII markers need an adjacent consecutive marker", () => {
     assert.equal(textOf(parseWithBreaks(source)[0]), expected, source);
     const disabledText = source.replaceAll("\n", " ");
     assert.deepEqual(parseMarkdown(source, undefined, { keepItemBreaks: false }), parseMarkdown(disabledText), source);
+  }
+});
+
+test("plain-space options accept adjacent letters with any supported separator", () => {
+  for (const middle of ["B. Two", "B) Two", "B）Two", "B、Two", "B：Two", "B: Two", "B　Two", "B Two", "B\tTwo"]) {
+    const source = `Intro\nA One\n${middle}\nC Three`;
+    assert.equal(textOf(parseWithBreaks(source)[0]), source, middle);
+    assert.deepEqual(parseMarkdown(source, undefined, { keepItemBreaks: false }), parseMarkdown(source), middle);
+  }
+  for (const middle of ["B.Two", "B:Two", "B.", "B：", "B　"]) {
+    const source = `Intro\nA One\n${middle}\nC Three`;
+    assert.equal(textOf(parseWithBreaks(source)[0]).includes("\n"), false, middle);
   }
 });
 
