@@ -1,6 +1,8 @@
 import { useCallback, useSyncExternalStore } from "react";
-import { formatOptionAnswer, parseOptionQuestions } from "./option-questions";
-import type { OptionChoice, OptionQuestionSet } from "./option-questions";
+import { parseOptionQuestions } from "./option-questions";
+import type { OptionQuestionSet } from "./option-questions";
+import { customAnswerLetter, formatCustomAnswers } from "./option-custom-answer";
+import type { ConfirmedOptionAnswer } from "./option-custom-answer";
 import { getEnhancerPreferences, onEnhancerPreferencesReady, saveDismissedOptionReply } from "./preferences";
 
 export interface OptionSession {
@@ -8,6 +10,9 @@ export interface OptionSession {
   set: OptionQuestionSet;
   choices: Record<number, string | undefined>;
   notes: Record<number, string | undefined>;
+  customDrafts: Record<number, string>;
+  customConfirmed: Record<number, string>;
+  customOpen: Record<number, boolean>;
   activeQuestion: number;
   cursor: number[];
   dismissed: boolean;
@@ -91,10 +96,10 @@ function reconcileAnswers(agentId: string): boolean {
     const answer = userMessages.find(([time]) => time > at && time < nextReply);
     if (answer && (session.answeredText === null || (session.answerAt !== null && session.answerAt !== answer[0]))) {
       const sent = session.sending && sessionAnswerText(session) === answer[1];
-      sessions.set(at, { ...session, choices: sent ? session.choices : typedChoices(session.set, answer[1]), readOnly: true, answeredText: answer[1], answerAt: answer[0], error: null });
+      sessions.set(at, { ...session, choices: sent ? session.choices : typedChoices(session.set, answer[1]), customConfirmed: sent ? session.customConfirmed : {}, customOpen: sent ? session.customOpen : {}, readOnly: true, answeredText: answer[1], answerAt: answer[0], error: null });
       changed = true;
     } else if (!answer && session.answerAt !== null) {
-      sessions.set(at, { ...session, choices: {}, readOnly: false, answeredText: null, answerAt: null });
+      sessions.set(at, { ...session, choices: {}, customConfirmed: {}, customOpen: {}, readOnly: false, answeredText: null, answerAt: null });
       changed = true;
     }
   }
@@ -114,7 +119,7 @@ export function publishAssistantReply(agentId: string, reply: { at: number; text
     let sessions = snapshots.get(agentId);
     if (!sessions) snapshots.set(agentId, sessions = new Map());
     sessions.set(reply.at, {
-      at: reply.at, set, choices: {}, notes: {}, activeQuestion: 0,
+      at: reply.at, set, choices: {}, notes: {}, customDrafts: {}, customConfirmed: {}, customOpen: {}, activeQuestion: 0,
       cursor: set.questions.map(question => Math.max(0, question.options.findIndex(option => option.recommended))),
       dismissed: false, readOnly: false, sending: false, error: null, answeredText: null, answerAt: null,
     });
@@ -149,16 +154,74 @@ export function choose(agentId: string, questionIndex: number, letter: string): 
     const count = snapshot.set.questions.length;
     const next = Array.from({ length: count }, (_, offset) => (questionIndex + 1 + offset) % count)
       .find(i => choices[i] === undefined) ?? -1;
-    return { ...snapshot, choices, activeQuestion: wasAnswered || next < 0 ? snapshot.activeQuestion : next };
+    const customConfirmed = { ...snapshot.customConfirmed };
+    delete customConfirmed[questionIndex];
+    return { ...snapshot, choices, customConfirmed, customOpen: { ...snapshot.customOpen, [questionIndex]: false }, activeQuestion: wasAnswered || next < 0 ? snapshot.activeQuestion : next };
   });
+}
+
+export function openCustom(agentId: string, questionIndex: number): void {
+  update(agentId, snapshot => {
+    if (snapshot.readOnly || snapshot.sending || !snapshot.set.questions[questionIndex]) return snapshot;
+    if (snapshot.customOpen[questionIndex] && snapshot.choices[questionIndex] === undefined && snapshot.customConfirmed[questionIndex] === undefined) return snapshot;
+    const choices = { ...snapshot.choices };
+    const customConfirmed = { ...snapshot.customConfirmed };
+    delete choices[questionIndex];
+    delete customConfirmed[questionIndex];
+    return { ...snapshot, choices, customConfirmed, customOpen: { ...snapshot.customOpen, [questionIndex]: true } };
+  });
+}
+
+export function setCustomDraft(agentId: string, questionIndex: number, text: string): void {
+  update(agentId, snapshot => {
+    if (snapshot.readOnly || snapshot.sending || !snapshot.set.questions[questionIndex] || snapshot.customDrafts[questionIndex] === text) return snapshot;
+    const customDrafts = { ...snapshot.customDrafts, [questionIndex]: text };
+    if (snapshot.customConfirmed[questionIndex] === undefined || snapshot.customConfirmed[questionIndex] === text) return { ...snapshot, customDrafts };
+    const customConfirmed = { ...snapshot.customConfirmed };
+    const choices = { ...snapshot.choices };
+    delete customConfirmed[questionIndex];
+    delete choices[questionIndex];
+    return { ...snapshot, customDrafts, customConfirmed, choices };
+  });
+}
+
+export function confirmCustom(agentId: string, questionIndex: number): "confirmed" | "blank" | "ignored" {
+  let result: "confirmed" | "blank" | "ignored" = "ignored";
+  update(agentId, snapshot => {
+    const question = snapshot.set.questions[questionIndex];
+    if (snapshot.readOnly || snapshot.sending || !question) return snapshot;
+    const draft = snapshot.customDrafts[questionIndex] ?? "";
+    if (!draft.trim()) {
+      result = "blank";
+      if (snapshot.customConfirmed[questionIndex] === undefined) return snapshot;
+      const customConfirmed = { ...snapshot.customConfirmed };
+      delete customConfirmed[questionIndex];
+      return { ...snapshot, customConfirmed };
+    }
+    result = "confirmed";
+    const wasAnswered = snapshot.choices[questionIndex] !== undefined;
+    const choices = { ...snapshot.choices, [questionIndex]: customAnswerLetter(question) };
+    const count = snapshot.set.questions.length;
+    const next = Array.from({ length: count }, (_, offset) => (questionIndex + 1 + offset) % count)
+      .find(i => choices[i] === undefined) ?? -1;
+    return { ...snapshot, choices, customConfirmed: { ...snapshot.customConfirmed, [questionIndex]: draft }, customOpen: { ...snapshot.customOpen, [questionIndex]: true }, activeQuestion: wasAnswered || next < 0 ? snapshot.activeQuestion : next };
+  });
+  return result;
+}
+
+export function customLetterFor(agentId: string, questionIndex: number): string | null {
+  const question = getOptionSession(agentId)?.set.questions[questionIndex];
+  return question ? customAnswerLetter(question) : null;
 }
 
 export function clearChoice(agentId: string, questionIndex: number): void {
   update(agentId, snapshot => {
     if (snapshot.readOnly || snapshot.sending || snapshot.choices[questionIndex] === undefined) return snapshot;
     const choices = { ...snapshot.choices };
+    const customConfirmed = { ...snapshot.customConfirmed };
     delete choices[questionIndex];
-    return { ...snapshot, choices };
+    delete customConfirmed[questionIndex];
+    return { ...snapshot, choices, customConfirmed };
   });
 }
 
@@ -208,18 +271,30 @@ export function missingQuestion(agentId: string): number | null {
   return index < 0 ? null : index;
 }
 
-function sessionAnswerText(snapshot: OptionSession): string | null {
-  const choices: Record<number, OptionChoice> = {};
+function sessionAnswer(snapshot: OptionSession): ReturnType<typeof formatCustomAnswers> {
+  const choices: Record<number, ConfirmedOptionAnswer> = {};
   snapshot.set.questions.forEach((_, index) => {
     const letter = snapshot.choices[index];
-    if (letter !== undefined) choices[index] = { letter, note: snapshot.notes[index] };
+    const content = snapshot.customConfirmed[index];
+    if (letter !== undefined) choices[index] = content !== undefined
+      ? { kind: "custom", letter, content }
+      : { kind: "option", letter, note: snapshot.notes[index] };
   });
-  return formatOptionAnswer(snapshot.set, choices);
+  return formatCustomAnswers(snapshot.set, choices);
+}
+
+function sessionAnswerText(snapshot: OptionSession): string | null {
+  return sessionAnswer(snapshot)?.message ?? null;
 }
 
 export function answerText(agentId: string): string | null {
   const snapshot = getOptionSession(agentId);
   return snapshot ? sessionAnswerText(snapshot) : null;
+}
+
+export function answerIndex(agentId: string): string | null {
+  const snapshot = getOptionSession(agentId);
+  return snapshot ? sessionAnswer(snapshot)?.index ?? null : null;
 }
 
 export function setOptionSender(next: Sender | null): void { sender = next; }
