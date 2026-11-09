@@ -491,8 +491,20 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
               <View style={{ flex: 1, minWidth: 0 }}>
                 {readOnly ? <Text selectable style={label}>{customConfirmed ?? t("answerCard.other")}</Text> : customOpen ? <>
                   <TextInput ref={setCustomInput} {...(Platform.OS === "web" ? { onFocus: (event: { stopPropagation(): void }) => { event.stopPropagation(); setFocused("option-custom-input"); }, onBlur: (event: { stopPropagation(): void }) => { event.stopPropagation(); setFocused(current => current === "option-custom-input" ? null : current); } } : {})} testID="option-custom-input" accessibilityLabel={t("answerCard.other")} value={session.customDrafts[index] ?? ""} onChangeText={text => { if (getOptionSession(agentId)?.at === at) { setCustomDraft(agentId, index, text); if (text.trim()) updateInputState({ empty: false }); } }} multiline numberOfLines={2} editable={!disabled} onContentSizeChange={event => { const current = getOptionSession(agentId); if (current?.at === at && current.activeQuestion === index) updateInputState({ height: event.nativeEvent.contentSize.height }); }} style={[{ ...label, padding: 0, borderWidth: 0, minHeight: width <= 390 ? Math.max(44, tokens.fs(36)) : tokens.fs(36), maxHeight: tokens.fs(72), height: Math.max(tokens.fs(36), Math.min(tokens.fs(72), currentInputState.height)), textAlignVertical: "top" }, focusStyle("option-custom-input")]} />
-                  {currentInputState.empty ? <Text testID="option-custom-empty" style={{ ...muted, color: tokens.danger }}>{t("answerCard.otherEmpty")}</Text> : null}
-                  {!readOnly && customConfirmed === undefined ? <Text style={muted}>{t("answerCard.otherHint")}</Text> : null}
+                  <View testID="option-custom-hint-line" ref={Platform.OS === "web" ? (node: View | null) => {
+                    const line = node as unknown as HTMLElement | null;
+                    if (!line?.style) return;
+                    line.style.display = "grid";
+                    const reduced = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+                    Array.from(line.children).forEach(child => {
+                      const style = (child as HTMLElement).style;
+                      style.gridArea = "1 / 1";
+                      style.transition = reduced ? "none" : "opacity 120ms linear, color 120ms linear";
+                    });
+                  } : undefined}>
+                    <Text numberOfLines={1} accessibilityElementsHidden={currentInputState.empty || customConfirmed !== undefined} importantForAccessibility={currentInputState.empty || customConfirmed !== undefined ? "no-hide-descendants" : "auto"} {...({ "aria-hidden": currentInputState.empty || customConfirmed !== undefined } as object)} style={{ ...muted, opacity: !currentInputState.empty && customConfirmed === undefined ? 1 : 0 }}>{t("answerCard.otherHint")}</Text>
+                    <Text testID={currentInputState.empty ? "option-custom-empty" : undefined} numberOfLines={1} accessibilityElementsHidden={!currentInputState.empty} importantForAccessibility={currentInputState.empty ? "auto" : "no-hide-descendants"} {...({ "aria-hidden": !currentInputState.empty } as object)} style={{ ...muted, color: tokens.danger, opacity: currentInputState.empty ? 1 : 0, ...(Platform.OS !== "web" ? { position: "absolute" as const, left: 0, right: 0 } : {}) }}>{t("answerCard.otherEmpty")}</Text>
+                  </View>
                 </> : <><Text style={label}>{t("answerCard.other")}</Text><Text style={muted}>{t("answerCard.otherHint")}</Text></>}
               </View>
               {readOnly && customConfirmed !== undefined ? <Text style={{ ...label, color: tokens.foregroundMuted, fontWeight: "700" }}>✓</Text> : null}

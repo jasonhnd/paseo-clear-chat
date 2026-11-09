@@ -155,3 +155,37 @@ test("input height resets when changing questions", t => {
   byId(h, draw(), "option-custom-input").props.onContentSizeChange({ nativeEvent: { contentSize: { height: 50 } } });
   assert.equal(byId(h, draw(), "option-custom-input").props.style[0].height, 50);
 });
+
+test("blank feedback replaces the normal hint in one reserved line, with reduced motion respected", t => {
+  for (const reduced of [false, true]) {
+    const h = createToolHarness("web", { width: 390, globals: { matchMedia: () => ({ matches: reduced }) }, agents: { a: { status: "idle" } } });
+    t.after(() => { h.unmount(); h.dispose(); });
+    const s = h.load("client/option-session.ts");
+    const Card = h.load("client/components/option-card.tsx").OptionCard;
+    s.publishAssistantReply("a", { at: 10, text: twoQuestions });
+    const draw = () => h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } });
+    byId(h, draw(), "option-row-C").props.onPress();
+    let tree = draw(), listener;
+    byId(h, tree, "option-custom-input").props.ref({ addEventListener: (_type, fn) => { listener = fn; }, removeEventListener() {} });
+    const inspect = (tree, empty) => {
+      const line = byId(h, tree, "option-custom-hint-line");
+      assert.ok(line, "one permanent hint line is present");
+      const hints = h.nodes(line, node => node.type === "Text");
+      assert.deepEqual(hints.map(node => h.text(node)), ["Write your own answer", "Write your answer first"]);
+      assert.deepEqual(hints.map(node => node.props.numberOfLines), [1, 1]);
+      assert.deepEqual(hints.map(node => node.props.style.opacity), empty ? [0, 1] : [1, 0]);
+      const element = { style: {}, children: [{ style: {} }, { style: {} }] };
+      line.props.ref(element);
+      assert.equal(element.style.display, "grid");
+      assert.deepEqual(element.children.map(child => child.style.gridArea), ["1 / 1", "1 / 1"]);
+      assert.deepEqual(element.children.map(child => child.style.transition), [reduced ? "none" : "opacity 120ms linear, color 120ms linear", reduced ? "none" : "opacity 120ms linear, color 120ms linear"]);
+    };
+    inspect(tree, false);
+    listener({ key: "Enter", preventDefault() {}, stopPropagation() {} });
+    tree = draw();
+    inspect(tree, true);
+    assert.equal(h.text(byId(h, tree, "option-custom-empty")), "Write your answer first");
+    byId(h, tree, "option-custom-input").props.onChangeText("answer");
+    inspect(draw(), false);
+  }
+});
