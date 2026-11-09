@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Animated, Platform, Pressable, Text, View, useWindowDimensions, type TextInput as NativeTextInput, type ViewStyle } from "react-native";
 import { useAgent, useTranslation } from "@getpaseo/plugin/client";
 import { TextInput } from "@getpaseo/plugin/client/ui";
@@ -14,6 +14,14 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   const status = useAgent(agentId, agent => agent.status);
   const root = useRef<HTMLElement | null>(null);
   const customInput = useRef<NativeTextInput | null>(null);
+  const customKeyHandler = useRef<(event: KeyboardEvent) => void>(() => {});
+  const customKeyListener = useRef((event: KeyboardEvent) => customKeyHandler.current(event)).current;
+  const setCustomInput = useCallback((node: NativeTextInput | null) => {
+    const previous = customInput.current as unknown as HTMLElement | null;
+    if (Platform.OS === "web") previous?.removeEventListener("keydown", customKeyListener);
+    customInput.current = node;
+    if (Platform.OS === "web") (node as unknown as HTMLElement | null)?.addEventListener("keydown", customKeyListener);
+  }, [customKeyListener]);
   const { width } = useWindowDimensions();
   const [viewed, setViewed] = useState<{ agentId: string; at: number; index: number } | null>(null);
   const [focused, setFocused] = useState<string | null>(null);
@@ -82,8 +90,8 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     if (!current.customOpen[index]) openCustom(agentId, index);
     focus("option-custom-input");
   };
-  const handleCustomKey = (event: React.KeyboardEvent<HTMLElement>) => {
-    if (disabled || event.defaultPrevented || event.key !== "Enter" || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.nativeEvent.isComposing) return;
+  const handleCustomKey = (event: KeyboardEvent) => {
+    if (disabled || event.defaultPrevented || event.key !== "Enter" || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing) return;
     const current = getOptionSession(agentId);
     if (current?.at !== at || current.activeQuestion !== index || !current.customOpen[index] || current.readOnly || current.sending) return;
     event.preventDefault(); event.stopPropagation();
@@ -95,19 +103,17 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
       if (!wasAnswered) {
         const after = getOptionSession(agentId);
         if (after && missingQuestion(agentId) === null) focus("option-send");
-        else if (after) focus(`option-row-${after.set.questions[after.activeQuestion]!.options[after.cursor[after.activeQuestion] ?? 0]!.letter}`);
+        else if (after) focus(`option-row-${after.set.questions[after.activeQuestion]!.options[0]!.letter}`);
       }
     }
   };
+  customKeyHandler.current = handleCustomKey;
   const keyboardProps = Platform.OS === "web" ? {
     ref: (node: View | null) => { root.current = node as unknown as HTMLElement | null; },
     onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
       if (disabled || event.defaultPrevented || getOptionSession(agentId)?.at !== at || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.nativeEvent.isComposing) return;
       const target = event.target as HTMLElement;
-      if (target.getAttribute?.("data-testid") === "option-custom-input") {
-        handleCustomKey(event);
-        return;
-      }
+      if (target.getAttribute?.("data-testid") === "option-custom-input" || target.closest?.('[data-testid="option-custom-input"]')?.getAttribute?.("data-testid") === "option-custom-input") return;
       if (event.key.length === 1 && (/^[a-h]$/i.test(event.key) || event.key.toUpperCase() === customLetter)) {
         if (target.isContentEditable || target.closest("input, textarea")) return;
         const letter = event.key.toUpperCase();
@@ -146,7 +152,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
               : `Q${number(i)} · ${optionShortName(q.title, number(i))}`;
             const tabStyle = { minHeight: 36, justifyContent: "center" as const, borderRadius: 18, paddingHorizontal: 12, backgroundColor: i === index ? tokens.surface2 : "transparent" };
             const tabLabel = <Text style={{ ...label, color: i === index ? tokens.foreground : tokens.foregroundMuted, fontWeight: i === index ? "700" : "400" }}>{tabText}</Text>;
-            return <Pressable key={i} testID={`option-question-${i}`} accessibilityRole="tab" accessibilityState={{ selected: i === index }} disabled={!readOnly && disabled} {...(Platform.OS === "web" && readOnly ? { onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => { if (event.key === " ") { event.preventDefault(); setViewed({ agentId, at, index: i }); } } } : {})} onPress={() => { if (readOnly) setViewed({ agentId, at, index: i }); else if (getOptionSession(agentId)?.at === at) setActiveQuestion(agentId, i); }} style={tabStyle}>{tabLabel}</Pressable>;
+            return <Pressable key={i} testID={`option-question-${i}`} accessibilityRole="tab" accessibilityState={{ selected: i === index }} disabled={!readOnly && disabled} {...(Platform.OS === "web" && readOnly ? { focusable: true, onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => { if (event.key === " ") { event.preventDefault(); setViewed({ agentId, at, index: i }); } } } : {})} onPress={() => { if (readOnly) setViewed({ agentId, at, index: i }); else if (getOptionSession(agentId)?.at === at) setActiveQuestion(agentId, i); }} style={tabStyle}>{tabLabel}</Pressable>;
           })}
           {readOnly ? <Text testID="option-read-only-status" style={{ ...muted, marginLeft: "auto" }}>{t("answerCard.readOnlyStatus")}</Text> : null}
           {!readOnly && !session.sending ? <Pressable testID="option-dismiss" accessibilityRole="button" onPress={() => { if (getOptionSession(agentId)?.at === at) dismiss(agentId); }} style={{ minHeight: 44, justifyContent: "center", marginLeft: "auto" }}><Text style={muted}>{t("answerCard.notOptions")}</Text></Pressable> : null}
@@ -174,7 +180,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
               <Text style={{ ...label, color: !readOnly && customOpen ? tokens.accent : tokens.foregroundMuted, fontWeight: "700", overflow: "hidden", borderWidth: 1, borderColor: !readOnly && customOpen ? tokens.accent : tokens.border, borderRadius: 5, paddingHorizontal: 7, paddingVertical: 3 }}>{customLetter}</Text>
               <View style={{ flex: 1, minWidth: 0 }}>
                 {readOnly ? <Text selectable style={label}>{customConfirmed ?? t("answerCard.other")}</Text> : customOpen ? <>
-                  <TextInput ref={customInput} {...(Platform.OS === "web" ? { onKeyDown: handleCustomKey, onFocus: (event: { stopPropagation(): void }) => { event.stopPropagation(); setFocused("option-custom-input"); }, onBlur: (event: { stopPropagation(): void }) => { event.stopPropagation(); setFocused(current => current === "option-custom-input" ? null : current); } } : {})} testID="option-custom-input" accessibilityLabel={t("answerCard.other")} value={session.customDrafts[index] ?? ""} onChangeText={text => { if (getOptionSession(agentId)?.at === at) { setCustomDraft(agentId, index, text); if (text.trim()) updateInputState({ empty: false }); } }} multiline numberOfLines={2} editable={!disabled} onContentSizeChange={event => { const current = getOptionSession(agentId); if (current?.at === at && current.activeQuestion === index) updateInputState({ height: event.nativeEvent.contentSize.height }); }} style={[{ ...label, padding: 0, borderWidth: 0, minHeight: width <= 390 ? Math.max(44, tokens.fs(36)) : tokens.fs(36), maxHeight: tokens.fs(72), height: Math.max(tokens.fs(36), Math.min(tokens.fs(72), currentInputState.height)), textAlignVertical: "top" }, focusStyle("option-custom-input")]} />
+                  <TextInput ref={setCustomInput} {...(Platform.OS === "web" ? { onFocus: (event: { stopPropagation(): void }) => { event.stopPropagation(); setFocused("option-custom-input"); }, onBlur: (event: { stopPropagation(): void }) => { event.stopPropagation(); setFocused(current => current === "option-custom-input" ? null : current); } } : {})} testID="option-custom-input" accessibilityLabel={t("answerCard.other")} value={session.customDrafts[index] ?? ""} onChangeText={text => { if (getOptionSession(agentId)?.at === at) { setCustomDraft(agentId, index, text); if (text.trim()) updateInputState({ empty: false }); } }} multiline numberOfLines={2} editable={!disabled} onContentSizeChange={event => { const current = getOptionSession(agentId); if (current?.at === at && current.activeQuestion === index) updateInputState({ height: event.nativeEvent.contentSize.height }); }} style={[{ ...label, padding: 0, borderWidth: 0, minHeight: width <= 390 ? Math.max(44, tokens.fs(36)) : tokens.fs(36), maxHeight: tokens.fs(72), height: Math.max(tokens.fs(36), Math.min(tokens.fs(72), currentInputState.height)), textAlignVertical: "top" }, focusStyle("option-custom-input")]} />
                   {currentInputState.empty ? <Text testID="option-custom-empty" style={{ ...muted, color: tokens.danger }}>{t("answerCard.otherEmpty")}</Text> : null}
                   {!readOnly && customConfirmed === undefined ? <Text style={muted}>{t("answerCard.otherHint")}</Text> : null}
                 </> : <><Text style={label}>{t("answerCard.other")}</Text><Text style={muted}>{t("answerCard.otherHint")}</Text></>}
