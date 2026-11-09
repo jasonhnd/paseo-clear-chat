@@ -312,32 +312,77 @@ const approvedResourceHashes = {
   "ja": "8bbbbf885b61ec6141131d4804add1cf4aa8c84a95a358517d52a052e43df275",
 };
 
+// Hash the exact parent answerCard bytes after removing only the three approved lines.
+const parentAnswerCardHashes = {
+  en: "25a92324e6fee805c53ed99fd2b9e5dd31950b1e360db4fb51d612da75a8a2c9",
+  "zh-CN": "544b126565edc169fa873ca63ca9c835cc62f7c326efa0ad47ea3fdb63fcc9a0",
+  ja: "7adbf325fa9366f7621b02ffd20393e2f058b1df25cc420bdfc1dc21646e64f1",
+};
+const approvedAnswerCardAdditions = {
+  en: { other: "Other", otherHint: "Write your own answer", otherEmpty: "Write your answer first" },
+  "zh-CN": { other: "自己写", otherHint: "写下你自己的回答", otherEmpty: "请先写下你的回答" },
+  ja: { other: "自分で書く", otherHint: "自分の回答を書く", otherEmpty: "先に回答を書いてください" },
+};
+// A root object ends at its two-space closing brace; child lines must be more indented.
+const rootAnswerCard = /,\n  "answerCard": \{\n(?: {4,}.*\n)*  \}/;
+
+function verifyResourceBaseline(text, locale) {
+  const resource = JSON.parse(text);
+  const match = text.match(rootAnswerCard);
+  assert.ok(match, "root answerCard must be present");
+  let parentAnswerCard = match[0];
+  for (const [key, value] of Object.entries(approvedAnswerCardAdditions[locale])) {
+    assert.equal(resource.answerCard[key], value);
+    const line = `    ${JSON.stringify(key)}: ${JSON.stringify(value)},\n`;
+    assert.ok(parentAnswerCard.includes(line), `missing approved answerCard.${key} line`);
+    parentAnswerCard = parentAnswerCard.replace(line, "");
+  }
+  assert.equal(createHash("sha256").update(parentAnswerCard).digest("hex"), parentAnswerCardHashes[locale]);
+  const original = text
+    .replace(/    "keepItemLineBreaks": \{\n(?:      ".*\n){2}    \},\n/, "")
+    .replace(/    "jumpChips": \{\n(?:      ".*\n){2}    \},\n/, "")
+    .replace(/,\n    "answerCard": \{\n(?:      ".*\n){2}    \}/, "")
+    .replace(rootAnswerCard, "")
+    .replace(/    "foldMessages": \{\n(?:      ".*\n){2}    \},\n/, "")
+    .replace(/    "show": ".*",\n    "hide": ".*",\n    "showMessage": ".*",\n    "hideMessage": ".*",\n/, "")
+    .replace(/    "version": ".*",\n/, "")
+    .replace(/  "quote": \{\n(?:    ".*\n){11}  \},\n/, "")
+    .replace(/    "hermesCc": \{\n(?:      ".*\n){3}    \},\n/, "")
+    .replace(/    "hiddenTools": \{\n(?:      ".*\n){2}    \},\n/, "")
+    .replace(/    "delegatedTools": \{\n(?:      ".*\n){2}    \},\n/, "")
+    .replace(/    "delegatedCodeBlocks": \{\n(?:      ".*\n){2}    \},\n/, "")
+    .replace(/    "codeBlockOpen": \{\n(?:      ".*\n){2}    \},\n/, "")
+    .replace(/    "open": ".*",\n    "openA11y": ".*",\n/, "")
+    .replace(/    "imageThumbA11y": ".*",\n    "moreImages": ".*",\n    "closeImage": ".*",\n/, "")
+    .replace(/    "stepsOne": ".*",\n/, "")
+    .replace(/    "tokensOne": ".*",\n/, "")
+    .replace(/    "sectionInline": \{\n(?:      ".*\n){5}    \},\n/, "");
+  const baseline = original.replace(/(      "none": ".*"),\n      "commandExit": ".*"\n/, "$1\n");
+  assert.notEqual(original, text);
+  assert.equal(createHash("sha256").update(baseline).digest("hex"), approvedResourceHashes[locale]);
+}
+
 for (const locale of ["en", "zh-CN", "ja"]) {
+  const text = readFileSync(resolve(__dirname, `../client/locales/${locale}.json`), "utf8");
   test(`${locale}: preserves the prior baseline after removing the added inline-section, prompt-image and Hermes setting keys`, () => {
-    const text = readFileSync(resolve(__dirname, `../client/locales/${locale}.json`), "utf8");
-    const original = text
-      .replace(/    "keepItemLineBreaks": \{\n(?:      ".*\n){2}    \},\n/, "")
-      .replace(/    "jumpChips": \{\n(?:      ".*\n){2}    \},\n/, "")
-      .replace(/,\n    "answerCard": \{\n(?:      ".*\n){2}    \}/, "")
-      .replace(/,\n  "answerCard": \{\n(?:    ".*\n){27}  \}/, "")
-      .replace(/    "foldMessages": \{\n(?:      ".*\n){2}    \},\n/, "")
-      .replace(/    "show": ".*",\n    "hide": ".*",\n    "showMessage": ".*",\n    "hideMessage": ".*",\n/, "")
-      .replace(/    "version": ".*",\n/, "")
-      .replace(/  "quote": \{\n(?:    ".*\n){11}  \},\n/, "")
-      .replace(/    "hermesCc": \{\n(?:      ".*\n){3}    \},\n/, "")
-      .replace(/    "hiddenTools": \{\n(?:      ".*\n){2}    \},\n/, "")
-      .replace(/    "delegatedTools": \{\n(?:      ".*\n){2}    \},\n/, "")
-      .replace(/    "delegatedCodeBlocks": \{\n(?:      ".*\n){2}    \},\n/, "")
-      .replace(/    "codeBlockOpen": \{\n(?:      ".*\n){2}    \},\n/, "")
-      .replace(/    "open": ".*",\n    "openA11y": ".*",\n/, "")
-      .replace(/    "imageThumbA11y": ".*",\n    "moreImages": ".*",\n    "closeImage": ".*",\n/, "")
-      .replace(/    "stepsOne": ".*",\n/, "")
-      .replace(/    "tokensOne": ".*",\n/, "")
-      .replace(/    "sectionInline": \{\n(?:      ".*\n){5}    \},\n/, "");
-    const baseline = original.replace(/(      "none": ".*"),\n      "commandExit": ".*"\n/, "$1\n");
-    assert.notEqual(original, text);
-    assert.equal(createHash("sha256").update(baseline).digest("hex"), approvedResourceHashes[locale]);
+    verifyResourceBaseline(text, locale);
     assert.deepEqual(resources[locale].detail.sectionInline, Object.fromEntries(Object.entries(resources[locale].detail.section).map(([key, title]) => [key, locale === "en" ? key : title])));
+  });
+
+  test(`${locale}: baseline accepts only the approved answerCard additions and protects neighboring translations`, () => {
+    assert.doesNotThrow(() => verifyResourceBaseline(text, locale));
+    const mutateLine = (key, value) => {
+      const line = `${JSON.stringify(key)}: ${JSON.stringify(value)}`;
+      assert.ok(text.includes(line));
+      return text.replace(line, `${JSON.stringify(key)}: ${JSON.stringify(value + " changed")}`);
+    };
+    assert.throws(() => verifyResourceBaseline(mutateLine("title", resources[locale].settings.title), locale));
+    assert.throws(() => verifyResourceBaseline(mutateLine("pillTitle", resources[locale].answerCard.pillTitle), locale));
+    assert.throws(() => verifyResourceBaseline(text.replace(',\n  "answerCard": {\n', ',\n  "answerCard": {\n    "unexpected": "new",\n'), locale));
+    for (const [key, value] of Object.entries(approvedAnswerCardAdditions[locale])) {
+      assert.throws(() => verifyResourceBaseline(mutateLine(key, value), locale));
+    }
+    assert.throws(() => verifyResourceBaseline(mutateLine("showPathA11y", resources[locale].markdown.showPathA11y), locale));
   });
 }
 
