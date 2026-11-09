@@ -97,3 +97,44 @@ test("all locales contain the approved read-only status", () => {
     assert.equal(JSON.parse(readFileSync(`client/locales/${locale}.json`, "utf8")).answerCard.readOnlyStatus, value);
   }
 });
+
+test("sent answers can be viewed by question without changing the answers or message", async t => {
+  const { h, s, draw } = fixture(t);
+  const press = id => byId(h, draw(), id).props.onPress();
+  const key = (key, id) => {
+    const target = { getAttribute: () => id, closest: () => null };
+    byId(h, draw(), "option-card").props.onKeyDown({ key, target, nativeEvent: {}, preventDefault() {}, stopPropagation() {} });
+  };
+  press("option-row-B");
+  press("option-row-E");
+  byId(h, draw(), "option-custom-input").props.onChangeText("line one\nline two");
+  key("Enter", "option-custom-input");
+  press("option-row-A");
+  let sent;
+  s.setOptionSender(async (_, text) => { sent = text; });
+  press("option-send");
+  await new Promise(setImmediate);
+  const before = s.getOptionSession("a");
+  assert.equal(sent, "1B 2E 3A\n\n2E：\nline one\nline two");
+  assert.equal(byId(h, draw(), "option-question-2").props.accessibilityState.selected, true);
+  for (const i of [1, 2, 0]) {
+    const tab = byId(h, draw(), `option-question-${i}`);
+    assert.equal(tab.type, "Pressable");
+    assert.notEqual(tab.props.disabled, true);
+    tab.props.onPress();
+    const tree = draw();
+    assert.equal(byId(h, tree, `option-question-${i}`).props.accessibilityState.selected, true);
+    const row = byId(h, tree, `option-row-${["B", "E", "A"][i]}`);
+    assert.match(h.text(row), /✓/);
+    if (i === 1) assert.ok(h.nodes(row, n => n.type === "Text" && h.text(n) === "line one\nline two").length);
+    assert.equal(byId(h, tree, "option-custom-input"), undefined);
+    assert.equal(byId(h, tree, "option-send"), undefined);
+  }
+  assert.deepEqual(s.getOptionSession("a").choices, before.choices);
+  assert.deepEqual(s.getOptionSession("a").customConfirmed, before.customConfirmed);
+  assert.equal(s.getOptionSession("a").answeredText, sent);
+  for (const id of ["option-row-A", "option-row-B", "option-row-E"]) assert.equal(byId(h, draw(), id).props.onPress, undefined);
+  key("a", "option-card"); key("e", "option-card");
+  assert.deepEqual(s.getOptionSession("a").choices, before.choices);
+  assert.equal(s.getOptionSession("a").answeredText, sent);
+});
