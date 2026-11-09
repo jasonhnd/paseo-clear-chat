@@ -14,6 +14,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   const status = useAgent(agentId, agent => agent.status);
   const root = useRef<HTMLElement | null>(null);
   const customInput = useRef<NativeTextInput | null>(null);
+  const pendingCustomFocus = useRef(false);
   const customKeyHandler = useRef<(event: KeyboardEvent) => void>(() => {});
   const customKeyListener = useRef((event: KeyboardEvent) => customKeyHandler.current(event)).current;
   const setCustomInput = useCallback((node: NativeTextInput | null) => {
@@ -21,6 +22,11 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     if (Platform.OS === "web") previous?.removeEventListener("keydown", customKeyListener);
     customInput.current = node;
     if (Platform.OS === "web") (node as unknown as HTMLElement | null)?.addEventListener("keydown", customKeyListener);
+    if (node && pendingCustomFocus.current && typeof node.focus === "function") {
+      pendingCustomFocus.current = false;
+      if (Platform.OS === "web") (node as unknown as HTMLElement).focus({ preventScroll: true });
+      else node.focus();
+    }
   }, [customKeyListener]);
   const { width } = useWindowDimensions();
   const [viewed, setViewed] = useState<{ agentId: string; at: number; index: number } | null>(null);
@@ -32,6 +38,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   const readOnlyTransition = useRef<(() => void) | null>(null);
   const pendingSend = useRef<{ card: HTMLElement; old: HTMLElement | null; height: number; scroller: HTMLElement | null; scrollTop: number } | null>(null);
   const pendingPreview = useRef<{ card: HTMLElement; height: number; scroller: HTMLElement | null; scrollTop: number; anchor: string; previousHeight: string; previousOverflow: string } | null>(null);
+  const pendingResize = useRef<{ card: HTMLElement; row: HTMLElement; input: HTMLElement | null; opening: boolean; height: number; rowHeight: number; inputHeight: number; scroller: HTMLElement | null; scrollTop: number; anchor: string; previousHeight: string; previousOverflow: string } | null>(null);
   const scrollSpace = useRef<{ card: HTMLElement; scroller: HTMLElement; original: string; base: number; amount: number; stop: () => void; trim: () => void } | null>(null);
   const clearScrollSpace = () => {
     const space = scrollSpace.current;
@@ -136,6 +143,57 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     activeTransition.current = finish;
     expand.finished.then(finish, finish);
   }, [session?.choices, session?.customConfirmed]);
+  useCommitEffect(() => {
+    const pending = pendingResize.current;
+    if (!pending) return;
+    pendingResize.current = null;
+    const { card, row, input, opening, height, rowHeight, inputHeight, scroller, scrollTop, anchor, previousHeight, previousOverflow } = pending;
+    card.style.height = "auto";
+    const nextHeight = card.getBoundingClientRect().height;
+    const nextRowHeight = row.getBoundingClientRect().height;
+    const nextInputHeight = input?.getBoundingClientRect().height ?? 0;
+    if (scroller && scroller.clientHeight > 0) {
+      const margin = card.style.marginBottom;
+      const base = Number.parseFloat(globalThis.getComputedStyle?.(card).marginBottom ?? margin) || 0;
+      card.style.marginBottom = `${base + scroller.clientHeight}px`;
+      const contentHeight = scroller.scrollHeight - scroller.clientHeight;
+      card.style.marginBottom = margin;
+      const deficit = Math.max(0, scrollTop + scroller.clientHeight - contentHeight);
+      if (Number.isFinite(deficit)) reserveScrollSpace(card, scroller, deficit);
+    }
+    if (scroller) scroller.scrollTop = scrollTop;
+    const reduced = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduced || typeof card.animate !== "function") {
+      card.style.height = previousHeight;
+      card.style.overflow = previousOverflow;
+      if (scroller) scroller.style.overflowAnchor = anchor;
+      scrollSpace.current?.trim();
+      return;
+    }
+    card.style.height = `${height}px`;
+    card.style.overflow = "hidden";
+    const cardAnimation = card.animate([{ height: `${height}px` }, { height: `${nextHeight}px` }], { duration: 180, easing: "linear", fill: "both" });
+    const rowOverflow = row.style.overflow;
+    if (opening) row.style.overflow = "hidden";
+    const rowAnimation = opening && typeof row.animate === "function" ? row.animate([
+      { height: `${rowHeight}px`, backgroundColor: tokens.surface1, borderColor: tokens.border },
+      { height: `${nextRowHeight}px`, backgroundColor: tokens.accentBg, borderColor: tokens.accent },
+    ], { duration: 160, easing: "linear", fill: "both" }) : null;
+    const inputAnimation = !opening && input && typeof input.animate === "function" && inputHeight !== nextInputHeight
+      ? input.animate([{ height: `${inputHeight}px` }, { height: `${nextInputHeight}px` }], { duration: 120, easing: "linear", fill: "both" }) : null;
+    const finish = () => {
+      if (activeTransition.current !== finish) return;
+      activeTransition.current = null;
+      cardAnimation.cancel(); rowAnimation?.cancel(); inputAnimation?.cancel();
+      if (opening) row.style.overflow = rowOverflow;
+      card.style.height = previousHeight;
+      card.style.overflow = previousOverflow;
+      if (scroller) scroller.style.overflowAnchor = anchor;
+      scrollSpace.current?.trim();
+    };
+    activeTransition.current = finish;
+    cardAnimation.finished.then(finish, finish);
+  }, [session?.customOpen, inputState.height]);
   useCommitEffect(() => {
     const pending = transition.current;
     if (!pending || pending.index === index) return;
@@ -252,6 +310,12 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   }, [session?.readOnly]);
   useEffect(() => () => {
     pendingSend.current = null;
+    if (pendingResize.current) {
+      pendingResize.current.card.style.height = pendingResize.current.previousHeight;
+      pendingResize.current.card.style.overflow = pendingResize.current.previousOverflow;
+      if (pendingResize.current.scroller) pendingResize.current.scroller.style.overflowAnchor = pendingResize.current.anchor;
+    }
+    pendingResize.current = null;
     if (pendingPreview.current) {
       pendingPreview.current.card.style.height = pendingPreview.current.previousHeight;
       pendingPreview.current.card.style.overflow = pendingPreview.current.previousOverflow;
@@ -409,13 +473,55 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   const openAndFocusCustom = () => {
     const current = getOptionSession(agentId);
     if (!current || current.at !== at || current.activeQuestion !== index || current.readOnly || current.sending || status === "running") return;
-    if (!current.customOpen[index]) openCustom(agentId, index);
-    focus("option-custom-input");
+    if (!current.customOpen[index]) {
+      prepareResize(true);
+      pendingCustomFocus.current = true;
+      openCustom(agentId, index);
+      setTimeout(() => {
+        if (!pendingCustomFocus.current) return;
+        pendingCustomFocus.current = false;
+        const latest = getOptionSession(agentId);
+        if (latest?.at !== at || latest.activeQuestion !== index || !latest.customOpen[index] || latest.readOnly || latest.sending || status === "running") return;
+        if (Platform.OS === "web") root.current?.querySelector<HTMLElement>('[data-testid="option-custom-input"]')?.focus({ preventScroll: true });
+        else customInput.current?.focus();
+      }, 0);
+    } else if (customInput.current && typeof customInput.current.focus === "function") {
+      if (Platform.OS === "web") (customInput.current as unknown as HTMLElement).focus({ preventScroll: true });
+      else customInput.current.focus();
+    } else focus("option-custom-input");
+  };
+  const prepareResize = (opening: boolean) => {
+    if (Platform.OS !== "web") return;
+    const card = root.current;
+    if (!card?.style || typeof card.getBoundingClientRect !== "function") return;
+    const row = card.querySelector<HTMLElement>(`[data-testid="option-row-${customLetter}"]`);
+    if (!row || typeof row.getBoundingClientRect !== "function") return;
+    const input = opening ? null : customInput.current as unknown as HTMLElement | null;
+    const height = card.getBoundingClientRect().height;
+    const rowHeight = row.getBoundingClientRect().height;
+    const inputHeight = input?.getBoundingClientRect?.().height ?? 0;
+    activeTransition.current?.();
+    const scroller = card.closest?.<HTMLElement>('[data-testid="agent-chat-scroll"]') ?? null;
+    const anchor = scroller?.style.overflowAnchor ?? "";
+    if (scroller) scroller.style.overflowAnchor = "none";
+    pendingResize.current = { card, row, input, opening, height, rowHeight, inputHeight, scroller, scrollTop: scroller?.scrollTop ?? 0, anchor, previousHeight: card.style.height, previousOverflow: card.style.overflow };
+    card.style.height = `${height}px`;
+    card.style.overflow = "hidden";
+  };
+  const resizeCustomInput = (height: number) => {
+    const current = getOptionSession(agentId);
+    if (current?.at !== at || current.activeQuestion !== index) return;
+    const min = width <= 390 ? Math.max(44, tokens.fs(36)) : tokens.fs(36);
+    const capped = (value: number) => Math.max(min, Math.min(tokens.fs(72), value));
+    if (capped(height) === capped(currentInputState.height)) return;
+    prepareResize(false);
+    updateInputState({ height });
   };
   const handleCustomKey = (event: KeyboardEvent) => {
     if (disabled || event.defaultPrevented || event.key !== "Enter" || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing) return;
     const current = getOptionSession(agentId);
     if (current?.at !== at || current.activeQuestion !== index || !current.customOpen[index] || current.readOnly || current.sending) return;
+    pendingCustomFocus.current = false;
     event.preventDefault(); event.stopPropagation();
     const wasAnswered = current.choices[index] !== undefined;
     const previewPending = !wasAnswered && !!current.customDrafts[index]?.trim() && current.set.questions.every((_, i) => i === index || current.choices[i] !== undefined) && preparePreview();
@@ -490,7 +596,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
               <Text style={{ ...label, color: !readOnly && customOpen ? tokens.accent : tokens.foregroundMuted, fontWeight: "700", overflow: "hidden", borderWidth: 1, borderColor: !readOnly && customOpen ? tokens.accent : tokens.border, borderRadius: 5, paddingHorizontal: 7, paddingVertical: 3 }}>{customLetter}</Text>
               <View style={{ flex: 1, minWidth: 0 }}>
                 {readOnly ? <Text selectable style={label}>{customConfirmed ?? t("answerCard.other")}</Text> : customOpen ? <>
-                  <TextInput ref={setCustomInput} {...(Platform.OS === "web" ? { onFocus: (event: { stopPropagation(): void }) => { event.stopPropagation(); setFocused("option-custom-input"); }, onBlur: (event: { stopPropagation(): void }) => { event.stopPropagation(); setFocused(current => current === "option-custom-input" ? null : current); } } : {})} testID="option-custom-input" accessibilityLabel={t("answerCard.other")} value={session.customDrafts[index] ?? ""} onChangeText={text => { if (getOptionSession(agentId)?.at === at) { setCustomDraft(agentId, index, text); if (text.trim()) updateInputState({ empty: false }); } }} multiline numberOfLines={2} editable={!disabled} onContentSizeChange={event => { const current = getOptionSession(agentId); if (current?.at === at && current.activeQuestion === index) updateInputState({ height: event.nativeEvent.contentSize.height }); }} style={[{ ...label, padding: 0, borderWidth: 0, minHeight: width <= 390 ? Math.max(44, tokens.fs(36)) : tokens.fs(36), maxHeight: tokens.fs(72), height: Math.max(tokens.fs(36), Math.min(tokens.fs(72), currentInputState.height)), textAlignVertical: "top" }, focusStyle("option-custom-input")]} />
+                  <TextInput ref={setCustomInput} {...(Platform.OS === "web" ? { onFocus: (event: { stopPropagation(): void }) => { event.stopPropagation(); setFocused("option-custom-input"); }, onBlur: (event: { stopPropagation(): void }) => { event.stopPropagation(); setFocused(current => current === "option-custom-input" ? null : current); } } : {})} testID="option-custom-input" accessibilityLabel={t("answerCard.other")} value={session.customDrafts[index] ?? ""} onChangeText={text => { if (getOptionSession(agentId)?.at === at) { setCustomDraft(agentId, index, text); if (text.trim()) updateInputState({ empty: false }); } }} multiline numberOfLines={2} editable={!disabled} onContentSizeChange={event => resizeCustomInput(event.nativeEvent.contentSize.height)} style={[{ ...label, padding: 0, borderWidth: 0, minHeight: width <= 390 ? Math.max(44, tokens.fs(36)) : tokens.fs(36), maxHeight: tokens.fs(72), height: Math.max(tokens.fs(36), Math.min(tokens.fs(72), currentInputState.height)), textAlignVertical: "top" }, focusStyle("option-custom-input")]} />
                   <View testID="option-custom-hint-line" ref={Platform.OS === "web" ? (node: View | null) => {
                     const line = node as unknown as HTMLElement | null;
                     if (!line?.style) return;

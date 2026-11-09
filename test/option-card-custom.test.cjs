@@ -189,3 +189,61 @@ test("blank feedback replaces the normal hint in one reserved line, with reduced
     inspect(draw(), false);
   }
 });
+
+test("opening the custom row focuses on mount and expands row and card, including reduced motion", t => {
+  for (const reduced of [false, true]) {
+    const h = createToolHarness("web", { width: 390, globals: { matchMedia: () => ({ matches: reduced }) }, agents: { a: { status: "idle" } } });
+    t.after(() => { h.unmount(); h.dispose(); });
+    const s = h.load("client/option-session.ts");
+    const Card = h.load("client/components/option-card.tsx").OptionCard;
+    s.publishAssistantReply("a", { at: 10, text: twoQuestions });
+    const draw = () => h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } });
+    const calls = [], focused = [], never = new Promise(() => {});
+    const animation = name => ({ animate(frames, options) { calls.push({ name, frames, options }); return { finished: never, cancel() {} }; } });
+    const scroller = { style: {}, scrollTop: 100, clientHeight: 500, scrollHeight: 1200, addEventListener() {}, removeEventListener() {} };
+    const row = { style: {}, getBoundingClientRect: () => ({ height: s.getOptionSession("a").customOpen[0] ? 120 : 70 }), ...animation("row") };
+    const card = { style: {}, closest: () => scroller, querySelector: selector => selector.includes("option-row-C") ? row : null, getBoundingClientRect: () => ({ height: s.getOptionSession("a").customOpen[0] ? 550 : 500 }), ...animation("card") };
+    let tree = draw();
+    byId(h, tree, "option-card").props.ref(card);
+    byId(h, tree, "option-row-C").props.onPress();
+    tree = draw();
+    const input = { addEventListener() {}, removeEventListener() {}, focus() { focused.push("input"); } };
+    byId(h, tree, "option-custom-input").props.ref(input);
+    assert.deepEqual(focused, ["input"], "input is focused in the mounting frame");
+    assert.equal(scroller.scrollTop, 100);
+    if (reduced) assert.deepEqual(calls, []);
+    else {
+      assert.ok(calls.some(call => call.name === "row" && call.options.duration === 160 && call.frames[0].height === "70px" && call.frames.at(-1).height === "120px"));
+      assert.ok(calls.some(call => call.name === "row" && call.frames[0].backgroundColor && call.frames.at(-1).backgroundColor && call.frames[0].borderColor && call.frames.at(-1).borderColor));
+      assert.ok(calls.some(call => call.name === "card" && call.options.duration === 180 && call.frames[0].height === "500px" && call.frames.at(-1).height === "550px"));
+    }
+    byId(h, tree, "option-custom-input").props.ref(null);
+  }
+});
+
+test("custom text growth animates to its cap and then stays inside the field", t => {
+  const { h, s, draw } = fixture(t, twoQuestions);
+  s.openCustom("a", 0);
+  let expanded = false, calls = [];
+  const never = new Promise(() => {});
+  const animation = name => ({ animate(frames, options) { calls.push({ name, frames, options }); return { finished: never, cancel() {} }; } });
+  const scroller = { style: {}, scrollTop: 100, clientHeight: 500, scrollHeight: 1200, addEventListener() {}, removeEventListener() {} };
+  const inputNode = { style: {}, addEventListener() {}, removeEventListener() {}, getBoundingClientRect: () => ({ height: expanded ? 72 : 44 }), ...animation("input") };
+  const row = { style: {}, getBoundingClientRect: () => ({ height: expanded ? 148 : 120 }), ...animation("row") };
+  const card = { style: {}, closest: () => scroller, querySelector: selector => selector.includes("option-row-C") ? row : selector.includes("option-custom-input") ? inputNode : null, getBoundingClientRect: () => ({ height: expanded ? 578 : 550 }), ...animation("card") };
+  let tree = draw(); byId(h, tree, "option-card").props.ref(card);
+  let input = byId(h, tree, "option-custom-input"); input.props.ref(inputNode);
+  assert.equal(input.props.numberOfLines, 2);
+  assert.ok(input.props.style[0].minHeight >= 36);
+  input.props.onContentSizeChange({ nativeEvent: { contentSize: { height: 100 } } });
+  expanded = true; tree = draw(); input = byId(h, tree, "option-custom-input");
+  assert.equal(input.props.style[0].height, 72);
+  assert.ok(calls.some(call => call.name === "input" && call.options.duration === 120));
+  assert.ok(calls.some(call => call.name === "card" && call.options.duration === 180));
+  calls = [];
+  input.props.onContentSizeChange({ nativeEvent: { contentSize: { height: 150 } } });
+  tree = draw();
+  assert.equal(byId(h, tree, "option-custom-input").props.style[0].height, 72);
+  assert.equal(calls.length, 0, "growth past the cap does not move the card");
+  byId(h, tree, "option-custom-input").props.ref(null);
+});
