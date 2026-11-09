@@ -62,3 +62,72 @@ test("all three locales contain the approved labels", () => {
     assert.deepEqual([card.other, card.otherHint, card.otherEmpty], expected);
   }
 });
+
+const twoQuestions = "1) First?\nA One\nB Two\n\n2) Second?\nA Yes\nB No\n\nReply: A";
+
+test("blank attempts show feedback only for the active question and unmodified Enter", t => {
+  const { h, s, draw } = fixture(t, twoQuestions);
+  byId(h, draw(), "option-row-C").props.onPress();
+  assert.equal(byId(h, draw(), "option-custom-empty"), undefined);
+  const key = (overrides = {}) => byId(h, draw(), "option-card").props.onKeyDown({
+    key: "Enter", target: { getAttribute: () => "option-custom-input" }, nativeEvent: {}, ...overrides,
+  });
+  for (const overrides of [{ shiftKey: true }, { altKey: true }, { ctrlKey: true }, { metaKey: true }, { nativeEvent: { isComposing: true } }, { key: "\n" }]) {
+    key(overrides);
+    assert.equal(byId(h, draw(), "option-custom-empty"), undefined);
+  }
+  key();
+  let hint = byId(h, draw(), "option-custom-empty");
+  assert.equal(hint.type, "Text");
+  assert.equal(h.text(hint), "Write your answer first");
+  byId(h, draw(), "option-custom-input").props.onChangeText(" \n ");
+  assert.ok(byId(h, draw(), "option-custom-empty"));
+  byId(h, draw(), "option-custom-input").props.onChangeText("answer");
+  assert.equal(byId(h, draw(), "option-custom-empty"), undefined);
+  key();
+  assert.equal(s.getOptionSession("a").customConfirmed[0], undefined);
+  assert.equal(s.getOptionSession("a").activeQuestion, 0);
+  byId(h, draw(), "option-custom-input").props.onChangeText("");
+  key();
+  assert.ok(byId(h, draw(), "option-custom-empty"));
+  byId(h, draw(), "option-question-1").props.onPress();
+  byId(h, draw(), "option-row-C").props.onPress();
+  assert.equal(byId(h, draw(), "option-custom-empty"), undefined);
+  byId(h, draw(), "option-question-0").props.onPress();
+  assert.equal(byId(h, draw(), "option-custom-empty"), undefined);
+});
+
+test("repeated presses and focus retain a confirmed custom answer until edited", t => {
+  const { h, s, draw } = fixture(t, twoQuestions);
+  byId(h, draw(), "option-row-C").props.onPress();
+  byId(h, draw(), "option-custom-input").props.onChangeText("my answer");
+  assert.equal(s.confirmCustom("a", 0), "confirmed");
+  s.setActiveQuestion("a", 0);
+  const before = s.getOptionSession("a");
+  const tab = h.text(byId(h, draw(), "option-question-0"));
+  for (let i = 0; i < 3; i++) {
+    byId(h, draw(), "option-custom-input").props.onFocus({ stopPropagation() {} });
+    byId(h, draw(), "option-row-C").props.onPress();
+    const after = s.getOptionSession("a");
+    assert.deepEqual(after.choices, before.choices);
+    assert.deepEqual(after.customConfirmed, before.customConfirmed);
+    assert.deepEqual(after.customDrafts, before.customDrafts);
+    assert.equal(h.text(byId(h, draw(), "option-question-0")), tab);
+  }
+  byId(h, draw(), "option-custom-input").props.onChangeText("changed");
+  assert.equal(s.getOptionSession("a").customConfirmed[0], undefined);
+  assert.equal(s.getOptionSession("a").choices[0], undefined);
+  assert.equal(s.getOptionSession("a").customDrafts[0], "changed");
+});
+
+test("input height resets when changing questions", t => {
+  const { h, draw } = fixture(t, twoQuestions);
+  byId(h, draw(), "option-row-C").props.onPress();
+  byId(h, draw(), "option-custom-input").props.onContentSizeChange({ nativeEvent: { contentSize: { height: 70 } } });
+  assert.equal(byId(h, draw(), "option-custom-input").props.style[0].height, 70);
+  byId(h, draw(), "option-question-1").props.onPress();
+  byId(h, draw(), "option-row-C").props.onPress();
+  assert.equal(byId(h, draw(), "option-custom-input").props.style[0].height, 36);
+  byId(h, draw(), "option-custom-input").props.onContentSizeChange({ nativeEvent: { contentSize: { height: 50 } } });
+  assert.equal(byId(h, draw(), "option-custom-input").props.style[0].height, 50);
+});
