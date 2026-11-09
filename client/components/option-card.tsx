@@ -481,7 +481,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
         if (!pendingCustomFocus.current) return;
         pendingCustomFocus.current = false;
         const latest = getOptionSession(agentId);
-        if (latest?.at !== at || latest.activeQuestion !== index || !latest.customOpen[index] || latest.readOnly || latest.sending || status === "running") return;
+        if (latest?.at !== at || latest.activeQuestion !== index || !latest.customOpen[index] || latest.readOnly || latest.sending) return;
         if (Platform.OS === "web") root.current?.querySelector<HTMLElement>('[data-testid="option-custom-input"]')?.focus({ preventScroll: true });
         else customInput.current?.focus();
       }, 0);
