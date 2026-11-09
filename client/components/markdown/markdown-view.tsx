@@ -19,7 +19,7 @@ import { parseMarkdown, type MdAlign, type MdBlock, type MdInline, type MdListIt
 import { ImageFallback, MarkdownImage } from "./markdown-image";
 import { MessageOutput } from "../message-output";
 import { outputWouldFold } from "../tool-output";
-import { fencedSource, OfficialMarkdownBlock } from "./official-block";
+import { ExactCodeBlock, fencedSource, OfficialMarkdownBlock } from "./official-block";
 import type { ToolExpansionIdentity } from "../../tool-expansion-store";
 import { useEnhancerPreferences, type OutputLineLimit } from "../../preferences";
 import { codeBlockWebAddress } from "./web-address";
@@ -385,7 +385,9 @@ function renderBlock(
         && !outputWouldFold(block.code, context.foldLongOutputAfter);
       return (
         <View key={key} style={styles.codeBlock}>
-          {delegate ? <OfficialMarkdownBlock text={fencedSource(block.code, block.language.toLowerCase() === "mermaid" ? "mermaid" : block.language)} language={block.language} tokens={tokens} fallback={fallback} /> : fallback}
+          {delegate ? /\n$/.test(block.code)
+            ? <ExactCodeBlock code={block.code} language={block.language} tokens={tokens} />
+            : <OfficialMarkdownBlock text={fencedSource(block.code, block.language.toLowerCase() === "mermaid" ? "mermaid" : block.language)} language={block.language} tokens={tokens} fallback={fallback} /> : fallback}
         </View>
       );
     }
