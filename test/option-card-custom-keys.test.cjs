@@ -38,6 +38,73 @@ function fixture(t, text = reply, width = 390) {
   return { h, s, agents, draw, press, change, key, inputKey, active: () => active };
 }
 
+// The harness leaves Pressable as a host node. Give the tab a real event target
+// and model react-native-web's Enter activation for role=tab.
+function dispatchTabKey(f, index, key) {
+  const tree = f.draw();
+  const tab = byId(f.h, tree, `option-question-${index}`);
+  const element = new EventTarget();
+  element.getAttribute = name => name === "data-testid" ? tab.props.testID : null;
+  element.closest = () => null;
+  element.addEventListener("keydown", event => {
+    tab.props.onKeyDown?.(event);
+    if (!event.defaultPrevented && event.key === "Enter") tab.props.onPress();
+    byId(f.h, tree, "option-card").props.onKeyDown(event);
+  });
+  const event = new Event("keydown", { bubbles: true, cancelable: true });
+  Object.assign(event, { key, nativeEvent: { isComposing: false } });
+  element.dispatchEvent(event);
+  return event;
+}
+
+function assertReadOnlyView(f, selected) {
+  const tree = f.draw();
+  const expected = ["✓ Two", "✓ custom an…", "✓ One"];
+  for (let i = 0; i < 3; i++) {
+    const tab = byId(f.h, tree, `option-question-${i}`);
+    assert.equal(tab.props.accessibilityRole, "tab");
+    assert.notEqual(tab.props.focusable, false);
+    assert.equal(tab.props.accessibilityState.selected, i === selected);
+    assert.equal(tab.props.style.backgroundColor, i === selected ? f.h.tokens.surface2 : "transparent");
+    assert.equal(f.h.text(tab), expected[i]);
+  }
+  const row = byId(f.h, tree, selected === 0 ? "option-row-B" : selected === 1 ? "option-row-E" : "option-row-A");
+  assert.match(f.h.text(row), /✓/);
+  if (selected === 1) assert.match(f.h.text(row), /custom answer\nsecond line/);
+  assert.equal(byId(f.h, tree, "option-send"), undefined);
+  assert.equal(byId(f.h, tree, "option-custom-input"), undefined);
+}
+
+test("read-only tabs respond to dispatched Enter and Space without changing the sent answer", async t => {
+  const f = fixture(t); const sent = [];
+  f.press("option-row-B"); f.press("option-row-E"); f.change("custom answer\nsecond line");
+  f.inputKey("Enter"); f.press("option-row-A");
+  f.s.setOptionSender(async (_agent, text) => sent.push(text));
+  f.press("option-send"); await tick();
+  const before = structuredClone(f.s.getOptionSession("a", 10));
+  assert.equal(before.readOnly, true);
+  assert.equal(sent.length, 1);
+  dispatchTabKey(f, 0, "Enter"); assertReadOnlyView(f, 0);
+  const space = dispatchTabKey(f, 1, " ");
+  assert.equal(space.defaultPrevented, true); assertReadOnlyView(f, 1);
+  dispatchTabKey(f, 2, "Enter"); assertReadOnlyView(f, 2);
+  assert.deepEqual(f.s.getOptionSession("a", 10), before);
+  assert.deepEqual(sent, [before.answeredText]);
+});
+
+test("a mounted replay shows the checked answers and full custom text for each question", t => {
+  const h = createToolHarness("web", { agents: { a: { status: "idle" } } });
+  t.after(() => { h.unmount(); h.dispose(); });
+  const s = h.load("client/option-session.ts");
+  const Card = h.load("client/components/option-card.tsx").OptionCard;
+  s.publishUserMessage("a", 20, "1B 2E 3A\n\n2E：\ncustom answer\nsecond line");
+  s.publishAssistantReply("a", { at: 10, text: reply });
+  const f = { h, s, draw: () => h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } }) };
+  assertReadOnlyView(f, 0);
+  dispatchTabKey(f, 1, " "); assertReadOnlyView(f, 1);
+  dispatchTabKey(f, 2, " "); assertReadOnlyView(f, 2);
+});
+
 test("custom row click and synthetic letters open and focus the input", async t => {
   for (const [letters, shortcut] of [["ABCD", "E"], ["ACE", "F"], ["ABH", "I"]]) {
     for (const key of [shortcut, shortcut.toLowerCase()]) {
