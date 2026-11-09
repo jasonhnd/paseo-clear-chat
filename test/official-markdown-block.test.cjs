@@ -49,23 +49,27 @@ test("backtick info renders and copies inside the host code block", async t => {
   assert.equal(clipboard, "console.log('ticks');");
 });
 
-test("trailing code line breaks use a copy path that preserves every displayed newline", async t => {
+test("trailing code line breaks delegate to the host, whose web copy may trim them", async t => {
+  const parser = new (require("markdown-it"))("commonmark");
+  let clipboard = "sentinel";
+  const Markdown = ({ children }) => parser.parse(children, {}).map(token => ({
+    type: "HostCode", props: { code: token.content, onPress: () => { clipboard = token.content.replace(/\n+$/, ""); } },
+  }));
   for (const [source, expected] of [
     ["```js\nconsole.log('line');\n\n```", "console.log('line');\n"],
     ["```js\nconsole.log('line');\n\n\n```", "console.log('line');\n\n"],
     ["```js\r\nconsole.log('line');\r\n\r\n\r\n```", "console.log('line');\n\n"],
   ]) {
-    const h = harness(t, { syntax: true, copyFeedback: true });
+    const h = harness(t, { syntax: true, copyFeedback: true, ui: { Markdown } });
     const { MarkdownView } = h.load("client/components/markdown/markdown-view.tsx");
     const tree = h.draw({ type: MarkdownView, props: { text: source, tokens: h.tokens, variant: "document" } });
-    assert.equal(h.nodes(tree, node => node.type === "OfficialMarkdown").length, 0);
-    const body = h.nodes(tree, node => node.props.testID === "exact-code-body");
-    assert.equal(body.length, 1);
-    assert.equal(h.text(body[0]), expected);
-    const copy = h.nodes(tree, node => node.props.accessibilityLabel === "Copy code");
-    assert.equal(copy.length, 1);
-    await copy[0].props.onPress();
-    assert.equal(h.copies.at(-1), expected);
+    const code = h.nodes(tree, node => node.type === "HostCode");
+    assert.equal(code.length, 1);
+    assert.equal(code[0].props.code, `${expected}\n`);
+    assert.equal(h.nodes(tree, node => node.props.testID === "exact-code-body").length, 0);
+    assert.equal(h.nodes(tree, node => node.props.accessibilityLabel === "Copy code").length, 0);
+    await code[0].props.onPress();
+    assert.equal(clipboard, "console.log('line');");
   }
 });
 
