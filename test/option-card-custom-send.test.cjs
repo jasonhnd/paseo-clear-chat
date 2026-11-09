@@ -23,8 +23,8 @@ D Four
 
 Reply: A`;
 const byId = (h, tree, id) => h.nodes(tree, node => node.props.testID === id)[0];
-function fixture(t, locale = "en") {
-  const h = createToolHarness("web", { locale, width: 390, agents: { a: { status: "idle" } } });
+function fixture(t, locale = "en", reduced = false) {
+  const h = createToolHarness("web", { locale, width: 390, globals: { matchMedia: () => ({ matches: reduced }) }, agents: { a: { status: "idle" } } });
   t.after(() => { h.unmount(); h.dispose(); });
   const s = h.load("client/option-session.ts");
   const Card = h.load("client/components/option-card.tsx").OptionCard;
@@ -153,4 +153,72 @@ test("sent answers can be viewed by question without changing the answers or mes
   key("a", "option-card"); key("e", "option-card");
   assert.deepEqual(s.getOptionSession("a").choices, before.choices);
   assert.equal(s.getOptionSession("a").answeredText, sent);
+});
+
+test("sending fades the editable card before collapsing to its read-only height", async t => {
+  const { h, s, draw } = fixture(t);
+  s.choose("a", 0, "A"); s.choose("a", 1, "A"); s.choose("a", 2, "A");
+  s.setOptionSender(async () => {});
+  const animations = [];
+  let finishFade;
+  const fadeDone = new Promise(resolve => { finishFade = resolve; });
+  const content = {
+    style: {}, getBoundingClientRect: () => ({ top: 0, left: 0, width: 380, height: 400 }),
+  };
+  const scroller = { style: {}, scrollTop: 100, clientHeight: 500, scrollHeight: 1000, addEventListener() {}, removeEventListener() {} };
+  const card = {
+    style: {}, clientTop: 0, clientLeft: 0, closest: () => scroller,
+    getBoundingClientRect: () => ({ top: 0, left: 0, width: 380, height: s.getOptionSession("a").readOnly ? 300 : 500 }),
+    querySelector: () => content, appendChild() {},
+    cloneNode: () => ({ style: {}, setAttribute() {}, querySelectorAll: () => [], remove() {},
+      animate(frames, options) { animations.push({ name: "old", frames, options }); return { finished: fadeDone, cancel() {} }; } }),
+    animate(frames, options) { animations.push({ name: "card", frames, options }); return { finished: new Promise(() => {}), cancel() {} }; },
+  };
+  let tree = draw();
+  byId(h, tree, "option-card").props.ref(card);
+  byId(h, tree, "option-send").props.onPress();
+  await new Promise(setImmediate);
+  tree = draw();
+  const fade = animations.find(a => a.name === "old" && a.options.duration === 120);
+  assert.ok(fade, "editable content fades for 120 ms");
+  assert.equal(card.style.height, "500px", "height remains locked during the fade");
+  assert.equal(animations.some(a => a.name === "card" && a.options.duration === 200), false);
+  finishFade();
+  await new Promise(setImmediate);
+  const collapse = animations.find(a => a.name === "card" && a.options.duration === 200);
+  assert.ok(collapse, "height collapses over 200 ms after the fade");
+  assert.deepEqual(collapse.frames.map(f => f.height), ["500px", "300px"]);
+  assert.equal(scroller.scrollTop, 100);
+  assert.ok(byId(h, tree, "option-answered"));
+});
+
+
+test("sending reserves bottom scroll space even with reduced motion", async t => {
+  for (const reduced of [false, true]) {
+    const { h, s, draw } = fixture(t, "en", reduced);
+    s.choose("a", 0, "A"); s.choose("a", 1, "A"); s.choose("a", 2, "A");
+    s.setOptionSender(async () => {});
+    let scroll = 400;
+    const never = new Promise(() => {});
+    const old = { style: {}, setAttribute() {}, querySelectorAll: () => [], remove() {}, animate: () => ({ finished: never, cancel() {} }) };
+    const card = {
+      style: {}, closest: () => scroller, cloneNode: () => old, appendChild() {},
+      getBoundingClientRect: () => ({ height: card.style.height && card.style.height !== "auto" ? Number.parseFloat(card.style.height) : s.getOptionSession("a").readOnly ? 300 : 700 }),
+      animate: () => ({ finished: never, cancel() {} }),
+    };
+    const scroller = {
+      style: {}, clientHeight: 500, addEventListener() {}, removeEventListener() {},
+      get scrollHeight() { return Math.max(500, 200 + card.getBoundingClientRect().height + (Number.parseFloat(card.style.marginBottom) || 0)); },
+      get scrollTop() { return scroll = Math.min(scroll, this.scrollHeight - this.clientHeight); },
+      set scrollTop(value) { scroll = Math.min(value, this.scrollHeight - this.clientHeight); },
+    };
+    const tree = draw();
+    byId(h, tree, "option-card").props.ref(card);
+    byId(h, tree, "option-send").props.onPress();
+    await new Promise(setImmediate);
+    draw();
+    assert.equal(scroller.scrollTop, 400, `scroll retained with reduced motion ${reduced}`);
+    assert.ok(Number.parseFloat(card.style.marginBottom) >= 400, `space retained with reduced motion ${reduced}`);
+    if (reduced) assert.equal(card.style.height, "auto");
+  }
 });

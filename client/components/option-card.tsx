@@ -29,6 +29,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   const fade = useRef(new Animated.Value(1)).current;
   const transition = useRef<{ index: number; height: number; old: HTMLElement | null; card: HTMLElement; scroller: HTMLElement | null; scrollTop: number; restore: () => void } | null>(null);
   const activeTransition = useRef<(() => void) | null>(null);
+  const pendingSend = useRef<{ card: HTMLElement; old: HTMLElement | null; height: number; scroller: HTMLElement | null; scrollTop: number } | null>(null);
   const scrollSpace = useRef<{ card: HTMLElement; scroller: HTMLElement; original: string; base: number; amount: number; stop: () => void; trim: () => void } | null>(null);
   const clearScrollSpace = () => {
     const space = scrollSpace.current;
@@ -128,7 +129,59 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     activeTransition.current = finish;
     heightAnimation.finished.then(finish, finish);
   }, [index]);
+  useCommitEffect(() => {
+    if (!session?.readOnly || !pendingSend.current) return;
+    const { card, old, height, scroller, scrollTop } = pendingSend.current;
+    pendingSend.current = null;
+    const previous = { height: card.style.height, overflow: card.style.overflow, position: card.style.position };
+    const anchor = scroller?.style.overflowAnchor;
+    if (scroller) scroller.style.overflowAnchor = "none";
+    card.style.height = "auto";
+    const nextHeight = card.getBoundingClientRect().height;
+    if (scroller && scroller.clientHeight > 0) {
+      const margin = card.style.marginBottom;
+      const base = Number.parseFloat(globalThis.getComputedStyle?.(card).marginBottom ?? margin) || 0;
+      card.style.marginBottom = `${base + scroller.clientHeight}px`;
+      const contentHeight = scroller.scrollHeight - scroller.clientHeight;
+      card.style.marginBottom = margin;
+      const deficit = Math.max(0, scrollTop + scroller.clientHeight - contentHeight);
+      if (Number.isFinite(deficit)) reserveScrollSpace(card, scroller, deficit);
+    }
+    if (scroller) scroller.scrollTop = scrollTop;
+    const reduced = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduced || !old || typeof card.animate !== "function" || typeof old.animate !== "function") {
+      if (scroller) scroller.style.overflowAnchor = anchor ?? "";
+      scrollSpace.current?.trim();
+      return;
+    }
+    card.style.height = `${height}px`;
+    card.style.overflow = "hidden";
+    card.style.position = "relative";
+    Object.assign(old.style, { position: "absolute", top: "-1px", left: "-1px", width: "100%", margin: "0", pointerEvents: "none", zIndex: "1" });
+    card.appendChild(old);
+    const out = old.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, easing: "linear", fill: "both" });
+    const grey = card.animate([{ opacity: 1 }, { opacity: 0.55 }], { duration: 120, easing: "linear", fill: "both" });
+    let collapse: Animation | null = null;
+    const finish = () => {
+      if (activeTransition.current !== finish) return;
+      activeTransition.current = null;
+      out.cancel(); grey.cancel(); collapse?.cancel(); old.remove();
+      card.style.height = previous.height;
+      card.style.overflow = previous.overflow;
+      card.style.position = previous.position;
+      if (scroller) scroller.style.overflowAnchor = anchor ?? "";
+      scrollSpace.current?.trim();
+    };
+    activeTransition.current = finish;
+    out.finished.then(() => {
+      if (activeTransition.current !== finish) return;
+      old.remove();
+      collapse = card.animate([{ height: `${height}px` }, { height: `${nextHeight}px` }], { duration: 200, easing: "linear", fill: "both" });
+      collapse.finished.then(finish, finish);
+    }, finish);
+  }, [session?.readOnly]);
   useEffect(() => () => {
+    pendingSend.current = null;
     transition.current?.restore();
     activeTransition.current?.();
     clearScrollSpace();
@@ -225,6 +278,21 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     if (!current || current.at !== at || current.readOnly || current.sending || current.activeQuestion === nextIndex) return;
     prepareQuestionSwitch();
     setActiveQuestion(agentId, nextIndex);
+  };
+  const prepareSend = () => {
+    if (Platform.OS !== "web") return;
+    const card = root.current;
+    if (!card?.style || typeof card.getBoundingClientRect !== "function") return;
+    activeTransition.current?.();
+    const scroller = card.closest?.<HTMLElement>('[data-testid="agent-chat-scroll"]') ?? null;
+    const reduced = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const old = !reduced && typeof card.cloneNode === "function" ? card.cloneNode(true) as HTMLElement : null;
+    if (old) {
+      old.setAttribute("aria-hidden", "true"); old.setAttribute("inert", "");
+      old.removeAttribute?.("data-testid"); old.removeAttribute?.("id");
+      old.querySelectorAll("[data-testid], [id]").forEach(node => { node.removeAttribute("data-testid"); node.removeAttribute("id"); });
+    }
+    pendingSend.current = { card, old, height: card.getBoundingClientRect().height, scroller, scrollTop: scroller?.scrollTop ?? 0 };
   };
   const select = (letter: string) => {
     const before = getOptionSession(agentId);
@@ -357,7 +425,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
           : focused === "option-send"
           ? t("answerCard.hintSend").replace(/^Tab →\s*/, "↵ ").toLowerCase()
           : `${t("answerCard.hintMove").replace(/^↑\s*↓/, "↑↓")} · ↵ ${t("answerCard.hintPick").replace(/^A B C D\s*/, "")}`}</Text> : <View />}
-        <Pressable {...focusProps("option-send")} testID="option-send" accessibilityRole="button" accessibilityState={{ disabled: sendDisabled }} disabled={sendDisabled} focusable={!sendDisabled} onPress={() => { if (getOptionSession(agentId)?.at === at) void sendAnswer(agentId); }} style={[{ minHeight: 44, justifyContent: "center", alignItems: "center", paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderStyle: sendDisabled ? "dashed" : "solid", borderColor: sendDisabled ? tokens.foregroundMuted : tokens.accent, backgroundColor: sendDisabled ? "transparent" : tokens.accent }, focusStyle("option-send")]}>
+        <Pressable {...focusProps("option-send")} testID="option-send" accessibilityRole="button" accessibilityState={{ disabled: sendDisabled }} disabled={sendDisabled} focusable={!sendDisabled} onPress={() => { if (getOptionSession(agentId)?.at === at) { prepareSend(); void sendAnswer(agentId).then(() => { if (!getOptionSession(agentId)?.readOnly) pendingSend.current = null; }); } }} style={[{ minHeight: 44, justifyContent: "center", alignItems: "center", paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderStyle: sendDisabled ? "dashed" : "solid", borderColor: sendDisabled ? tokens.foregroundMuted : tokens.accent, backgroundColor: sendDisabled ? "transparent" : tokens.accent }, focusStyle("option-send")]}>
           <Text style={{ ...label, color: sendDisabled ? tokens.foregroundMuted : tokens.accentForeground, fontWeight: "700" }}>{missing === null ? t("answerCard.send", { answer: answerIndex(agentId) ?? "" }) : t("answerCard.missing", { question: number(missing) })}</Text>
         </Pressable>
       </View>}
