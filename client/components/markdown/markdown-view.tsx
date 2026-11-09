@@ -385,7 +385,7 @@ function renderBlock(
         && !outputWouldFold(block.code, context.foldLongOutputAfter);
       return (
         <View key={key} style={styles.codeBlock}>
-          {delegate ? <OfficialMarkdownBlock text={fencedSource(block.code, block.language.toLowerCase() === "mermaid" ? "mermaid" : block.language)} fallback={fallback} /> : fallback}
+          {delegate ? <OfficialMarkdownBlock text={fencedSource(block.code, block.language.toLowerCase() === "mermaid" ? "mermaid" : block.language)} language={block.language} tokens={tokens} fallback={fallback} /> : fallback}
         </View>
       );
     }
