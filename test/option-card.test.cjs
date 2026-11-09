@@ -604,3 +604,47 @@ test("a rapid question switch starts from the currently rendered height", t => {
   f.draw();
   assert.equal(animations[1].keyframes[0].height, "350px");
 });
+
+test("read-only question switches crossfade inside a stable frame", async t => {
+  const f = motionFixture(t);
+  const s = f.h.load("client/option-session.ts");
+  s.choose("a", 0, "A"); s.choose("a", 1, "A");
+  s.setOptionSender(async () => {});
+  await s.sendAnswer("a");
+  const animations = [];
+  const scroller = { style: { overflowAnchor: "auto" }, scrollTop: 123 };
+  const old = { style: {}, setAttribute() {}, querySelectorAll: () => [], remove() {}, animate(frames, options) { animations.push({ name: "old", frames, options }); return { finished: new Promise(() => {}), cancel() {} }; } };
+  const content = { style: {}, getBoundingClientRect: () => ({ top: 110, left: 10, width: 380, height: 300 }), cloneNode: () => old, animate(frames, options) { animations.push({ name: "new", frames, options }); return { finished: new Promise(() => {}), cancel() {} }; } };
+  const card = { style: {}, clientTop: 0, clientLeft: 0, closest: () => scroller, querySelector: () => content, appendChild() {}, animate() { throw new Error("read-only switches must not animate card height"); }, getBoundingClientRect: () => ({ top: 100, left: 10, width: 380, height: 500 }) };
+  let tree = f.draw();
+  byId(f.h, tree, "option-card").props.ref(card);
+  assert.ok(byId(f.h, tree, "option-question-measure"), "other questions occupy the same height frame");
+  byId(f.h, tree, "option-question-0").props.onPress();
+  scroller.scrollTop = 150;
+  tree = f.draw();
+  assert.equal(scroller.scrollTop, 123);
+  for (const name of ["old", "new"]) {
+    const fade = animations.find(a => a.name === name);
+    assert.ok(fade, `${name} content crossfades`);
+    assert.equal(fade.options.duration, 120);
+  }
+  assert.equal(byId(f.h, tree, "option-question-0").props.accessibilityState.selected, true);
+  assert.equal(s.getOptionSession("a").readOnly, true);
+});
+
+test("read-only switches restore scroll with reduced motion and no animations", async t => {
+  const f = motionFixture(t, true);
+  const s = f.h.load("client/option-session.ts");
+  s.choose("a", 0, "A"); s.choose("a", 1, "A");
+  s.setOptionSender(async () => {});
+  await s.sendAnswer("a");
+  const scroller = { style: { overflowAnchor: "auto" }, scrollTop: 123 };
+  const card = { style: {}, closest: () => scroller, querySelector: () => null, getBoundingClientRect: () => ({ height: 500 }), animate() { throw new Error("reduced motion must not animate"); } };
+  const tree = f.draw();
+  byId(f.h, tree, "option-card").props.ref(card);
+  byId(f.h, tree, "option-question-0").props.onPress();
+  scroller.scrollTop = 150;
+  f.draw();
+  assert.equal(scroller.scrollTop, 123);
+  assert.equal(scroller.style.overflowAnchor, "auto");
+});

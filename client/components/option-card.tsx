@@ -27,8 +27,9 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   const [focused, setFocused] = useState<string | null>(null);
   const [inputState, setInputState] = useState({ agentId, at, index: 0, height: 0, empty: false });
   const fade = useRef(new Animated.Value(1)).current;
-  const transition = useRef<{ index: number; height: number; old: HTMLElement | null; card: HTMLElement; scroller: HTMLElement | null; scrollTop: number; restore: () => void } | null>(null);
+  const transition = useRef<{ index: number; height: number; old: HTMLElement | null; card: HTMLElement; scroller: HTMLElement | null; scrollTop: number; restore: () => void; readOnly: boolean } | null>(null);
   const activeTransition = useRef<(() => void) | null>(null);
+  const readOnlyTransition = useRef<(() => void) | null>(null);
   const pendingSend = useRef<{ card: HTMLElement; old: HTMLElement | null; height: number; scroller: HTMLElement | null; scrollTop: number } | null>(null);
   const scrollSpace = useRef<{ card: HTMLElement; scroller: HTMLElement; original: string; base: number; amount: number; stop: () => void; trim: () => void } | null>(null);
   const clearScrollSpace = () => {
@@ -71,7 +72,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     setInputState({ agentId, at, index, height: 0, empty: false });
   }, [agentId, at, index]);
   useEffect(() => {
-    if (Platform.OS === "web" && globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+    if (Platform.OS === "web") {
       fade.setValue(1);
       return;
     }
@@ -89,6 +90,23 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     transition.current = null;
     const { card, old, height, scroller, scrollTop, restore } = pending;
     const content = card.querySelector<HTMLElement>('[data-testid="option-question-content"]');
+    if (pending.readOnly) {
+      if (scroller) scroller.scrollTop = scrollTop;
+      if (!old || !content || typeof old.animate !== "function" || typeof content.animate !== "function") {
+        restore();
+        return;
+      }
+      const out = old.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, easing: "linear", fill: "both" });
+      const incoming = content.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 120, easing: "linear", fill: "both" });
+      const finish = () => {
+        if (readOnlyTransition.current !== finish) return;
+        readOnlyTransition.current = null;
+        out.cancel(); incoming.cancel(); restore();
+      };
+      readOnlyTransition.current = finish;
+      out.finished.then(finish, finish);
+      return;
+    }
     const inlineMargin = card.style.marginBottom;
     const previousMargin = Number.parseFloat(globalThis.getComputedStyle?.(card).marginBottom ?? inlineMargin) || 0;
     card.style.height = "auto";
@@ -184,6 +202,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     pendingSend.current = null;
     transition.current?.restore();
     activeTransition.current?.();
+    readOnlyTransition.current?.();
     clearScrollSpace();
   }, []);
   if (!session || session.at !== at || session.dismissed || (status === "running" && !session.readOnly)) return null;
@@ -226,14 +245,17 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     if (Platform.OS !== "web") return;
     const card = root.current;
     if (!card?.style || typeof card.getBoundingClientRect !== "function") return;
-    const interruptedHeight = activeTransition.current ? card.getBoundingClientRect().height : null;
+    const switchingReadOnly = !!session?.readOnly;
+    const interruptedHeight = !switchingReadOnly && activeTransition.current ? card.getBoundingClientRect().height : null;
     const scroller = card.closest?.<HTMLElement>('[data-testid="agent-chat-scroll"]') ?? null;
     const scrollTop = scroller?.scrollTop ?? 0;
-    activeTransition.current?.();
+    const sendTransitionActive = switchingReadOnly && !!activeTransition.current;
+    if (switchingReadOnly) readOnlyTransition.current?.();
+    else activeTransition.current?.();
     transition.current?.restore();
     transition.current = null;
     const anchor = scroller?.style.overflowAnchor;
-    if (scroller) scroller.style.overflowAnchor = "none";
+    if (scroller && !sendTransitionActive) scroller.style.overflowAnchor = "none";
     const previous = { height: card.style.height, overflow: card.style.overflow, position: card.style.position };
     const cardRect = card.getBoundingClientRect();
     const height = interruptedHeight ?? cardRect.height;
@@ -248,20 +270,24 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
       old.setAttribute("data-testid", "");
       old.querySelectorAll("[data-testid], [id]").forEach(node => { node.removeAttribute("data-testid"); node.removeAttribute("id"); });
       Object.assign(old.style, { position: "absolute", top: `${contentRect.top - cardRect.top - card.clientTop}px`, left: `${contentRect.left - cardRect.left - card.clientLeft}px`, width: `${contentRect.width}px`, pointerEvents: "none", margin: "0", zIndex: "1" });
-      card.style.position = "relative";
-      card.style.height = `${height}px`;
-      card.style.overflow = "hidden";
+      if (!switchingReadOnly) {
+        card.style.position = "relative";
+        card.style.height = `${height}px`;
+        card.style.overflow = "hidden";
+      }
       card.appendChild(old);
     }
     const restore = () => {
       old?.remove();
-      card.style.height = previous.height;
-      card.style.overflow = previous.overflow;
-      card.style.position = previous.position;
-      if (scroller) scroller.style.overflowAnchor = anchor ?? "";
+      if (!switchingReadOnly) {
+        card.style.height = previous.height;
+        card.style.overflow = previous.overflow;
+        card.style.position = previous.position;
+      }
+      if (scroller && !sendTransitionActive) scroller.style.overflowAnchor = anchor ?? "";
     };
     if (scroller) scroller.scrollTop = scrollTop;
-    transition.current = { index, height, old, card, scroller, scrollTop, restore };
+    transition.current = { index, height, old, card, scroller, scrollTop, restore, readOnly: switchingReadOnly };
   };
   const cancelUnchangedSwitch = (nextIndex: number) => {
     if (nextIndex !== index) return;
@@ -271,6 +297,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   const switchQuestion = (nextIndex: number) => {
     if (nextIndex === index) return;
     if (readOnly) {
+      prepareQuestionSwitch();
       setViewed({ agentId, at, index: nextIndex });
       return;
     }
@@ -360,6 +387,49 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
       }
     },
   } : {};
+  const renderQuestion = (index: number, measure = false) => {
+    const question = session.set.questions[index]!;
+    const customLetter = getOptionSession(agentId)?.at === at ? customLetterFor(agentId, index)! : customAnswerLetter(question);
+    const customOpen = !!session.customOpen[index];
+    const customConfirmed = session.customConfirmed[index];
+    return (
+        <Animated.View key={index} testID={measure ? undefined : "option-question-content"} style={{ opacity: Platform.OS !== "web" ? fade : 1, gap: 8 }}>
+          <Text selectable style={{ ...label, fontWeight: "700", marginBottom: 4 }}>{question.text}</Text>
+          {question.options.map(option => {
+            const selected = session.choices[index] === option.letter;
+            const [first, ...rest] = option.text.split("\n");
+            const rowStyle = { minHeight: 48, flexDirection: "row" as const, alignItems: "center" as const, gap: 10, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: readOnly ? tokens.border : selected ? tokens.accent : tokens.border, backgroundColor: readOnly ? tokens.surface2 : selected ? tokens.accentBg : tokens.surface1 };
+            const contents = <>
+              <Text style={{ ...label, color: readOnly ? tokens.foregroundMuted : selected ? tokens.accent : tokens.foregroundMuted, fontWeight: "700", overflow: "hidden", borderWidth: 1, borderColor: readOnly ? tokens.border : selected ? tokens.accent : tokens.border, borderRadius: 5, paddingHorizontal: 7, paddingVertical: 3 }}>{option.letter}</Text>
+              <View style={{ flex: 1 }}><Text style={label}>{first}</Text>{rest.length ? <Text style={muted}>{rest.join("\n")}</Text> : null}</View>
+              {option.recommended ? <Text style={{ ...muted, color: readOnly ? tokens.foregroundMuted : tokens.accent, overflow: "hidden", borderRadius: 10, backgroundColor: readOnly ? "transparent" : tokens.accentBg, paddingHorizontal: 8, paddingVertical: 3 }}>{t("answerCard.recommended")}</Text> : null}
+              {selected ? <Text style={{ ...label, color: readOnly ? tokens.foregroundMuted : tokens.accent, fontWeight: "700" }}>✓</Text> : null}
+            </>;
+            return readOnly
+              ? <View key={option.letter} testID={measure ? undefined : `option-row-${option.letter}`} accessibilityState={{ selected, disabled: true }} style={rowStyle}>{contents}</View>
+              : <Pressable key={option.letter} {...focusProps(`option-row-${option.letter}`)} testID={`option-row-${option.letter}`} accessibilityRole="button" accessibilityState={{ selected, disabled }} accessibilityLabel={t("answerCard.optionLabel", { letter: option.letter, text: option.text })} disabled={disabled} onPress={() => select(option.letter)} style={[rowStyle, focusStyle(`option-row-${option.letter}`)]}>{contents}</Pressable>;
+          })}
+          {(() => {
+            const rowId = `option-row-${customLetter}`;
+            const rowStyle = { minHeight: 48, flexDirection: "row" as const, alignItems: "center" as const, gap: 10, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: readOnly ? tokens.border : customOpen ? tokens.accent : tokens.border, backgroundColor: readOnly ? tokens.surface2 : customOpen ? tokens.accentBg : tokens.surface1 };
+            const contents = <>
+              <Text style={{ ...label, color: !readOnly && customOpen ? tokens.accent : tokens.foregroundMuted, fontWeight: "700", overflow: "hidden", borderWidth: 1, borderColor: !readOnly && customOpen ? tokens.accent : tokens.border, borderRadius: 5, paddingHorizontal: 7, paddingVertical: 3 }}>{customLetter}</Text>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                {readOnly ? <Text selectable style={label}>{customConfirmed ?? t("answerCard.other")}</Text> : customOpen ? <>
+                  <TextInput ref={setCustomInput} {...(Platform.OS === "web" ? { onFocus: (event: { stopPropagation(): void }) => { event.stopPropagation(); setFocused("option-custom-input"); }, onBlur: (event: { stopPropagation(): void }) => { event.stopPropagation(); setFocused(current => current === "option-custom-input" ? null : current); } } : {})} testID="option-custom-input" accessibilityLabel={t("answerCard.other")} value={session.customDrafts[index] ?? ""} onChangeText={text => { if (getOptionSession(agentId)?.at === at) { setCustomDraft(agentId, index, text); if (text.trim()) updateInputState({ empty: false }); } }} multiline numberOfLines={2} editable={!disabled} onContentSizeChange={event => { const current = getOptionSession(agentId); if (current?.at === at && current.activeQuestion === index) updateInputState({ height: event.nativeEvent.contentSize.height }); }} style={[{ ...label, padding: 0, borderWidth: 0, minHeight: width <= 390 ? Math.max(44, tokens.fs(36)) : tokens.fs(36), maxHeight: tokens.fs(72), height: Math.max(tokens.fs(36), Math.min(tokens.fs(72), currentInputState.height)), textAlignVertical: "top" }, focusStyle("option-custom-input")]} />
+                  {currentInputState.empty ? <Text testID="option-custom-empty" style={{ ...muted, color: tokens.danger }}>{t("answerCard.otherEmpty")}</Text> : null}
+                  {!readOnly && customConfirmed === undefined ? <Text style={muted}>{t("answerCard.otherHint")}</Text> : null}
+                </> : <><Text style={label}>{t("answerCard.other")}</Text><Text style={muted}>{t("answerCard.otherHint")}</Text></>}
+              </View>
+              {readOnly && customConfirmed !== undefined ? <Text style={{ ...label, color: tokens.foregroundMuted, fontWeight: "700" }}>✓</Text> : null}
+            </>;
+            return readOnly
+              ? <View testID={measure ? undefined : rowId} accessibilityState={{ selected: customOpen, disabled: true }} style={rowStyle}>{contents}</View>
+              : <Pressable {...focusProps(rowId)} testID={rowId} accessibilityRole="button" accessibilityState={{ selected: customOpen, disabled }} disabled={disabled} onPress={openAndFocusCustom} style={[rowStyle, focusStyle(rowId)]}>{contents}</Pressable>;
+          })()}
+        </Animated.View>
+    );
+  };
   return (
     <View {...keyboardProps} testID="option-card" accessibilityState={{ disabled: readOnly }} style={{ marginTop: 12, borderWidth: 1, borderColor: tokens.border, borderRadius: 12, backgroundColor: tokens.surface1, opacity: readOnly ? 0.55 : 1 }}>
       <View style={{ padding: 16, gap: 12 }}>
@@ -381,41 +451,14 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
           {readOnly ? <Text testID="option-read-only-status" style={{ ...muted, marginLeft: "auto" }}>{t("answerCard.readOnlyStatus")}</Text> : null}
           {!readOnly && !session.sending ? <Pressable testID="option-dismiss" accessibilityRole="button" onPress={() => { if (getOptionSession(agentId)?.at === at) dismiss(agentId); }} style={{ minHeight: 44, justifyContent: "center", marginLeft: "auto" }}><Text style={muted}>{t("answerCard.notOptions")}</Text></Pressable> : null}
         </View>
-        <Animated.View testID="option-question-content" style={{ opacity: Platform.OS !== "web" || readOnly ? fade : 1, gap: 8 }}>
-          <Text selectable style={{ ...label, fontWeight: "700", marginBottom: 4 }}>{question.text}</Text>
-          {question.options.map(option => {
-            const selected = session.choices[index] === option.letter;
-            const [first, ...rest] = option.text.split("\n");
-            const rowStyle = { minHeight: 48, flexDirection: "row" as const, alignItems: "center" as const, gap: 10, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: readOnly ? tokens.border : selected ? tokens.accent : tokens.border, backgroundColor: readOnly ? tokens.surface2 : selected ? tokens.accentBg : tokens.surface1 };
-            const contents = <>
-              <Text style={{ ...label, color: readOnly ? tokens.foregroundMuted : selected ? tokens.accent : tokens.foregroundMuted, fontWeight: "700", overflow: "hidden", borderWidth: 1, borderColor: readOnly ? tokens.border : selected ? tokens.accent : tokens.border, borderRadius: 5, paddingHorizontal: 7, paddingVertical: 3 }}>{option.letter}</Text>
-              <View style={{ flex: 1 }}><Text style={label}>{first}</Text>{rest.length ? <Text style={muted}>{rest.join("\n")}</Text> : null}</View>
-              {option.recommended ? <Text style={{ ...muted, color: readOnly ? tokens.foregroundMuted : tokens.accent, overflow: "hidden", borderRadius: 10, backgroundColor: readOnly ? "transparent" : tokens.accentBg, paddingHorizontal: 8, paddingVertical: 3 }}>{t("answerCard.recommended")}</Text> : null}
-              {selected ? <Text style={{ ...label, color: readOnly ? tokens.foregroundMuted : tokens.accent, fontWeight: "700" }}>✓</Text> : null}
-            </>;
-            return readOnly
-              ? <View key={option.letter} testID={`option-row-${option.letter}`} accessibilityState={{ selected, disabled: true }} style={rowStyle}>{contents}</View>
-              : <Pressable key={option.letter} {...focusProps(`option-row-${option.letter}`)} testID={`option-row-${option.letter}`} accessibilityRole="button" accessibilityState={{ selected, disabled }} accessibilityLabel={t("answerCard.optionLabel", { letter: option.letter, text: option.text })} disabled={disabled} onPress={() => select(option.letter)} style={[rowStyle, focusStyle(`option-row-${option.letter}`)]}>{contents}</Pressable>;
-          })}
-          {(() => {
-            const rowId = `option-row-${customLetter}`;
-            const rowStyle = { minHeight: 48, flexDirection: "row" as const, alignItems: "center" as const, gap: 10, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: readOnly ? tokens.border : customOpen ? tokens.accent : tokens.border, backgroundColor: readOnly ? tokens.surface2 : customOpen ? tokens.accentBg : tokens.surface1 };
-            const contents = <>
-              <Text style={{ ...label, color: !readOnly && customOpen ? tokens.accent : tokens.foregroundMuted, fontWeight: "700", overflow: "hidden", borderWidth: 1, borderColor: !readOnly && customOpen ? tokens.accent : tokens.border, borderRadius: 5, paddingHorizontal: 7, paddingVertical: 3 }}>{customLetter}</Text>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                {readOnly ? <Text selectable style={label}>{customConfirmed ?? t("answerCard.other")}</Text> : customOpen ? <>
-                  <TextInput ref={setCustomInput} {...(Platform.OS === "web" ? { onFocus: (event: { stopPropagation(): void }) => { event.stopPropagation(); setFocused("option-custom-input"); }, onBlur: (event: { stopPropagation(): void }) => { event.stopPropagation(); setFocused(current => current === "option-custom-input" ? null : current); } } : {})} testID="option-custom-input" accessibilityLabel={t("answerCard.other")} value={session.customDrafts[index] ?? ""} onChangeText={text => { if (getOptionSession(agentId)?.at === at) { setCustomDraft(agentId, index, text); if (text.trim()) updateInputState({ empty: false }); } }} multiline numberOfLines={2} editable={!disabled} onContentSizeChange={event => { const current = getOptionSession(agentId); if (current?.at === at && current.activeQuestion === index) updateInputState({ height: event.nativeEvent.contentSize.height }); }} style={[{ ...label, padding: 0, borderWidth: 0, minHeight: width <= 390 ? Math.max(44, tokens.fs(36)) : tokens.fs(36), maxHeight: tokens.fs(72), height: Math.max(tokens.fs(36), Math.min(tokens.fs(72), currentInputState.height)), textAlignVertical: "top" }, focusStyle("option-custom-input")]} />
-                  {currentInputState.empty ? <Text testID="option-custom-empty" style={{ ...muted, color: tokens.danger }}>{t("answerCard.otherEmpty")}</Text> : null}
-                  {!readOnly && customConfirmed === undefined ? <Text style={muted}>{t("answerCard.otherHint")}</Text> : null}
-                </> : <><Text style={label}>{t("answerCard.other")}</Text><Text style={muted}>{t("answerCard.otherHint")}</Text></>}
-              </View>
-              {readOnly && customConfirmed !== undefined ? <Text style={{ ...label, color: tokens.foregroundMuted, fontWeight: "700" }}>✓</Text> : null}
-            </>;
-            return readOnly
-              ? <View testID={rowId} accessibilityState={{ selected: customOpen, disabled: true }} style={rowStyle}>{contents}</View>
-              : <Pressable {...focusProps(rowId)} testID={rowId} accessibilityRole="button" accessibilityState={{ selected: customOpen, disabled }} disabled={disabled} onPress={openAndFocusCustom} style={[rowStyle, focusStyle(rowId)]}>{contents}</Pressable>;
-          })()}
-        </Animated.View>
+        {readOnly && Platform.OS === "web" ? <View style={{ backgroundColor: tokens.surface1 }} ref={(node: View | null) => {
+          const frame = node as unknown as HTMLElement | null;
+          if (!frame?.style) return;
+          frame.style.display = "grid";
+          Array.from(frame.children).forEach(child => { (child as HTMLElement).style.gridArea = "1 / 1"; });
+        }}>
+          {session.set.questions.map((_, i) => i === index ? renderQuestion(i) : <View key={i} testID="option-question-measure" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" {...({ "aria-hidden": true } as object)} style={{ visibility: "hidden", pointerEvents: "none" } as ViewStyle}>{renderQuestion(i, true)}</View>)}
+        </View> : renderQuestion(index)}
         {session.error ? <Text testID="option-send-error" accessibilityRole="alert" style={{ ...muted, color: tokens.danger }}>{t("answerCard.error", { reason: session.error })}</Text> : null}
       </View>
       {readOnly ? <View style={{ padding: 16, borderTopWidth: 1, borderColor: tokens.border }}><Text testID="option-answered" style={muted}>{`Answered in the chat: ${session.answeredText}`}</Text></View> : <View style={{ flexDirection: hasCustomAnswer ? "column" : "row", alignItems: hasCustomAnswer ? "stretch" : "center", justifyContent: "space-between", gap: 8, padding: 16, borderTopWidth: 1, borderColor: tokens.border, borderBottomLeftRadius: 11, borderBottomRightRadius: 11, backgroundColor: tokens.surface2 }}>
