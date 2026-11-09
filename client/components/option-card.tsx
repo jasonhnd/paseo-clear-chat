@@ -172,13 +172,13 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     }
     card.style.height = `${height}px`;
     card.style.overflow = "hidden";
-    const cardAnimation = card.animate([{ height: `${height}px` }, { height: `${nextHeight}px` }], { duration: 180, easing: "linear", fill: "both" });
+    const cardAnimation = card.animate([{ height: `${height}px` }, { height: `${nextHeight}px` }], { duration: opening ? 200 : 180, easing: "linear", fill: "both" });
     const rowOverflow = row.style.overflow;
     if (opening) row.style.overflow = "hidden";
     const rowAnimation = opening && typeof row.animate === "function" ? row.animate([
       { height: `${rowHeight}px`, backgroundColor: tokens.surface1, borderColor: tokens.border },
       { height: `${nextRowHeight}px`, backgroundColor: tokens.accentBg, borderColor: tokens.accent },
-    ], { duration: 160, easing: "linear", fill: "both" }) : null;
+    ], { duration: 200, easing: "linear", fill: "both" }) : null;
     const inputAnimation = !opening && input && typeof input.animate === "function" && inputHeight !== nextInputHeight
       ? input.animate([{ height: `${inputHeight}px` }, { height: `${nextInputHeight}px` }], { duration: 120, easing: "linear", fill: "both" }) : null;
     const finish = () => {

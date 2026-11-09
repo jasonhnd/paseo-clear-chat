@@ -213,9 +213,9 @@ test("opening the custom row focuses on mount and expands row and card, includin
     assert.equal(scroller.scrollTop, 100);
     if (reduced) assert.deepEqual(calls, []);
     else {
-      assert.ok(calls.some(call => call.name === "row" && call.options.duration === 160 && call.frames[0].height === "70px" && call.frames.at(-1).height === "120px"));
+      assert.ok(calls.some(call => call.name === "row" && call.options.duration === 200 && call.frames[0].height === "70px" && call.frames.at(-1).height === "120px"));
       assert.ok(calls.some(call => call.name === "row" && call.frames[0].backgroundColor && call.frames.at(-1).backgroundColor && call.frames[0].borderColor && call.frames.at(-1).borderColor));
-      assert.ok(calls.some(call => call.name === "card" && call.options.duration === 180 && call.frames[0].height === "500px" && call.frames.at(-1).height === "550px"));
+      assert.ok(calls.some(call => call.name === "card" && call.options.duration === 200 && call.frames[0].height === "500px" && call.frames.at(-1).height === "550px"));
     }
     byId(h, tree, "option-custom-input").props.ref(null);
   }
@@ -246,4 +246,20 @@ test("custom text growth animates to its cap and then stays inside the field", t
   assert.equal(byId(h, tree, "option-custom-input").props.style[0].height, 72);
   assert.equal(calls.length, 0, "growth past the cap does not move the card");
   byId(h, tree, "option-custom-input").props.ref(null);
+});
+
+test("opening leaves enough animation time for the observed 150 ms frame window", t => {
+  const { h, s, draw } = fixture(t, twoQuestions);
+  const calls = [], never = new Promise(() => {});
+  const animate = name => ({ animate(frames, options) { calls.push({ name, frames, options }); return { finished: never, cancel() {} }; } });
+  const row = { style: {}, getBoundingClientRect: () => ({ height: s.getOptionSession("a").customOpen[0] ? 120 : 70 }), ...animate("row") };
+  const card = { style: {}, closest: () => null, querySelector: selector => selector.includes("option-row-C") ? row : null, getBoundingClientRect: () => ({ height: s.getOptionSession("a").customOpen[0] ? 550 : 500 }), ...animate("card") };
+  const tree = draw();
+  byId(h, tree, "option-card").props.ref(card);
+  byId(h, tree, "option-row-C").props.onPress();
+  draw();
+  const rowAnimation = calls.find(call => call.name === "row");
+  const cardAnimation = calls.find(call => call.name === "card");
+  assert.ok(rowAnimation.options.duration >= 150 + 2 * (1000 / 60), "the row allows 150 ms plus two 60 Hz sampling intervals");
+  assert.ok(cardAnimation.options.duration >= rowAnimation.options.duration, "the card does not clip the row animation");
 });
