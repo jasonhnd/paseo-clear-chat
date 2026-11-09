@@ -1,5 +1,7 @@
 import React from "react";
+import { Text, View } from "react-native";
 import * as PaseoUI from "@getpaseo/plugin/client/ui";
+import { radius, type ExtendedThemeTokens } from "../theme-tokens";
 
 const { Markdown } = PaseoUI as typeof PaseoUI & {
   Markdown?: (props: { children: string }) => React.ReactElement;
@@ -24,7 +26,18 @@ class MarkdownBoundary extends React.Component<{ fallback: React.ReactNode; chil
   }
 }
 
-export function OfficialMarkdownBlock({ text, fallback }: { text: string; fallback: React.ReactNode }) {
+export function OfficialMarkdownBlock({ text, language, tokens, fallback }: { text: string; language: string; tokens: ExtendedThemeTokens; fallback: React.ReactNode }) {
   if (typeof Markdown !== "function") return fallback;
-  return <MarkdownBoundary key={text} fallback={fallback}><Markdown>{text}</Markdown></MarkdownBoundary>;
+  return <MarkdownBoundary key={text} fallback={fallback}>
+    {language && language.toLowerCase() !== "mermaid" ? <View testID="official-code-language" style={{
+      backgroundColor: tokens.surface2,
+      borderBottomWidth: 1,
+      borderBottomColor: tokens.borderSubtle,
+      borderTopLeftRadius: radius.block,
+      borderTopRightRadius: radius.block,
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+    }}><Text style={{ fontSize: 12, color: tokens.foregroundMuted }}>{language}</Text></View> : null}
+    <Markdown>{text}</Markdown>
+  </MarkdownBoundary>;
 }
