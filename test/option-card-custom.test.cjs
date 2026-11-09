@@ -66,22 +66,44 @@ test("all three locales contain the approved labels", () => {
 const twoQuestions = "1) First?\nA One\nB Two\n\n2) Second?\nA Yes\nB No\n\nReply: A";
 
 test("blank attempts show feedback only for the active question and unmodified Enter", t => {
-  const { h, s, draw } = fixture(t, twoQuestions);
+  const { h, s, draw: render } = fixture(t, twoQuestions);
+  let inputListener, inputRef, mounted = false;
+  const inputNode = new EventTarget();
+  const add = inputNode.addEventListener.bind(inputNode);
+  const remove = inputNode.removeEventListener.bind(inputNode);
+  inputNode.addEventListener = (type, listener, ...args) => { if (type === "keydown") inputListener = listener; add(type, listener, ...args); };
+  inputNode.removeEventListener = (type, listener, ...args) => { if (type === "keydown" && inputListener === listener) inputListener = undefined; remove(type, listener, ...args); };
+  t.after(() => { if (mounted) inputRef(null); });
+  const draw = () => {
+    const tree = render();
+    const input = byId(h, tree, "option-custom-input");
+    if (input && !mounted) { inputRef = input.props.ref; inputRef(inputNode); mounted = true; }
+    else if (!input && mounted) { inputRef(null); mounted = false; }
+    return tree;
+  };
   byId(h, draw(), "option-row-C").props.onPress();
   assert.equal(byId(h, draw(), "option-custom-empty"), undefined);
-  const key = (overrides = {}) => byId(h, draw(), "option-card").props.onKeyDown({
-    key: "Enter", target: { getAttribute: () => "option-custom-input" }, nativeEvent: {}, preventDefault() {}, stopPropagation() {}, ...overrides,
-  });
-  for (const overrides of [{ shiftKey: true }, { altKey: true }, { ctrlKey: true }, { metaKey: true }, { nativeEvent: { isComposing: true } }, { key: "\n" }]) {
+  const key = (overrides = {}) => {
+    draw();
+    assert.equal(typeof inputListener, "function");
+    let prevented = false;
+    inputListener({ key: "Enter", preventDefault() { prevented = true; }, stopPropagation() {}, ...overrides });
+    return prevented;
+  };
+  for (const overrides of [{ shiftKey: true }, { altKey: true }, { ctrlKey: true }, { metaKey: true }, { isComposing: true }, { key: "\n" }]) {
     key(overrides);
     assert.equal(byId(h, draw(), "option-custom-empty"), undefined);
   }
-  key();
+  assert.equal(key(), true);
+  assert.equal(s.getOptionSession("a").choices[0], undefined);
   let hint = byId(h, draw(), "option-custom-empty");
   assert.equal(hint.type, "Text");
   assert.equal(h.text(hint), "Write your answer first");
   byId(h, draw(), "option-custom-input").props.onChangeText(" \n ");
   assert.ok(byId(h, draw(), "option-custom-empty"));
+  assert.equal(key(), true);
+  assert.equal(s.getOptionSession("a").customDrafts[0], " \n ");
+  assert.equal(s.getOptionSession("a").choices[0], undefined);
   byId(h, draw(), "option-custom-input").props.onChangeText("answer");
   assert.equal(byId(h, draw(), "option-custom-empty"), undefined);
   key();

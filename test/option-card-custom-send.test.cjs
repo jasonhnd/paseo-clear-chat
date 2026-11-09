@@ -99,7 +99,21 @@ test("all locales contain the approved read-only status", () => {
 });
 
 test("sent answers can be viewed by question without changing the answers or message", async t => {
-  const { h, s, draw } = fixture(t);
+  const { h, s, draw: render } = fixture(t);
+  let inputListener, inputRef, mounted = false;
+  const inputNode = new EventTarget();
+  const add = inputNode.addEventListener.bind(inputNode);
+  const remove = inputNode.removeEventListener.bind(inputNode);
+  inputNode.addEventListener = (type, listener, ...args) => { if (type === "keydown") inputListener = listener; add(type, listener, ...args); };
+  inputNode.removeEventListener = (type, listener, ...args) => { if (type === "keydown" && inputListener === listener) inputListener = undefined; remove(type, listener, ...args); };
+  t.after(() => { if (mounted) inputRef(null); });
+  const draw = () => {
+    const tree = render();
+    const input = byId(h, tree, "option-custom-input");
+    if (input && !mounted) { inputRef = input.props.ref; inputRef(inputNode); mounted = true; }
+    else if (!input && mounted) { inputRef(null); mounted = false; }
+    return tree;
+  };
   const press = id => byId(h, draw(), id).props.onPress();
   const key = (key, id) => {
     const target = { getAttribute: () => id, closest: () => null };
@@ -108,7 +122,9 @@ test("sent answers can be viewed by question without changing the answers or mes
   press("option-row-B");
   press("option-row-E");
   byId(h, draw(), "option-custom-input").props.onChangeText("line one\nline two");
-  key("Enter", "option-custom-input");
+  draw();
+  assert.equal(typeof inputListener, "function");
+  inputListener({ key: "Enter", preventDefault() {}, stopPropagation() {} });
   press("option-row-A");
   let sent;
   s.setOptionSender(async (_, text) => { sent = text; });
