@@ -1,8 +1,9 @@
 import { useTranslation } from "@getpaseo/plugin/client";
 import { messages } from "../messages";
 import React, { useMemo } from "react";
-import { View, Text, Pressable, StyleSheet } from "react-native";
+import { View, Text, Pressable, StyleSheet, Platform } from "react-native";
 import { CopyFallbackDialog, copyTouchTarget, useCopyText } from "./copy-feedback";
+import { useCoarsePointer } from "./use-coarse-pointer";
 import { Glyph } from "./glyph";
 import { frosted } from "./frosted";
 import { surfaceProps } from "./view-props";
@@ -483,6 +484,7 @@ export function SyntaxHighlightBlock({
 }: SyntaxHighlightProps) {
   const { t } = useTranslation(messages);
   const { copied, handleCopy, fallbackText, setFallbackText } = useCopyText(copyText ?? code);
+  const coarseWeb = useCoarsePointer(Platform.OS === "web") && Platform.OS === "web";
 
   const lines = useMemo(() => code.trimEnd().split("\n"), [code]);
   // A diff is a diff whatever the label says, and everything below reads this
@@ -534,12 +536,12 @@ export function SyntaxHighlightBlock({
         },
         header: {
           flexDirection: "row",
-          alignItems: "flex-start",
+          alignItems: coarseWeb ? "center" : "flex-start",
           justifyContent: "space-between",
           gap: 8,
           paddingHorizontal: 12,
-          paddingVertical: 6,
-          borderBottomWidth: 1,
+          paddingVertical: coarseWeb ? 0 : 6,
+          borderBottomWidth: coarseWeb ? 0 : 1,
           borderBottomColor: tokens.borderSubtle,
           backgroundColor: tokens.surface1,
         },
@@ -582,8 +584,7 @@ export function SyntaxHighlightBlock({
           paddingVertical: 2,
           borderRadius: radius.chip,
         },
-        copyButton: {
-          ...copyTouchTarget,
+        buttonVisual: {
           flexDirection: "row",
           alignItems: "center",
           gap: 4,
@@ -592,6 +593,10 @@ export function SyntaxHighlightBlock({
           borderRadius: radius.block,
           backgroundColor: tokens.surface2,
           flexShrink: 0,
+        },
+        copyButton: {
+          ...copyTouchTarget,
+          ...(coarseWeb ? { minWidth: 44, minHeight: 44, alignItems: "center" as const, justifyContent: "center" as const } : {}),
         },
         headerActions: {
           flexDirection: "row",
@@ -620,6 +625,7 @@ export function SyntaxHighlightBlock({
           ...unselectable,
         },
         codeArea: {
+          ...(coarseWeb && (filename || language) ? { borderTopWidth: 1, borderTopColor: tokens.borderSubtle } : {}),
           padding: compact ? 8 : 12,
         },
         lineRow: {
@@ -643,8 +649,15 @@ export function SyntaxHighlightBlock({
           color: tokens.foreground,
         },
       }),
-    [tokens, compact, copied],
+    [tokens, compact, copied, coarseWeb, filename, language],
   );
+
+  const copyContents = <>
+    <Pop trigger={copied}>
+      <Glyph name={copied ? "Check" : "Copy"} size={12} color={copied ? tokens.success : tokens.foregroundMuted} />
+    </Pop>
+    <Text style={styles.copyText}>{copied ? t("selection.copied") : t("code.copy")}</Text>
+  </>;
 
   return (
     // No pointer glow here: a code block is an inner surface, and lighting it
@@ -688,7 +701,7 @@ export function SyntaxHighlightBlock({
                 onPress={() => openLink(openAddress)}
                 accessibilityRole="button"
                 accessibilityLabel={t("code.openA11y", { address: openAddress })}
-                style={[styles.copyButton, styles.openButton]}
+                style={[styles.buttonVisual, styles.openButton]}
               >
                 <Text style={styles.openText}>{t("code.open")}</Text>
               </Pressable>
@@ -697,16 +710,9 @@ export function SyntaxHighlightBlock({
               onPress={handleCopy}
               accessibilityRole="button"
               accessibilityLabel={copied ? t("code.copiedA11y") : t("code.copyA11y")}
-              style={styles.copyButton}
+              style={coarseWeb ? styles.copyButton : [styles.buttonVisual, styles.copyButton]}
             >
-              <Pop trigger={copied}>
-                <Glyph
-                  name={copied ? "Check" : "Copy"}
-                  size={12}
-                  color={copied ? tokens.success : tokens.foregroundMuted}
-                />
-              </Pop>
-              <Text style={styles.copyText}>{copied ? t("selection.copied") : t("code.copy")}</Text>
+              {coarseWeb ? <View style={styles.buttonVisual}>{copyContents}</View> : copyContents}
             </Pressable>
           </View>
         </View>
