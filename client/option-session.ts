@@ -3,6 +3,7 @@ import { parseOptionQuestions } from "./option-questions";
 import type { OptionQuestionSet } from "./option-questions";
 import { customAnswerLetter, formatCustomAnswers } from "./option-custom-answer";
 import type { ConfirmedOptionAnswer } from "./option-custom-answer";
+import { parseCustomAnswerHistory } from "./option-custom-history";
 import { getEnhancerPreferences, onEnhancerPreferencesReady, saveDismissedOptionReply } from "./preferences";
 
 export interface OptionSession {
@@ -94,12 +95,35 @@ function reconcileAnswers(agentId: string): boolean {
   for (const [at, session] of sessions) {
     const nextReply = times.find(time => time > at) ?? Infinity;
     const answer = userMessages.find(([time]) => time > at && time < nextReply);
-    if (answer && (session.answeredText === null || (session.answerAt !== null && session.answerAt !== answer[0]))) {
-      const sent = session.sending && sessionAnswerText(session) === answer[1];
-      sessions.set(at, { ...session, choices: sent ? session.choices : typedChoices(session.set, answer[1]), customConfirmed: sent ? session.customConfirmed : {}, customOpen: sent ? session.customOpen : {}, readOnly: true, answeredText: answer[1], answerAt: answer[0], error: null });
+    if (answer && (session.answerAt !== answer[0] || session.answeredText !== answer[1])) {
+      const sent = (session.sending || (session.answerAt === null && session.answeredText === answer[1])) && sessionAnswerText(session) === answer[1];
+      const parsed = sent ? null : parseCustomAnswerHistory(session.set, answer[1]);
+      const restored = parsed && formatCustomAnswers(session.set, parsed)?.message === answer[1] ? parsed : null;
+      const choices: Record<number, string> = {};
+      const customConfirmed: Record<number, string> = {};
+      const customOpen: Record<number, boolean> = {};
+      if (restored) {
+        for (const [index, value] of Object.entries(restored)) {
+          const i = Number(index);
+          choices[i] = value.letter;
+          if (value.kind === "custom") {
+            customConfirmed[i] = value.content;
+            customOpen[i] = true;
+          }
+        }
+      }
+      sessions.set(at, {
+        ...session,
+        choices: sent ? session.choices : restored ? choices : typedChoices(session.set, answer[1]),
+        notes: restored ? {} : session.notes,
+        customConfirmed: sent ? session.customConfirmed : customConfirmed,
+        customDrafts: sent ? session.customDrafts : restored ? { ...customConfirmed } : session.answerAt === null && session.answeredText === null ? session.customDrafts : {},
+        customOpen: sent ? session.customOpen : customOpen,
+        readOnly: true, answeredText: answer[1], answerAt: answer[0], error: null,
+      });
       changed = true;
     } else if (!answer && session.answerAt !== null) {
-      sessions.set(at, { ...session, choices: {}, customConfirmed: {}, customOpen: {}, readOnly: false, answeredText: null, answerAt: null });
+      sessions.set(at, { ...session, choices: {}, customConfirmed: {}, customDrafts: {}, customOpen: {}, readOnly: false, answeredText: null, answerAt: null });
       changed = true;
     }
   }
@@ -132,7 +156,7 @@ export function publishUserMessage(agentId: string, at: number, text = ""): void
   if (!Number.isFinite(at)) return;
   let userMessages = messages.get(agentId);
   if (!userMessages) messages.set(agentId, userMessages = new Map());
-  if (userMessages.has(at)) return;
+  if (userMessages.get(at) === text) return;
   userMessages.set(at, text);
   if (reconcileAnswers(agentId)) notify();
 }
