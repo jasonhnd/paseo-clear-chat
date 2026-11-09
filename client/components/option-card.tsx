@@ -15,8 +15,13 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   const root = useRef<HTMLElement | null>(null);
   const [focused, setFocused] = useState<string | null>(null);
   const [inputState, setInputState] = useState({ agentId, at, index: 0, height: 0, empty: false });
+  const [viewedQuestion, setViewedQuestion] = useState<{ agentId: string; at: number; index: number } | null>(null);
   const fade = useRef(new Animated.Value(1)).current;
-  const index = session?.activeQuestion ?? 0;
+  const index = session?.readOnly && viewedQuestion?.agentId === agentId && viewedQuestion.at === at
+    ? viewedQuestion.index : session?.activeQuestion ?? 0;
+  useEffect(() => {
+    if (!session?.readOnly) setViewedQuestion(null);
+  }, [agentId, at, session?.readOnly]);
   useEffect(() => {
     setInputState({ agentId, at, index, height: 0, empty: false });
   }, [agentId, at, index]);
@@ -102,7 +107,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     },
   } : {};
   return (
-    <View {...keyboardProps} testID="option-card" accessibilityState={{ disabled: readOnly }} style={{ marginTop: 12, borderWidth: 1, borderColor: tokens.border, borderRadius: 12, backgroundColor: tokens.surface1, opacity: readOnly ? 0.55 : 1 }}>
+    <View {...keyboardProps} testID="option-card" style={{ marginTop: 12, borderWidth: 1, borderColor: tokens.border, borderRadius: 12, backgroundColor: tokens.surface1, opacity: readOnly ? 0.55 : 1 }}>
       <View style={{ padding: 16, gap: 12 }}>
         <View testID="option-tabs" style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
           {session.set.questions.map((q, i) => {
@@ -117,9 +122,15 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
               : `Q${number(i)} · ${optionShortName(q.title, number(i))}`;
             const tabStyle = { minHeight: 36, justifyContent: "center" as const, borderRadius: 18, paddingHorizontal: 12, backgroundColor: i === index ? tokens.surface2 : "transparent" };
             const tabLabel = <Text style={{ ...label, color: i === index ? tokens.foreground : tokens.foregroundMuted, fontWeight: i === index ? "700" : "400" }}>{tabText}</Text>;
-            return readOnly
-              ? <View key={i} testID={`option-question-${i}`} style={tabStyle}>{tabLabel}</View>
-              : <Pressable key={i} testID={`option-question-${i}`} accessibilityRole="tab" accessibilityState={{ selected: i === index }} disabled={disabled} onPress={() => { if (getOptionSession(agentId)?.at === at) setActiveQuestion(agentId, i); }} style={tabStyle}>{tabLabel}</Pressable>;
+            const viewQuestion = () => setViewedQuestion({ agentId, at, index: i });
+            const readOnlyKeyboard = readOnly && Platform.OS === "web" ? {
+              onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault(); event.stopPropagation(); viewQuestion();
+                }
+              },
+            } : {};
+            return <Pressable key={i} {...(readOnly ? focusProps(`option-question-${i}`) : {})} {...readOnlyKeyboard} testID={`option-question-${i}`} accessibilityRole="tab" accessibilityState={{ selected: i === index }} disabled={!readOnly && disabled} focusable={readOnly || !disabled} onPress={() => { if (readOnly) viewQuestion(); else if (getOptionSession(agentId)?.at === at) setActiveQuestion(agentId, i); }} style={readOnly ? [tabStyle, focusStyle(`option-question-${i}`)] : tabStyle}>{tabLabel}</Pressable>;
           })}
           {readOnly ? <Text testID="option-read-only-status" style={{ ...muted, marginLeft: "auto" }}>{t("answerCard.readOnlyStatus")}</Text> : null}
           {!readOnly && !session.sending ? <Pressable testID="option-dismiss" accessibilityRole="button" onPress={() => { if (getOptionSession(agentId)?.at === at) dismiss(agentId); }} style={{ minHeight: 44, justifyContent: "center", marginLeft: "auto" }}><Text style={muted}>{t("answerCard.notOptions")}</Text></Pressable> : null}

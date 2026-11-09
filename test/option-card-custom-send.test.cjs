@@ -92,6 +92,75 @@ test("sent custom text is read-only with a check, muted badge, and final status"
   for (const letter of "ABCDE") assert.equal(byId(h, tree, `option-row-${letter}`).props.style.backgroundColor, h.tokens.surface2);
 });
 
+test("read-only tabs show each answer without changing the sent answers", async t => {
+  const { h, s, draw } = fixture(t);
+  const sent = [];
+  s.setOptionSender(async (agentId, text) => { sent.push([agentId, text]); });
+  byId(h, draw(), "option-row-B").props.onPress();
+  assert.equal(s.getOptionSession("a").activeQuestion, 1);
+  byId(h, draw(), "option-row-E").props.onPress();
+  byId(h, draw(), "option-custom-input").props.onChangeText("line one\nline two");
+  assert.equal(s.confirmCustom("a", 1), "confirmed");
+  assert.equal(s.getOptionSession("a").activeQuestion, 2);
+  byId(h, draw(), "option-row-A").props.onPress();
+  const before = s.getOptionSession("a");
+  const expected = "1B 2E 3A\n\n2E：\nline one\nline two";
+  byId(h, draw(), "option-send").props.onPress();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(sent, [["a", expected]]);
+  let tree = draw();
+  assert.equal(byId(h, tree, "option-question-2").props.accessibilityState.selected, true);
+  assert.match(h.text(byId(h, tree, "option-row-A")), /✓/);
+
+  byId(h, tree, "option-question-1").props.onPress();
+  tree = draw();
+  const customRow = byId(h, tree, "option-row-E");
+  assert.match(h.text(customRow), /✓/);
+  const content = h.nodes(customRow, node => node.type === "Text" && h.text(node) === "line one\nline two")[0];
+  assert.ok(content);
+  assert.equal(content.props.selectable, true);
+  assert.equal(byId(h, tree, "option-custom-input"), undefined);
+  assert.equal(byId(h, tree, "option-send"), undefined);
+  assert.equal(h.text(byId(h, tree, "option-question-0")), "✓ Two (recommended)");
+  assert.equal(h.text(byId(h, tree, "option-question-2")), "✓ One");
+  assert.equal(byId(h, tree, "option-question-1").props.accessibilityState.selected, true);
+  byId(h, tree, "option-question-2").props.onPress();
+  assert.match(h.text(byId(h, draw(), "option-row-A")), /✓/);
+  byId(h, draw(), "option-question-0").props.onPress();
+  assert.match(h.text(byId(h, draw(), "option-row-B")), /✓/);
+
+  for (let i = 0; i < 3; i++) {
+    const tab = byId(h, draw(), `option-question-${i}`);
+    assert.equal(tab.type, "Pressable");
+    assert.equal(tab.props.accessibilityRole, "tab");
+    assert.equal(tab.props.focusable, true);
+    assert.equal(tab.props.disabled, false);
+  }
+  for (const [key, index] of [["Enter", 1], [" ", 2]]) {
+    let prevented = false;
+    byId(h, draw(), `option-question-${index}`).props.onKeyDown({ key, preventDefault() { prevented = true; }, stopPropagation() {} });
+    assert.equal(prevented, true);
+    assert.equal(byId(h, draw(), `option-question-${index}`).props.accessibilityState.selected, true);
+  }
+
+  for (const index of [0, 1, 2]) {
+    byId(h, draw(), `option-question-${index}`).props.onPress();
+    tree = draw();
+    for (const letter of "ABCDE") assert.equal(byId(h, tree, `option-row-${letter}`).props.onPress, undefined);
+    for (const key of ["a", "b", "e"]) {
+      byId(h, tree, "option-card").props.onKeyDown({ key, target: {}, nativeEvent: {}, preventDefault() { assert.fail("read-only key was handled"); }, stopPropagation() {} });
+    }
+    assert.equal(byId(h, tree, "option-custom-input"), undefined);
+  }
+  const after = s.getOptionSession("a");
+  assert.deepEqual(after.choices, before.choices);
+  assert.deepEqual(after.customConfirmed, before.customConfirmed);
+  assert.deepEqual(after.customDrafts, before.customDrafts);
+  assert.equal(after.activeQuestion, before.activeQuestion);
+  assert.equal(after.answeredText, expected);
+  assert.deepEqual(sent, [["a", expected]]);
+});
+
 test("all locales contain the approved read-only status", () => {
   for (const [locale, value] of Object.entries({ en: "Answered · read-only", "zh-CN": "已答 · 只读", ja: "回答済み · 読み取り専用" })) {
     assert.equal(JSON.parse(readFileSync(`client/locales/${locale}.json`, "utf8")).answerCard.readOnlyStatus, value);
