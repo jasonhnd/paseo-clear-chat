@@ -265,18 +265,21 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     const previous = { height: card.style.height, overflow: card.style.overflow, position: card.style.position };
     const anchor = scroller?.style.overflowAnchor;
     if (scroller) scroller.style.overflowAnchor = "none";
+    const hasGeometry = !!scroller && typeof scroller.getBoundingClientRect === "function" && typeof scroller.scrollBy === "function";
+    // Keep the live offset reachable while measuring the new height. A layout read
+    // after switching to auto can otherwise clamp it before a deficit is known.
+    const temporary = scroller && scroller.clientHeight > 0 ? scroller.clientHeight + Math.max(0, height) : 0;
+    if (scroller && temporary) reserveScrollSpace(card, scroller, temporary);
     card.style.height = "auto";
     const nextHeight = card.getBoundingClientRect().height;
-    const hasGeometry = !!scroller && typeof scroller.getBoundingClientRect === "function" && typeof scroller.scrollBy === "function";
-    if (scroller && scroller.clientHeight > 0) {
-      const margin = card.style.marginBottom;
-      const base = Number.parseFloat(globalThis.getComputedStyle?.(card).marginBottom ?? margin) || 0;
-      card.style.marginBottom = `${base + scroller.clientHeight + Math.max(0, height - nextHeight)}px`;
+    if (scroller && temporary && scrollSpace.current) {
       const currentScroll = hasGeometry ? scroller.scrollTop : scrollTop;
-      const contentHeight = scroller.scrollHeight - scroller.clientHeight - Math.max(0, height - nextHeight);
-      card.style.marginBottom = margin;
+      const contentHeight = scroller.scrollHeight - temporary;
       const deficit = Math.max(0, currentScroll + scroller.clientHeight - contentHeight);
-      if (Number.isFinite(deficit)) reserveScrollSpace(card, scroller, deficit);
+      const space = scrollSpace.current;
+      space.amount -= temporary - (Number.isFinite(deficit) ? deficit : temporary);
+      if (space.amount <= 0) clearScrollSpace();
+      else card.style.marginBottom = `${space.base + space.amount}px`;
     }
     let previousHeight = height;
     const compensate = (currentHeight: number) => {

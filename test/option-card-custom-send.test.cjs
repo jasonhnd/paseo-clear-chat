@@ -431,3 +431,38 @@ for (const reduced of [false, true]) {
     h.unmount(); assert.equal(observers.size, 0, "observers are disconnected");
   });
 }
+
+test("read-only shrink preserves reachable in-view scroll at the end", async t => {
+  for (const reduced of [false, true]) for (const path of ["success", "echo"]) {
+    const { h, s, draw } = fixture(t, "en", reduced);
+    for (let i = 0; i < 3; i++) s.choose("a", i, "A");
+    let resolveSend;
+    s.setOptionSender(() => new Promise(resolve => { resolveSend = resolve; }));
+    let scroll = 200;
+    const events = [];
+    const never = new Promise(() => {});
+    const old = { style: {}, setAttribute() {}, removeAttribute() {}, querySelectorAll: () => [], remove() {}, animate: () => ({ finished: never, cancel() {} }) };
+    const style = new Proxy({}, { set(target, key, value) { target[key] = value; events.push([key, value]); clamp(); return true; } });
+    const height = () => style.height && style.height !== "auto" ? parseFloat(style.height) : s.getOptionSession("a").readOnly ? 150 : 250;
+    const max = () => Math.max(0, 300 + height() + 50 + (parseFloat(style.marginBottom) || 0) - 400);
+    const clamp = () => { scroll = Math.min(scroll, max()); };
+    const scroller = {
+      style: {}, clientTop: 0, clientHeight: 400,
+      get scrollHeight() { clamp(); return max() + 400; },
+      get scrollTop() { clamp(); return scroll; }, set scrollTop(v) { scroll = Math.max(0, v); clamp(); },
+      getBoundingClientRect: () => ({ top: 100 }), scrollBy(x, y) { this.scrollTop += y; },
+      addEventListener() {}, removeEventListener() {},
+    };
+    const card = { style, closest: () => scroller, cloneNode: () => old, appendChild() {},
+      getBoundingClientRect() { clamp(); return { top: 100 + 300 - scroll, height: height() }; },
+      animate: () => ({ finished: never, cancel() {} }),
+    };
+    const tree = draw(); byId(h, tree, "option-card").props.ref(card);
+    byId(h, tree, "option-send").props.onPress();
+    if (path === "echo") s.publishUserMessage("a", 11, s.answerText("a")); else resolveSend();
+    await new Promise(setImmediate); draw();
+    assert.equal(scroller.scrollTop, 200, `${path}, reduced=${reduced}: in-view position remains reachable`);
+    assert.ok(events.findIndex(([key]) => key === "marginBottom") < events.findIndex(([key, value]) => key === "height" && value === "auto"), "reserve precedes automatic layout");
+  }
+});
+
