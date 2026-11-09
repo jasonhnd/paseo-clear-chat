@@ -85,12 +85,14 @@ test("blank attempts show feedback only for the active question and unmodified E
   byId(h, draw(), "option-custom-input").props.onChangeText("answer");
   assert.equal(byId(h, draw(), "option-custom-empty"), undefined);
   key();
-  assert.equal(s.getOptionSession("a").customConfirmed[0], undefined);
-  assert.equal(s.getOptionSession("a").activeQuestion, 0);
+  assert.equal(s.getOptionSession("a").customConfirmed[0], "answer");
+  assert.equal(s.getOptionSession("a").activeQuestion, 1);
+  byId(h, draw(), "option-row-C").props.onPress();
   byId(h, draw(), "option-custom-input").props.onChangeText("");
   key();
   assert.ok(byId(h, draw(), "option-custom-empty"));
-  byId(h, draw(), "option-question-1").props.onPress();
+  byId(h, draw(), "option-question-0").props.onPress();
+  assert.equal(byId(h, draw(), "option-custom-empty"), undefined);
   byId(h, draw(), "option-row-C").props.onPress();
   assert.equal(byId(h, draw(), "option-custom-empty"), undefined);
   byId(h, draw(), "option-question-0").props.onPress();
