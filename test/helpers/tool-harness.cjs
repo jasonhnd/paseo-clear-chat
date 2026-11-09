@@ -80,6 +80,7 @@ function createToolHarness(platform = "ios", options = {}) {
   class Value {
     constructor(value) { this.value = value; }
     interpolate() { return this.value; }
+    setValue(value) { this.value = value; }
   }
   const native = {
     View: "View", Text: "Text", Pressable: "Pressable", Image: "Image", ScrollView: "ScrollView",
