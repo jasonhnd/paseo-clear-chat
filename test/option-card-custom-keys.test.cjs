@@ -154,6 +154,18 @@ test("confirmation advances, wraps to unanswered questions and focuses Send with
   f.press("option-send"); await tick(); assert.equal(sent, 1);
 });
 
+test("custom confirmation focuses the next unanswered question's cursor row", async t => {
+  const f = fixture(t);
+  f.press("option-question-1");
+  assert.equal(f.key("ArrowDown", "option-row-A").prevented, true);
+  assert.equal(f.s.getOptionSession("a").cursor[1], 1);
+  f.press("option-question-0"); f.press("option-row-E"); f.change("first");
+  f.inputKey("Enter");
+  await tick();
+  assert.equal(f.s.getOptionSession("a").activeQuestion, 1);
+  assert.equal(f.active(), "option-row-B");
+});
+
 test("blank Enter prevents insertion, leaves the question missing and shows feedback", async t => {
   for (const value of ["", "   ", "\t", "\n\n"]) {
     const f = fixture(t); f.press("option-row-E"); await tick(); f.change(value);
@@ -243,7 +255,7 @@ test("input Enter confirms once and focuses the next unanswered control or Send"
   await tick();
   assert.equal(f.s.getOptionSession("a").customConfirmed[0], "first");
   assert.equal(f.s.getOptionSession("a").activeQuestion, 1);
-  assert.equal(f.active(), "option-row-A");
+  assert.equal(f.active(), "option-row-B");
   f.press("option-row-A"); f.press("option-row-E"); f.change("third");
   assert.deepEqual(f.inputKey("Enter"), { prevented: 1, stopped: 1, cardCalls: 0 });
   await tick(); assert.equal(f.active(), "option-send");

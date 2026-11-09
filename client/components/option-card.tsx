@@ -103,7 +103,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
       if (!wasAnswered) {
         const after = getOptionSession(agentId);
         if (after && missingQuestion(agentId) === null) focus("option-send");
-        else if (after) focus(`option-row-${after.set.questions[after.activeQuestion]!.options[0]!.letter}`);
+        else if (after) focus(`option-row-${after.set.questions[after.activeQuestion]!.options[after.cursor[after.activeQuestion] ?? 0]!.letter}`);
       }
     }
   };
