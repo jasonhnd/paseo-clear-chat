@@ -226,7 +226,7 @@ test("phone input has at least a 44px minimum while desktop keeps 36px", t => {
     const f = fixture(t, reply, width); f.press("option-row-E");
     const input = byId(f.h, f.draw(), "option-custom-input");
     assert.equal(input.props.style[0].minHeight, min);
-    assert.equal(input.props.style[0].fontSize, f.h.tokens.fs(13));
+    assert.equal(input.props.style[0].fontSize, f.h.tokens.fs(width <= 390 ? 16 : 13));
     const row = byId(f.h, f.draw(), "option-row-E");
     assert.ok(f.h.nodes(row, n => n.type === "View" && n.props.style?.minWidth === 0).length);
   }
@@ -307,4 +307,17 @@ test("native input listener handles dispatched Enter and is removed when the nod
   Object.assign(detachedEvent, { key: "Enter" });
   replacement.dispatchEvent(detachedEvent);
   assert.equal(detachedEvent.defaultPrevented, false);
+});
+
+test("phone custom input uses a 16px font without losing the touch target or flexible column", t => {
+  for (const [width, expected] of [[390, 16], [391, 13], [1440, 13]]) {
+    const f = fixture(t, reply, width);
+    f.press("option-row-E");
+    const tree = f.draw();
+    const input = byId(f.h, tree, "option-custom-input");
+    assert.equal(input.props.style[0].fontSize, f.h.tokens.fs(expected), `font at ${width}px`);
+    if (width === 390) assert.ok(input.props.style[0].minHeight >= 44);
+    const row = byId(f.h, tree, "option-row-E");
+    assert.ok(f.h.nodes(row, node => node.type === "View" && node.props.style?.flex === 1 && node.props.style?.minWidth === 0).length);
+  }
 });
