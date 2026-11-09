@@ -1,8 +1,9 @@
 import { useTranslation } from "@getpaseo/plugin/client";
 import { messages } from "../messages";
 import React, { useMemo } from "react";
-import { View, Text, Pressable, StyleSheet } from "react-native";
+import { View, Text, Pressable, StyleSheet, Platform } from "react-native";
 import { CopyFallbackDialog, copyTouchTarget, useCopyText } from "./copy-feedback";
+import { useCoarsePointer } from "./use-coarse-pointer";
 import { Glyph } from "./glyph";
 import { unselectable } from "./selection";
 import { radius } from "./theme-tokens";
@@ -54,6 +55,7 @@ export function formatReplyTime(date: Date, now: Date = new Date()): string {
 export function AssistantFooter({ text, at, tokens, durationMs, agentId, now }: AssistantFooterProps) {
   const { t } = useTranslation(messages);
   const { copied, handleCopy, fallbackText, setFallbackText } = useCopyText(text);
+  const coarseWeb = useCoarsePointer(Platform.OS === "web") && Platform.OS === "web";
 
   const styles = useMemo(
     () =>
@@ -70,6 +72,10 @@ export function AssistantFooter({ text, at, tokens, durationMs, agentId, now }: 
           // Pull the button's own padding back so its icon starts on the text
           // column, the way the host footer does.
           marginLeft: -6,
+          ...(coarseWeb ? { minWidth: 44, minHeight: 44, justifyContent: "center" as const, alignItems: "center" as const } : {}),
+          ...(!coarseWeb ? { flexDirection: "row" as const, alignItems: "center" as const, gap: 4, paddingHorizontal: 6, paddingVertical: 3, borderRadius: radius.block, backgroundColor: copied ? tokens.successBg : "transparent" } : {}),
+        },
+        copyVisual: {
           flexDirection: "row",
           alignItems: "center",
           gap: 4,
@@ -92,12 +98,17 @@ export function AssistantFooter({ text, at, tokens, durationMs, agentId, now }: 
           ...unselectable,
         },
       }),
-    [tokens, copied],
+    [tokens, copied, coarseWeb],
   );
 
   // The label is recomputed on each render rather than ticked: the footer
   // re-renders whenever the turn does, and a stale minute is not worth a timer.
   const time = formatReplyTime(at, now);
+
+  const copyContents = <>
+    <Glyph name={copied ? "Check" : "Copy"} size={12} color={copied ? tokens.success : tokens.foregroundMuted} />
+    <Text style={styles.copyLabel}>{copied ? t("reply.copied") : t("reply.copy")}</Text>
+  </>;
 
   return (
     <View testID="reply-footer" style={styles.container}>
@@ -108,12 +119,7 @@ export function AssistantFooter({ text, at, tokens, durationMs, agentId, now }: 
         onPress={handleCopy}
         style={styles.copyButton}
       >
-        <Glyph
-          name={copied ? "Check" : "Copy"}
-          size={12}
-          color={copied ? tokens.success : tokens.foregroundMuted}
-        />
-        <Text style={styles.copyLabel}>{copied ? t("reply.copied") : t("reply.copy")}</Text>
+        {coarseWeb ? <View style={styles.copyVisual}>{copyContents}</View> : copyContents}
       </Pressable>
       {agentId ? <QuoteReply text={text} agentId={agentId} tokens={tokens} /> : null}
       <Text style={styles.time}>{time}</Text>

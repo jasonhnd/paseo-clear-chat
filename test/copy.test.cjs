@@ -9,13 +9,13 @@ const { createToolHarness } = require("./helpers/tool-harness.cjs");
 
 // Run the actual components/handlers, with native primitives and hooks supplied
 // by a tiny host. No navigator exists: a native copy must go through the SDK.
-function harness(file, name, copyText, platform = "ios", scale = 1) {
-  const state = [], timers = new Map(), cleanups = [], calls = [], toasts = [];
+function harness(file, name, copyText, platform = "ios", scale = 1, browserWindow) {
+  const state = [], timers = new Map(), cleanups = [], calls = [], toasts = [], effects = new Map();
   let cursor = 0, timerId = 0;
   const react = {
     useState(initial) {
       const i = cursor++;
-      if (!(i in state)) state[i] = initial;
+      if (!(i in state)) state[i] = typeof initial === "function" ? initial() : initial;
       return [state[i], value => { state[i] = typeof value === "function" ? value(state[i]) : value; }];
     },
     useRef(value) {
@@ -23,7 +23,14 @@ function harness(file, name, copyText, platform = "ios", scale = 1) {
       return state[i] ??= { current: value };
     },
     useMemo: fn => fn(), useCallback: fn => fn,
-    useEffect(fn) { const cleanup = fn(); if (cleanup) cleanups.push(cleanup); },
+    useEffect(fn, deps) {
+      const i = cursor++, previous = effects.get(i);
+      if (previous && deps && deps.every((value, index) => Object.is(value, previous.deps?.[index]))) return;
+      previous?.cleanup?.();
+      const entry = { deps, cleanup: fn() };
+      effects.set(i, entry);
+      if (entry.cleanup) cleanups.push(() => { if (effects.get(i) === entry) { entry.cleanup(); effects.delete(i); } });
+    },
   };
   const translations = require("./helpers/translations.cjs").createTranslations(react);
   const sdk = {
@@ -49,6 +56,7 @@ function harness(file, name, copyText, platform = "ios", scale = 1) {
       if (id === "@getpaseo/plugin/client") return { ...translations, useRpc: () => async () => ({ images: [], total: 0, reason: null }) };
       if (id.endsWith("/messages") || id.endsWith("/translation") || id.endsWith(".json")) return load(resolve(dirname(filename), id));
       if (id === "./copy-feedback") return load(resolve(dirname(filename), id + ".tsx"));
+      if (id === "./use-coarse-pointer") return load(resolve(dirname(filename), id + ".ts"));
       if (id === "./theme-tokens" || id === "../theme-tokens") return { radius: {}, withAlpha: value => value };
       if (id === "./parse") return load(resolve(dirname(filename), "parse.ts"));
       if (id === "../../generated-images") return load(resolve(dirname(filename), id + ".ts"));
@@ -56,8 +64,8 @@ function harness(file, name, copyText, platform = "ios", scale = 1) {
       if (id.startsWith(".")) return new Proxy({}, { get: (_, key) => key === "surfaceProps" ? () => ({}) : key === "detectFileType" ? () => ({}) : key });
       return createRequire(filename)(id);
     };
-    runInThisContext(`(function(require,module,exports,setTimeout,clearTimeout,navigator){${source}\n})`, { filename })(
-      localRequire, mod, mod.exports, fn => { timers.set(++timerId, fn); return timerId; }, id => timers.delete(id), undefined,
+    runInThisContext(`(function(require,module,exports,setTimeout,clearTimeout,navigator,window){${source}\n})`, { filename })(
+      localRequire, mod, mod.exports, fn => { timers.set(++timerId, fn); return timerId; }, id => timers.delete(id), undefined, browserWindow,
     );
     return mod.exports;
   }
@@ -176,3 +184,64 @@ for (const variant of ["document", "compact", "terminal"]) {
     }
   });
 }
+
+function mediaQuery(initial) {
+  const listeners = new Set();
+  return { matches: initial, listeners,
+    addEventListener(type, listener) { assert.equal(type, "change"); listeners.add(listener); },
+    removeEventListener(type, listener) { assert.equal(type, "change"); listeners.delete(listener); },
+    change(matches) { this.matches = matches; for (const listener of listeners) listener({ matches }); },
+  };
+}
+
+for (const [file, name, label] of [components[0], components[2]]) {
+  for (const [platform, coarse, expected] of [["web", true, 44], ["web", false, undefined], ["ios", true, 44], ["ios", false, 44]]) {
+    test(`${name}: ${platform} ${coarse ? "coarse" : "fine"} copy target`, () => {
+      const query = mediaQuery(coarse);
+      const h = harness(file, name, async () => {}, platform, 1, { matchMedia: value => { assert.equal(value, "(pointer: coarse)"); return query; } });
+      const button = h.nodes(h.render(), n => n.type === "Pressable" && n.props.accessibilityLabel === label)[0];
+      const style = Object.assign({}, ...[button.props.style].flat());
+      assert.equal(style.minWidth, expected);
+      assert.equal(style.minHeight, expected);
+    });
+  }
+}
+
+test("coarse pointer hook reads, updates and cleans up the media query", () => {
+  const query = mediaQuery(true);
+  const h = harness("client/components/use-coarse-pointer.ts", "useCoarsePointer", async () => {}, "web", 1, { matchMedia: () => query });
+  assert.equal(h.render(), true);
+  query.change(false);
+  assert.equal(h.render(), false);
+  h.cleanups.forEach(cleanup => cleanup());
+  assert.equal(query.listeners.size, 0);
+  for (const browserWindow of [undefined, {}, { matchMedia: () => mediaQuery(false) }]) {
+    const other = harness("client/components/use-coarse-pointer.ts", "useCoarsePointer", async () => {}, "web", 1, browserWindow);
+    assert.equal(other.render(), false);
+    other.cleanups.forEach(cleanup => cleanup());
+  }
+});
+
+for (const [file, name, label] of [components[0], components[2]]) {
+  test(`${name}: target follows pointer changes`, () => {
+    const query = mediaQuery(false);
+    const h = harness(file, name, async () => {}, "web", 1, { matchMedia: () => query });
+    const style = () => Object.assign({}, ...[h.nodes(h.render(), n => n.type === "Pressable" && n.props.accessibilityLabel === label)[0].props.style].flat());
+    assert.equal(style().minHeight, undefined);
+    query.change(true);
+    assert.equal(style().minHeight, 44);
+    query.change(false);
+    assert.equal(style().minHeight, undefined);
+    h.cleanups.forEach(cleanup => cleanup());
+    assert.equal(query.listeners.size, 0);
+  });
+}
+
+test("unrelated prompt copy retains its web target", () => {
+  const query = mediaQuery(true);
+  const h = harness(components[1][0], components[1][1], async () => {}, "web", 1, { matchMedia: () => query });
+  const button = h.nodes(h.render(), n => n.type === "Pressable" && n.props.accessibilityLabel === "Copy prompt")[0];
+  const style = Object.assign({}, ...[button.props.style].flat());
+  assert.equal(style.minWidth, undefined);
+  assert.equal(style.minHeight, undefined);
+});
