@@ -243,7 +243,7 @@ test("input Enter confirms once and focuses the next unanswered control or Send"
   await tick();
   assert.equal(f.s.getOptionSession("a").customConfirmed[0], "first");
   assert.equal(f.s.getOptionSession("a").activeQuestion, 1);
-  assert.equal(f.active(), "option-row-A");
+  assert.equal(f.active(), "option-row-B");
   f.press("option-row-A"); f.press("option-row-E"); f.change("third");
   assert.deepEqual(f.inputKey("Enter"), { prevented: 1, stopped: 1, cardCalls: 0 });
   await tick(); assert.equal(f.active(), "option-send");
@@ -320,4 +320,27 @@ test("phone custom input uses a 16px font without losing the touch target or fle
     const row = byId(f.h, tree, "option-row-E");
     assert.ok(f.h.nodes(row, node => node.type === "View" && node.props.style?.flex === 1 && node.props.style?.minWidth === 0).length);
   }
+});
+
+test("custom confirmation focuses the saved cursor in the next unanswered question, then Send", async t => {
+  const f = fixture(t);
+  let sent = 0;
+  f.s.setOptionSender(async () => { sent++; });
+  f.s.moveCursor("a", 1, 2);
+  f.press("option-row-E"); f.change("first");
+  assert.equal(f.inputKey("Enter").prevented, 1);
+  await tick();
+  assert.equal(f.s.getOptionSession("a").activeQuestion, 1);
+  assert.equal(f.active(), "option-row-C");
+  f.press("option-question-2");
+  f.s.moveCursor("a", 1, -1);
+  f.press("option-row-E"); f.change("third"); f.inputKey("Enter");
+  await tick();
+  assert.equal(f.s.getOptionSession("a").activeQuestion, 1);
+  assert.equal(f.active(), "option-row-B");
+  f.press("option-row-E"); f.change("second"); f.inputKey("Enter");
+  await tick();
+  assert.equal(f.active(), "option-send");
+  assert.equal(sent, 0);
+  assert.equal(f.h.text(byId(f.h, f.draw(), "option-send-preview")), "1E 2E 3E\n\n1E：\nfirst\n\n2E：\nsecond\n\n3E：\nthird");
 });
