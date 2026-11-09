@@ -312,32 +312,88 @@ const approvedResourceHashes = {
   "ja": "8bbbbf885b61ec6141131d4804add1cf4aa8c84a95a358517d52a052e43df275",
 };
 
+const approvedAnswerCardHashes = {
+  "en": "8bdfbcff1dca684cbcbf650c4f3840c078172fb54b1eb5e754ee38716f449fa6",
+  "zh-CN": "bd487920e1ba4b63008ed85228907ad51aa0828cfcd53e3146d4136347aa69c3",
+  "ja": "d45fce67f549e1250f538b9eeb5c8997346e1caa322575572a58bbd98cc0f095",
+};
+const addedAnswerCardKeys = ["other", "otherHint", "otherEmpty"];
+const rootAnswerCard = /^  "answerCard": \{\n(?:    .*\n)*  \}/gm;
+
+function verifyResourceBaseline(locale, text) {
+  assert.equal([...text.matchAll(rootAnswerCard)].length, 1, "one root answerCard object");
+  const keys = [...text.matchAll(/"(?:\\.|[^"\\])*"/g)]
+    .filter(match => /^\s*:/.test(text.slice(match.index + match[0].length)))
+    .map(match => JSON.parse(match[0]));
+  for (const key of addedAnswerCardKeys) {
+    assert.equal(keys.filter(value => value === key).length, 1, `one ${key} key in the resource`);
+  }
+  const original = text
+    .replace(/    "keepItemLineBreaks": \{\n(?:      ".*\n){2}    \},\n/, "")
+    .replace(/    "jumpChips": \{\n(?:      ".*\n){2}    \},\n/, "")
+    .replace(/,\n    "answerCard": \{\n(?:      ".*\n){2}    \}/, "")
+    .replace(rootAnswerCard, block => {
+      const lines = block.split("\n");
+      for (const key of addedAnswerCardKeys) {
+        const line = new RegExp(`^    "${key}": "(?:\\\\.|[^"\\\\])*",?$`);
+        assert.equal(lines.filter(value => line.test(value)).length, 1, `root answerCard.${key}`);
+      }
+      const lastEntryWasAdded = addedAnswerCardKeys.some(key => lines.at(-2).startsWith(`    "${key}":`));
+      const retained = lines.filter(value => !addedAnswerCardKeys.some(key => value.startsWith(`    "${key}":`)));
+      if (lastEntryWasAdded) retained[retained.length - 2] = retained.at(-2).replace(/,$/, "");
+      const normalized = retained.join("\n");
+      assert.equal(createHash("sha256").update(normalized).digest("hex"), approvedAnswerCardHashes[locale]);
+      return normalized;
+    })
+    .replace(/,\n  "answerCard": \{\n(?:    ".*\n){27}  \}/, "")
+    .replace(/    "foldMessages": \{\n(?:      ".*\n){2}    \},\n/, "")
+    .replace(/    "show": ".*",\n    "hide": ".*",\n    "showMessage": ".*",\n    "hideMessage": ".*",\n/, "")
+    .replace(/    "version": ".*",\n/, "")
+    .replace(/  "quote": \{\n(?:    ".*\n){11}  \},\n/, "")
+    .replace(/    "hermesCc": \{\n(?:      ".*\n){3}    \},\n/, "")
+    .replace(/    "hiddenTools": \{\n(?:      ".*\n){2}    \},\n/, "")
+    .replace(/    "delegatedTools": \{\n(?:      ".*\n){2}    \},\n/, "")
+    .replace(/    "delegatedCodeBlocks": \{\n(?:      ".*\n){2}    \},\n/, "")
+    .replace(/    "codeBlockOpen": \{\n(?:      ".*\n){2}    \},\n/, "")
+    .replace(/    "open": ".*",\n    "openA11y": ".*",\n/, "")
+    .replace(/    "imageThumbA11y": ".*",\n    "moreImages": ".*",\n    "closeImage": ".*",\n/, "")
+    .replace(/    "stepsOne": ".*",\n/, "")
+    .replace(/    "tokensOne": ".*",\n/, "")
+    .replace(/    "sectionInline": \{\n(?:      ".*\n){5}    \},\n/, "");
+  const baseline = original.replace(/(      "none": ".*"),\n      "commandExit": ".*"\n/, "$1\n");
+  assert.notEqual(original, text);
+  assert.equal(createHash("sha256").update(baseline).digest("hex"), approvedResourceHashes[locale]);
+  assert.deepEqual(resources[locale].detail.sectionInline, Object.fromEntries(Object.entries(resources[locale].detail.section).map(([key, title]) => [key, locale === "en" ? key : title])));
+}
+
 for (const locale of ["en", "zh-CN", "ja"]) {
+  const text = readFileSync(resolve(__dirname, `../client/locales/${locale}.json`), "utf8");
   test(`${locale}: preserves the prior baseline after removing the added inline-section, prompt-image and Hermes setting keys`, () => {
-    const text = readFileSync(resolve(__dirname, `../client/locales/${locale}.json`), "utf8");
-    const original = text
-      .replace(/    "keepItemLineBreaks": \{\n(?:      ".*\n){2}    \},\n/, "")
-      .replace(/    "jumpChips": \{\n(?:      ".*\n){2}    \},\n/, "")
-      .replace(/,\n    "answerCard": \{\n(?:      ".*\n){2}    \}/, "")
-      .replace(/,\n  "answerCard": \{\n(?:    ".*\n){27}  \}/, "")
-      .replace(/    "foldMessages": \{\n(?:      ".*\n){2}    \},\n/, "")
-      .replace(/    "show": ".*",\n    "hide": ".*",\n    "showMessage": ".*",\n    "hideMessage": ".*",\n/, "")
-      .replace(/    "version": ".*",\n/, "")
-      .replace(/  "quote": \{\n(?:    ".*\n){11}  \},\n/, "")
-      .replace(/    "hermesCc": \{\n(?:      ".*\n){3}    \},\n/, "")
-      .replace(/    "hiddenTools": \{\n(?:      ".*\n){2}    \},\n/, "")
-      .replace(/    "delegatedTools": \{\n(?:      ".*\n){2}    \},\n/, "")
-      .replace(/    "delegatedCodeBlocks": \{\n(?:      ".*\n){2}    \},\n/, "")
-      .replace(/    "codeBlockOpen": \{\n(?:      ".*\n){2}    \},\n/, "")
-      .replace(/    "open": ".*",\n    "openA11y": ".*",\n/, "")
-      .replace(/    "imageThumbA11y": ".*",\n    "moreImages": ".*",\n    "closeImage": ".*",\n/, "")
-      .replace(/    "stepsOne": ".*",\n/, "")
-      .replace(/    "tokensOne": ".*",\n/, "")
-      .replace(/    "sectionInline": \{\n(?:      ".*\n){5}    \},\n/, "");
-    const baseline = original.replace(/(      "none": ".*"),\n      "commandExit": ".*"\n/, "$1\n");
-    assert.notEqual(original, text);
-    assert.equal(createHash("sha256").update(baseline).digest("hex"), approvedResourceHashes[locale]);
-    assert.deepEqual(resources[locale].detail.sectionInline, Object.fromEntries(Object.entries(resources[locale].detail.section).map(([key, title]) => [key, locale === "en" ? key : title])));
+    verifyResourceBaseline(locale, text);
+  });
+
+  test(`${locale}: baseline verification rejects unauthorized translation changes`, () => {
+    const root = text.match(rootAnswerCard)[0];
+    const addedLine = root.match(/^    "other": .*\n/m)[0];
+    const cases = {
+      "old answerCard label": text.replace('"pillTitle": "', '"pillTitle": "changed '),
+      "old translation": text.replace('"startupFailed": "', '"startupFailed": "changed '),
+      "missing approved key": text.replace(addedLine, ""),
+      "duplicate approved key": text.replace(addedLine, addedLine + addedLine),
+      "approved key at a different path": text.replace(addedLine, "").replace('  "markdown": {\n', '  "markdown": {\n' + addedLine),
+      "unknown answerCard key": text.replace(addedLine, addedLine + '    "unknown": "extra",\n'),
+      "neighboring root object": text.replace('"showPathA11y": "', '"showPathA11y": "changed '),
+    };
+    for (const [name, modified] of Object.entries(cases)) {
+      assert.notEqual(modified, text, name);
+      assert.throws(() => verifyResourceBaseline(locale, modified), undefined, name);
+    }
+    assert.doesNotThrow(() => verifyResourceBaseline(locale, text), "approved key/value pairs");
+
+    const movedLast = root.replace(addedLine, "")
+      .replace(/(    "hintEnter": .*?)\n  \}$/, `$1,\n${addedLine.trimEnd().replace(/,$/, "")}\n  }`);
+    assert.notEqual(movedLast, root);
+    assert.doesNotThrow(() => verifyResourceBaseline(locale, text.replace(root, movedLast)), "approved key as final entry");
   });
 }
 
