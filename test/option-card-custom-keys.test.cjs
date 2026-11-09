@@ -1,0 +1,144 @@
+const assert = require("node:assert/strict");
+const test = require("node:test");
+const { createToolHarness } = require("./helpers/tool-harness.cjs");
+
+const reply = `1) First?\nA One\nB Two\nC Three\nD Four\n\n2) Second?\nA One\nB Two\nC Three\nD Four\n\n3) Third?\nA One\nB Two\nC Three\nD Four\n\nReply: A`;
+const byId = (h, tree, id) => h.nodes(tree, n => n.props.testID === id)[0];
+const tick = () => new Promise(resolve => setTimeout(resolve, 5));
+function fixture(t, text = reply, width = 390) {
+  const agents = { a: { status: "idle" } };
+  const h = createToolHarness("web", { width, agents });
+  t.after(() => { h.unmount(); h.dispose(); });
+  const s = h.load("client/option-session.ts");
+  const Card = h.load("client/components/option-card.tsx").OptionCard;
+  s.publishAssistantReply("a", { at: 10, text });
+  let active = null;
+  const draw = () => {
+    const tree = h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } });
+    byId(h, tree, "option-card")?.props.ref({ querySelector: selector => ({ focus: () => { active = selector.match(/"([^"]+)"/)[1]; } }) });
+    return tree;
+  };
+  const press = id => byId(h, draw(), id).props.onPress();
+  const change = value => byId(h, draw(), "option-custom-input").props.onChangeText(value);
+  const key = (key, id = "option-card", extra = {}) => {
+    let prevented = false, stopped = false;
+    const target = { getAttribute: () => id, closest: selector => selector === "input, textarea" && (id === "option-custom-input" || id === "normal-input") ? {} : selector.startsWith('[data-testid^="option-row-"]') && id.startsWith("option-row-") ? {} : null };
+    byId(h, draw(), "option-card").props.onKeyDown({ key, target, nativeEvent: {}, ...extra, preventDefault() { prevented = true; }, stopPropagation() { stopped = true; } });
+    return { prevented, stopped };
+  };
+  return { h, s, agents, draw, press, change, key, active: () => active };
+}
+
+test("custom row click and synthetic letters open and focus the input", async t => {
+  for (const [letters, shortcut] of [["ABCD", "E"], ["ACE", "F"], ["ABH", "I"]]) {
+    for (const key of [shortcut, shortcut.toLowerCase()]) {
+      const f = fixture(t, `Pick?\n${[...letters].map(x => `${x} Option ${x}`).join("\n")}\n\nReply: A`);
+      f.key(key); await tick();
+      assert.ok(byId(f.h, f.draw(), "option-custom-input"));
+      assert.equal(f.active(), "option-custom-input");
+      assert.equal(f.s.getOptionSession("a").choices[0], undefined);
+    }
+  }
+  const f = fixture(t); f.press("option-row-E"); await tick();
+  assert.equal(f.active(), "option-custom-input");
+});
+
+test("text fields keep letters, digits, space and arrow keys for editing", t => {
+  const f = fixture(t);
+  for (const key of ["a", "b", "c"]) assert.equal(f.key(key, "normal-input").prevented, false);
+  assert.deepEqual(f.s.getOptionSession("a").choices, {});
+  f.press("option-row-E");
+  for (const key of ["a", "b", "c", "1", " ", "ArrowUp", "ArrowDown"]) assert.equal(f.key(key, "option-custom-input").prevented, false);
+  f.change("abc1 ");
+  assert.equal(f.s.getOptionSession("a").customDrafts[0], "abc1 ");
+  assert.deepEqual(f.s.getOptionSession("a").choices, {});
+});
+
+test("confirmation advances, wraps to unanswered questions and focuses Send without sending", async t => {
+  const f = fixture(t); let sent = 0;
+  f.s.setOptionSender(async () => { sent++; });
+  f.press("option-question-2"); f.press("option-row-E"); f.change("third"); f.key("Enter", "option-custom-input");
+  await tick(); assert.equal(f.s.getOptionSession("a").activeQuestion, 0); assert.equal(f.active(), "option-row-A");
+  f.press("option-row-B"); f.press("option-row-E"); f.change("second"); f.key("Enter", "option-custom-input");
+  await tick(); assert.equal(f.active(), "option-send"); assert.equal(sent, 0);
+  assert.equal(f.h.text(byId(f.h, f.draw(), "option-send")), "Send 1B 2E 3E");
+  f.press("option-send"); await tick(); assert.equal(sent, 1);
+});
+
+test("blank Enter prevents insertion, leaves the question missing and shows feedback", async t => {
+  for (const value of ["", "   ", "\t", "\n\n"]) {
+    const f = fixture(t); f.press("option-row-E"); await tick(); f.change(value);
+    const event = f.key("Enter", "option-custom-input");
+    assert.equal(event.prevented, true); assert.equal(f.s.getOptionSession("a").customDrafts[0] ?? "", value);
+    assert.equal(f.s.getOptionSession("a").choices[0], undefined); assert.equal(f.active(), "option-custom-input");
+    assert.ok(byId(f.h, f.draw(), "option-custom-empty"));
+    assert.match(f.h.text(byId(f.h, f.draw(), "option-send")), /1/);
+  }
+});
+
+test("Shift+Enter and composing Enter do not confirm, but a later Enter does", t => {
+  const f = fixture(t); f.press("option-row-E"); f.change("first");
+  assert.equal(f.key("Enter", "option-custom-input", { shiftKey: true }).prevented, false);
+  f.change("first\nsecond");
+  assert.equal(f.key("Enter", "option-custom-input", { nativeEvent: { isComposing: true } }).prevented, false);
+  assert.equal(f.s.getOptionSession("a").choices[0], undefined);
+  assert.equal(f.s.getOptionSession("a").customDrafts[0], "first\nsecond");
+  f.key("Enter", "option-custom-input");
+  assert.equal(f.s.getOptionSession("a").customConfirmed[0], "first\nsecond");
+  assert.equal(f.s.getOptionSession("a").activeQuestion, 1);
+});
+
+test("editing invalidates confirmation, unchanged reconfirmation stays, and switching preserves the draft", async t => {
+  const f = fixture(t); f.press("option-row-E"); f.change("original"); f.key("Enter", "option-custom-input");
+  f.press("option-question-0"); f.key("Enter", "option-custom-input");
+  assert.equal(f.s.getOptionSession("a").activeQuestion, 0);
+  f.change(""); assert.equal(f.s.getOptionSession("a").choices[0], undefined);
+  f.change("changed"); f.key("Enter", "option-custom-input");
+  assert.equal(f.s.getOptionSession("a").customConfirmed[0], "changed");
+  f.press("option-question-0"); f.press("option-row-B");
+  assert.equal(f.s.getOptionSession("a").customDrafts[0], "changed");
+  f.press("option-question-1"); f.press("option-row-A"); f.press("option-row-A");
+  let sent; f.s.setOptionSender(async (_, text) => { sent = text; }); f.press("option-send"); await tick();
+  assert.equal(sent, "1B 2A 3A");
+  const g = fixture(t); g.press("option-row-E"); g.change("draft"); g.key("Enter", "option-custom-input");
+  g.press("option-question-0"); g.press("option-row-B"); g.press("option-row-E");
+  assert.equal(g.s.getOptionSession("a").customDrafts[0], "draft"); assert.equal(g.s.getOptionSession("a").choices[0], undefined);
+  g.key("Enter", "option-custom-input"); assert.equal(g.s.getOptionSession("a").customConfirmed[0], "draft");
+});
+
+test("shortcuts ignore modifiers, composition, unavailable letters, sending and running", t => {
+  const f = fixture(t);
+  for (const extra of [{ ctrlKey: true }, { altKey: true }, { metaKey: true }, { shiftKey: true }, { nativeEvent: { isComposing: true } }]) assert.equal(f.key("e", "option-card", extra).prevented, false);
+  assert.equal(f.key("z").prevented, false); assert.equal(f.key("i").prevented, false);
+  assert.equal(byId(f.h, f.draw(), "option-custom-input"), undefined);
+  f.press("option-row-A"); f.press("option-row-A"); f.press("option-row-A");
+  f.s.setOptionSender(() => new Promise(() => {})); f.press("option-send");
+  assert.equal(f.key("e").prevented, false);
+  f.agents.a.status = "running"; assert.equal(f.draw(), null);
+});
+
+test("ordinary A through H shortcuts still select the corresponding options", t => {
+  for (const letter of "ABCDEFGH") {
+    const f = fixture(t, `Pick?\n${[..."ABCDEFGH"].map(x => `${x} Option ${x}`).join("\n")}\n\nReply: A`);
+    assert.equal(f.key(letter.toLowerCase()).prevented, true); assert.equal(f.s.getOptionSession("a").choices[0], letter);
+  }
+});
+
+test("the custom editing key hint appears only before confirmation", t => {
+  const f = fixture(t); const hint = () => f.h.text(byId(f.h, f.draw(), "option-hint"));
+  const ordinary = hint(); f.press("option-row-E"); assert.notEqual(hint(), ordinary);
+  f.change("answer"); f.key("Enter", "option-custom-input"); f.press("option-question-0"); assert.equal(hint(), ordinary);
+  f.change("edited"); assert.notEqual(hint(), ordinary);
+  f.press("option-row-A"); assert.equal(hint(), ordinary);
+});
+
+test("phone input has at least a 44px minimum while desktop keeps 36px", t => {
+  for (const [width, min] of [[390, 44], [1440, 36]]) {
+    const f = fixture(t, reply, width); f.press("option-row-E");
+    const input = byId(f.h, f.draw(), "option-custom-input");
+    assert.equal(input.props.style[0].minHeight, min);
+    assert.equal(input.props.style[0].fontSize, f.h.tokens.fs(13));
+    const row = byId(f.h, f.draw(), "option-row-E");
+    assert.ok(f.h.nodes(row, n => n.type === "View" && n.props.style?.minWidth === 0).length);
+  }
+});
