@@ -31,6 +31,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   const activeTransition = useRef<(() => void) | null>(null);
   const readOnlyTransition = useRef<(() => void) | null>(null);
   const pendingSend = useRef<{ card: HTMLElement; old: HTMLElement | null; height: number; scroller: HTMLElement | null; scrollTop: number } | null>(null);
+  const pendingPreview = useRef<{ card: HTMLElement; height: number; scroller: HTMLElement | null; scrollTop: number; anchor: string; previousHeight: string; previousOverflow: string } | null>(null);
   const scrollSpace = useRef<{ card: HTMLElement; scroller: HTMLElement; original: string; base: number; amount: number; stop: () => void; trim: () => void } | null>(null);
   const clearScrollSpace = () => {
     const space = scrollSpace.current;
@@ -84,6 +85,57 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   // A layout effect starts the transition before the newly selected question is painted.
   // The fallback also lets non-DOM renderers use the component without a layout hook.
   const useCommitEffect = React.useLayoutEffect ?? useEffect;
+  useCommitEffect(() => {
+    const pending = pendingPreview.current;
+    if (!pending) return;
+    pendingPreview.current = null;
+    const { card, height, scroller, scrollTop, anchor, previousHeight, previousOverflow } = pending;
+    const preview = card.querySelector<HTMLElement>('[data-testid="option-send-preview"]');
+    if (!preview) {
+      card.style.height = previousHeight;
+      card.style.overflow = previousOverflow;
+      if (scroller) scroller.style.overflowAnchor = anchor;
+      return;
+    }
+    card.style.height = "auto";
+    const nextHeight = card.getBoundingClientRect().height;
+    if (scroller && scroller.clientHeight > 0) {
+      const margin = card.style.marginBottom;
+      const base = Number.parseFloat(globalThis.getComputedStyle?.(card).marginBottom ?? margin) || 0;
+      card.style.marginBottom = `${base + scroller.clientHeight}px`;
+      const contentHeight = scroller.scrollHeight - scroller.clientHeight;
+      card.style.marginBottom = margin;
+      const deficit = Math.max(0, scrollTop + scroller.clientHeight - contentHeight);
+      if (Number.isFinite(deficit)) reserveScrollSpace(card, scroller, deficit);
+    }
+    if (scroller) scroller.scrollTop = scrollTop;
+    card.querySelector<HTMLElement>('[data-testid="option-send"]')?.focus({ preventScroll: true });
+    const reduced = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduced || typeof card.animate !== "function" || typeof preview.animate !== "function") {
+      card.style.height = previousHeight;
+      card.style.overflow = previousOverflow;
+      if (scroller) scroller.style.overflowAnchor = anchor;
+      scrollSpace.current?.trim();
+      return;
+    }
+    card.style.height = `${height}px`;
+    card.style.overflow = "hidden";
+    const expand = card.animate([{ height: `${height}px` }, { height: `${nextHeight}px` }], { duration: 180, easing: "linear", fill: "both" });
+    const incoming = preview.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 120, easing: "linear", fill: "both" });
+    const check = card.querySelector<HTMLElement>('[data-testid="option-confirmed-check"]');
+    const pop = check?.animate?.([{ transform: "scale(0.9)" }, { transform: "scale(1)" }], { duration: 120, easing: "linear", fill: "both" });
+    const finish = () => {
+      if (activeTransition.current !== finish) return;
+      activeTransition.current = null;
+      expand.cancel(); incoming.cancel(); pop?.cancel();
+      card.style.height = previousHeight;
+      card.style.overflow = previousOverflow;
+      if (scroller) scroller.style.overflowAnchor = anchor;
+      scrollSpace.current?.trim();
+    };
+    activeTransition.current = finish;
+    expand.finished.then(finish, finish);
+  }, [session?.choices, session?.customConfirmed]);
   useCommitEffect(() => {
     const pending = transition.current;
     if (!pending || pending.index === index) return;
@@ -200,6 +252,12 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   }, [session?.readOnly]);
   useEffect(() => () => {
     pendingSend.current = null;
+    if (pendingPreview.current) {
+      pendingPreview.current.card.style.height = pendingPreview.current.previousHeight;
+      pendingPreview.current.card.style.overflow = pendingPreview.current.previousOverflow;
+      if (pendingPreview.current.scroller) pendingPreview.current.scroller.style.overflowAnchor = pendingPreview.current.anchor;
+    }
+    pendingPreview.current = null;
     transition.current?.restore();
     activeTransition.current?.();
     readOnlyTransition.current?.();
@@ -325,13 +383,28 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     const before = getOptionSession(agentId);
     if (!before || before.at !== at || before.readOnly || before.sending || status === "running") return;
     const wasAnswered = before.choices[index] !== undefined;
-    if (!wasAnswered) prepareQuestionSwitch();
+    const previewPending = !wasAnswered && Object.keys(before.customConfirmed).length > 0 && before.set.questions.every((_, i) => i === index || before.choices[i] !== undefined) && preparePreview();
+    if (!wasAnswered && !previewPending) prepareQuestionSwitch();
     choose(agentId, index, letter);
     const after = getOptionSession(agentId);
     cancelUnchangedSwitch(after?.activeQuestion ?? index);
     if (!after || wasAnswered) return;
-    if (missingQuestion(agentId) === null) focus("option-send");
+    if (missingQuestion(agentId) === null) { if (!previewPending) focus("option-send"); }
     else focus(`option-row-${after.set.questions[after.activeQuestion]!.options[after.cursor[after.activeQuestion] ?? 0]!.letter}`);
+  };
+  const preparePreview = () => {
+    if (Platform.OS !== "web") return false;
+    const card = root.current;
+    if (!card?.style || typeof card.getBoundingClientRect !== "function") return false;
+    activeTransition.current?.();
+    const scroller = card.closest?.<HTMLElement>('[data-testid="agent-chat-scroll"]') ?? null;
+    const anchor = scroller?.style.overflowAnchor ?? "";
+    if (scroller) scroller.style.overflowAnchor = "none";
+    const height = card.getBoundingClientRect().height;
+    pendingPreview.current = { card, height, scroller, scrollTop: scroller?.scrollTop ?? 0, anchor, previousHeight: card.style.height, previousOverflow: card.style.overflow };
+    card.style.height = `${height}px`;
+    card.style.overflow = "hidden";
+    return true;
   };
   const openAndFocusCustom = () => {
     const current = getOptionSession(agentId);
@@ -345,7 +418,8 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     if (current?.at !== at || current.activeQuestion !== index || !current.customOpen[index] || current.readOnly || current.sending) return;
     event.preventDefault(); event.stopPropagation();
     const wasAnswered = current.choices[index] !== undefined;
-    if (!wasAnswered) prepareQuestionSwitch();
+    const previewPending = !wasAnswered && !!current.customDrafts[index]?.trim() && current.set.questions.every((_, i) => i === index || current.choices[i] !== undefined) && preparePreview();
+    if (!wasAnswered && !previewPending) prepareQuestionSwitch();
     const result = confirmCustom(agentId, index);
     cancelUnchangedSwitch(getOptionSession(agentId)?.activeQuestion ?? index);
     if (result === "blank") updateInputState({ empty: true });
@@ -353,7 +427,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
       updateInputState({ empty: false });
       if (!wasAnswered) {
         const after = getOptionSession(agentId);
-        if (after && missingQuestion(agentId) === null) focus("option-send");
+        if (after && missingQuestion(agentId) === null) { if (!previewPending) focus("option-send"); }
         else if (after) focus(`option-row-${after.set.questions[after.activeQuestion]!.options[0]!.letter}`);
       }
     }
@@ -445,7 +519,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
               ? `✓ ${chosenText.length > 18 ? `${chosenText.slice(0, 17).trimEnd()}…` : chosenText}`
               : `Q${number(i)} · ${optionShortName(q.title, number(i))}`;
             const tabStyle = { minHeight: 36, justifyContent: "center" as const, borderRadius: 18, paddingHorizontal: 12, backgroundColor: i === index ? tokens.surface2 : "transparent" };
-            const tabLabel = <Text style={{ ...label, color: i === index ? tokens.foreground : tokens.foregroundMuted, fontWeight: i === index ? "700" : "400" }}>{tabText}</Text>;
+            const tabLabel = <Text style={{ ...label, color: i === index ? tokens.foreground : tokens.foregroundMuted, fontWeight: i === index ? "700" : "400" }}>{Platform.OS === "web" && !readOnly && i === index && answer !== null && customText !== undefined ? <><Text testID="option-confirmed-check" style={{ display: "inline-block" } as unknown as ViewStyle}>✓</Text>{tabText.slice(1)}</> : tabText}</Text>;
             return <Pressable key={i} testID={`option-question-${i}`} accessibilityRole="tab" accessibilityState={{ selected: i === index }} disabled={!readOnly && disabled} {...(Platform.OS === "web" && readOnly ? { focusable: true, onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => { if (event.key === " ") { event.preventDefault(); switchQuestion(i); } } } : {})} onPress={() => switchQuestion(i)} style={tabStyle}>{tabLabel}</Pressable>;
           })}
           {readOnly ? <Text testID="option-read-only-status" style={{ ...muted, marginLeft: "auto" }}>{t("answerCard.readOnlyStatus")}</Text> : null}

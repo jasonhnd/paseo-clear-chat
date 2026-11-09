@@ -222,3 +222,41 @@ test("sending reserves bottom scroll space even with reduced motion", async t =>
     if (reduced) assert.equal(card.style.height, "auto");
   }
 });
+
+test("confirming the final custom answer expands the preview while retaining scroll and focus", async t => {
+  for (const reduced of [false, true]) {
+    const { h, s, draw } = fixture(t, "en", reduced);
+    s.choose("a", 0, "B"); s.choose("a", 1, "A");
+    s.openCustom("a", 2); s.setCustomDraft("a", 2, "line one\nline two");
+    const calls = [], focused = [];
+    const never = new Promise(() => {});
+    const animated = name => ({ animate(frames, options) { calls.push({ name, frames, options }); return { finished: never, cancel() {} }; } });
+    const preview = animated("preview"), check = animated("check");
+    const scroller = { style: {}, scrollTop: 125, clientHeight: 500, scrollHeight: 1200, addEventListener() {}, removeEventListener() {} };
+    const card = {
+      style: {}, closest: () => scroller,
+      getBoundingClientRect: () => ({ height: s.getOptionSession("a").customConfirmed[2] === undefined ? 500 : 620 }),
+      querySelector: selector => selector.includes("option-send-preview") ? preview : selector.includes("option-confirmed-check") ? check : selector.includes("option-send") ? { focus: () => focused.push("send") } : null,
+      ...animated("card"),
+    };
+    let listener;
+    const input = { addEventListener(type, fn) { if (type === "keydown") listener = fn; }, removeEventListener() {} };
+    let tree = draw();
+    byId(h, tree, "option-card").props.ref(card);
+    byId(h, tree, "option-custom-input").props.ref(input);
+    listener({ key: "Enter", preventDefault() {}, stopPropagation() {} });
+    tree = draw();
+    assert.equal(h.text(byId(h, tree, "option-send-preview")), "1B 2A 3E\n\n3E：\nline one\nline two");
+    assert.equal(scroller.scrollTop, 125);
+    assert.deepEqual(focused, ["send"], "Send is focused on the confirmation render");
+    if (reduced) assert.equal(calls.length, 0, "reduced motion skips animations");
+    else {
+      const height = calls.find(call => call.name === "card" && call.options.duration === 180);
+      assert.ok(height, "card height expands for 180 ms");
+      assert.deepEqual(height.frames.map(frame => frame.height), ["500px", "620px"]);
+      assert.ok(calls.some(call => call.name === "preview" && call.options.duration === 120 && call.frames[0].opacity === 0 && call.frames.at(-1).opacity === 1));
+      assert.ok(calls.some(call => call.name === "check" && call.options.duration === 120 && call.frames[0].transform === "scale(0.9)" && call.frames.at(-1).transform === "scale(1)"));
+    }
+    byId(h, tree, "option-custom-input").props.ref(null);
+  }
+});
