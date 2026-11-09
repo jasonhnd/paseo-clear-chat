@@ -3,7 +3,7 @@ import { Animated, Platform, Pressable, Text, View, type ViewStyle } from "react
 import { useAgent, useTranslation } from "@getpaseo/plugin/client";
 import { TextInput } from "@getpaseo/plugin/client/ui";
 import { messages } from "../messages";
-import { answerText, choose, customLetterFor, dismiss, getOptionSession, missingQuestion, moveCursor, openCustom, sendAnswer, setActiveQuestion, setCustomDraft, useOptionSession } from "../option-session";
+import { answerIndex, answerText, choose, customLetterFor, dismiss, getOptionSession, missingQuestion, moveCursor, openCustom, sendAnswer, setActiveQuestion, setCustomDraft, useOptionSession } from "../option-session";
 import { customAnswerLetter } from "../option-custom-answer";
 import { optionShortName } from "../option-short-name";
 import type { ExtendedThemeTokens } from "./theme-tokens";
@@ -42,6 +42,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   const disabled = readOnly || session.sending || status === "running";
   const missing = missingQuestion(agentId);
   const answer = answerText(agentId);
+  const hasCustomAnswer = Object.keys(session.customConfirmed).length > 0;
   const sendDisabled = disabled || answer === null;
   const number = (i: number) => session.set.questions[i]!.number ?? i + 1;
   const label = { color: tokens.foreground, fontFamily: tokens.fontUi, fontSize: tokens.fs(13) };
@@ -103,7 +104,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   return (
     <View {...keyboardProps} testID="option-card" accessibilityState={{ disabled: readOnly }} style={{ marginTop: 12, borderWidth: 1, borderColor: tokens.border, borderRadius: 12, backgroundColor: tokens.surface1, opacity: readOnly ? 0.55 : 1 }}>
       <View style={{ padding: 16, gap: 12 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <View testID="option-tabs" style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
           {session.set.questions.map((q, i) => {
             const chosen = q.options.find(option => option.letter === session.choices[i]);
             const chosenText = chosen?.text.replace(/\s+/g, " ").trim();
@@ -120,6 +121,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
               ? <View key={i} testID={`option-question-${i}`} style={tabStyle}>{tabLabel}</View>
               : <Pressable key={i} testID={`option-question-${i}`} accessibilityRole="tab" accessibilityState={{ selected: i === index }} disabled={disabled} onPress={() => { if (getOptionSession(agentId)?.at === at) setActiveQuestion(agentId, i); }} style={tabStyle}>{tabLabel}</Pressable>;
           })}
+          {readOnly ? <Text testID="option-read-only-status" style={{ ...muted, marginLeft: "auto" }}>{t("answerCard.readOnlyStatus")}</Text> : null}
           {!readOnly && !session.sending ? <Pressable testID="option-dismiss" accessibilityRole="button" onPress={() => { if (getOptionSession(agentId)?.at === at) dismiss(agentId); }} style={{ minHeight: 44, justifyContent: "center", marginLeft: "auto" }}><Text style={muted}>{t("answerCard.notOptions")}</Text></Pressable> : null}
         </View>
         <Animated.View style={{ opacity: fade, gap: 8 }}>
@@ -132,7 +134,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
               <Text style={{ ...label, color: readOnly ? tokens.foregroundMuted : selected ? tokens.accent : tokens.foregroundMuted, fontWeight: "700", overflow: "hidden", borderWidth: 1, borderColor: readOnly ? tokens.border : selected ? tokens.accent : tokens.border, borderRadius: 5, paddingHorizontal: 7, paddingVertical: 3 }}>{option.letter}</Text>
               <View style={{ flex: 1 }}><Text style={label}>{first}</Text>{rest.length ? <Text style={muted}>{rest.join("\n")}</Text> : null}</View>
               {selected ? <Text style={{ ...label, color: readOnly ? tokens.foregroundMuted : tokens.accent, fontWeight: "700" }}>✓</Text> : null}
-              {option.recommended ? <Text style={{ ...muted, color: readOnly ? tokens.foregroundMuted : tokens.accent, overflow: "hidden", borderRadius: 10, backgroundColor: tokens.accentBg, paddingHorizontal: 8, paddingVertical: 3 }}>{t("answerCard.recommended")}</Text> : null}
+              {option.recommended ? <Text style={{ ...muted, color: readOnly ? tokens.foregroundMuted : tokens.accent, overflow: "hidden", borderRadius: 10, backgroundColor: readOnly ? "transparent" : tokens.accentBg, paddingHorizontal: 8, paddingVertical: 3 }}>{t("answerCard.recommended")}</Text> : null}
             </>;
             return readOnly
               ? <View key={option.letter} testID={`option-row-${option.letter}`} accessibilityState={{ selected, disabled: true }} style={rowStyle}>{contents}</View>
@@ -144,12 +146,13 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
             const contents = <>
               <Text style={{ ...label, color: !readOnly && customOpen ? tokens.accent : tokens.foregroundMuted, fontWeight: "700", overflow: "hidden", borderWidth: 1, borderColor: !readOnly && customOpen ? tokens.accent : tokens.border, borderRadius: 5, paddingHorizontal: 7, paddingVertical: 3 }}>{customLetter}</Text>
               <View style={{ flex: 1, minWidth: 0 }}>
-                {customOpen ? <>
+                {readOnly ? <Text selectable style={label}>{customConfirmed ?? t("answerCard.other")}</Text> : customOpen ? <>
                   <TextInput {...(Platform.OS === "web" ? { onFocus: (event: { stopPropagation(): void }) => { event.stopPropagation(); setFocused("option-custom-input"); }, onBlur: (event: { stopPropagation(): void }) => { event.stopPropagation(); setFocused(current => current === "option-custom-input" ? null : current); } } : {})} testID="option-custom-input" accessibilityLabel={t("answerCard.other")} value={session.customDrafts[index] ?? ""} onChangeText={text => { if (getOptionSession(agentId)?.at === at) { setCustomDraft(agentId, index, text); if (text.trim()) updateInputState({ empty: false }); } }} multiline numberOfLines={2} editable={!disabled} onContentSizeChange={event => { const current = getOptionSession(agentId); if (current?.at === at && current.activeQuestion === index) updateInputState({ height: event.nativeEvent.contentSize.height }); }} style={[{ ...label, padding: 0, borderWidth: 0, minHeight: tokens.fs(36), maxHeight: tokens.fs(72), height: Math.max(tokens.fs(36), Math.min(tokens.fs(72), currentInputState.height)), textAlignVertical: "top" }, focusStyle("option-custom-input")]} />
                   {currentInputState.empty ? <Text testID="option-custom-empty" style={{ ...muted, color: tokens.danger }}>{t("answerCard.otherEmpty")}</Text> : null}
                   {!readOnly && customConfirmed === undefined ? <Text style={muted}>{t("answerCard.otherHint")}</Text> : null}
                 </> : <><Text style={label}>{t("answerCard.other")}</Text><Text style={muted}>{t("answerCard.otherHint")}</Text></>}
               </View>
+              {readOnly && customConfirmed !== undefined ? <Text style={{ ...label, color: tokens.foregroundMuted, fontWeight: "700" }}>✓</Text> : null}
             </>;
             return readOnly
               ? <View testID={rowId} accessibilityState={{ selected: customOpen, disabled: true }} style={rowStyle}>{contents}</View>
@@ -158,12 +161,13 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
         </Animated.View>
         {session.error ? <Text testID="option-send-error" accessibilityRole="alert" style={{ ...muted, color: tokens.danger }}>{t("answerCard.error", { reason: session.error })}</Text> : null}
       </View>
-      {readOnly ? <View style={{ padding: 16, borderTopWidth: 1, borderColor: tokens.border }}><Text testID="option-answered" style={muted}>{`Answered in the chat: ${session.answeredText}`}</Text></View> : <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, padding: 16, borderTopWidth: 1, borderColor: tokens.border, borderBottomLeftRadius: 11, borderBottomRightRadius: 11, backgroundColor: tokens.surface2 }}>
+      {readOnly ? <View style={{ padding: 16, borderTopWidth: 1, borderColor: tokens.border }}><Text testID="option-answered" style={muted}>{`Answered in the chat: ${session.answeredText}`}</Text></View> : <View style={{ flexDirection: hasCustomAnswer ? "column" : "row", alignItems: hasCustomAnswer ? "stretch" : "center", justifyContent: "space-between", gap: 8, padding: 16, borderTopWidth: 1, borderColor: tokens.border, borderBottomLeftRadius: 11, borderBottomRightRadius: 11, backgroundColor: tokens.surface2 }}>
+        {hasCustomAnswer && answer !== null ? <Text testID="option-send-preview" selectable style={{ ...label, color: tokens.foregroundMuted }}>{answer}</Text> : null}
         {Platform.OS === "web" ? <Text testID="option-hint" style={{ ...muted, fontFamily: tokens.fontMono, flexShrink: 1 }}>{focused === "option-send"
           ? t("answerCard.hintSend").replace(/^Tab →\s*/, "↵ ").toLowerCase()
           : `${t("answerCard.hintMove").replace(/^↑\s*↓/, "↑↓")} · ↵ ${t("answerCard.hintPick").replace(/^A B C D\s*/, "")}`}</Text> : <View />}
         <Pressable {...focusProps("option-send")} testID="option-send" accessibilityRole="button" accessibilityState={{ disabled: sendDisabled }} disabled={sendDisabled} focusable={!sendDisabled} onPress={() => { if (getOptionSession(agentId)?.at === at) void sendAnswer(agentId); }} style={[{ minHeight: 44, justifyContent: "center", alignItems: "center", paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderStyle: sendDisabled ? "dashed" : "solid", borderColor: sendDisabled ? tokens.foregroundMuted : tokens.accent, backgroundColor: sendDisabled ? "transparent" : tokens.accent }, focusStyle("option-send")]}>
-          <Text style={{ ...label, color: sendDisabled ? tokens.foregroundMuted : tokens.accentForeground, fontWeight: "700" }}>{missing === null ? t("answerCard.send", { answer: answer ?? "" }) : t("answerCard.missing", { question: number(missing) })}</Text>
+          <Text style={{ ...label, color: sendDisabled ? tokens.foregroundMuted : tokens.accentForeground, fontWeight: "700" }}>{missing === null ? t("answerCard.send", { answer: answerIndex(agentId) ?? "" }) : t("answerCard.missing", { question: number(missing) })}</Text>
         </Pressable>
       </View>}
     </View>

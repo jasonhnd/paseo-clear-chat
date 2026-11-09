@@ -627,6 +627,7 @@
     "other": "自己写",
     "otherHint": "写下你自己的回答",
     "otherEmpty": "请先写下你的回答",
+    "readOnlyStatus": "已答 · 只读",
     "recommended": "推荐",
     "writeOwn": "自己填写",
     "noteLabel": "回答备注",

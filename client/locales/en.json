@@ -627,6 +627,7 @@
     "other": "Other",
     "otherHint": "Write your own answer",
     "otherEmpty": "Write your answer first",
+    "readOnlyStatus": "Answered · read-only",
     "recommended": "Recommended",
     "writeOwn": "Write my own",
     "noteLabel": "Answer note",

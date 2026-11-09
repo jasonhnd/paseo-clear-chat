@@ -627,6 +627,7 @@
     "other": "自分で書く",
     "otherHint": "自分の回答を書く",
     "otherEmpty": "先に回答を書いてください",
+    "readOnlyStatus": "回答済み · 読み取り専用",
     "recommended": "おすすめ",
     "writeOwn": "自分で入力",
     "noteLabel": "回答のメモ",
