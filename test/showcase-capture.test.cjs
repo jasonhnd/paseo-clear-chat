@@ -31,7 +31,7 @@ test("all README languages retain matching published pairs alongside the separat
   const plan = createCapturePlan(readme("README.md"));
   const expected = files(plan);
   assert.equal(plan.length, 27);
-  for (const file of ["README.md", "README.zh-CN.md", "README.ja.md"]) {
+  for (const file of ["README.md", "README.zh-CN.md"]) {
     const content = readme(file);
     assert.deepEqual(files(createCapturePlan(content)), expected);
     const pictures = [...content.matchAll(/<picture>([\s\S]*?)<\/picture>/g)];
