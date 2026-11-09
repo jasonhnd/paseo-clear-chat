@@ -20,11 +20,66 @@ test("fencedSource preserves language and code while choosing a safe fence", t =
     ["````", "js", "`````js\n````\n`````"],
     ["text", "", "```\ntext\n```"],
     ["x", "TypeScript", "```TypeScript\nx\n```"],
-    ["x\n\n\n", "ts", "```ts\nx\n```"],
-    ["x\r\n\r\n", "ts", "```ts\nx\n```"],
+    ["x\n", "ts", "```ts\nx\n\n```"],
+    ["x\n\n\n", "ts", "```ts\nx\n\n\n\n```"],
+    ["x\r\n\r\n", "ts", "```ts\nx\r\n\r\n\n```"],
+    ["~~~ and ```", "js`odd", "~~~~js`odd\n~~~ and ```\n~~~~"],
     ["first\nsecond", "ts", "```ts\nfirst\nsecond\n```"],
     ["", "", "```\n\n```"],
   ]) assert.equal(fencedSource(code, language), expected);
+});
+
+test("backtick info renders and copies inside the host code block", async t => {
+  const parser = new (require("markdown-it"))("commonmark");
+  let clipboard = "sentinel";
+  const Markdown = ({ children }) => {
+    const tokens = parser.parse(children, {});
+    return tokens.map(token => token.type === "fence"
+      ? { type: "HostCode", props: { code: token.content.slice(0, -1), onPress: () => { clipboard = token.content.replace(/\n+$/, ""); } } }
+      : { type: "HostOther", props: { children: token.content } });
+  };
+  const h = harness(t, { ui: { Markdown } });
+  const { MarkdownView } = h.load("client/components/markdown/markdown-view.tsx");
+  const tree = h.draw({ type: MarkdownView, props: { text: "~~~~js`odd\nconsole.log('ticks');\n~~~~", tokens: h.tokens, variant: "document" } });
+  const code = h.nodes(tree, node => node.type === "HostCode");
+  assert.equal(code.length, 1);
+  assert.equal(code[0].props.code, "console.log('ticks');");
+  assert.equal(h.text(h.nodes(tree, node => node.props.testID === "official-code-language")[0]), "js`odd");
+  await code[0].props.onPress();
+  assert.equal(clipboard, "console.log('ticks');");
+});
+
+test("trailing code line breaks use a copy path that preserves every displayed newline", async t => {
+  for (const [source, expected] of [
+    ["```js\nconsole.log('line');\n\n```", "console.log('line');\n"],
+    ["```js\nconsole.log('line');\n\n\n```", "console.log('line');\n\n"],
+    ["```js\r\nconsole.log('line');\r\n\r\n\r\n```", "console.log('line');\n\n"],
+  ]) {
+    const h = harness(t, { syntax: true, copyFeedback: true });
+    const { MarkdownView } = h.load("client/components/markdown/markdown-view.tsx");
+    const tree = h.draw({ type: MarkdownView, props: { text: source, tokens: h.tokens, variant: "document" } });
+    assert.equal(h.nodes(tree, node => node.type === "OfficialMarkdown").length, 0);
+    const body = h.nodes(tree, node => node.props.testID === "exact-code-body");
+    assert.equal(body.length, 1);
+    assert.equal(h.text(body[0]), expected);
+    const copy = h.nodes(tree, node => node.props.accessibilityLabel === "Copy code");
+    assert.equal(copy.length, 1);
+    await copy[0].props.onPress();
+    assert.equal(h.copies.at(-1), expected);
+  }
+});
+
+test("generated fences parse as one code block, including inner fence runs", t => {
+  const parser = new (require("markdown-it"))("commonmark");
+  const h = harness(t);
+  const { fencedSource } = h.load("client/components/markdown/official-block.tsx");
+  for (const [code, language] of [["x", "ts"], ["x\n", "ts"], ["x\n\n", "ts"], ["x\r\n\r\n", "ts"], ["```\n~~~~", "js`odd"], ["code", "~js`odd"]]) {
+    const result = parser.parse(fencedSource(code, language), {});
+    assert.equal(result.length, 1);
+    assert.equal(result[0].type, "fence");
+    assert.equal(result[0].info.trim(), language);
+    assert.equal(result[0].content, `${code.replace(/\r\n/g, "\n")}\n`);
+  }
 });
 
 for (const [name, Markdown, expected] of [
