@@ -410,3 +410,197 @@ test("a single choice moves focus to Send", async t => {
   assert.match(focused.pop(), /option-send/);
   assert.equal(byId(h, draw(), "option-send").props.disabled, false);
 });
+
+// The web motion uses the browser animation API. These nodes record the actual
+// keyframes applied by the card while the harness drives a question change.
+function motionFixture(t, reduced = false) {
+  const animations = [];
+  const globals = { matchMedia: () => ({ matches: reduced }) };
+  const h = createToolHarness("web", { agents: { a: { status: "idle" } }, globals });
+  t.after(() => { h.unmount(); h.dispose(); });
+  const s = h.load("client/option-session.ts");
+  const Card = h.load("client/components/option-card.tsx").OptionCard;
+  s.publishAssistantReply("a", { at: 10, text: reply });
+  let height = 300;
+  function node(name) {
+    return {
+      name, style: {}, clientTop: 1, clientLeft: 1, parentElement: null,
+      getBoundingClientRect: () => ({ top: 100, left: 10, width: 380, height: name === "card" ? height : 200 }),
+      querySelectorAll: () => [], setAttribute() {}, remove() {},
+      cloneNode: () => node("old-content"), appendChild() {},
+      animate(keyframes, options) {
+        const animation = { name, keyframes, options, cancel() {}, finished: Promise.resolve() };
+        animations.push(animation);
+        return animation;
+      },
+    };
+  }
+  const card = node("card"), content = node("content");
+  card.querySelector = selector => selector === '[data-testid="option-question-content"]' ? content : null;
+  const draw = () => {
+    const tree = h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } });
+    byId(h, tree, "option-card").props.ref(card);
+    return tree;
+  };
+  return { h, draw, animations, switchQuestion() { byId(h, draw(), "option-question-1").props.onPress(); height = 400; return draw(); } };
+}
+
+test("question changes cross-fade content while the card animates its measured height", t => {
+  const f = motionFixture(t);
+  f.switchQuestion();
+  const height = f.animations.find(a => a.name === "card" && a.keyframes.some(frame => frame.height));
+  assert.ok(height, "the card must animate between its old and new heights");
+  assert.deepEqual(height.keyframes.map(frame => frame.height), ["300px", "400px"]);
+  assert.equal(height.options.duration, 180);
+  assert.equal(height.options.easing.replace(/\s/g, ""), "cubic-bezier(.2,0,0,1)");
+  for (const name of ["old-content", "content"]) {
+    const fade = f.animations.find(a => a.name === name && a.keyframes.some(frame => frame.opacity !== undefined));
+    assert.ok(fade, `${name} must fade during the switch`);
+    assert.equal(fade.options.duration, 120);
+  }
+});
+
+test("reduced motion switches questions without height or opacity animations", t => {
+  const f = motionFixture(t, true);
+  const tree = f.switchQuestion();
+  assert.equal(f.animations.length, 0);
+  const content = f.h.nodes(tree, node => node.type === "Animated.View")[0];
+  assert.ok(content, "the current question content must remain rendered");
+  assert.equal(content.props.style.opacity ?? 1, 1, "reduced motion must not use an animated opacity value");
+});
+
+test("question switches preserve the chat scroll position, including reduced motion", t => {
+  for (const reduced of [false, true]) {
+    const f = motionFixture(t, reduced);
+    const scroller = { style: { overflowAnchor: "auto" }, scrollTop: 100 };
+    let height = 300;
+    const animation = { cancel() {}, finished: new Promise(() => {}) };
+    const content = {
+      style: {}, getBoundingClientRect: () => ({ top: 120, left: 10, width: 380, height: 200 }),
+      cloneNode: () => ({ style: {}, setAttribute() {}, querySelectorAll: () => [], remove() {}, animate: () => animation }),
+      animate: () => animation,
+    };
+    const card = {
+      style: {}, clientTop: 1, clientLeft: 1, closest: () => scroller,
+      getBoundingClientRect: () => ({ top: 100, left: 10, width: 380, height }),
+      querySelector: () => content, appendChild() {}, animate: () => animation,
+    };
+    const tree = f.draw();
+    byId(f.h, tree, "option-card").props.ref(card);
+    byId(f.h, tree, "option-question-1").props.onPress();
+    assert.equal(scroller.style.overflowAnchor, "none", `anchoring disabled, reduced=${reduced}`);
+    height = 400;
+    scroller.scrollTop = 140;
+    f.draw();
+    assert.equal(scroller.scrollTop, 100, `scroll restored at commit, reduced=${reduced}`);
+  }
+});
+
+test("a shrinking question keeps enough scrollable space at the bottom, including reduced motion", t => {
+  for (const reduced of [false, true]) {
+    const f = motionFixture(t, reduced);
+    let naturalHeight = 693, scroll = 205;
+    const animation = { cancel() {}, finished: new Promise(() => {}) };
+    const content = {
+      style: {}, getBoundingClientRect: () => ({ top: 120, left: 10, width: 380, height: 500 }),
+      cloneNode: () => ({ style: {}, setAttribute() {}, querySelectorAll: () => [], remove() {}, animate: () => animation }),
+      animate: () => animation,
+    };
+    const card = {
+      style: {}, clientTop: 1, clientLeft: 1,
+      getBoundingClientRect: () => ({ top: 100, left: 10, width: 380, height: Number.parseFloat(card.style.height) || naturalHeight }),
+      querySelector: () => content, appendChild() {}, animate: () => animation,
+    };
+    const scroller = {
+      style: {}, clientHeight: 800,
+      get scrollHeight() { return 312 + naturalHeight + (Number.parseFloat(card.style.marginBottom) || 0); },
+      get scrollTop() { return scroll = Math.min(scroll, Math.max(0, this.scrollHeight - this.clientHeight)); },
+      set scrollTop(value) { scroll = Math.min(value, Math.max(0, this.scrollHeight - this.clientHeight)); },
+    };
+    card.closest = () => scroller;
+    const tree = f.draw();
+    byId(f.h, tree, "option-card").props.ref(card);
+    byId(f.h, tree, "option-question-1").props.onPress();
+    naturalHeight = 357;
+    f.draw();
+    assert.equal(scroller.scrollTop, 205, `bottom scroll preserved, reduced=${reduced}`);
+    assert.ok(Number.parseFloat(card.style.marginBottom) >= 205, `space reserved, reduced=${reduced}`);
+  }
+});
+
+test("scroll compensation accounts for content shorter than the viewport", t => {
+  const f = motionFixture(t, true);
+  let naturalHeight = 693, scroll = 205;
+  const content = { getBoundingClientRect: () => ({ top: 120, left: 10, width: 380, height: 500 }) };
+  const card = {
+    style: {}, clientTop: 1, clientLeft: 1,
+    getBoundingClientRect: () => ({ top: 100, left: 10, width: 380, height: Number.parseFloat(card.style.height) || naturalHeight }),
+    querySelector: () => content,
+  };
+  const scroller = {
+    style: {}, clientHeight: 800,
+    get scrollHeight() { return Math.max(this.clientHeight, 312 + naturalHeight + (Number.parseFloat(card.style.marginBottom) || 0)); },
+    get scrollTop() { return scroll = Math.min(scroll, this.scrollHeight - this.clientHeight); },
+    set scrollTop(value) { scroll = Math.min(value, this.scrollHeight - this.clientHeight); },
+  };
+  card.closest = () => scroller;
+  const tree = f.draw();
+  byId(f.h, tree, "option-card").props.ref(card);
+  byId(f.h, tree, "option-question-1").props.onPress();
+  naturalHeight = 357;
+  f.draw();
+  assert.equal(scroller.scrollTop, 205);
+});
+
+test("a stale editable tab does not freeze the old card or its scroller", t => {
+  const f = motionFixture(t);
+  const scroller = { style: { overflowAnchor: "auto" }, scrollTop: 10 };
+  const content = {
+    getBoundingClientRect: () => ({ top: 120, left: 10, width: 380, height: 200 }),
+    cloneNode: () => ({ style: {}, setAttribute() {}, querySelectorAll: () => [], remove() {} }),
+  };
+  const card = {
+    style: {}, clientTop: 1, clientLeft: 1, closest: () => scroller,
+    getBoundingClientRect: () => ({ top: 100, left: 10, width: 380, height: 300 }),
+    querySelector: () => content, appendChild() {}, animate() {},
+  };
+  const tree = f.draw();
+  byId(f.h, tree, "option-card").props.ref(card);
+  f.h.load("client/option-session.ts").publishAssistantReply("a", { at: 20, text: reply });
+  byId(f.h, tree, "option-question-1").props.onPress();
+  assert.equal(card.style.height, undefined);
+  assert.equal(scroller.style.overflowAnchor, "auto");
+});
+
+test("a rapid question switch starts from the currently rendered height", t => {
+  const f = motionFixture(t);
+  const animations = [];
+  let naturalHeight = 300, renderedHeight = 300, active = false;
+  const content = {
+    getBoundingClientRect: () => ({ top: 120, left: 10, width: 380, height: 200 }),
+    cloneNode: () => ({ style: {}, setAttribute() {}, querySelectorAll: () => [], remove() {}, animate: () => ({ cancel() {} }) }),
+    animate: () => ({ cancel() {} }),
+  };
+  const card = {
+    style: {}, clientTop: 1, clientLeft: 1,
+    getBoundingClientRect: () => ({ top: 100, left: 10, width: 380, height: card.style.height === "auto" ? naturalHeight : active ? renderedHeight : naturalHeight }),
+    querySelector: () => content, appendChild() {},
+    animate(keyframes) {
+      active = true;
+      const animation = { keyframes, cancel() { active = false; }, finished: new Promise(() => {}) };
+      animations.push(animation);
+      return animation;
+    },
+  };
+  const initial = f.draw();
+  byId(f.h, initial, "option-card").props.ref(card);
+  byId(f.h, initial, "option-question-1").props.onPress();
+  naturalHeight = 400;
+  const second = f.draw();
+  byId(f.h, second, "option-card").props.ref(card);
+  renderedHeight = 350;
+  byId(f.h, second, "option-question-0").props.onPress();
+  naturalHeight = 300;
+  f.draw();
+  assert.equal(animations[1].keyframes[0].height, "350px");
+});

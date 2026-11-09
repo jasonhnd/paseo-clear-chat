@@ -27,17 +27,112 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   const [focused, setFocused] = useState<string | null>(null);
   const [inputState, setInputState] = useState({ agentId, at, index: 0, height: 0, empty: false });
   const fade = useRef(new Animated.Value(1)).current;
+  const transition = useRef<{ index: number; height: number; old: HTMLElement | null; card: HTMLElement; scroller: HTMLElement | null; scrollTop: number; restore: () => void } | null>(null);
+  const activeTransition = useRef<(() => void) | null>(null);
+  const scrollSpace = useRef<{ card: HTMLElement; scroller: HTMLElement; original: string; base: number; amount: number; stop: () => void; trim: () => void } | null>(null);
+  const clearScrollSpace = () => {
+    const space = scrollSpace.current;
+    if (!space) return;
+    scrollSpace.current = null;
+    space.stop();
+    space.card.style.marginBottom = space.original;
+  };
+  const reserveScrollSpace = (card: HTMLElement, scroller: HTMLElement, amount: number) => {
+    if (amount <= 0) return;
+    let space = scrollSpace.current;
+    if (space && (space.card !== card || space.scroller !== scroller)) {
+      clearScrollSpace();
+      space = null;
+    }
+    if (!space) {
+      const original = card.style.marginBottom;
+      const base = Number.parseFloat(globalThis.getComputedStyle?.(card).marginBottom ?? original) || 0;
+      const trim = () => {
+        const current = scrollSpace.current;
+        if (!current || current.card !== card || current.scroller !== scroller || activeTransition.current || transition.current) return;
+        const available = scroller.scrollTop === 0 ? current.amount
+          : Math.max(0, scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop);
+        if (!Number.isFinite(available)) return;
+        current.amount -= Math.min(current.amount, available);
+        if (current.amount <= 0) clearScrollSpace();
+        else card.style.marginBottom = `${current.base + current.amount}px`;
+      };
+      scroller.addEventListener?.("scroll", trim, { passive: true });
+      space = { card, scroller, original, base, amount: 0, stop: () => scroller.removeEventListener?.("scroll", trim), trim };
+      scrollSpace.current = space;
+    }
+    space.amount += amount;
+    card.style.marginBottom = `${space.base + space.amount}px`;
+  };
   const index = session?.readOnly && viewed?.agentId === agentId && viewed.at === at
     ? viewed.index : session?.activeQuestion ?? 0;
   useEffect(() => {
     setInputState({ agentId, at, index, height: 0, empty: false });
   }, [agentId, at, index]);
   useEffect(() => {
+    if (Platform.OS === "web" && globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      fade.setValue(1);
+      return;
+    }
     fade.setValue(0.85);
     const animation = Animated.timing(fade, { toValue: 1, duration: 160, useNativeDriver: true });
     animation.start();
     return () => animation.stop();
   }, [fade, index]);
+  // A layout effect starts the transition before the newly selected question is painted.
+  // The fallback also lets non-DOM renderers use the component without a layout hook.
+  const useCommitEffect = React.useLayoutEffect ?? useEffect;
+  useCommitEffect(() => {
+    const pending = transition.current;
+    if (!pending || pending.index === index) return;
+    transition.current = null;
+    const { card, old, height, scroller, scrollTop, restore } = pending;
+    const content = card.querySelector<HTMLElement>('[data-testid="option-question-content"]');
+    const inlineMargin = card.style.marginBottom;
+    const previousMargin = Number.parseFloat(globalThis.getComputedStyle?.(card).marginBottom ?? inlineMargin) || 0;
+    card.style.height = "auto";
+    const nextHeight = card.getBoundingClientRect().height;
+    let deficit = 0;
+    if (scroller && scroller.clientHeight > 0) {
+      // scrollHeight is at least clientHeight even when the content is shorter.
+      // A temporary margin exposes the otherwise hidden shortfall before paint.
+      card.style.marginBottom = `${previousMargin + scroller.clientHeight}px`;
+      const contentHeight = scroller.scrollHeight - scroller.clientHeight;
+      card.style.marginBottom = inlineMargin;
+      deficit = Math.max(0, scrollTop + scroller.clientHeight - contentHeight);
+    }
+    if (scroller && Number.isFinite(deficit)) reserveScrollSpace(card, scroller, deficit);
+    const nextMargin = previousMargin + (Number.isFinite(deficit) ? deficit : 0);
+    card.style.height = `${height}px`;
+    if (scroller) scroller.scrollTop = scrollTop;
+    if (!old || !content || typeof card.animate !== "function" || typeof content.animate !== "function") {
+      restore();
+      scrollSpace.current?.trim();
+      return;
+    }
+    const frames = deficit > 0
+      ? [{ height: `${height}px`, marginBottom: `${previousMargin}px` }, { height: `${nextHeight}px`, marginBottom: `${nextMargin}px` }]
+      : [{ height: `${height}px` }, { height: `${nextHeight}px` }];
+    const heightAnimation = card.animate(frames, {
+      duration: 180, easing: "cubic-bezier(.2,0,0,1)", fill: "both",
+    });
+    const out = old.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, easing: "ease-out", fill: "both" });
+    const incoming = content.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 120, easing: "ease-out", fill: "both" });
+    const finish = () => {
+      if (activeTransition.current !== finish) return;
+      activeTransition.current = null;
+      heightAnimation.cancel(); out.cancel(); incoming.cancel();
+      restore();
+      scrollSpace.current?.trim();
+    };
+    activeTransition.current = finish;
+    heightAnimation.finished.then(finish, finish);
+  }, [index]);
+  useEffect(() => () => {
+    transition.current?.restore();
+    activeTransition.current?.();
+    clearScrollSpace();
+  }, []);
   if (!session || session.at !== at || session.dismissed || (status === "running" && !session.readOnly)) return null;
 
   const question = session.set.questions[index]!;
@@ -70,16 +165,75 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     setTimeout(() => {
       const current = getOptionSession(agentId);
       if (current?.at !== at || current.readOnly || current.sending || status === "running") return;
-      if (Platform.OS === "web") root.current?.querySelector<HTMLElement>(`[data-testid="${testId}"]`)?.focus();
+      if (Platform.OS === "web") root.current?.querySelector<HTMLElement>(`[data-testid="${testId}"]`)?.focus({ preventScroll: true });
       else if (testId === "option-custom-input") customInput.current?.focus();
     }, 0);
+  };
+  const prepareQuestionSwitch = () => {
+    if (Platform.OS !== "web") return;
+    const card = root.current;
+    if (!card?.style || typeof card.getBoundingClientRect !== "function") return;
+    const interruptedHeight = activeTransition.current ? card.getBoundingClientRect().height : null;
+    const scroller = card.closest?.<HTMLElement>('[data-testid="agent-chat-scroll"]') ?? null;
+    const scrollTop = scroller?.scrollTop ?? 0;
+    activeTransition.current?.();
+    transition.current?.restore();
+    transition.current = null;
+    const anchor = scroller?.style.overflowAnchor;
+    if (scroller) scroller.style.overflowAnchor = "none";
+    const previous = { height: card.style.height, overflow: card.style.overflow, position: card.style.position };
+    const cardRect = card.getBoundingClientRect();
+    const height = interruptedHeight ?? cardRect.height;
+    const content = card.querySelector<HTMLElement>('[data-testid="option-question-content"]');
+    const reduced = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    let old: HTMLElement | null = null;
+    if (!reduced && content && typeof card.animate === "function") {
+      const contentRect = content.getBoundingClientRect();
+      old = content.cloneNode(true) as HTMLElement;
+      old.setAttribute("aria-hidden", "true");
+      old.setAttribute("inert", "");
+      old.setAttribute("data-testid", "");
+      old.querySelectorAll("[data-testid], [id]").forEach(node => { node.removeAttribute("data-testid"); node.removeAttribute("id"); });
+      Object.assign(old.style, { position: "absolute", top: `${contentRect.top - cardRect.top - card.clientTop}px`, left: `${contentRect.left - cardRect.left - card.clientLeft}px`, width: `${contentRect.width}px`, pointerEvents: "none", margin: "0", zIndex: "1" });
+      card.style.position = "relative";
+      card.style.height = `${height}px`;
+      card.style.overflow = "hidden";
+      card.appendChild(old);
+    }
+    const restore = () => {
+      old?.remove();
+      card.style.height = previous.height;
+      card.style.overflow = previous.overflow;
+      card.style.position = previous.position;
+      if (scroller) scroller.style.overflowAnchor = anchor ?? "";
+    };
+    if (scroller) scroller.scrollTop = scrollTop;
+    transition.current = { index, height, old, card, scroller, scrollTop, restore };
+  };
+  const cancelUnchangedSwitch = (nextIndex: number) => {
+    if (nextIndex !== index) return;
+    transition.current?.restore();
+    transition.current = null;
+  };
+  const switchQuestion = (nextIndex: number) => {
+    if (nextIndex === index) return;
+    if (readOnly) {
+      setViewed({ agentId, at, index: nextIndex });
+      return;
+    }
+    const current = getOptionSession(agentId);
+    if (!current || current.at !== at || current.readOnly || current.sending || current.activeQuestion === nextIndex) return;
+    prepareQuestionSwitch();
+    setActiveQuestion(agentId, nextIndex);
   };
   const select = (letter: string) => {
     const before = getOptionSession(agentId);
     if (!before || before.at !== at || before.readOnly || before.sending || status === "running") return;
     const wasAnswered = before.choices[index] !== undefined;
+    if (!wasAnswered) prepareQuestionSwitch();
     choose(agentId, index, letter);
     const after = getOptionSession(agentId);
+    cancelUnchangedSwitch(after?.activeQuestion ?? index);
     if (!after || wasAnswered) return;
     if (missingQuestion(agentId) === null) focus("option-send");
     else focus(`option-row-${after.set.questions[after.activeQuestion]!.options[after.cursor[after.activeQuestion] ?? 0]!.letter}`);
@@ -96,7 +250,9 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     if (current?.at !== at || current.activeQuestion !== index || !current.customOpen[index] || current.readOnly || current.sending) return;
     event.preventDefault(); event.stopPropagation();
     const wasAnswered = current.choices[index] !== undefined;
+    if (!wasAnswered) prepareQuestionSwitch();
     const result = confirmCustom(agentId, index);
+    cancelUnchangedSwitch(getOptionSession(agentId)?.activeQuestion ?? index);
     if (result === "blank") updateInputState({ empty: true });
     else if (result === "confirmed") {
       updateInputState({ empty: false });
@@ -152,12 +308,12 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
               : `Q${number(i)} · ${optionShortName(q.title, number(i))}`;
             const tabStyle = { minHeight: 36, justifyContent: "center" as const, borderRadius: 18, paddingHorizontal: 12, backgroundColor: i === index ? tokens.surface2 : "transparent" };
             const tabLabel = <Text style={{ ...label, color: i === index ? tokens.foreground : tokens.foregroundMuted, fontWeight: i === index ? "700" : "400" }}>{tabText}</Text>;
-            return <Pressable key={i} testID={`option-question-${i}`} accessibilityRole="tab" accessibilityState={{ selected: i === index }} disabled={!readOnly && disabled} {...(Platform.OS === "web" && readOnly ? { focusable: true, onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => { if (event.key === " ") { event.preventDefault(); setViewed({ agentId, at, index: i }); } } } : {})} onPress={() => { if (readOnly) setViewed({ agentId, at, index: i }); else if (getOptionSession(agentId)?.at === at) setActiveQuestion(agentId, i); }} style={tabStyle}>{tabLabel}</Pressable>;
+            return <Pressable key={i} testID={`option-question-${i}`} accessibilityRole="tab" accessibilityState={{ selected: i === index }} disabled={!readOnly && disabled} {...(Platform.OS === "web" && readOnly ? { focusable: true, onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => { if (event.key === " ") { event.preventDefault(); switchQuestion(i); } } } : {})} onPress={() => switchQuestion(i)} style={tabStyle}>{tabLabel}</Pressable>;
           })}
           {readOnly ? <Text testID="option-read-only-status" style={{ ...muted, marginLeft: "auto" }}>{t("answerCard.readOnlyStatus")}</Text> : null}
           {!readOnly && !session.sending ? <Pressable testID="option-dismiss" accessibilityRole="button" onPress={() => { if (getOptionSession(agentId)?.at === at) dismiss(agentId); }} style={{ minHeight: 44, justifyContent: "center", marginLeft: "auto" }}><Text style={muted}>{t("answerCard.notOptions")}</Text></Pressable> : null}
         </View>
-        <Animated.View style={{ opacity: fade, gap: 8 }}>
+        <Animated.View testID="option-question-content" style={{ opacity: Platform.OS !== "web" || readOnly ? fade : 1, gap: 8 }}>
           <Text selectable style={{ ...label, fontWeight: "700", marginBottom: 4 }}>{question.text}</Text>
           {question.options.map(option => {
             const selected = session.choices[index] === option.letter;
