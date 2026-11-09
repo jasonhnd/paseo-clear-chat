@@ -26,7 +26,16 @@ function fixture(t, text = reply, width = 390) {
     byId(h, draw(), "option-card").props.onKeyDown({ key, target, nativeEvent: {}, ...extra, preventDefault() { prevented = true; }, stopPropagation() { stopped = true; } });
     return { prevented, stopped };
   };
-  return { h, s, agents, draw, press, change, key, active: () => active };
+  const inputKey = (key, extra = {}) => {
+    let prevented = 0, stopped = 0, cardCalls = 0;
+    const target = { getAttribute: () => "option-custom-input", closest: () => ({}) };
+    const event = { key, target, nativeEvent: {}, ...extra, preventDefault() { prevented++; }, stopPropagation() { stopped++; } };
+    const tree = draw();
+    byId(h, tree, "option-custom-input").props.onKeyDown(event);
+    if (!stopped) { cardCalls++; byId(h, tree, "option-card").props.onKeyDown(event); }
+    return { prevented, stopped, cardCalls };
+  };
+  return { h, s, agents, draw, press, change, key, inputKey, active: () => active };
 }
 
 test("custom row click and synthetic letters open and focus the input", async t => {
@@ -141,4 +150,45 @@ test("phone input has at least a 44px minimum while desktop keeps 36px", t => {
     const row = byId(f.h, f.draw(), "option-row-E");
     assert.ok(f.h.nodes(row, n => n.type === "View" && n.props.style?.minWidth === 0).length);
   }
+});
+
+
+test("input Enter confirms once and focuses the next unanswered control or Send", async t => {
+  const f = fixture(t); f.press("option-row-E"); f.change("first");
+  assert.deepEqual(f.inputKey("Enter"), { prevented: 1, stopped: 1, cardCalls: 0 });
+  await tick();
+  assert.equal(f.s.getOptionSession("a").customConfirmed[0], "first");
+  assert.equal(f.s.getOptionSession("a").activeQuestion, 1);
+  assert.equal(f.active(), "option-row-A");
+  f.press("option-row-A"); f.press("option-row-E"); f.change("third");
+  assert.deepEqual(f.inputKey("Enter"), { prevented: 1, stopped: 1, cardCalls: 0 });
+  await tick(); assert.equal(f.active(), "option-send");
+  f.press("option-question-2");
+  assert.deepEqual(f.inputKey("Enter"), { prevented: 1, stopped: 1, cardCalls: 0 });
+  await tick(); assert.equal(f.s.getOptionSession("a").activeQuestion, 2);
+});
+
+test("input blank Enter keeps the draft and focus and shows the hint", async t => {
+  for (const value of ["", "   ", "\t"]) {
+    const f = fixture(t); f.press("option-row-E"); await tick(); f.change(value);
+    assert.deepEqual(f.inputKey("Enter"), { prevented: 1, stopped: 1, cardCalls: 0 });
+    assert.equal(f.s.getOptionSession("a").customDrafts[0] ?? "", value);
+    assert.equal(f.s.getOptionSession("a").choices[0], undefined);
+    assert.equal(f.s.getOptionSession("a").activeQuestion, 0);
+    assert.equal(f.active(), "option-custom-input");
+    assert.ok(byId(f.h, f.draw(), "option-custom-empty"));
+  }
+});
+
+test("input leaves typing, Shift+Enter and composition to the input", t => {
+  const f = fixture(t); f.press("option-row-E");
+  for (const key of ["a", "b", "c"]) {
+    assert.equal(f.inputKey(key).prevented, 0);
+  }
+  f.change("abc");
+  assert.equal(f.inputKey("Enter", { shiftKey: true }).prevented, 0);
+  f.change("abc\n");
+  assert.equal(f.inputKey("Enter", { nativeEvent: { isComposing: true } }).prevented, 0);
+  assert.equal(f.s.getOptionSession("a").customDrafts[0], "abc\n");
+  assert.deepEqual(f.s.getOptionSession("a").choices, {});
 });
