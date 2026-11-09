@@ -8,10 +8,12 @@ const { Markdown } = PaseoUI as typeof PaseoUI & {
 };
 
 export function fencedSource(code: string, language: string): string {
+  const marker = language.includes("`") ? "~" : "`";
   let longest = 0;
-  for (const run of code.matchAll(/`+/g)) longest = Math.max(longest, run[0].length);
-  const fence = "`".repeat(Math.max(3, longest + 1));
-  return `${fence}${language}\n${code.replace(/(?:\r?\n)+$/, "")}\n${fence}`;
+  for (const run of code.matchAll(marker === "`" ? /`+/g : /~+/g)) longest = Math.max(longest, run[0].length);
+  const fence = marker.repeat(Math.max(3, longest + 1));
+  const separator = language.startsWith(marker) ? " " : "";
+  return `${fence}${separator}${language}\n${code}\n${fence}`;
 }
 
 class MarkdownBoundary extends React.Component<{ fallback: React.ReactNode; children: React.ReactNode }, { failed: boolean }> {
