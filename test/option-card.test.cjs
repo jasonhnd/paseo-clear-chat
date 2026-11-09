@@ -250,6 +250,104 @@ test("web focus follows first choices and arrows stay scoped to option rows", as
   assert.equal(s.getOptionSession("a").activeQuestion, 0);
 });
 
+function keyboardFixture(t) {
+  const agents = { a: { status: "idle" } };
+  const h = createToolHarness("web", { agents });
+  t.after(() => { h.unmount(); h.dispose(); });
+  const s = h.load("client/option-session.ts");
+  const Card = h.load("client/components/option-card.tsx").OptionCard;
+  s.publishAssistantReply("a", { at: 10, text: reply });
+  const draw = () => h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } });
+  const press = (tree, key, extra = {}) => {
+    const result = { prevented: false, stopped: false };
+    byId(h, tree, "option-card").props.onKeyDown({
+      key, target: { closest: selector => selector.includes("option-row") ? {} : null }, nativeEvent: {},
+      ...extra,
+      preventDefault: () => { result.prevented = true; },
+      stopPropagation: () => { result.stopped = true; },
+    });
+    return result;
+  };
+  return { h, s, agents, draw, press };
+}
+
+test("letter keys choose the current answer and focus the next question or Send", async t => {
+  for (const key of ["B", "b"]) {
+    const { h, s, draw, press } = keyboardFixture(t);
+    const focused = [];
+    let tree = draw();
+    byId(h, tree, "option-card").props.ref({ querySelector: selector => ({ focus: () => focused.push(selector) }) });
+    assert.deepEqual(press(tree, key), { prevented: true, stopped: true });
+    assert.equal(s.getOptionSession("a").choices[0], "B");
+    assert.equal(s.getOptionSession("a").activeQuestion, 1);
+    await new Promise(resolve => setTimeout(resolve, 5));
+    assert.match(focused.pop(), /option-row-A/);
+    tree = draw();
+    assert.deepEqual(press(tree, key), { prevented: true, stopped: true });
+    assert.equal(s.getOptionSession("a").choices[1], "B");
+    await new Promise(resolve => setTimeout(resolve, 5));
+    assert.match(focused.pop(), /option-send/);
+  }
+});
+
+test("letters on tabs and Send choose in the current question and change answers in place", async t => {
+  const { h, s, draw, press } = keyboardFixture(t);
+  const focused = [];
+  let tree = draw();
+  byId(h, tree, "option-card").props.ref({ querySelector: selector => ({ focus: () => focused.push(selector) }) });
+  const target = { closest: () => null };
+  assert.deepEqual(press(tree, "a", { target }), { prevented: true, stopped: true });
+  await new Promise(resolve => setTimeout(resolve, 5));
+  tree = draw();
+  assert.deepEqual(press(tree, "a", { target }), { prevented: true, stopped: true });
+  await new Promise(resolve => setTimeout(resolve, 5));
+  focused.length = 0;
+  byId(h, draw(), "option-question-0").props.onPress();
+  assert.deepEqual(press(draw(), "b", { target }), { prevented: true, stopped: true });
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(s.getOptionSession("a").choices[0], "B");
+  assert.equal(s.getOptionSession("a").choices[1], "A");
+  assert.equal(s.getOptionSession("a").activeQuestion, 0);
+  assert.deepEqual(focused, []);
+});
+
+test("unavailable keys, modifiers, composition, and editable targets are ignored", t => {
+  const { s, draw, press } = keyboardFixture(t);
+  const tree = draw();
+  const ignored = [
+    ["C", {}], ["1", {}], ["Escape", {}], ["ArrowLeft", {}], ["ArrowRight", {}],
+    ...["ctrlKey", "metaKey", "altKey", "shiftKey"].map(flag => ["b", { [flag]: true }]),
+    ["b", { nativeEvent: { isComposing: true } }],
+    ...["input", "textarea"].map(tag => ["b", { target: { closest: selector => selector === "input, textarea" ? { tag } : null } }]),
+    ["b", { target: { isContentEditable: true, closest: () => null } }],
+  ];
+  for (const [key, extra] of ignored) {
+    assert.deepEqual(press(tree, key, extra), { prevented: false, stopped: false }, `${key} ${JSON.stringify(extra)}`);
+    assert.equal(s.getOptionSession("a").choices[0], undefined);
+    assert.equal(s.getOptionSession("a").activeQuestion, 0);
+  }
+});
+
+test("letters are ignored while sending, read-only, or running", t => {
+  const { h, s, agents, draw, press } = keyboardFixture(t);
+  let tree = draw();
+  s.choose("a", 0, "A"); s.choose("a", 1, "A");
+  s.setOptionSender(() => new Promise(() => {}));
+  byId(h, draw(), "option-send").props.onPress();
+  tree = draw();
+  assert.deepEqual(press(tree, "b"), { prevented: false, stopped: false });
+  assert.equal(s.getOptionSession("a").choices[0], "A");
+  assert.equal(s.getOptionSession("a").choices[1], "A");
+  s.publishUserMessage("a", 11, "1A 2A");
+  tree = draw();
+  assert.deepEqual(press(tree, "b"), { prevented: false, stopped: false });
+  agents.a.status = "running";
+  tree = draw();
+  assert.deepEqual(press(tree, "b"), { prevented: false, stopped: false });
+  assert.equal(s.getOptionSession("a", 10).choices[0], "A");
+  assert.equal(s.getOptionSession("a", 10).choices[1], "A");
+});
+
 test("a single choice moves focus to Send", async t => {
   const h = createToolHarness("web", { agents: { a: { status: "idle" } } });
   t.after(() => { h.unmount(); h.dispose(); });

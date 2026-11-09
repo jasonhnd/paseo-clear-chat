@@ -59,6 +59,15 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
       if (disabled || getOptionSession(agentId)?.at !== at || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.nativeEvent.isComposing) return;
       const target = event.target as HTMLElement;
+      if (event.key.length === 1 && /^[a-h]$/i.test(event.key)) {
+        if (target.isContentEditable || target.closest("input, textarea")) return;
+        const letter = event.key.toUpperCase();
+        if (question.options.some(option => option.letter === letter)) {
+          event.preventDefault(); event.stopPropagation();
+          select(letter);
+        }
+        return;
+      }
       if (!target.closest('[data-testid^="option-row-"]')) return;
       if (event.key === "ArrowUp" || event.key === "ArrowDown") {
         event.preventDefault(); event.stopPropagation();
