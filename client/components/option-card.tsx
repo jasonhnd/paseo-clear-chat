@@ -36,7 +36,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   const transition = useRef<{ index: number; height: number; old: HTMLElement | null; card: HTMLElement; scroller: HTMLElement | null; scrollTop: number; restore: () => void; readOnly: boolean } | null>(null);
   const activeTransition = useRef<(() => void) | null>(null);
   const readOnlyTransition = useRef<(() => void) | null>(null);
-  const pendingSend = useRef<{ card: HTMLElement; old: HTMLElement | null; height: number; scroller: HTMLElement | null; scrollTop: number } | null>(null);
+  const pendingSend = useRef<{ card: HTMLElement; old: HTMLElement | null; height: number; scroller: HTMLElement | null; scrollTop: number; stop: () => void } | null>(null);
   const pendingPreview = useRef<{ card: HTMLElement; height: number; scroller: HTMLElement | null; scrollTop: number; anchor: string; previousHeight: string; previousOverflow: string } | null>(null);
   const pendingResize = useRef<{ card: HTMLElement; row: HTMLElement; input: HTMLElement | null; opening: boolean; height: number; rowHeight: number; inputHeight: number; scroller: HTMLElement | null; scrollTop: number; anchor: string; previousHeight: string; previousOverflow: string } | null>(null);
   const scrollSpace = useRef<{ card: HTMLElement; scroller: HTMLElement; original: string; base: number; amount: number; stop: () => void; trim: () => void } | null>(null);
@@ -127,7 +127,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     }
     card.style.height = `${height}px`;
     card.style.overflow = "hidden";
-    const expand = card.animate([{ height: `${height}px` }, { height: `${nextHeight}px` }], { duration: 180, easing: "linear", fill: "both" });
+    const expand = card.animate([{ height: `${height}px` }, { height: `${nextHeight}px` }], { duration: 180, easing: "ease-out", fill: "both" });
     const incoming = preview.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 120, easing: "linear", fill: "both" });
     const check = card.querySelector<HTMLElement>('[data-testid="option-confirmed-check"]');
     const pop = check?.animate?.([{ transform: "scale(0.9)" }, { transform: "scale(1)" }], { duration: 120, easing: "linear", fill: "both" });
@@ -259,25 +259,38 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   }, [index]);
   useCommitEffect(() => {
     if (!session?.readOnly || !pendingSend.current) return;
-    const { card, old, height, scroller, scrollTop } = pendingSend.current;
+    const { card, old, height, scroller, scrollTop, stop } = pendingSend.current;
     pendingSend.current = null;
+    stop();
     const previous = { height: card.style.height, overflow: card.style.overflow, position: card.style.position };
     const anchor = scroller?.style.overflowAnchor;
     if (scroller) scroller.style.overflowAnchor = "none";
     card.style.height = "auto";
     const nextHeight = card.getBoundingClientRect().height;
+    const hasGeometry = !!scroller && typeof scroller.getBoundingClientRect === "function" && typeof scroller.scrollBy === "function";
     if (scroller && scroller.clientHeight > 0) {
       const margin = card.style.marginBottom;
       const base = Number.parseFloat(globalThis.getComputedStyle?.(card).marginBottom ?? margin) || 0;
-      card.style.marginBottom = `${base + scroller.clientHeight}px`;
-      const contentHeight = scroller.scrollHeight - scroller.clientHeight;
+      card.style.marginBottom = `${base + scroller.clientHeight + Math.max(0, height - nextHeight)}px`;
+      const currentScroll = hasGeometry ? scroller.scrollTop : scrollTop;
+      const contentHeight = scroller.scrollHeight - scroller.clientHeight - Math.max(0, height - nextHeight);
       card.style.marginBottom = margin;
-      const deficit = Math.max(0, scrollTop + scroller.clientHeight - contentHeight);
+      const deficit = Math.max(0, currentScroll + scroller.clientHeight - contentHeight);
       if (Number.isFinite(deficit)) reserveScrollSpace(card, scroller, deficit);
     }
-    if (scroller) scroller.scrollTop = scrollTop;
+    let previousHeight = height;
+    const compensate = (currentHeight: number) => {
+      if (!hasGeometry || !scroller || !Number.isFinite(currentHeight)) return;
+      const lost = Math.max(0, previousHeight - currentHeight);
+      const top = card.getBoundingClientRect().top;
+      const viewportTop = scroller.getBoundingClientRect().top + scroller.clientTop;
+      const above = Math.min(lost, Math.max(0, viewportTop - (top + currentHeight)));
+      previousHeight = currentHeight;
+      if (Number.isFinite(above) && above > 0) scroller.scrollBy(0, -above);
+    };
     const reduced = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     if (reduced || !old || typeof card.animate !== "function" || typeof old.animate !== "function") {
+      compensate(nextHeight);
       if (scroller) scroller.style.overflowAnchor = anchor ?? "";
       scrollSpace.current?.trim();
       return;
@@ -290,13 +303,22 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     const out = old.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, easing: "linear", fill: "both" });
     const grey = card.animate([{ opacity: 1 }, { opacity: 0.55 }], { duration: 120, easing: "linear", fill: "both" });
     let collapse: Animation | null = null;
+    let frame: number | null = null;
+    const tick = () => {
+      if (activeTransition.current !== finish || !collapse) return;
+      compensate(card.getBoundingClientRect().height);
+      frame = globalThis.requestAnimationFrame?.(tick) ?? null;
+    };
     const finish = () => {
       if (activeTransition.current !== finish) return;
+      if (collapse) compensate(card.getBoundingClientRect().height);
       activeTransition.current = null;
+      if (frame !== null) globalThis.cancelAnimationFrame?.(frame);
       out.cancel(); grey.cancel(); collapse?.cancel(); old.remove();
       card.style.height = previous.height;
       card.style.overflow = previous.overflow;
       card.style.position = previous.position;
+      compensate(card.getBoundingClientRect().height);
       if (scroller) scroller.style.overflowAnchor = anchor ?? "";
       scrollSpace.current?.trim();
     };
@@ -305,10 +327,12 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
       if (activeTransition.current !== finish) return;
       old.remove();
       collapse = card.animate([{ height: `${height}px` }, { height: `${nextHeight}px` }], { duration: 200, easing: "linear", fill: "both" });
+      frame = globalThis.requestAnimationFrame?.(tick) ?? null;
       collapse.finished.then(finish, finish);
     }, finish);
   }, [session?.readOnly]);
   useEffect(() => () => {
+    pendingSend.current?.stop();
     pendingSend.current = null;
     if (pendingResize.current) {
       pendingResize.current.card.style.height = pendingResize.current.previousHeight;
@@ -441,7 +465,14 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
       old.removeAttribute?.("data-testid"); old.removeAttribute?.("id");
       old.querySelectorAll("[data-testid], [id]").forEach(node => { node.removeAttribute("data-testid"); node.removeAttribute("id"); });
     }
-    pendingSend.current = { card, old, height: card.getBoundingClientRect().height, scroller, scrollTop: scroller?.scrollTop ?? 0 };
+    pendingSend.current?.stop();
+    const pending = { card, old, height: card.getBoundingClientRect().height, scroller, scrollTop: scroller?.scrollTop ?? 0, stop: () => {} };
+    const observer = typeof globalThis.ResizeObserver === "function" ? new globalThis.ResizeObserver(() => {
+      if (pendingSend.current === pending && !getOptionSession(agentId)?.readOnly) pending.height = card.getBoundingClientRect().height;
+    }) : null;
+    pending.stop = () => observer?.disconnect();
+    pendingSend.current = pending;
+    observer?.observe(card);
   };
   const select = (letter: string) => {
     const before = getOptionSession(agentId);
@@ -494,6 +525,8 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     if (Platform.OS !== "web") return;
     const card = root.current;
     if (!card?.style || typeof card.getBoundingClientRect !== "function") return;
+    // Keep the opening snapshot when a size callback arrives before its commit.
+    if (pendingResize.current) return;
     const row = card.querySelector<HTMLElement>(`[data-testid="option-row-${customLetter}"]`);
     if (!row || typeof row.getBoundingClientRect !== "function") return;
     const input = opening ? null : customInput.current as unknown as HTMLElement | null;
@@ -660,7 +693,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
           : focused === "option-send"
           ? t("answerCard.hintSend").replace(/^Tab →\s*/, "↵ ").toLowerCase()
           : `${t("answerCard.hintMove").replace(/^↑\s*↓/, "↑↓")} · ↵ ${t("answerCard.hintPick").replace(/^A B C D\s*/, "")}`}</Text> : <View />}
-        <Pressable {...focusProps("option-send")} testID="option-send" accessibilityRole="button" accessibilityState={{ disabled: sendDisabled }} disabled={sendDisabled} focusable={!sendDisabled} onPress={() => { if (getOptionSession(agentId)?.at === at) { prepareSend(); void sendAnswer(agentId).then(() => { if (!getOptionSession(agentId)?.readOnly) pendingSend.current = null; }); } }} style={[{ minHeight: 44, justifyContent: "center", alignItems: "center", paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderStyle: sendDisabled ? "dashed" : "solid", borderColor: sendDisabled ? tokens.foregroundMuted : tokens.accent, backgroundColor: sendDisabled ? "transparent" : tokens.accent }, focusStyle("option-send")]}>
+        <Pressable {...focusProps("option-send")} testID="option-send" accessibilityRole="button" accessibilityState={{ disabled: sendDisabled }} disabled={sendDisabled} focusable={!sendDisabled} onPress={() => { if (getOptionSession(agentId)?.at === at) { prepareSend(); const pending = pendingSend.current; void sendAnswer(agentId).then(() => { if (!getOptionSession(agentId)?.readOnly && pendingSend.current === pending) { pending?.stop(); pendingSend.current = null; } }); } }} style={[{ minHeight: 44, justifyContent: "center", alignItems: "center", paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderStyle: sendDisabled ? "dashed" : "solid", borderColor: sendDisabled ? tokens.foregroundMuted : tokens.accent, backgroundColor: sendDisabled ? "transparent" : tokens.accent }, focusStyle("option-send")]}>
           <Text style={{ ...label, color: sendDisabled ? tokens.foregroundMuted : tokens.accentForeground, fontWeight: "700" }}>{missing === null ? t("answerCard.send", { answer: answerIndex(agentId) ?? "" }) : t("answerCard.missing", { question: number(missing) })}</Text>
         </Pressable>
       </View>}

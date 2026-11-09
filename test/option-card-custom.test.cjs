@@ -263,3 +263,87 @@ test("opening leaves enough animation time for the observed 150 ms frame window"
   assert.ok(rowAnimation.options.duration >= 150 + 2 * (1000 / 60), "the row allows 150 ms plus two 60 Hz sampling intervals");
   assert.ok(cardAnimation.options.duration >= rowAnimation.options.duration, "the card does not clip the row animation");
 });
+
+
+// Synthetic commit ordering: the mounted input reports its retained draft size
+// after its ref attaches but before the opening commit's layout effect runs.
+for (const reduced of [false, true]) {
+  test(`synthetic opening size event restores original styles (reduced=${reduced})`, t => {
+    const h = createToolHarness("web", { deferEffects: true, width: 390, globals: { matchMedia: () => ({ matches: reduced }) }, agents: { a: { status: "idle" } } });
+    t.after(() => { h.unmount(); h.dispose(); });
+    const s = h.load("client/option-session.ts");
+    const Card = h.load("client/components/option-card.tsx").OptionCard;
+    s.publishAssistantReply("a", { at: 10, text: twoQuestions });
+    s.openCustom("a", 0); s.setCustomDraft("a", 0, "retained\nmultiline draft");
+    // Selecting an ordinary option closes Other while retaining its draft.
+    s.choose("a", 0, "A"); s.setActiveQuestion("a", 0);
+    const draw = () => h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } });
+    const never = new Promise(() => {}), animations = [];
+    const animate = name => ({ animate(frames, options) { const a = { name, frames, options, cancelled: false }; animations.push(a); return { finished: never, cancel() { a.cancelled = true; } }; } });
+    const scroller = { style: { overflowAnchor: "auto" }, scrollTop: 100, clientHeight: 500, scrollHeight: 1600, addEventListener() {}, removeEventListener() {} };
+    const row = { style: { overflow: "visible" }, getBoundingClientRect: () => ({ height: s.getOptionSession("a").customOpen[0] ? 148 : 70 }), ...animate("row") };
+    const inputNode = { addEventListener() {}, removeEventListener() {}, focus() {}, getBoundingClientRect: () => ({ height: 44 }), ...animate("input") };
+    const card = { style: { height: "auto", overflow: "visible" }, closest: () => scroller, querySelector: selector => selector.includes("option-row-C") ? row : inputNode, getBoundingClientRect: () => ({ height: s.getOptionSession("a").customOpen[0] ? 578 : 500 }), ...animate("card") };
+    let tree = draw(); h.flushEffects();
+    byId(h, tree, "option-card").props.ref(card);
+    byId(h, tree, "option-row-C").props.onPress();
+    tree = draw();
+    const input = byId(h, tree, "option-custom-input");
+    assert.equal(input.props.value, "retained\nmultiline draft");
+    input.props.ref(inputNode);
+    input.props.onContentSizeChange({ nativeEvent: { contentSize: { height: 100 } } });
+    h.flushEffects();
+    tree = draw(); h.flushEffects();
+    assert.equal(byId(h, tree, "option-custom-input").props.style[0].height, 72);
+    h.unmount();
+    assert.equal(card.style.height, "auto", "restore the original height, not the opening lock");
+    assert.equal(card.style.overflow, "visible");
+    assert.equal(scroller.style.overflowAnchor, "auto");
+    assert.equal(row.style.overflow, "visible");
+    assert.ok(animations.every(a => a.cancelled));
+    input.props.ref(null);
+  });
+}
+
+test("synthetic opening interruption before the commit restores the first snapshot", t => {
+  const h = createToolHarness("web", { deferEffects: true, width: 390, agents: { a: { status: "idle" } } });
+  t.after(() => { h.unmount(); h.dispose(); });
+  const s = h.load("client/option-session.ts"), Card = h.load("client/components/option-card.tsx").OptionCard;
+  s.publishAssistantReply("a", { at: 10, text: twoQuestions });
+  s.openCustom("a", 0); s.setCustomDraft("a", 0, "retained\ntext"); s.choose("a", 0, "A"); s.setActiveQuestion("a", 0);
+  const draw = () => h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } });
+  const scroller = { style: { overflowAnchor: "auto" }, scrollTop: 100, clientHeight: 500, scrollHeight: 2000 };
+  const row = { style: {}, getBoundingClientRect: () => ({ height: 70 }) };
+  const card = { style: { height: "auto", overflow: "visible" }, closest: () => scroller, querySelector: () => row, getBoundingClientRect: () => ({ height: 500 }) };
+  let tree = draw(); h.flushEffects(); byId(h, tree, "option-card").props.ref(card); byId(h, tree, "option-row-C").props.onPress();
+  tree = draw(); const input = byId(h, tree, "option-custom-input");
+  input.props.ref({ focus() {}, addEventListener() {}, removeEventListener() {}, getBoundingClientRect: () => ({ height: 44 }) });
+  input.props.onContentSizeChange({ nativeEvent: { contentSize: { height: 100 } } });
+  h.unmount();
+  assert.deepEqual(card.style, { height: "auto", overflow: "visible" });
+  assert.equal(scroller.style.overflowAnchor, "auto");
+});
+
+test("synthetic opening finishes its animation and restores the original styles", async t => {
+  const h = createToolHarness("web", { deferEffects: true, width: 390, globals: { matchMedia: () => ({ matches: false }) }, agents: { a: { status: "idle" } } });
+  t.after(() => { h.unmount(); h.dispose(); });
+  const s = h.load("client/option-session.ts"), Card = h.load("client/components/option-card.tsx").OptionCard;
+  s.publishAssistantReply("a", { at: 10, text: twoQuestions });
+  s.openCustom("a", 0); s.setCustomDraft("a", 0, "retained\ntext"); s.choose("a", 0, "A"); s.setActiveQuestion("a", 0);
+  const draw = () => h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } });
+  let finish; const done = new Promise(resolve => { finish = resolve; });
+  const animations = [], animate = name => ({ animate(frames, options) { const record = { name, frames, options, cancelled: false }; animations.push(record); return { finished: done, cancel() { record.cancelled = true; } }; } });
+  const scroller = { style: { overflowAnchor: "auto" }, scrollTop: 100, clientHeight: 500, scrollHeight: 2000, addEventListener() {}, removeEventListener() {} };
+  const row = { style: { overflow: "visible" }, getBoundingClientRect: () => ({ height: s.getOptionSession("a").customOpen[0] ? 148 : 70 }), ...animate("row") };
+  const card = { style: { height: "auto", overflow: "visible" }, closest: () => scroller, querySelector: () => row, getBoundingClientRect: () => ({ height: s.getOptionSession("a").customOpen[0] ? 578 : 500 }), ...animate("card") };
+  let tree = draw(); h.flushEffects(); byId(h, tree, "option-card").props.ref(card); byId(h, tree, "option-row-C").props.onPress();
+  tree = draw(); const input = byId(h, tree, "option-custom-input");
+  input.props.ref({ focus() {}, addEventListener() {}, removeEventListener() {}, getBoundingClientRect: () => ({ height: 44 }) });
+  input.props.onContentSizeChange({ nativeEvent: { contentSize: { height: 100 } } }); h.flushEffects();
+  assert.deepEqual(animations.find(a => a.name === "card").frames.map(frame => frame.height), ["500px", "578px"]);
+  assert.ok(animations.some(a => a.name === "row"));
+  finish(); await new Promise(setImmediate);
+  assert.equal(card.style.height, "auto"); assert.equal(card.style.overflow, "visible");
+  assert.equal(row.style.overflow, "visible"); assert.equal(scroller.style.overflowAnchor, "auto");
+  assert.ok(animations.every(a => a.cancelled));
+});

@@ -253,6 +253,7 @@ test("confirming the final custom answer expands the preview while retaining scr
     else {
       const height = calls.find(call => call.name === "card" && call.options.duration === 180);
       assert.ok(height, "card height expands for 180 ms");
+      assert.equal(height.options.easing, "ease-out", "confirmation height uses ease-out");
       assert.deepEqual(height.frames.map(frame => frame.height), ["500px", "620px"]);
       assert.ok(calls.some(call => call.name === "preview" && call.options.duration === 120 && call.frames[0].opacity === 0 && call.frames.at(-1).opacity === 1));
       assert.ok(calls.some(call => call.name === "check" && call.options.duration === 120 && call.frames[0].transform === "scale(0.9)" && call.frames.at(-1).transform === "scale(1)"));
@@ -260,3 +261,173 @@ test("confirming the final custom answer expands the preview while retaining scr
     byId(h, tree, "option-custom-input").props.ref(null);
   }
 });
+
+// Synthetic geometry and input events exercise the real send/session path. The
+// events below model trusted input; they are not browser-generated trusted events.
+for (const path of ["success", "echo"]) {
+  for (const reduced of [false, true]) {
+    for (const movement of ["click then host scroll", "user then host scroll", "no intermediate scroll"]) {
+      test(`synthetic delayed ${path}: ${movement}, reduced=${reduced}`, async t => {
+        const { h, s, draw } = fixture(t, "en", reduced);
+        for (let i = 0; i < 3; i++) s.choose("a", i, "A");
+        let resolveSend;
+        s.setOptionSender(() => new Promise(resolve => { resolveSend = resolve; }));
+        let scroll = 500;
+        const listeners = new Map();
+        const scroller = {
+          style: {}, clientTop: 0, clientHeight: 500, scrollHeight: 5000,
+          getBoundingClientRect: () => ({ top: 100, bottom: 600, height: 500 }),
+          get scrollTop() { return scroll; }, set scrollTop(value) { scroll = Math.max(0, Math.min(4500, value)); },
+          scrollBy(_x, y) { this.scrollTop += typeof _x === "object" ? _x.top : y; },
+          addEventListener(type, fn) { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type).add(fn); },
+          removeEventListener(type, fn) { listeners.get(type)?.delete(fn); },
+          dispatch(type, event) { for (const fn of listeners.get(type) ?? []) fn(event); },
+        };
+        let fadeFinish, collapseFinish;
+        const fadeDone = new Promise(resolve => { fadeFinish = resolve; });
+        const collapseDone = new Promise(resolve => { collapseFinish = resolve; });
+        const old = { style: {}, setAttribute() {}, querySelectorAll: () => [], remove() {}, animate: () => ({ finished: fadeDone, cancel() {} }) };
+        const card = {
+          style: {}, closest: () => scroller, cloneNode: () => old, appendChild() {},
+          getBoundingClientRect() {
+            const height = this.style.height && this.style.height !== "auto" ? parseFloat(this.style.height) : s.getOptionSession("a").readOnly ? 120 : 200;
+            const top = 100 + 200 - scroll;
+            return { top, bottom: top + height, height, left: 0, width: 380 };
+          },
+          animate(frames) { return { finished: frames[0].height ? collapseDone : fadeDone, cancel() {} }; },
+        };
+        let tree = draw(); byId(h, tree, "option-card").props.ref(card);
+        byId(h, tree, "option-send").props.onPress();
+        assert.equal(s.getOptionSession("a").sending, true);
+        if (movement !== "no intermediate scroll") {
+          scroller.dispatch("pointerdown", { isTrusted: true }); // synthetic representation of a trusted click
+          if (movement === "user then host scroll") { scroller.scrollTop += 20; scroller.dispatch("scroll", { isTrusted: true }); }
+          scroller.scrollTop += 30; scroller.dispatch("scroll", { isTrusted: true }); // synthetic host movement
+        }
+        const before = scroller.scrollTop;
+        if (path === "echo") s.publishUserMessage("a", 11, s.answerText("a"));
+        else { resolveSend(); await new Promise(setImmediate); }
+        assert.equal(s.getOptionSession("a").readOnly, true, "actual session entered read-only");
+        draw();
+        if (!reduced) { fadeFinish(); await new Promise(setImmediate); collapseFinish(); await new Promise(setImmediate); }
+        assert.equal(scroller.scrollTop - before, -80, "only the 80px lost above the viewport is compensated relative to current scroll");
+        if (path === "echo") { resolveSend(); await new Promise(setImmediate); }
+      });
+    }
+  }
+}
+
+for (const reduced of [false, true]) {
+  for (const geometry of [
+    { name: "partially above", top: -50, next: 120, expected: -30 },
+    { name: "wholly visible", top: 120, next: 120, expected: 0 },
+    { name: "new bottom at viewport edge", top: -20, next: 120, expected: 0 },
+    { name: "no shrink", top: -200, next: 200, expected: 0 },
+    { name: "growth", top: -200, next: 240, expected: 0 },
+  ]) {
+    test(`synthetic relative geometry: ${geometry.name}, reduced=${reduced}`, async t => {
+      const { h, s, draw } = fixture(t, "en", reduced);
+      for (let i = 0; i < 3; i++) s.choose("a", i, "A");
+      let resolveSend;
+      s.setOptionSender(() => new Promise(resolve => { resolveSend = resolve; }));
+      let scroll = 500;
+      const scroller = { style: {}, clientTop: 0, clientHeight: 500, scrollHeight: 5000,
+        getBoundingClientRect: () => ({ top: 100, bottom: 600, height: 500 }),
+        get scrollTop() { return scroll; }, set scrollTop(v) { scroll = Math.max(0, Math.min(4500, v)); },
+        scrollBy(x, y) { this.scrollTop += typeof x === "object" ? x.top : y; }, addEventListener() {}, removeEventListener() {},
+      };
+      let endFade, endCollapse;
+      const fade = new Promise(resolve => { endFade = resolve; }), collapse = new Promise(resolve => { endCollapse = resolve; });
+      const old = { style: {}, setAttribute() {}, querySelectorAll: () => [], remove() {}, animate: () => ({ finished: fade, cancel() {} }) };
+      const docTop = geometry.top - 100 + 545;
+      const card = { style: {}, closest: () => scroller, cloneNode: () => old, appendChild() {},
+        getBoundingClientRect() { const height = this.style.height && this.style.height !== "auto" ? parseFloat(this.style.height) : s.getOptionSession("a").readOnly ? geometry.next : 200; const top = 100 + docTop - scroll; return { top, bottom: top + height, height, left: 0, width: 380 }; },
+        animate(frames) { return { finished: frames[0].height ? collapse : fade, cancel() {} }; },
+      };
+      const tree = draw(); byId(h, tree, "option-card").props.ref(card); byId(h, tree, "option-send").props.onPress();
+      scroller.scrollTop += 45; // synthetic host scroll while the sender is pending
+      const before = scroller.scrollTop;
+      resolveSend(); await new Promise(setImmediate); draw();
+      if (!reduced) { endFade(); await new Promise(setImmediate); endCollapse(); await new Promise(setImmediate); }
+      assert.equal(scroller.scrollTop - before, geometry.expected, "preserve host movement and compensate only the card's removed portion above the viewport");
+    });
+  }
+}
+
+test("synthetic compensation clamps at the viewport scroll boundary", async t => {
+  const { h, s, draw } = fixture(t, "en", true);
+  for (let i = 0; i < 3; i++) s.choose("a", i, "A");
+  let resolveSend; s.setOptionSender(() => new Promise(resolve => { resolveSend = resolve; }));
+  let scroll = 20;
+  const scroller = { style: {}, clientTop: 0, clientHeight: 500, scrollHeight: 5000,
+    getBoundingClientRect: () => ({ top: 100, bottom: 600, height: 500 }),
+    get scrollTop() { return scroll; }, set scrollTop(v) { scroll = Math.max(0, Math.min(4500, v)); },
+    scrollBy(x, y) { this.scrollTop += typeof x === "object" ? x.top : y; }, addEventListener() {}, removeEventListener() {},
+  };
+  const card = { style: {}, closest: () => scroller,
+    getBoundingClientRect() { const height = s.getOptionSession("a").readOnly ? 0 : 200; const top = 100 - scroll; return { top, bottom: top + height, height, left: 0, width: 380 }; },
+  };
+  const tree = draw(); byId(h, tree, "option-card").props.ref(card); byId(h, tree, "option-send").props.onPress();
+  resolveSend(); await new Promise(setImmediate); draw();
+  assert.equal(scroller.scrollTop, 0, "only the 20px of removed card above the viewport can be compensated");
+});
+
+test("synthetic animated collapse preserves host and user scroll between frames", async t => {
+  const callbacks = new Map(); let nextId = 0;
+  const globals = { matchMedia: () => ({ matches: false }), requestAnimationFrame(fn) { const id = ++nextId; callbacks.set(id, fn); return id; }, cancelAnimationFrame(id) { callbacks.delete(id); } };
+  const h = createToolHarness("web", { locale: "en", width: 390, globals, agents: { a: { status: "idle" } } });
+  t.after(() => { h.unmount(); h.dispose(); });
+  const s = h.load("client/option-session.ts"), Card = h.load("client/components/option-card.tsx").OptionCard;
+  s.publishAssistantReply("a", { at: 10, text: reply });
+  for (let i = 0; i < 3; i++) s.choose("a", i, "A");
+  let resolveSend; s.setOptionSender(() => new Promise(resolve => { resolveSend = resolve; }));
+  const draw = () => h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } });
+  let scroll = 500, animatedHeight = null, finishFade, finishCollapse;
+  const fade = new Promise(resolve => { finishFade = resolve; }), collapse = new Promise(resolve => { finishCollapse = resolve; });
+  const scroller = { style: {}, clientTop: 0, clientHeight: 500, scrollHeight: 5000,
+    getBoundingClientRect: () => ({ top: 100, bottom: 600, height: 500 }),
+    get scrollTop() { return scroll; }, set scrollTop(v) { scroll = Math.max(0, Math.min(4500, v)); },
+    scrollBy(x, y) { this.scrollTop += typeof x === "object" ? x.top : y; }, addEventListener() {}, removeEventListener() {},
+  };
+  const old = { style: {}, setAttribute() {}, querySelectorAll: () => [], remove() {}, animate: () => ({ finished: fade, cancel() {} }) };
+  const card = { style: {}, closest: () => scroller, cloneNode: () => old, appendChild() {},
+    getBoundingClientRect() { const height = animatedHeight ?? (this.style.height && this.style.height !== "auto" ? parseFloat(this.style.height) : s.getOptionSession("a").readOnly ? 120 : 200); const top = 300 - scroll; return { top, bottom: top + height, height, left: 0, width: 380 }; },
+    animate(frames) { return { finished: frames[0].height ? collapse : fade, cancel() {} }; },
+  };
+  const frame = time => { const pending = [...callbacks.values()]; callbacks.clear(); for (const callback of pending) callback(time); };
+  const tree = draw(); byId(h, tree, "option-card").props.ref(card); byId(h, tree, "option-send").props.onPress();
+  resolveSend(); await new Promise(setImmediate); draw(); finishFade(); await new Promise(setImmediate);
+  animatedHeight = 160; frame(16);
+  assert.equal(scroll, 460, "first 40px loss above viewport compensates relatively");
+  scroll += 25; // synthetic host or user movement during animation
+  animatedHeight = 120; frame(32);
+  assert.equal(scroll, 445, "second loss preserves intervening movement");
+  finishCollapse(); await new Promise(setImmediate);
+  h.unmount(); assert.equal(callbacks.size, 0, "animation frame work is cleaned up");
+});
+
+for (const reduced of [false, true]) {
+  test(`synthetic editable size changes while send is pending, reduced=${reduced}`, async t => {
+    const observers = new Set();
+    const globals = { matchMedia: () => ({ matches: reduced }), ResizeObserver: class { constructor(fn) { this.fn = fn; } observe() { observers.add(this); } disconnect() { observers.delete(this); } } };
+    const h = createToolHarness("web", { locale: "en", width: 390, globals, agents: { a: { status: "idle" } } });
+    t.after(() => { h.unmount(); h.dispose(); });
+    const s = h.load("client/option-session.ts"), Card = h.load("client/components/option-card.tsx").OptionCard;
+    s.publishAssistantReply("a", { at: 10, text: reply }); for (let i = 0; i < 3; i++) s.choose("a", i, "A");
+    let resolveSend; s.setOptionSender(() => new Promise(resolve => { resolveSend = resolve; }));
+    const draw = () => h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } });
+    let scroll = 500, editableHeight = 200, finishFade, finishCollapse;
+    const fade = new Promise(resolve => { finishFade = resolve; }), collapse = new Promise(resolve => { finishCollapse = resolve; });
+    const scroller = { style: {}, clientTop: 0, clientHeight: 500, scrollHeight: 5000, getBoundingClientRect: () => ({ top: 100, bottom: 600, height: 500 }),
+      get scrollTop() { return scroll; }, set scrollTop(v) { scroll = Math.max(0, Math.min(4500, v)); }, scrollBy(x, y) { this.scrollTop += typeof x === "object" ? x.top : y; }, addEventListener() {}, removeEventListener() {} };
+    const old = { style: {}, setAttribute() {}, querySelectorAll: () => [], remove() {}, animate: () => ({ finished: fade, cancel() {} }) };
+    const card = { style: {}, closest: () => scroller, cloneNode: () => old, appendChild() {}, getBoundingClientRect() { const height = this.style.height && this.style.height !== "auto" ? parseFloat(this.style.height) : s.getOptionSession("a").readOnly ? 120 : editableHeight; const top = 200 - scroll; return { top, bottom: top + height, height, left: 0, width: 380 }; }, animate(frames) { return { finished: frames[0].height ? collapse : fade, cancel() {} }; } };
+    const tree = draw(); byId(h, tree, "option-card").props.ref(card); byId(h, tree, "option-send").props.onPress();
+    editableHeight = 240;
+    for (const observer of observers) observer.fn([{ target: card, contentRect: { height: editableHeight } }]); // synthetic ResizeObserver delivery
+    resolveSend(); await new Promise(setImmediate); draw();
+    if (!reduced) { finishFade(); await new Promise(setImmediate); finishCollapse(); await new Promise(setImmediate); }
+    assert.equal(scroll, 380, "the 120px lost from the latest editable geometry is compensated");
+    h.unmount(); assert.equal(observers.size, 0, "observers are disconnected");
+  });
+}
