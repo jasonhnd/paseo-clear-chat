@@ -20,11 +20,47 @@ test("fencedSource preserves language and code while choosing a safe fence", t =
     ["````", "js", "`````js\n````\n`````"],
     ["text", "", "```\ntext\n```"],
     ["x", "TypeScript", "```TypeScript\nx\n```"],
-    ["x\n\n\n", "ts", "```ts\nx\n```"],
-    ["x\r\n\r\n", "ts", "```ts\nx\n```"],
+    ["x\n", "ts", "```ts\nx\n\n```"],
+    ["x\n\n\n", "ts", "```ts\nx\n\n\n\n```"],
+    ["x\r\n\r\n", "ts", "```ts\nx\r\n\r\n\n```"],
+    ["a ~~~ b\n~~~~", "js`extra", "~~~~~js`extra\na ~~~ b\n~~~~\n~~~~~"],
+    ["``` and ~~~", "js`extra", "~~~~js`extra\n``` and ~~~\n~~~~"],
     ["first\nsecond", "ts", "```ts\nfirst\nsecond\n```"],
     ["", "", "```\n\n```"],
   ]) assert.equal(fencedSource(code, language), expected);
+});
+
+test("fencedSource produces a CommonMark fence with the specified info and body", t => {
+  const MarkdownIt = require("markdown-it");
+  const markdown = new MarkdownIt("commonmark");
+  const h = harness(t);
+  const { fencedSource } = h.load("client/components/markdown/official-block.tsx");
+  for (const [code, language, expectedBody] of [
+    ["x", "ts", "x\n"],
+    ["x\n", "ts", "x\n\n"],
+    ["x\n\n", "ts", "x\n\n\n"],
+    ["x\r\n\r\n", "ts", "x\n\n\n"],
+    ["```\n~~~~", "js`extra", "```\n~~~~\n"],
+    ["code", "~js`extra", "code\n"],
+    ["", "", "\n"],
+  ]) {
+    const tokens = markdown.parse(fencedSource(code, language), {});
+    assert.equal(tokens.length, 1);
+    assert.equal(tokens[0].type, "fence");
+    assert.equal(tokens[0].info.trim(), language);
+    assert.equal(tokens[0].content, expectedBody);
+  }
+});
+
+test("a backtick in the language remains valid fence info", t => {
+  const markdown = new (require("markdown-it"))("commonmark");
+  const h = harness(t);
+  const { fencedSource } = h.load("client/components/markdown/official-block.tsx");
+  const tokens = markdown.parse(fencedSource("code", "js`extra"), {});
+  assert.equal(tokens.length, 1);
+  assert.equal(tokens[0].type, "fence");
+  assert.equal(tokens[0].info, "js`extra");
+  assert.equal(tokens[0].content, "code\n");
 });
 
 for (const [name, Markdown, expected] of [
@@ -94,6 +130,20 @@ test("reply fences delegate only when existing behavior is preserved", t => {
   assert.equal(delegated(tree).length, 0);
   assert.equal(own(tree).length, 0);
   assert.ok(h.text(tree).includes("```mermaid\ngraph TD"));
+});
+
+test("reply fences keep trailing blank lines in delegated source and fallback copy", async t => {
+  const input = "```ts\nx\n\n\n```";
+  const h = harness(t, { syntax: true, copyFeedback: true });
+  const { MarkdownView } = h.load("client/components/markdown/markdown-view.tsx");
+  const tree = h.draw({ type: MarkdownView, props: { text: input, tokens: h.tokens, variant: "document" } });
+  assert.equal(h.nodes(tree, node => node.type === "OfficialMarkdown")[0].props.children, input);
+
+  const fallback = harness(t, { syntax: true, copyFeedback: true, ui: { Markdown: undefined } });
+  const fallbackView = fallback.load("client/components/markdown/markdown-view.tsx").MarkdownView;
+  const fallbackTree = fallback.draw({ type: fallbackView, props: { text: input, tokens: fallback.tokens, variant: "document" } });
+  await fallback.nodes(fallbackTree, node => node.props.accessibilityLabel === "Copy code")[0].props.onPress();
+  assert.deepEqual(fallback.copies, ["x\n\n"]);
 });
 
 for (const [name, Markdown] of [
