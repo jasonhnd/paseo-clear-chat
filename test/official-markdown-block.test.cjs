@@ -36,11 +36,16 @@ for (const [name, Markdown, expected] of [
     const h = harness(t, { ui: { Markdown } });
     const { OfficialMarkdownBlock } = h.load("client/components/markdown/official-block.tsx");
     const source = fence("ts", "const x = 1;");
-    const tree = h.draw({ type: OfficialMarkdownBlock, props: { text: source, fallback: { type: "Fallback", props: {} } } });
+    const tree = h.draw({ type: OfficialMarkdownBlock, props: { text: source, language: "ts", tokens: h.tokens, fallback: { type: "Fallback", props: {} } } });
     if (expected === "official") {
-      assert.equal(tree.type, "OfficialMarkdown");
-      assert.deepEqual(tree.props, { children: source });
-    } else assert.equal(tree.type, "Fallback");
+      assert.equal(tree[0].props.testID, "official-code-language");
+      assert.equal(h.text(tree[0]), "ts");
+      assert.equal(tree[1].type, "OfficialMarkdown");
+      assert.deepEqual(tree[1].props, { children: source });
+    } else {
+      assert.equal(tree.type, "Fallback");
+      assert.equal(h.nodes(tree, node => node.props.testID === "official-code-language").length, 0);
+    }
   });
 }
 
@@ -50,26 +55,41 @@ test("reply fences delegate only when existing behavior is preserved", t => {
   const draw = (text, variant = "document") => h.draw({ type: MarkdownView, props: { text, tokens: h.tokens, variant } });
   const delegated = tree => h.nodes(tree, node => node.type === "OfficialMarkdown");
   const own = tree => h.nodes(tree, node => node.props.testID === "syntax-block");
+  const bars = tree => h.nodes(tree, node => node.props.testID === "official-code-language");
   let tree = draw(fence("ts", "const x = 1;"));
   assert.equal(delegated(tree).length, 1);
   assert.equal(delegated(tree)[0].props.children, fence("ts", "const x = 1;"));
   assert.equal(own(tree).length, 0);
+  assert.equal(bars(tree).length, 1);
+  assert.equal(h.text(bars(tree)[0]), "ts");
+  tree = draw(fence("TypeScript", "x"));
+  assert.equal(h.text(bars(tree)[0]), "TypeScript");
+  tree = draw(fence("", "x"));
+  assert.equal(delegated(tree).length, 1);
+  assert.equal(bars(tree).length, 0);
   for (const language of ["mermaid", "Mermaid", "MeRmAiD"]) {
     tree = draw(fence(language, "graph TD\nA-->B"));
     assert.equal(delegated(tree).length, 1);
     assert.equal(delegated(tree)[0].props.children, fence("mermaid", "graph TD\nA-->B"));
     assert.equal(own(tree).length, 0);
+    assert.equal(bars(tree).length, 0);
   }
   h.preferences.codeBlockOpen = true;
   tree = draw(fence("text", "https://example.org/path"));
   assert.equal(delegated(tree).length, 0);
   assert.equal(own(tree).length, 1);
+  assert.equal(bars(tree).length, 0);
   tree = draw(fence("mermaid", "https://example.org/path"));
   assert.equal(delegated(tree).length, 0);
   assert.equal(own(tree).length, 1);
   tree = draw(fence("mermaid", "graph TD"), "terminal");
   assert.equal(delegated(tree).length, 0);
   assert.equal(own(tree).length, 1);
+  assert.equal(bars(tree).length, 0);
+  tree = draw(fence("ts", "x"), "terminal");
+  assert.equal(delegated(tree).length, 0);
+  assert.equal(own(tree).length, 1);
+  assert.equal(bars(tree).length, 0);
   tree = draw("```mermaid\ngraph TD");
   assert.equal(delegated(tree).length, 0);
   assert.equal(own(tree).length, 0);
@@ -90,6 +110,9 @@ for (const [name, Markdown] of [
     assert.equal(copy.length, 1);
     await copy[0].props.onPress();
     assert.deepEqual(h.copies, [code]);
+    const codeTree = h.draw({ type: MarkdownView, props: { text: fence("ts", code), tokens: h.tokens, variant: "document" } });
+    assert.ok(h.text(codeTree).includes(code));
+    assert.equal(h.nodes(codeTree, node => node.props.testID === "official-code-language").length, 0);
   });
 }
 
@@ -102,11 +125,13 @@ test("foldable fences retain the folding control at the limit and when expanded"
   assert.equal(officialNodes(draw(fence("ts", code(10)))).length, 1);
   let tree = draw(fence("ts", code(11)));
   assert.equal(officialNodes(tree).length, 0);
+  assert.equal(h.nodes(tree, node => node.props.testID === "official-code-language").length, 0);
   const showAll = h.nodes(tree, node => node.props.accessibilityLabel === "Show all 11 lines")[0];
   assert.ok(showAll);
   showAll.props.onPress();
   tree = draw(fence("ts", code(11)));
   assert.equal(officialNodes(tree).length, 0);
+  assert.equal(h.nodes(tree, node => node.props.testID === "official-code-language").length, 0);
   assert.equal(h.nodes(tree, node => node.props.accessibilityLabel === "Show fewer lines").length, 1);
   h.preferences.foldLongOutputAfter = "never";
   assert.equal(officialNodes(draw(fence("ts", code(11)))).length, 1);
