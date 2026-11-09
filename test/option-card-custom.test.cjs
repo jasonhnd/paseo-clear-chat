@@ -70,7 +70,7 @@ test("blank attempts show feedback only for the active question and unmodified E
   byId(h, draw(), "option-row-C").props.onPress();
   assert.equal(byId(h, draw(), "option-custom-empty"), undefined);
   const key = (overrides = {}) => byId(h, draw(), "option-card").props.onKeyDown({
-    key: "Enter", target: { getAttribute: () => "option-custom-input" }, nativeEvent: {}, ...overrides,
+    key: "Enter", target: { getAttribute: () => "option-custom-input" }, nativeEvent: {}, preventDefault() {}, stopPropagation() {}, ...overrides,
   });
   for (const overrides of [{ shiftKey: true }, { altKey: true }, { ctrlKey: true }, { metaKey: true }, { nativeEvent: { isComposing: true } }, { key: "\n" }]) {
     key(overrides);
