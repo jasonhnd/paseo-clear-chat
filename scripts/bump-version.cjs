@@ -7,7 +7,7 @@ const path = require("node:path");
 const root = path.resolve(__dirname, "..");
 const versionPattern = /^(?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*)){3}$/;
 const metadataFiles = ["package.json", "package-lock.json", "paseo-plugin.json"];
-const textFiles = ["README.md", "README.zh-CN.md", "README.ja.md", "OVERVIEW.md", "OVERVIEW.zh-CN.md", "CHANGELOG.md"];
+const textFiles = ["README.md", "README.zh-CN.md", "OVERVIEW.md", "OVERVIEW.zh-CN.md", "CHANGELOG.md"];
 
 function run(args) {
   const versions = args.filter(arg => arg !== "--dry-run");

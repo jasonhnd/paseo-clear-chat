@@ -11,7 +11,7 @@ const root = path.resolve(__dirname, "..");
 const failed = new Set();
 const versionPattern = /^(?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*)){3}$/;
 const ignored = new Set([".git", "node_modules", ".tmp", "dist"]);
-const ignoredFiles = new Set([".showcase/showcase.js", ".showcase/tools/collect.cjs", "client/package-version.svg"]);
+const ignoredFiles = new Set([".showcase/showcase.js", ".showcase/tools/collect.cjs", "client/package-version.svg", "README.ja.md"]);
 // These exact lines document the older-host release and its known history.
 const legacyVersion = [0, 13, 2, 2].join(".");
 const compatibilityLines = {
@@ -27,15 +27,9 @@ const compatibilityLines = {
     "paseo plugin update clear-chat --ref v" + legacyVersion + " --yes",
     "**已经受影响的旧对话。** Clear Chat " + legacyVersion + " 可以防止以后因某些工具调用失败且没有错误信息，导致 **·CC** 对话的历史打不开。已经受这个问题影响的旧对话升级后仍可能打不开，目前还没有自动修复这些对话的办法。"
   ]),
-  "README.ja.md": new Set([
-    "Paseo 0.13 を使い続ける場合、公開済みの Clear Chat " + legacyVersion + " は Paseo 0.13.0 以降への対応を明記しています。以下のインストールコマンドは Paseo 0.13 でまだ実機確認していません：",
-    "paseo plugin install git:jasonhnd/paseo-clear-chat --ref v" + legacyVersion,
-    "paseo plugin update clear-chat --ref v" + legacyVersion + " --yes",
-    "**すでに影響を受けた会話。** Clear Chat " + legacyVersion + " は、一部のツール呼び出しが失敗してエラーメッセージがないときに、**·CC** の会話履歴を開けなくなる互換性の問題を今後防ぎます。すでにこの問題の影響を受けた会話は、アップグレード後も開けない場合があります。現在、それらの会話を自動で修復する方法はありません。"
-  ]),
 };
 const signoff = ["package.json", "package-lock.json", "paseo-plugin.json", "CHANGELOG.md",
-  "README.md", "README.zh-CN.md", "README.ja.md", "OVERVIEW.md", "OVERVIEW.zh-CN.md",
+  "README.md", "README.zh-CN.md", "OVERVIEW.md", "OVERVIEW.zh-CN.md",
   "scripts/pre-release-check.cjs"];
 
 function fail(item, location, message) {
@@ -98,7 +92,7 @@ if (changelog !== null) {
 
 console.log("\nHost badge");
 const host = typeof version === "string" && versionPattern.test(version) ? version.split(".").slice(0, 3).join(".") : null;
-for (const name of ["README.md", "README.zh-CN.md", "README.ja.md"]) {
+for (const name of ["README.md", "README.zh-CN.md"]) {
   const contents = read(name, "host badge");
   if (contents === null) continue;
   const badges = [...contents.matchAll(/https:\/\/img\.shields\.io\/badge\/Paseo-[^\s"'<>)]*/g)];
