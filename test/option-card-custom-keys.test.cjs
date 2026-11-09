@@ -33,7 +33,7 @@ function fixture(t, text = reply, width = 390) {
   const change = value => byId(h, draw(), "option-custom-input").props.onChangeText(value);
   const key = (key, id = "option-card", extra = {}) => {
     let prevented = false, stopped = false;
-    const target = { getAttribute: () => id, closest: selector => selector === "input, textarea" && (id === "option-custom-input" || id === "normal-input") ? {} : selector.startsWith('[data-testid^="option-row-"]') && id.startsWith("option-row-") ? {} : null };
+    const target = { getAttribute: () => id, closest: selector => selector === '[data-testid="option-custom-input"]' && id === "custom-input-child" ? { getAttribute: () => "option-custom-input" } : selector === "input, textarea" && (id === "option-custom-input" || id === "normal-input") ? {} : selector.startsWith('[data-testid^="option-row-"]') && id.startsWith("option-row-") ? {} : null };
     byId(h, draw(), "option-card").props.onKeyDown({ key, target, nativeEvent: {}, ...extra, preventDefault() { prevented = true; }, stopPropagation() { stopped = true; } });
     return { prevented, stopped };
   };
@@ -76,7 +76,7 @@ function assertReadOnlyView(f, selected) {
   for (let i = 0; i < 3; i++) {
     const tab = byId(f.h, tree, `option-question-${i}`);
     assert.equal(tab.props.accessibilityRole, "tab");
-    assert.notEqual(tab.props.focusable, false);
+    assert.equal(tab.props.focusable, true);
     assert.equal(tab.props.accessibilityState.selected, i === selected);
     assert.equal(tab.props.style.backgroundColor, i === selected ? f.h.tokens.surface2 : "transparent");
     assert.equal(f.h.text(tab), expected[i]);
@@ -146,9 +146,9 @@ test("text fields keep letters, digits, space and arrow keys for editing", t => 
 test("confirmation advances, wraps to unanswered questions and focuses Send without sending", async t => {
   const f = fixture(t); let sent = 0;
   f.s.setOptionSender(async () => { sent++; });
-  f.press("option-question-2"); f.press("option-row-E"); f.change("third"); f.key("Enter", "option-custom-input");
+  f.press("option-question-2"); f.press("option-row-E"); f.change("third"); f.inputKey("Enter");
   await tick(); assert.equal(f.s.getOptionSession("a").activeQuestion, 0); assert.equal(f.active(), "option-row-A");
-  f.press("option-row-B"); f.press("option-row-E"); f.change("second"); f.key("Enter", "option-custom-input");
+  f.press("option-row-B"); f.press("option-row-E"); f.change("second"); f.inputKey("Enter");
   await tick(); assert.equal(f.active(), "option-send"); assert.equal(sent, 0);
   assert.equal(f.h.text(byId(f.h, f.draw(), "option-send")), "Send 1B 2E 3E");
   f.press("option-send"); await tick(); assert.equal(sent, 1);
@@ -157,42 +157,42 @@ test("confirmation advances, wraps to unanswered questions and focuses Send with
 test("blank Enter prevents insertion, leaves the question missing and shows feedback", async t => {
   for (const value of ["", "   ", "\t", "\n\n"]) {
     const f = fixture(t); f.press("option-row-E"); await tick(); f.change(value);
-    const event = f.key("Enter", "option-custom-input");
-    assert.equal(event.prevented, true); assert.equal(f.s.getOptionSession("a").customDrafts[0] ?? "", value);
+    const event = f.inputKey("Enter");
+    assert.equal(event.prevented, 1); assert.equal(f.s.getOptionSession("a").customDrafts[0] ?? "", value);
     assert.equal(f.s.getOptionSession("a").choices[0], undefined); assert.equal(f.active(), "option-custom-input");
-    assert.ok(byId(f.h, f.draw(), "option-custom-empty"));
+    assert.equal(f.h.text(byId(f.h, f.draw(), "option-custom-empty")), "Write your answer first");
     assert.match(f.h.text(byId(f.h, f.draw(), "option-send")), /1/);
   }
 });
 
 test("Shift+Enter and composing Enter do not confirm, but a later Enter does", t => {
   const f = fixture(t); f.press("option-row-E"); f.change("first");
-  assert.equal(f.key("Enter", "option-custom-input", { shiftKey: true }).prevented, false);
+  assert.equal(f.inputKey("Enter", { shiftKey: true }).prevented, 0);
   f.change("first\nsecond");
-  assert.equal(f.key("Enter", "option-custom-input", { nativeEvent: { isComposing: true } }).prevented, false);
+  assert.equal(f.inputKey("Enter", { isComposing: true }).prevented, 0);
   assert.equal(f.s.getOptionSession("a").choices[0], undefined);
   assert.equal(f.s.getOptionSession("a").customDrafts[0], "first\nsecond");
-  f.key("Enter", "option-custom-input");
+  f.inputKey("Enter");
   assert.equal(f.s.getOptionSession("a").customConfirmed[0], "first\nsecond");
   assert.equal(f.s.getOptionSession("a").activeQuestion, 1);
 });
 
 test("editing invalidates confirmation, unchanged reconfirmation stays, and switching preserves the draft", async t => {
-  const f = fixture(t); f.press("option-row-E"); f.change("original"); f.key("Enter", "option-custom-input");
-  f.press("option-question-0"); f.key("Enter", "option-custom-input");
+  const f = fixture(t); f.press("option-row-E"); f.change("original"); f.inputKey("Enter");
+  f.press("option-question-0"); f.inputKey("Enter");
   assert.equal(f.s.getOptionSession("a").activeQuestion, 0);
   f.change(""); assert.equal(f.s.getOptionSession("a").choices[0], undefined);
-  f.change("changed"); f.key("Enter", "option-custom-input");
+  f.change("changed"); f.inputKey("Enter");
   assert.equal(f.s.getOptionSession("a").customConfirmed[0], "changed");
   f.press("option-question-0"); f.press("option-row-B");
   assert.equal(f.s.getOptionSession("a").customDrafts[0], "changed");
   f.press("option-question-1"); f.press("option-row-A"); f.press("option-row-A");
   let sent; f.s.setOptionSender(async (_, text) => { sent = text; }); f.press("option-send"); await tick();
   assert.equal(sent, "1B 2A 3A");
-  const g = fixture(t); g.press("option-row-E"); g.change("draft"); g.key("Enter", "option-custom-input");
+  const g = fixture(t); g.press("option-row-E"); g.change("draft"); g.inputKey("Enter");
   g.press("option-question-0"); g.press("option-row-B"); g.press("option-row-E");
   assert.equal(g.s.getOptionSession("a").customDrafts[0], "draft"); assert.equal(g.s.getOptionSession("a").choices[0], undefined);
-  g.key("Enter", "option-custom-input"); assert.equal(g.s.getOptionSession("a").customConfirmed[0], "draft");
+  g.inputKey("Enter"); assert.equal(g.s.getOptionSession("a").customConfirmed[0], "draft");
 });
 
 test("shortcuts ignore modifiers, composition, unavailable letters, sending and running", t => {
@@ -215,9 +215,9 @@ test("ordinary A through H shortcuts still select the corresponding options", t 
 
 test("the custom editing key hint appears only before confirmation", t => {
   const f = fixture(t); const hint = () => f.h.text(byId(f.h, f.draw(), "option-hint"));
-  const ordinary = hint(); f.press("option-row-E"); assert.notEqual(hint(), ordinary);
-  f.change("answer"); f.key("Enter", "option-custom-input"); f.press("option-question-0"); assert.equal(hint(), ordinary);
-  f.change("edited"); assert.notEqual(hint(), ordinary);
+  const ordinary = hint(); f.press("option-row-E"); assert.equal(hint(), "Enter · Write your own answer");
+  f.change("answer"); f.inputKey("Enter"); f.press("option-question-0"); assert.equal(hint(), ordinary);
+  f.change("edited"); assert.equal(hint(), "Enter · Write your own answer");
   f.press("option-row-A"); assert.equal(hint(), ordinary);
 });
 
@@ -252,6 +252,15 @@ test("input Enter confirms once and focuses the next unanswered control or Send"
   await tick(); assert.equal(f.s.getOptionSession("a").activeQuestion, 2);
 });
 
+test("the card handler ignores Enter from the custom input and its descendants", t => {
+  const f = fixture(t); f.press("option-row-E"); f.change("first");
+  for (const id of ["option-custom-input", "custom-input-child"]) {
+    assert.deepEqual(f.key("Enter", id), { prevented: false, stopped: false });
+  }
+  assert.deepEqual(f.s.getOptionSession("a").choices, {});
+  assert.equal(f.s.getOptionSession("a").customConfirmed[0], undefined);
+});
+
 test("input blank Enter keeps the draft and focus and shows the hint", async t => {
   for (const value of ["", "   ", "\t"]) {
     const f = fixture(t); f.press("option-row-E"); await tick(); f.change(value);
@@ -260,7 +269,7 @@ test("input blank Enter keeps the draft and focus and shows the hint", async t =
     assert.equal(f.s.getOptionSession("a").choices[0], undefined);
     assert.equal(f.s.getOptionSession("a").activeQuestion, 0);
     assert.equal(f.active(), "option-custom-input");
-    assert.ok(byId(f.h, f.draw(), "option-custom-empty"));
+    assert.equal(f.h.text(byId(f.h, f.draw(), "option-custom-empty")), "Write your answer first");
   }
 });
 

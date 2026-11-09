@@ -90,9 +90,8 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     if (!current.customOpen[index]) openCustom(agentId, index);
     focus("option-custom-input");
   };
-  const handleCustomKey = (event: KeyboardEvent | React.KeyboardEvent<HTMLElement>) => {
-    const isComposing = "nativeEvent" in event && event.nativeEvent ? event.nativeEvent.isComposing : (event as KeyboardEvent).isComposing;
-    if (disabled || event.defaultPrevented || event.key !== "Enter" || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || isComposing) return;
+  const handleCustomKey = (event: KeyboardEvent) => {
+    if (disabled || event.defaultPrevented || event.key !== "Enter" || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing) return;
     const current = getOptionSession(agentId);
     if (current?.at !== at || current.activeQuestion !== index || !current.customOpen[index] || current.readOnly || current.sending) return;
     event.preventDefault(); event.stopPropagation();
@@ -114,10 +113,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
       if (disabled || event.defaultPrevented || getOptionSession(agentId)?.at !== at || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.nativeEvent.isComposing) return;
       const target = event.target as HTMLElement;
-      if (target.getAttribute?.("data-testid") === "option-custom-input") {
-        handleCustomKey(event);
-        return;
-      }
+      if (target.getAttribute?.("data-testid") === "option-custom-input" || target.closest?.('[data-testid="option-custom-input"]')?.getAttribute?.("data-testid") === "option-custom-input") return;
       if (event.key.length === 1 && (/^[a-h]$/i.test(event.key) || event.key.toUpperCase() === customLetter)) {
         if (target.isContentEditable || target.closest("input, textarea")) return;
         const letter = event.key.toUpperCase();
@@ -156,7 +152,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
               : `Q${number(i)} · ${optionShortName(q.title, number(i))}`;
             const tabStyle = { minHeight: 36, justifyContent: "center" as const, borderRadius: 18, paddingHorizontal: 12, backgroundColor: i === index ? tokens.surface2 : "transparent" };
             const tabLabel = <Text style={{ ...label, color: i === index ? tokens.foreground : tokens.foregroundMuted, fontWeight: i === index ? "700" : "400" }}>{tabText}</Text>;
-            return <Pressable key={i} testID={`option-question-${i}`} accessibilityRole="tab" accessibilityState={{ selected: i === index }} disabled={!readOnly && disabled} {...(Platform.OS === "web" && readOnly ? { onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => { if (event.key === " ") { event.preventDefault(); setViewed({ agentId, at, index: i }); } } } : {})} onPress={() => { if (readOnly) setViewed({ agentId, at, index: i }); else if (getOptionSession(agentId)?.at === at) setActiveQuestion(agentId, i); }} style={tabStyle}>{tabLabel}</Pressable>;
+            return <Pressable key={i} testID={`option-question-${i}`} accessibilityRole="tab" accessibilityState={{ selected: i === index }} disabled={!readOnly && disabled} {...(Platform.OS === "web" && readOnly ? { focusable: true, onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => { if (event.key === " ") { event.preventDefault(); setViewed({ agentId, at, index: i }); } } } : {})} onPress={() => { if (readOnly) setViewed({ agentId, at, index: i }); else if (getOptionSession(agentId)?.at === at) setActiveQuestion(agentId, i); }} style={tabStyle}>{tabLabel}</Pressable>;
           })}
           {readOnly ? <Text testID="option-read-only-status" style={{ ...muted, marginLeft: "auto" }}>{t("answerCard.readOnlyStatus")}</Text> : null}
           {!readOnly && !session.sending ? <Pressable testID="option-dismiss" accessibilityRole="button" onPress={() => { if (getOptionSession(agentId)?.at === at) dismiss(agentId); }} style={{ minHeight: 44, justifyContent: "center", marginLeft: "auto" }}><Text style={muted}>{t("answerCard.notOptions")}</Text></Pressable> : null}
