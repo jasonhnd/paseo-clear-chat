@@ -9,7 +9,7 @@ const legacy = [0, 13, 2, 2].join(".");
 const day = "2026-11-04";
 const current = [8, 1, 0, 2].join(".");
 const prior = [8, 1, 0, 1].join(".");
-const readmes = ["README.md", "README.zh-CN.md", "README.ja.md"];
+const readmes = ["README.md", "README.zh-CN.md"];
 
 function fixture(t) {
   fs.mkdirSync(path.join(root, ".tmp"), { recursive: true });
@@ -148,6 +148,32 @@ test("host badges must match the package version in every README", t => {
     const unversioned = run(dir);
     assert.equal(unversioned.status, 1);
     assert.ok(unversioned.stderr.includes(`FAIL host badge: ${name}:5: tested version "<missing>"`), unversioned.stderr);
+    write(name, original);
+  }
+});
+
+test("historical Japanese README is ignored even when stale or absent", t => {
+  const { dir, write } = fixture(t);
+  write("README.ja.md", `Old release ${prior}\nhttps://img.shields.io/badge/Paseo-tested%208.0.0-old\n`);
+  const stale = run(dir);
+  assert.equal(stale.status, 0, stale.stderr);
+  assert.match(stale.stdout, /PASS all pre-release checks/);
+  assert.doesNotMatch(stale.stdout, /README\.ja\.md/);
+  fs.rmSync(path.join(dir, "README.ja.md"));
+  const absent = run(dir);
+  assert.equal(absent.status, 0, absent.stderr);
+  assert.match(absent.stdout, /PASS all pre-release checks/);
+});
+
+test("English and Chinese READMEs remain required", t => {
+  const { dir, write } = fixture(t);
+  for (const name of readmes) {
+    const original = fs.readFileSync(path.join(dir, name));
+    fs.rmSync(path.join(dir, name));
+    const missing = run(dir);
+    assert.equal(missing.status, 1, name);
+    assert.ok(missing.stderr.includes(`FAIL host badge: ${name}:1:`), missing.stderr);
+    assert.ok(missing.stderr.includes(`FAIL signature sheet: ${name}:1:`), missing.stderr);
     write(name, original);
   }
 });
