@@ -98,7 +98,9 @@ test("typed answers leave a read-only frame beside a new operable frame", t => {
   assert.equal(h.text(byId(h, tree, "option-answered")), "Answered in the chat: 1B 2A");
   for (const id of ["option-send", "option-hint", "option-dismiss"]) assert.equal(byId(h, tree, id), undefined);
   assert.equal(byId(h, tree, "option-row-B").props.onPress, undefined);
-  assert.equal(byId(h, tree, "option-question-0").props.onPress, undefined);
+  assert.equal(typeof byId(h, tree, "option-question-0").props.onPress, "function");
+  assert.equal(byId(h, tree, "option-question-0").props.disabled, false);
+  assert.notEqual(byId(h, tree, "option-question-0").props.focusable, false);
   s.publishAssistantReply("a", { at: 12, text: reply });
   tree = draw();
   assert.ok(byId(h, tree, "option-answered"));
@@ -159,19 +161,58 @@ test("read-only frames ignore keyboard, clicks and focus", t => {
   s.publishUserMessage("a", 11, "1B 2A");
   const tree = h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } });
   const before = s.getOptionSession("a", 10);
+  const choices = { ...before.choices }, customConfirmed = { ...before.customConfirmed };
+  const { answeredText, sending } = before;
   let prevented = false;
-  for (const key of ["ArrowDown", "ArrowUp", "Enter"]) {
+  for (const key of ["ArrowDown", "ArrowUp", "Enter", "A", "B", "C"]) {
     byId(h, tree, "option-card").props.onKeyDown({ key, target: { closest: () => true }, nativeEvent: {}, preventDefault: () => { prevented = true; }, stopPropagation() {} });
   }
-  for (const id of ["option-row-A", "option-row-B", "option-question-0", "option-question-1"]) {
+  for (const id of ["option-row-A", "option-row-B"]) {
     const props = byId(h, tree, id).props;
     assert.equal(props.onPress, undefined);
     assert.equal(props.onFocus, undefined);
     assert.equal(props.focusable, undefined);
   }
+  for (const id of ["option-question-0", "option-question-1"]) {
+    const props = byId(h, tree, id).props;
+    assert.equal(typeof props.onPress, "function");
+    assert.equal(props.disabled, false);
+    assert.notEqual(props.focusable, false);
+  }
+  byId(h, tree, "option-question-1").props.onPress();
+  const viewed = h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } });
+  assert.equal(byId(h, viewed, "option-question-1").props.accessibilityState.selected, true);
+  assert.deepEqual(s.getOptionSession("a", 10).choices, choices);
+  assert.deepEqual(s.getOptionSession("a", 10).customConfirmed, customConfirmed);
+  assert.equal(s.getOptionSession("a", 10).answeredText, answeredText);
+  assert.equal(s.getOptionSession("a", 10).sending, sending);
   assert.equal(prevented, false);
   s.choose("a", 0, "A"); s.moveCursor("a", 0, 1); s.setActiveQuestion("a", 1);
   assert.equal(s.getOptionSession("a", 10), before);
+});
+
+test("viewing a sent custom answer leaves the answers and sent state unchanged", async t => {
+  const { h, s, draw } = fixture(t);
+  draw();
+  s.openCustom("a", 0); s.setCustomDraft("a", 0, "My answer");
+  assert.equal(s.confirmCustom("a", 0), "confirmed");
+  s.choose("a", 1, "A");
+  s.setOptionSender(async () => {});
+  byId(h, draw(), "option-send").props.onPress();
+  await flush();
+  const before = s.getOptionSession("a", 10);
+  assert.equal(before.customConfirmed[0], "My answer");
+  assert.ok(before.answeredText);
+  const choices = { ...before.choices }, customConfirmed = { ...before.customConfirmed };
+  const { answeredText, sending, readOnly } = before;
+  byId(h, draw(), "option-question-0").props.onPress();
+  assert.equal(byId(h, draw(), "option-question-0").props.accessibilityState.selected, true);
+  const after = s.getOptionSession("a", 10);
+  assert.deepEqual(after.choices, choices);
+  assert.deepEqual(after.customConfirmed, customConfirmed);
+  assert.equal(after.answeredText, answeredText);
+  assert.equal(after.sending, sending);
+  assert.equal(after.readOnly, readOnly);
 });
 
 test("failed sends remain retryable; successful sends leave a read-only card", async t => {
@@ -311,11 +352,13 @@ test("letters on tabs and Send choose in the current question and change answers
   assert.deepEqual(focused, []);
 });
 
-test("unavailable keys, modifiers, composition, and editable targets are ignored", t => {
-  const { s, draw, press } = keyboardFixture(t);
+test("unavailable keys, modifiers, composition, and editable targets are ignored", async t => {
+  const { h, s, draw, press } = keyboardFixture(t);
   const tree = draw();
+  const focused = [];
+  byId(h, tree, "option-card").props.ref({ querySelector: selector => ({ focus: () => focused.push(selector) }) });
   const ignored = [
-    ["C", {}], ["1", {}], ["Escape", {}], ["ArrowLeft", {}], ["ArrowRight", {}],
+    ["D", {}], ["1", {}], ["Escape", {}], ["ArrowLeft", {}], ["ArrowRight", {}],
     ...["ctrlKey", "metaKey", "altKey", "shiftKey"].map(flag => ["b", { [flag]: true }]),
     ["b", { nativeEvent: { isComposing: true } }],
     ...["input", "textarea"].map(tag => ["b", { target: { closest: selector => selector === "input, textarea" ? { tag } : null } }]),
@@ -326,6 +369,10 @@ test("unavailable keys, modifiers, composition, and editable targets are ignored
     assert.equal(s.getOptionSession("a").choices[0], undefined);
     assert.equal(s.getOptionSession("a").activeQuestion, 0);
   }
+  assert.deepEqual(press(tree, "C"), { prevented: true, stopped: true });
+  assert.ok(byId(h, draw(), "option-custom-input"));
+  await new Promise(resolve => setTimeout(resolve, 5));
+  assert.match(focused.pop(), /option-custom-input/);
 });
 
 test("letters are ignored while sending, read-only, or running", t => {

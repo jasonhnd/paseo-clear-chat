@@ -317,7 +317,7 @@ const approvedAnswerCardHashes = {
   "zh-CN": "bd487920e1ba4b63008ed85228907ad51aa0828cfcd53e3146d4136347aa69c3",
   "ja": "d45fce67f549e1250f538b9eeb5c8997346e1caa322575572a58bbd98cc0f095",
 };
-const addedAnswerCardKeys = ["other", "otherHint", "otherEmpty"];
+const addedAnswerCardKeys = ["other", "otherHint", "otherEmpty", "readOnlyStatus"];
 const rootAnswerCard = /^  "answerCard": \{\n(?:    .*\n)*  \}/gm;
 
 function verifyResourceBaseline(locale, text) {
@@ -375,9 +375,13 @@ for (const locale of ["en", "zh-CN", "ja"]) {
   test(`${locale}: baseline verification rejects unauthorized translation changes`, () => {
     const root = text.match(rootAnswerCard)[0];
     const addedLine = root.match(/^    "other": .*\n/m)[0];
+    const statusLine = root.match(/^    "readOnlyStatus": .*\n/m)[0];
     const cases = {
       "old answerCard label": text.replace('"pillTitle": "', '"pillTitle": "changed '),
       "old translation": text.replace('"startupFailed": "', '"startupFailed": "changed '),
+      "missing read-only status": text.replace(statusLine, ""),
+      "duplicate read-only status": text.replace(statusLine, statusLine + statusLine),
+      "read-only status at a different path": text.replace(statusLine, "").replace('  "markdown": {\n', '  "markdown": {\n' + statusLine),
       "missing approved key": text.replace(addedLine, ""),
       "duplicate approved key": text.replace(addedLine, addedLine + addedLine),
       "approved key at a different path": text.replace(addedLine, "").replace('  "markdown": {\n', '  "markdown": {\n' + addedLine),
