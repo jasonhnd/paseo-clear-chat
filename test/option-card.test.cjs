@@ -112,6 +112,31 @@ test("typed answers leave a read-only frame beside a new operable frame", t => {
   assert.equal(byId(h, draw(12), "option-card"), undefined);
 });
 
+test("read-only option rows share a background while operable selection stays highlighted", t => {
+  const h = createToolHarness("web", { agents: { a: { status: "idle" } } });
+  t.after(() => { h.unmount(); h.dispose(); });
+  Object.assign(h.tokens, { surface1: "frame", surface2: "row", accentBg: "selected", border: "border" });
+  const s = h.load("client/option-session.ts");
+  const Card = h.load("client/components/option-card.tsx").OptionCard;
+  s.publishAssistantReply("a", { at: 10, text: "Pick?\nA One\nB Two\nC Three\n\nReply: A" });
+  s.choose("a", 0, "B");
+  const draw = () => h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } });
+  let tree = draw();
+  for (const letter of ["A", "C"]) {
+    assert.notEqual(byId(h, tree, "option-row-B").props.style[0].backgroundColor, byId(h, tree, `option-row-${letter}`).props.style[0].backgroundColor);
+  }
+
+  s.publishUserMessage("a", 11, "B");
+  tree = draw();
+  for (const letter of ["A", "B", "C"]) {
+    const row = byId(h, tree, `option-row-${letter}`);
+    assert.equal(row.props.style.backgroundColor, h.tokens.surface2);
+    assert.equal(row.props.style.borderColor, h.tokens.border);
+  }
+  assert.equal(byId(h, tree, "option-row-B").props.accessibilityState.selected, true);
+  assert.match(h.text(byId(h, tree, "option-row-B")), /✓/);
+});
+
 test("Not options dismisses only the current frame and stays dismissed", t => {
   const { h, s, draw } = fixture(t);
   const button = byId(h, draw(), "option-dismiss");

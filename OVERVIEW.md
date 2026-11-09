@@ -10,6 +10,7 @@ It is a display layer, not a provider: every tool kind Paseo reports gets its ow
 - Replies get code highlighting with line numbers, clickable links and file paths, and folding for long code and long prompts. Any message that contains text can be quoted and answered.
 - On a browser or the desktop app, steps can be moved between and opened with the keyboard.
 - The settings page shows the version of the installed build, so a bug report can name it.
+- With the existing answer-card setting on (off by default), lettered questions get a frame below the latest reply in the conversation. Choose by click or keyboard (web and desktop); the first answer advances to the next unanswered question and the last choice focuses **Send**. Tabs show short question names or `✓` with the answer. Sending from the frame or typing and sending in Paseo's input box leaves the old frame grey and read-only. **Not options** dismisses a false detection. Requires **Assistant markdown**.
 
 ## Performance
 
@@ -17,7 +18,7 @@ Measured 2026-11-04 on a 300-step conversation (150 tool calls), three runs per 
 
 ## Setup
 
-Clear Chat 0.15.3.5 needs Paseo 0.14.0 or later. For older hosts, see the [README installation guidance](README.md#install), including the untested Paseo 0.13 commands and the separate Paseo 0.12 instructions.
+Clear Chat 0.15.3.6 needs Paseo 0.14.0 or later. For older hosts, see the [README installation guidance](README.md#install), including the untested Paseo 0.13 commands and the separate Paseo 0.12 instructions.
 
 Installation runs `npm ci` on the daemon host, so Node.js and npm must be available there and the host must be able to reach the npm registry.
 
@@ -31,7 +32,7 @@ Open **Settings → Plugins → Clear Chat** to choose the accent colour, interf
 
 - Clear Chat reads the conversation that Paseo already shows and changes only how it is displayed. It does not send conversation content off the host, to agent providers or to any other service. An image in a reply that points to a web address is loaded by the app or browser from that address, as in a web page. Clicking a link in a reply opens it in your browser or the matching app.
 - The messages you send yourself are the exception: **Send** on the answer card (a setting that is off by default) sends one message, written as you, for example `1B 2A`, to the agent of the current chat, and a quote reply sends the quoted text and your reply as one message. Both go through Paseo to that agent's provider like any message you type. Clear Chat sends nothing to any other place.
-- On the web and desktop, the answer card's keyboard control and its typed-message prefix work on Paseo's input box in the page you are using: the prefix puts the answers you chose in front of the text you send.
+- The answer frame handles selection keys only while an option row has focus (web and desktop). To type an answer, use Paseo's own input box; Clear Chat does not add selected letters to typed messages.
 - With a **·CC** provider copy, Clear Chat saves the images you paste, a record of the conversation and the list of model and mode options of that provider in its plugin data folder in your Paseo home on the host, so that it can show the images later; your prompt is passed to Hermes unchanged.
 - To show a pasted image in the prompt bubble, the server looks the message up in the local conversation records of the provider that runs the chat, read-only and only when exactly one message matches: Codex records under CODEX_HOME (default ~/.codex), Claude records under CLAUDE_CONFIG_DIR (default ~/.claude, the projects folder), and, for a **·CC** provider copy, Clear Chat's own image store. It never writes to, copies or locks those records, opens files without following symbolic links, reads only regular image files (png, jpg, jpeg, webp, gif) of at most 8 MiB inside the expected folders, and returns the image only to the Clear Chat page in your Paseo.
 - On the host, its daemon process reads local image files that a conversation refers to, so they can be shown, highlights code locally, and opens a file in the host's file manager when you ask it to. Settings are stored on the host in Paseo's plugin settings folder.
@@ -46,4 +47,5 @@ Clear Chat changes only how Paseo shows a conversation; the README lists every l
 - On the iOS and Android apps, code uses the system monospace font, and hardware keyboard shortcuts for steps are not available.
 - On iOS and iPadOS, text cannot be selected by dragging while the enhanced reply or prompt display is on. Use the Copy buttons instead.
 - Pasted images in your original Hermes agents need the **·CC** provider copy, because Paseo removes the images before a plugin sees them.
+- The answer frame requires **Assistant markdown**. At phone width, Enter in Paseo's input box inserts a newline: use its Send button (also observed with the previous release and with Clear Chat disabled). Selected letters are intentionally not added to typed answers. Acceptance for this change used synthetic providers on isolated hosts, not real models.
 - Removing the plugin deletes its settings; back them up first.
