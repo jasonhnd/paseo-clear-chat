@@ -13,9 +13,20 @@ function fixture(t, text = reply, width = 390) {
   const Card = h.load("client/components/option-card.tsx").OptionCard;
   s.publishAssistantReply("a", { at: 10, text });
   let active = null;
+  let inputListener;
+  const inputNode = new EventTarget();
+  const add = inputNode.addEventListener.bind(inputNode);
+  const remove = inputNode.removeEventListener.bind(inputNode);
+  inputNode.addEventListener = (type, listener, ...args) => { if (type === "keydown") inputListener = listener; add(type, listener, ...args); };
+  inputNode.removeEventListener = (type, listener, ...args) => { if (type === "keydown" && inputListener === listener) inputListener = undefined; remove(type, listener, ...args); };
+  let inputRef, mounted = false;
+  t.after(() => { if (mounted) inputRef(null); });
   const draw = () => {
     const tree = h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } });
     byId(h, tree, "option-card")?.props.ref({ querySelector: selector => ({ focus: () => { active = selector.match(/"([^"]+)"/)[1]; } }) });
+    const input = byId(h, tree, "option-custom-input");
+    if (input && !mounted) { inputRef = input.props.ref; inputRef(inputNode); mounted = true; }
+    else if (!input && mounted) { inputRef(null); mounted = false; }
     return tree;
   };
   const press = id => byId(h, draw(), id).props.onPress();
@@ -31,11 +42,13 @@ function fixture(t, text = reply, width = 390) {
     const target = { getAttribute: () => "option-custom-input", closest: () => ({}) };
     const event = { key, target, nativeEvent: {}, ...extra, preventDefault() { prevented++; }, stopPropagation() { stopped++; } };
     const tree = draw();
-    byId(h, tree, "option-custom-input").props.onKeyDown(event);
-    if (!stopped) { cardCalls++; byId(h, tree, "option-card").props.onKeyDown(event); }
+    assert.equal(byId(h, tree, "option-custom-input").props.onKeyDown, undefined);
+    assert.equal(typeof inputListener, "function");
+    inputListener(event);
+    if (!stopped) { cardCalls++; byId(h, tree, "option-card").props.onKeyDown({ ...event, nativeEvent: event.nativeEvent ?? event }); }
     return { prevented, stopped, cardCalls };
   };
-  return { h, s, agents, draw, press, change, key, inputKey, active: () => active };
+  return { h, s, agents, draw, press, change, key, inputKey, inputNode, getInputRef: () => inputRef, active: () => active };
 }
 
 // The harness leaves Pressable as a host node. Give the tab a real event target
@@ -222,7 +235,11 @@ test("phone input has at least a 44px minimum while desktop keeps 36px", t => {
 
 test("input Enter confirms once and focuses the next unanswered control or Send", async t => {
   const f = fixture(t); f.press("option-row-E"); f.change("first");
+  f.s.moveCursor("a", 1, 1);
+  const confirm = f.s.confirmCustom; let confirmations = 0;
+  f.s.confirmCustom = (...args) => { confirmations++; return confirm(...args); };
   assert.deepEqual(f.inputKey("Enter"), { prevented: 1, stopped: 1, cardCalls: 0 });
+  assert.equal(confirmations, 1);
   await tick();
   assert.equal(f.s.getOptionSession("a").customConfirmed[0], "first");
   assert.equal(f.s.getOptionSession("a").activeQuestion, 1);
@@ -255,7 +272,30 @@ test("input leaves typing, Shift+Enter and composition to the input", t => {
   f.change("abc");
   assert.equal(f.inputKey("Enter", { shiftKey: true }).prevented, 0);
   f.change("abc\n");
-  assert.equal(f.inputKey("Enter", { nativeEvent: { isComposing: true } }).prevented, 0);
+  assert.equal(f.inputKey("Enter", { nativeEvent: undefined, isComposing: true }).prevented, 0);
   assert.equal(f.s.getOptionSession("a").customDrafts[0], "abc\n");
   assert.deepEqual(f.s.getOptionSession("a").choices, {});
+});
+
+test("native input listener handles dispatched Enter and is removed when the node changes", async t => {
+  const f = fixture(t); f.press("option-row-E"); f.change("first"); f.draw();
+  if (typeof f.inputNode.addEventListener !== "function" || typeof f.inputNode.dispatchEvent !== "function") return;
+  const event = new Event("keydown", { cancelable: true });
+  Object.assign(event, { key: "Enter", isComposing: false });
+  f.inputNode.dispatchEvent(event);
+  assert.equal(event.defaultPrevented, true);
+  assert.equal(f.s.getOptionSession("a").customConfirmed[0], "first");
+  await tick(); assert.equal(f.active(), "option-row-A");
+  const ref = f.getInputRef();
+  const replacement = new EventTarget();
+  ref(replacement);
+  const oldEvent = new Event("keydown", { cancelable: true });
+  Object.assign(oldEvent, { key: "Enter" });
+  f.inputNode.dispatchEvent(oldEvent);
+  assert.equal(oldEvent.defaultPrevented, false);
+  ref(null);
+  const detachedEvent = new Event("keydown", { cancelable: true });
+  Object.assign(detachedEvent, { key: "Enter" });
+  replacement.dispatchEvent(detachedEvent);
+  assert.equal(detachedEvent.defaultPrevented, false);
 });
