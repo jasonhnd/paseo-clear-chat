@@ -17,6 +17,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   const root = useRef<HTMLElement | null>(null);
   const customInput = useRef<NativeTextInput | null>(null);
   const pendingCustomFocus = useRef(false);
+  const pendingSendFocus = useRef(false);
   const customKeyHandler = useRef<(event: KeyboardEvent) => void>(() => {});
   const customKeyListener = useRef((event: KeyboardEvent) => customKeyHandler.current(event)).current;
   const setCustomInput = useCallback((node: NativeTextInput | null) => {
@@ -336,6 +337,11 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
       collapse.finished.then(finish, finish);
     }, finish);
   }, [session?.readOnly]);
+  useCommitEffect(() => {
+    if (!session?.readOnly || !pendingSendFocus.current) return;
+    pendingSendFocus.current = false;
+    if (Platform.OS === "web") root.current?.querySelector<HTMLElement>('[data-testid="option-question-0"]')?.focus({ preventScroll: true });
+  }, [session?.readOnly]);
   useEffect(() => () => {
     pendingSend.current?.stop();
     pendingSend.current = null;
@@ -458,7 +464,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     prepareQuestionSwitch();
     setActiveQuestion(agentId, nextIndex);
   };
-  const prepareSend = () => {
+  const prepareSend = (clearSendFocus = false) => {
     if (Platform.OS !== "web") return;
     const card = root.current;
     if (!card?.style || typeof card.getBoundingClientRect !== "function") return;
@@ -467,6 +473,10 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     const reduced = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     const old = !reduced && typeof card.cloneNode === "function" ? card.cloneNode(true) as HTMLElement : null;
     if (old) {
+      if (clearSendFocus) {
+        const send = old.querySelector<HTMLElement>('[data-testid="option-send"]');
+        if (send) send.style.outlineStyle = "none";
+      }
       old.setAttribute("aria-hidden", "true"); old.setAttribute("inert", "");
       old.removeAttribute?.("data-testid"); old.removeAttribute?.("id");
       old.querySelectorAll("[data-testid], [id]").forEach(node => { node.removeAttribute("data-testid"); node.removeAttribute("id"); });
@@ -693,7 +703,31 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
           : focused === "option-send"
           ? t("answerCard.hintSend").replace(/^Tab →\s*/, "↵ ").toLowerCase()
           : `${t("answerCard.hintMove").replace(/^↑\s*↓/, "↑↓")} · ↵ ${t("answerCard.hintPick").replace(/^A B C D\s*/, "")}`}</Text> : <View />}
-        <Pressable {...focusProps("option-send")} testID="option-send" accessibilityRole="button" accessibilityState={{ disabled: sendDisabled }} disabled={sendDisabled} focusable={!sendDisabled} onPress={() => { const current = getOptionSession(agentId); if (!current || current.at !== at || sendDisabled) return; if (draftReady) { confirmCustom(agentId, index); const next = missingQuestion(agentId); if (next !== null) { setActiveQuestion(agentId, next); return; } } prepareSend(); const pending = pendingSend.current; void sendAnswer(agentId).then(() => { if (!getOptionSession(agentId)?.readOnly && pendingSend.current === pending) { pending?.stop(); pendingSend.current = null; } }); }} style={[{ minHeight: 44, justifyContent: "center", alignItems: "center", paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderStyle: "solid", borderColor: sendDisabled ? tokens.foregroundMuted : tokens.accent, backgroundColor: sendDisabled ? "transparent" : tokens.accent }, focusStyle("option-send")]}>
+        <Pressable {...focusProps("option-send")} testID="option-send" accessibilityRole="button" accessibilityState={{ disabled: sendDisabled }} disabled={sendDisabled} focusable={!sendDisabled} onPress={() => {
+          const current = getOptionSession(agentId);
+          if (!current || current.at !== at || sendDisabled) return;
+          if (draftReady) {
+            if (Platform.OS === "web") root.current?.querySelector<HTMLElement>('[data-testid="option-send"]')?.blur();
+            setFocused(null);
+            confirmCustom(agentId, index);
+            const next = missingQuestion(agentId);
+            if (next !== null) {
+              setActiveQuestion(agentId, next);
+              const after = getOptionSession(agentId);
+              if (after) focus(`option-row-${after.set.questions[next]!.options[after.cursor[next] ?? 0]!.letter}`);
+              return;
+            }
+            pendingSendFocus.current = true;
+          }
+          prepareSend(draftReady);
+          const pending = pendingSend.current;
+          void sendAnswer(agentId).then(() => {
+            if (!getOptionSession(agentId)?.readOnly) {
+              pendingSendFocus.current = false;
+              if (pendingSend.current === pending) { pending?.stop(); pendingSend.current = null; }
+            }
+          });
+        }} style={[{ minHeight: 44, justifyContent: "center", alignItems: "center", paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderStyle: "solid", borderColor: sendDisabled ? tokens.foregroundMuted : tokens.accent, backgroundColor: sendDisabled ? "transparent" : tokens.accent }, focusStyle(sendDisabled ? "" : "option-send")]}>
           <Text style={{ ...label, color: sendDisabled ? tokens.foregroundMuted : tokens.accentForeground, fontWeight: "700" }}>{customOpen && customConfirmed === undefined ? t("answerCard.sendAction") : missing === null ? t("answerCard.send", { answer: answerIndex(agentId) ?? "" }) : t("answerCard.missing", { question: number(missing) })}</Text>
         </Pressable>
       </View>}
