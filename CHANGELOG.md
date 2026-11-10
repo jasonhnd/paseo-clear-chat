@@ -1,8 +1,40 @@
-# Changelog
+## [0.15.4.1] - 2026-11-10
 
-All notable changes to Clear Chat are listed here.
+### Added
 
-The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and each version is the Paseo version it is built and tested for plus one number that counts Clear Chat's releases for that Paseo version, for example 0.12.0.1 for the first release for Paseo 0.12.0. Releases 1.0.0 and 1.0.1 came out before this rule.
+- Each question in the answer card adds a write-your-own option after the listed options, with the next letter. Press Enter to confirm and move on, or Shift+Enter for a new line; choosing a character with an input method does not confirm the answer. An empty answer shows a prompt ([#447](https://github.com/jasonhnd/paseo-clear-chat/issues/447)).
+- Preview the message before sending. The Send button shows only the letter indexes. After sending, the grey read-only card lets you switch questions to view each answer; your full written answers remain visible after reloading ([#447](https://github.com/jasonhnd/paseo-clear-chat/issues/447)).
+- Fenced code blocks and Mermaid diagrams in replies are drawn by Paseo's own Markdown component, and a code block shows its language in a bar above the code; where the host cannot draw it, the source is shown instead ([#374](https://github.com/jasonhnd/paseo-clear-chat/issues/374), [#375](https://github.com/jasonhnd/paseo-clear-chat/issues/375), [#376](https://github.com/jasonhnd/paseo-clear-chat/issues/376), [#384](https://github.com/jasonhnd/paseo-clear-chat/issues/384)).
+- Copying a code block that Clear Chat draws keeps the line break at the end of the code ([#441](https://github.com/jasonhnd/paseo-clear-chat/issues/441)).
+
+### Changed
+
+- In the dark theme, the thin selection border and the keyboard-focus border on the write-your-own row now use the host foreground text colour; the light theme keeps the accent colour, the letter badges keep the accent colour, and there is still a single border ([#447](https://github.com/jasonhnd/paseo-clear-chat/issues/447)).
+- On a touch screen, the copy buttons Clear Chat draws are 44 px high ([#388](https://github.com/jasonhnd/paseo-clear-chat/issues/388)).
+- After you confirm a written answer, the focus moves to the next question's write-your-own row ([#434](https://github.com/jasonhnd/paseo-clear-chat/issues/434)).
+- Opening, editing, confirming and sending the answer card now animate over about 150–220 ms, and with the system's reduced motion setting on they move and fade less ([#436](https://github.com/jasonhnd/paseo-clear-chat/issues/436), [#378](https://github.com/jasonhnd/paseo-clear-chat/issues/378)).
+- At phone width the write-your-own input is 16 px, so a phone browser does not zoom when it gets the focus, and the hint line keeps its height ([#436](https://github.com/jasonhnd/paseo-clear-chat/issues/436)).
+
+### Fixed
+
+- When the answer card turns grey read-only after Send, the page's bottom position is no longer clipped by the browser ([#436](https://github.com/jasonhnd/paseo-clear-chat/issues/436)).
+- With keyboard focus in the answer frame, the focused control shows a visible ring ([#446](https://github.com/jasonhnd/paseo-clear-chat/issues/446)).
+- A reply that ends with extra blank lines no longer loses its diagrams and syntax highlighting ([#444](https://github.com/jasonhnd/paseo-clear-chat/issues/444)).
+
+### Known limitations
+
+- In the read-only answer frame, Space on a focused question tab does not switch questions because Paseo handles the key first. Click the tab or press Enter instead.
+- In the checked web cases, if you scroll up above the answer card and then confirm an answer, the page may jump straight back to the bottom; in the checked cases the confirmation was already smooth when the page was at the bottom. The cause is still being investigated ([#436](https://github.com/jasonhnd/paseo-clear-chat/issues/436)).
+- In the checked cases, a final line break or two spaces followed by a line break were present in the send preview but absent from the stored message. After reloading, the read-only frame and prompt bubble matched the stored text.
+- In a test on Paseo 0.15.3, a host-rendered code block ending in two line breaks was copied with neither line break by the host's **Copy** button ([#441](https://github.com/jasonhnd/paseo-clear-chat/issues/441)).
+- In a phone-width simulated touch test, the **Copy** button at the top right of a code block drawn by Paseo measured about 22 × 22 px. It belongs to Paseo's own component; the public plugin types we checked in Paseo v0.15.3 offer no option to resize it. In the same test, the plugin's reply-copy button and its own copy button on a folded long code block were 44 px high ([#388](https://github.com/jasonhnd/paseo-clear-chat/issues/388)).
+
+### Upgrade notes
+
+- Update from 0.15.3.6 with `paseo plugin update clear-chat --ref v0.15.4.1 --yes`; a new install uses `paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.4.1`.
+- Settings are kept as they are; the new row and the border colour need no setting of their own.
+- Clear Chat 0.15.4.1 needs Paseo 0.14.0 or later and was tested on Paseo 0.15.4. Upgrade Paseo on the daemon host and on every connected app before updating the plugin.
+- This release was checked on isolated hosts with a synthetic provider, not with real models; real devices and the native phone apps were not verified.
 
 ## [0.15.3.6] - 2026-11-09
 
@@ -516,6 +548,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.15.4.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.3.6...v0.15.4.1
 [0.15.3.3]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.3.2...v0.15.3.3
 [0.15.3.2]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.3.1...v0.15.3.2
 [0.15.3.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.2.2...v0.15.3.1
