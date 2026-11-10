@@ -370,7 +370,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
       const onSend = testId(active) === "option-send";
       if (tab && active === tab) { stop(); return; }
       if (doc && active && !onBody && !onSend) { stop(); return; }
-      if (!tab) { timer = setTimeout(tick, 100); return; }
+      if (!tab || typeof (tab as { focus?: unknown }).focus !== "function") { timer = setTimeout(tick, 100); return; }
       tab.focus({ preventScroll: true });
       const now = doc?.activeElement ?? null;
       if (!doc || now === tab) { stop(); return; }
