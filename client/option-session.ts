@@ -73,13 +73,21 @@ export function useOptionSession(agentId: string, at?: number): OptionSession | 
 
 // Only recognize complete, unambiguous letter answers; arbitrary chat text remains prose.
 function typedChoices(set: OptionQuestionSet, text: string): Record<number, string> {
+  const current = matchTypedChoices(set, text, false);
+  return Object.keys(current).length ? current : matchTypedChoices(set, text, true);
+}
+
+function matchTypedChoices(set: OptionQuestionSet, text: string, legacyIdentifiers: boolean): Record<number, string> {
+  const identifiers = set.questions.map((question, i) => String(legacyIdentifiers ? question.number ?? '' : questionNumber(set, i)).toUpperCase());
+  if (legacyIdentifiers && (identifiers.some(identifier => !/^(?:[0-9]+|[A-Z][0-9]+)$/.test(identifier))
+    || new Set(identifiers).size !== identifiers.length)) return {};
   const parts = text.trim().toUpperCase().split(/\s+/);
   const choices: Record<number, string> = {};
   for (const part of parts) {
     const match = /^([A-Z]?[0-9]+)?([A-H])$/.exec(part);
     if (!match) return {};
     const index = match[1] === undefined && set.questions.length === 1 ? 0
-      : set.questions.findIndex((_question, i) => String(questionNumber(set, i)).toUpperCase() === match[1]);
+      : identifiers.indexOf(match[1] ?? '');
     if (index < 0 || choices[index] !== undefined || !set.questions[index]!.options.some(option => option.letter === match[2])) return {};
     choices[index] = match[2]!;
   }
