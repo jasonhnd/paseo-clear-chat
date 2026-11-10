@@ -51,7 +51,19 @@ test("all README languages retain matching published pairs alongside the separat
   // Short recordings sit beside the screenshots but are not screenshots: the capture
   // tooling does not produce them, so they are allowed here by name.
   const recordings = ["docs/images/answers-typed.gif", "docs/images/jump-chips.gif"];
-  assert.deepEqual(actual, [...new Set([...expected, ...files(readmeV2Groups), demoCapture.light, ...extraImages, ...recordings])].sort());
+  // These are catalog-page images, not README picture pairs. The answer card
+  // has only the dark image on purpose.
+  const catalogImages = [
+    "docs/images/answer-card-dark-0154.png",
+    "docs/images/answer-card-dark-typed-0154.png",
+    "docs/images/ipad-side-dark-0154.png",
+    "docs/images/ipad-side-light-0154.png",
+    "docs/images/phone-details-dark-0154.png",
+    "docs/images/phone-details-light-0154.png",
+    "docs/images/phone-timeline-dark-0154.png",
+    "docs/images/phone-timeline-light-0154.png",
+  ];
+  assert.deepEqual(actual, [...new Set([...expected, ...files(readmeV2Groups), demoCapture.light, ...extraImages, ...recordings, ...catalogImages])].sort());
 });
 
 test("v2 stills retain the required filenames, viewport sizes, and pixel densities", () => {
