@@ -30,7 +30,7 @@
 
 ### Upgrade notes
 
-- Update from 0.15.3.6 with `paseo plugin update clear-chat --ref v0.15.4.1 --yes`; a new install uses `paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.4.1`.
+- Update from an earlier release with `paseo plugin update clear-chat --ref v0.15.4.1 --yes`; a new install uses `paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.4.1`.
 - Settings are kept as they are; the new row and the border colour need no setting of their own.
 - Clear Chat 0.15.4.1 needs Paseo 0.14.0 or later and was tested on Paseo 0.15.4. Upgrade Paseo on the daemon host and on every connected app before updating the plugin.
 - This release was checked on isolated hosts with a synthetic provider, not with real models; real devices and the native phone apps were not verified.
