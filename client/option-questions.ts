@@ -162,9 +162,11 @@ export function parseOptionQuestions(text: string): OptionQuestionSet | null {
   return hint || recommendedFound ? { questions, hint, recommendedFound } : null;
 }
 
-export function questionNumber(question: OptionQuestion, index: number): number {
-  return typeof question.number === 'number' && Number.isSafeInteger(question.number) && question.number > 0
-    ? question.number : index + 1;
+export function questionNumber(set: OptionQuestionSet, index: number): number {
+  const numbers = set.questions.map(question => question.number);
+  const valid = numbers.every(number => typeof number === 'number' && Number.isSafeInteger(number) && number > 0)
+    && new Set(numbers).size === numbers.length;
+  return valid ? numbers[index] as number : index + 1;
 }
 
 export function formatOptionAnswer(set: OptionQuestionSet, choices: Record<number, OptionChoice | undefined>, legacyIdentifiers = false): string | null {
@@ -173,7 +175,7 @@ export function formatOptionAnswer(set: OptionQuestionSet, choices: Record<numbe
     const question = set.questions[index]!;
     const choice = choices[index];
     if (!choice || !question.options.some(option => option.letter === choice.letter)) return null;
-    const prefix = legacyIdentifiers ? String(question.number ?? '') : String(questionNumber(question, index));
+    const prefix = legacyIdentifiers ? String(question.number ?? '') : String(questionNumber(set, index));
     const note = choice.note?.replace(/\r\n|\r|\n/g, ' ').trim();
     answers.push(`${prefix}${choice.letter}${note ? ` (${note})` : ''}`);
   }
@@ -186,7 +188,7 @@ export function formatPartialOptionAnswer(set: OptionQuestionSet, choices: Recor
     const choice = choices[index];
     if (!choice || !question.options.some(option => option.letter === choice.letter)) return;
     const note = choice.note?.replace(/\r\n|\r|\n/g, ' ').trim();
-    answers.push(`${questionNumber(question, index)}${choice.letter}${note ? ` (${note})` : ''}`);
+    answers.push(`${questionNumber(set, index)}${choice.letter}${note ? ` (${note})` : ''}`);
   });
   return answers.length ? answers.join(' ') + ' ' : '';
 }

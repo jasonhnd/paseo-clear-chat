@@ -21,6 +21,7 @@ for (const platform of ['web', 'ios']) {
     assert.equal(row.props.accessibilityState.selected, true);
     if (platform === 'web') assert.equal(row.props['aria-pressed'], true);
     const input = byId(h, tree, 'option-custom-input');
+    assert.equal(h.text(byId(h, tree, 'option-hint')), 'Enter to confirm · Shift+Enter for a new line');
     const button = byId(h, tree, 'option-custom-confirm');
     assert.equal(input.props.accessibilityLabel, 'Other');
     assert.equal(button.props.accessibilityRole, 'button');
@@ -32,7 +33,7 @@ for (const platform of ['web', 'ios']) {
     byId(h, tree, 'option-custom-input').props.onChangeText('synthetic answer');
     byId(h, draw(), 'option-custom-confirm').props.onPress();
     assert.equal(s.getOptionSession('a').choices[0], 'D');
-    assert.equal(s.answerText('a'), 'D\n\nD：\nsynthetic answer');
+    assert.equal(s.answerText('a'), '1D\n\n1D：\nsynthetic answer');
   });
 }
 
@@ -43,8 +44,8 @@ test('447 synthetic numbering and actual sender mapping', async t => {
   const sent = [];
   s.setOptionSender(async (agent, message) => { sent.push({ agent, message }); });
   for (const [agent, text, choice, expected] of [
-    ['unnumbered', 'Pick?\nA Alpha\nB Beta\n\nReply: A', 'A', 'A'],
-    ['zero', '0) Zero?\nA Alpha\nB Beta\n\nReply: A', 'A', '0A'],
+    ['unnumbered', 'Pick?\nA Alpha\nB Beta\n\nReply: A', 'A', '1A'],
+    ['zero', '0) Zero?\nA Alpha\nB Beta\n\nReply: A', 'A', '1A'],
     ['seven', '7) Seven?\nA Alpha\nB Beta\n\nReply: A', 'B', '7B'],
   ]) {
     s.publishAssistantReply(agent, { at: 1, text });
@@ -63,9 +64,9 @@ test('447 synthetic numbering and actual sender mapping', async t => {
   s.setCustomDraft(agent, 0, 'synthetic text\nsecond line');
   assert.equal(s.confirmCustom(agent, 0), 'confirmed');
   assert.equal(s.getOptionSession(agent).choices[0], 'C');
-  assert.equal(s.answerIndex(agent), '0C');
-  assert.equal(s.answerText(agent), '0C\n\n0C：\nsynthetic text\nsecond line');
+  assert.equal(s.answerIndex(agent), '1C');
+  assert.equal(s.answerText(agent), '1C\n\n1C：\nsynthetic text\nsecond line');
   await s.sendAnswer(agent);
   assert.equal(sent.at(-1).message, s.getOptionSession(agent).answeredText);
-  console.log(JSON.stringify({ synthetic: true, agent, rawIndex: 0, parsedNumber: 0, choice: 'C', answerIndex: '0C', sent: sent.at(-1).message }));
+  console.log(JSON.stringify({ synthetic: true, agent, rawIndex: 0, parsedNumber: 0, choice: 'C', answerIndex: '1C', sent: sent.at(-1).message }));
 });

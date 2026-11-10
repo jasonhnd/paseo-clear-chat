@@ -317,11 +317,18 @@ const approvedAnswerCardHashes = {
   "zh-CN": "bd487920e1ba4b63008ed85228907ad51aa0828cfcd53e3146d4136347aa69c3",
   "ja": "d45fce67f549e1250f538b9eeb5c8997346e1caa322575572a58bbd98cc0f095",
 };
-const addedAnswerCardKeys = ["other", "otherHint", "otherEmpty", "readOnlyStatus"];
+const addedAnswerCardKeys = ["other", "otherHint", "otherEmpty", "readOnlyStatus", "sendAction", "hintCustom"];
+const signedAnswerCardCopy = {
+  en: ["Send", "Enter to confirm · Shift+Enter for a new line"],
+  "zh-CN": ["发送", "Enter 确认 · Shift+Enter 换行"],
+  ja: ["送信", "Enter で確定 · Shift+Enter で改行"],
+};
 const rootAnswerCard = /^  "answerCard": \{\n(?:    .*\n)*  \}/gm;
 
 function verifyResourceBaseline(locale, text) {
   assert.equal([...text.matchAll(rootAnswerCard)].length, 1, "one root answerCard object");
+  const answerCard = JSON.parse(text).answerCard;
+  assert.deepEqual([answerCard.sendAction, answerCard.hintCustom], signedAnswerCardCopy[locale]);
   const keys = [...text.matchAll(/"(?:\\.|[^"\\])*"/g)]
     .filter(match => /^\s*:/.test(text.slice(match.index + match[0].length)))
     .map(match => JSON.parse(match[0]));
@@ -368,6 +375,10 @@ function verifyResourceBaseline(locale, text) {
 
 for (const locale of ["en", "zh-CN", "ja"]) {
   const text = readFileSync(resolve(__dirname, `../client/locales/${locale}.json`), "utf8");
+  test(`${locale}: signed custom answer copy is unchanged`, () => {
+    assert.deepEqual([resources[locale].answerCard.sendAction, resources[locale].answerCard.hintCustom], signedAnswerCardCopy[locale]);
+  });
+
   test(`${locale}: preserves the prior baseline after removing the added inline-section, prompt-image and Hermes setting keys`, () => {
     verifyResourceBaseline(locale, text);
   });
@@ -385,6 +396,8 @@ for (const locale of ["en", "zh-CN", "ja"]) {
       "missing approved key": text.replace(addedLine, ""),
       "duplicate approved key": text.replace(addedLine, addedLine + addedLine),
       "approved key at a different path": text.replace(addedLine, "").replace('  "markdown": {\n', '  "markdown": {\n' + addedLine),
+      "changed signed Send label": text.replace(`"sendAction": "${signedAnswerCardCopy[locale][0]}"`, '"sendAction": "changed"'),
+      "changed signed key hint": text.replace(`"hintCustom": "${signedAnswerCardCopy[locale][1]}"`, '"hintCustom": "changed"'),
       "unknown answerCard key": text.replace(addedLine, addedLine + '    "unknown": "extra",\n'),
       "neighboring root object": text.replace('"showPathA11y": "', '"showPathA11y": "changed '),
     };

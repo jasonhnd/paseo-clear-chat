@@ -39,4 +39,5 @@ for (const [name, headers, numbers] of [
   await s.sendAnswer(agent);
   const blocks = numbers.length === 1 ? '' : name === 'mixed' ? `\n\n1D：\ncontent 0\n\n2D：\ndraft\nsecond line\n\n3D：\ncontent 2` : `\n\n${numbers[1]}D：\ndraft\nsecond line`;
   assert.deepEqual(sent, [index + blocks]);
+  console.log(JSON.stringify({ case: name, parsed: session.set.questions.map(question => question.number), displayed: numbers, index: s.answerIndex(agent), sent: sent[0] }));
 });

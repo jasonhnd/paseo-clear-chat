@@ -35,8 +35,8 @@ test("ordinary-only messages match the existing formatter and preserve question 
     const formatted = formatCustomAnswers(set, answers);
     assert.equal(formatted.message, formatOptionAnswer(set, answers));
   }
-  assert.equal(formatCustomAnswers(...cases[0]).index, "E");
-  assert.equal(formatCustomAnswers(...cases[1]).index, "12C 2D A3A");
+  assert.equal(formatCustomAnswers(...cases[0]).index, "1E");
+  assert.equal(formatCustomAnswers(...cases[1]).index, "1C 2D 3A");
 });
 
 test("formats a normal/custom mix with the custom question in the middle", () => {
@@ -50,11 +50,11 @@ test("formats a normal/custom mix with the custom question in the middle", () =>
 test("preserves custom content and labels multiple blocks in question order", () => {
   const set = questionSet(["Z9 First?\nA One\nC Three\nE Five", "1) Second?\nA One\nB Two", "A3 Third?\nA One\nB Two\nH Eight"]);
   assert.deepEqual(formatCustomAnswers(set, { 0: custom("F", "  雪：🌸\r\n second \n"), 1: custom("C", "single line"), 2: custom("I", " end  ") }), {
-    index: "Z9F 1C A3I",
-    message: "Z9F 1C A3I\n\nZ9F：\n  雪：🌸\r\n second \n\n\n1C：\nsingle line\n\nA3I：\n end  ",
+    index: "1F 2C 3I",
+    message: "1F 2C 3I\n\n1F：\n  雪：🌸\r\n second \n\n\n2C：\nsingle line\n\n3I：\n end  ",
   });
   const single = questionSet(["Pick?\nA One\nB Two"]);
-  assert.deepEqual(formatCustomAnswers(single, { 0: custom("C", "hello") }), { index: "C", message: "C\n\nC：\nhello" });
+  assert.deepEqual(formatCustomAnswers(single, { 0: custom("C", "hello") }), { index: "1C", message: "1C\n\n1C：\nhello" });
 });
 
 test("rejects incomplete, invalid, draft and unsupported mixed-note answers", () => {

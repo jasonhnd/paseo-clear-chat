@@ -26,7 +26,7 @@ function parseHistory(set: OptionQuestionSet, message: string, legacyIdentifiers
   const custom: { index: number; token: string; letter: string }[] = [];
   for (let index = 0; index < set.questions.length; index++) {
     const question = set.questions[index]!;
-    const identifier = String(legacyIdentifiers ? question.number ?? '' : questionNumber(question, index));
+    const identifier = String(legacyIdentifiers ? question.number ?? '' : questionNumber(set, index));
     if (!/^(?:[0-9]+|[A-Z][0-9]+)?$/.test(identifier) || identifiers.has(identifier)) return null;
     identifiers.add(identifier);
     const letters = question.options.map(option => option.letter);

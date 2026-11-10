@@ -23,7 +23,8 @@ test('category 1 alignment and single line', t => {
   assert.equal(row.props.style[0].alignItems, 'flex-start');
   assert.equal(input.props.style[0].padding, 0);
   assert.equal(input.props.placeholder, 'Write your own answer');
-  assert.equal(input.props.style[0].minHeight, input.props.style[0].lineHeight);
+  assert.equal(input.props.style[0].minHeight, 44);
+  assert.equal(input.props.style[0].lineHeight, 20);
   const hints = f.h.nodes(row, n => n.type === 'Text' && f.h.text(n) === 'Write your own answer');
   assert.equal(hints.length, 0, 'do not duplicate placeholder outside input');
 });

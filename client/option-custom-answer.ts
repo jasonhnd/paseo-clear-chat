@@ -29,7 +29,7 @@ export function formatCustomAnswers(
     const question = set.questions[index]!;
     const answer = answers[index];
     if (!answer) return null;
-    const token = `${legacyIdentifiers ? question.number ?? '' : questionNumber(question, index)}${answer.letter}`;
+    const token = `${legacyIdentifiers ? question.number ?? '' : questionNumber(set, index)}${answer.letter}`;
     if (answer.kind === 'option') {
       if (!question.options.some(option => option.letter === answer.letter)) return null;
       ordinary[index] = answer;

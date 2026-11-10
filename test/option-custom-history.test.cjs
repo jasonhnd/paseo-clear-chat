@@ -29,7 +29,7 @@ test("restores all-custom blocks and preserves content bytes and question order"
   const message = "Z9F 1C A3I\n\nZ9F：\n  雪：🌸\r\n second \n\n\n1C：\nsingle line\n\nA3I：\n end  \n\n";
   const expected = { 0: { kind: "custom", letter: "F", content: "  雪：🌸\r\n second \n" }, 1: { kind: "custom", letter: "C", content: "single line" }, 2: { kind: "custom", letter: "I", content: " end  \n\n" } };
   assert.deepEqual(decode(multiple, message), expected);
-  assert.equal(formatCustomAnswers(multiple, expected).message, message);
+  assert.equal(formatCustomAnswers(multiple, expected).message, "1F 2C 3I\n\n1F：\n  雪：🌸\r\n second \n\n\n2C：\nsingle line\n\n3I：\n end  \n\n");
   const single = questions("Pick?\nA One\nB Two");
   assert.deepEqual(decode(single, "C\n\nC：\nhello"), { 0: { kind: "custom", letter: "C", content: "hello" } });
 });

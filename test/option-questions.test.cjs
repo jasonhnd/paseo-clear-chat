@@ -77,9 +77,9 @@ Reply with your choices.`);
       { letter: "D", text: "Delta", recommended: false },
     ] },
   ]);
-  assert.equal(format(set, { 0: { letter: "A" }, 1: { letter: "B" }, 2: { letter: "C" } }), "A3A A4B Z12C");
+  assert.equal(format(set, { 0: { letter: "A" }, 1: { letter: "B" }, 2: { letter: "C" } }), "1A 2B 3C");
   const partial = h.load("client/option-questions.ts").formatPartialOptionAnswer;
-  assert.equal(partial(set, { 1: { letter: "B" } }), "A4B ");
+  assert.equal(partial(set, { 1: { letter: "B" } }), "2B ");
 });
 
 test("a question mark on a numbered question is not a substitute for a hint", () => {
@@ -123,7 +123,7 @@ Reply with A or B`);
   assert.equal(set.questions[0].title, "Which approach works?");
   assert.equal(set.questions[0].text, "Which approach works? More context.\nExtra context.");
   assert.equal(set.questions[0].options[0].text, "First\nMore detail");
-  assert.equal(format(set, { 0: { letter: "A" } }), "A");
+  assert.equal(format(set, { 0: { letter: "A" } }), "1A");
   assert.equal(parse(`${"x".repeat(120)}\nA One\nB Two\n\n回复 A`).questions[0].title.length, 100);
 });
 
@@ -277,5 +277,5 @@ test("formats only valid chosen answers as a composer prefix", () => {
   assert.equal(partial(set, { 0: { letter: "A" }, 1: { letter: "B" } }), "1A 2B ");
   assert.equal(partial(set, { 0: { letter: "A", note: " hello\nworld " } }), "1A (hello world) ");
   assert.equal(partial(set, { 0: { letter: "Z" }, 1: { letter: "A" } }), "2A ");
-  assert.equal(partial(parse("Pick?\nA One\nB Two\nReply: A"), { 0: { letter: "B" } }), "B ");
+  assert.equal(partial(parse("Pick?\nA One\nB Two\nReply: A"), { 0: { letter: "B" } }), "1B ");
 });

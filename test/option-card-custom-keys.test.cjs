@@ -161,7 +161,7 @@ test("blank Enter prevents insertion, leaves the question missing and shows feed
     assert.equal(event.prevented, 1); assert.equal(f.s.getOptionSession("a").customDrafts[0] ?? "", value);
     assert.equal(f.s.getOptionSession("a").choices[0], undefined); assert.equal(f.active(), "option-custom-input");
     assert.equal(f.h.text(byId(f.h, f.draw(), "option-custom-empty")), "Write your answer first");
-    assert.match(f.h.text(byId(f.h, f.draw(), "option-send")), /1/);
+    assert.equal(f.h.text(byId(f.h, f.draw(), "option-send")), "Send");
   }
 });
 
@@ -215,14 +215,14 @@ test("ordinary A through H shortcuts still select the corresponding options", t 
 
 test("the custom editing key hint appears only before confirmation", t => {
   const f = fixture(t); const hint = () => f.h.text(byId(f.h, f.draw(), "option-hint"));
-  const ordinary = hint(); f.press("option-row-E"); assert.equal(hint(), "Enter · Write your own answer");
+  const ordinary = hint(); f.press("option-row-E"); assert.equal(hint(), "Enter to confirm · Shift+Enter for a new line");
   f.change("answer"); f.inputKey("Enter"); f.press("option-question-0"); assert.equal(hint(), ordinary);
-  f.change("edited"); assert.equal(hint(), "Enter · Write your own answer");
+  f.change("edited"); assert.equal(hint(), "Enter to confirm · Shift+Enter for a new line");
   f.press("option-row-A"); assert.equal(hint(), ordinary);
 });
 
-test("phone input has at least a 44px minimum while desktop keeps 36px", t => {
-  for (const [width, min] of [[390, 44], [1440, 36]]) {
+test("phone and desktop input have at least a 44px minimum", t => {
+  for (const [width, min] of [[390, 44], [1440, 44]]) {
     const f = fixture(t, reply, width); f.press("option-row-E");
     const input = byId(f.h, f.draw(), "option-custom-input");
     assert.equal(input.props.style[0].minHeight, min);

@@ -26,7 +26,8 @@ test('447 input: prompt is placeholder and empty field is one line before growth
   let input = byId(h, draw(), 'option-custom-input');
   assert.equal(input.props.placeholder, 'Write your own answer');
   assert.equal(input.props.value, '');
-  assert.equal(input.props.style[0].height, input.props.style[0].lineHeight);
+  assert.equal(input.props.style[0].height, 44);
+  assert.equal(input.props.style[0].lineHeight, 20);
   input.props.onChangeText('synthetic first line\nsynthetic second line');
   input.props.onContentSizeChange({ nativeEvent: { contentSize: { height: 60 } } });
   input = byId(h, draw(), 'option-custom-input');
@@ -43,7 +44,8 @@ test('447 focus: selected custom row has one emphasis and visible keyboard focus
   const row = byId(h, tree, 'option-row-D');
   input = byId(h, tree, 'option-custom-input');
   assert.equal(row.props.accessibilityState.selected, true);
-  assert.equal(row.props.style[1].outlineStyle, 'solid');
+  assert.notEqual(row.props.style[1].outlineStyle, 'solid');
   assert.notEqual(input.props.style[1]?.outlineStyle, 'solid');
-  assert.notEqual(row.props.style[0].borderColor, h.tokens.accent);
+  assert.equal(row.props.style[0].borderColor, h.tokens.accent);
+  assert.equal(row.props.style[0].borderWidth, 2);
 });

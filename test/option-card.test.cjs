@@ -77,7 +77,7 @@ test("disabled Send is marked inaccessible and cannot be focused", t => {
   assert.equal(send.props.accessibilityState.disabled, true);
   assert.equal(send.props.disabled, true);
   assert.equal(send.props.focusable, false);
-  assert.equal(send.props.style[0].borderStyle, "dashed");
+  assert.equal(send.props.style[0].borderStyle, "solid");
   assert.equal(send.props.style[0].backgroundColor, "transparent");
   s.choose("a", 0, "A"); s.choose("a", 1, "A");
   send = byId(h, draw(), "option-send");

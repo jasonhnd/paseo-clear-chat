@@ -79,7 +79,7 @@ function typedChoices(set: OptionQuestionSet, text: string): Record<number, stri
     const match = /^([A-Z]?[0-9]+)?([A-H])$/.exec(part);
     if (!match) return {};
     const index = match[1] === undefined && set.questions.length === 1 ? 0
-      : set.questions.findIndex((question, i) => String(questionNumber(question, i)).toUpperCase() === match[1]);
+      : set.questions.findIndex((_question, i) => String(questionNumber(set, i)).toUpperCase() === match[1]);
     if (index < 0 || choices[index] !== undefined || !set.questions[index]!.options.some(option => option.letter === match[2])) return {};
     choices[index] = match[2]!;
   }
