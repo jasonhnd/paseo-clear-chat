@@ -10,6 +10,8 @@ import { withAlpha } from "./theme-tokens";
 import { optionShortName } from "../option-short-name";
 import type { ExtendedThemeTokens } from "./theme-tokens";
 
+const pendingSendFocusAgents = new Map<string, number>();
+
 export function OptionCard({ agentId, at, tokens }: { agentId: string; at: number; tokens: ExtendedThemeTokens }) {
   const { t } = useTranslation(messages);
   const session = useOptionSession(agentId, at);
@@ -336,6 +338,30 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
       collapse.finished.then(finish, finish);
     }, finish);
   }, [session?.readOnly]);
+  useCommitEffect(() => {
+    const armedAt = pendingSendFocusAgents.get(agentId);
+    if (!session?.readOnly || !armedAt) return;
+    if (Date.now() - armedAt > 10000) { pendingSendFocusAgents.delete(agentId); return; }
+    if (Platform.OS !== "web") { pendingSendFocusAgents.delete(agentId); return; }
+    // The sent reply can be re-rendered as a new DOM subtree, so keep re-focusing
+    // the latest connected tab for a short settle window instead of one detached node.
+    const deadline = Date.now() + 1500;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const tick = () => {
+      const rootNode = root.current as unknown as { querySelector?: (selector: string) => HTMLElement | null } | null;
+      const scoped = typeof rootNode?.querySelector === "function" ? rootNode.querySelector('[data-testid="option-question-0"]') : null;
+      let tab = scoped && (scoped as { isConnected?: boolean }).isConnected !== false ? scoped : null;
+      const doc = (globalThis as { document?: Document }).document;
+      if (!tab && doc) tab = Array.from(doc.querySelectorAll<HTMLElement>('[data-testid="option-question-0"]')).find(node => node.isConnected && node.getClientRects().length > 0) ?? null;
+      if (!tab && !doc) { pendingSendFocusAgents.delete(agentId); return; }
+      const active = doc?.activeElement ?? null;
+      if (tab && active !== tab) tab.focus({ preventScroll: true });
+      if (Date.now() < deadline) timer = setTimeout(tick, 100);
+      else pendingSendFocusAgents.delete(agentId);
+    };
+    timer = setTimeout(tick, 0);
+    return () => { if (timer) clearTimeout(timer); };
+  }, [agentId, session?.readOnly]);
   useEffect(() => () => {
     pendingSend.current?.stop();
     pendingSend.current = null;
@@ -458,7 +484,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     prepareQuestionSwitch();
     setActiveQuestion(agentId, nextIndex);
   };
-  const prepareSend = () => {
+  const prepareSend = (clearSendFocus = false) => {
     if (Platform.OS !== "web") return;
     const card = root.current;
     if (!card?.style || typeof card.getBoundingClientRect !== "function") return;
@@ -467,6 +493,10 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     const reduced = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     const old = !reduced && typeof card.cloneNode === "function" ? card.cloneNode(true) as HTMLElement : null;
     if (old) {
+      if (clearSendFocus) {
+        const send = old.querySelector<HTMLElement>('[data-testid="option-send"]');
+        if (send) send.style.outlineStyle = "none";
+      }
       old.setAttribute("aria-hidden", "true"); old.setAttribute("inert", "");
       old.removeAttribute?.("data-testid"); old.removeAttribute?.("id");
       old.querySelectorAll("[data-testid], [id]").forEach(node => { node.removeAttribute("data-testid"); node.removeAttribute("id"); });
@@ -671,7 +701,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
               : `Q${number(i)} · ${optionShortName(q.title, number(i))}`;
             const tabStyle = { minHeight: 36, justifyContent: "center" as const, borderRadius: 18, paddingHorizontal: 12, backgroundColor: i === index ? tokens.surface2 : "transparent" };
             const tabLabel = <Text style={{ ...label, color: i === index ? tokens.foreground : tokens.foregroundMuted, fontWeight: i === index ? "700" : "400" }}>{Platform.OS === "web" && !readOnly && i === index && answer !== null && customText !== undefined ? <><Text testID="option-confirmed-check" style={{ display: "inline-block" } as unknown as ViewStyle}>✓</Text>{tabText.slice(1)}</> : tabText}</Text>;
-            return <Pressable key={i} testID={`option-question-${i}`} accessibilityRole="tab" accessibilityState={{ selected: i === index }} disabled={!readOnly && disabled} {...(Platform.OS === "web" && readOnly ? { focusable: true, onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => { if (event.key === " ") { event.preventDefault(); switchQuestion(i); } } } : {})} onPress={() => switchQuestion(i)} style={tabStyle}>{tabLabel}</Pressable>;
+            return <Pressable key={i} testID={`option-question-${i}`} accessibilityRole="tab" accessibilityState={{ selected: i === index }} disabled={!readOnly && disabled} {...(Platform.OS === "web" && readOnly ? { focusable: true, tabIndex: 0, onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => { if (event.key === " ") { event.preventDefault(); switchQuestion(i); } } } : {})} onPress={() => switchQuestion(i)} style={tabStyle}>{tabLabel}</Pressable>;
           })}
           {readOnly ? <Text testID="option-read-only-status" style={{ ...muted, marginLeft: "auto" }}>{t("answerCard.readOnlyStatus")}</Text> : null}
           {!readOnly && !session.sending ? <Pressable testID="option-dismiss" accessibilityRole="button" onPress={() => { if (getOptionSession(agentId)?.at === at) dismiss(agentId); }} style={{ minHeight: 44, justifyContent: "center", marginLeft: "auto" }}><Text style={muted}>{t("answerCard.notOptions")}</Text></Pressable> : null}
@@ -693,7 +723,44 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
           : focused === "option-send"
           ? t("answerCard.hintSend").replace(/^Tab →\s*/, "↵ ").toLowerCase()
           : `${t("answerCard.hintMove").replace(/^↑\s*↓/, "↑↓")} · ↵ ${t("answerCard.hintPick").replace(/^A B C D\s*/, "")}`}</Text> : <View />}
-        <Pressable {...focusProps("option-send")} testID="option-send" accessibilityRole="button" accessibilityState={{ disabled: sendDisabled }} disabled={sendDisabled} focusable={!sendDisabled} onPress={() => { const current = getOptionSession(agentId); if (!current || current.at !== at || sendDisabled) return; if (draftReady) { confirmCustom(agentId, index); const next = missingQuestion(agentId); if (next !== null) { setActiveQuestion(agentId, next); return; } } prepareSend(); const pending = pendingSend.current; void sendAnswer(agentId).then(() => { if (!getOptionSession(agentId)?.readOnly && pendingSend.current === pending) { pending?.stop(); pendingSend.current = null; } }); }} style={[{ minHeight: 44, justifyContent: "center", alignItems: "center", paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderStyle: "solid", borderColor: sendDisabled ? tokens.foregroundMuted : tokens.accent, backgroundColor: sendDisabled ? "transparent" : tokens.accent }, focusStyle("option-send")]}>
+        <Pressable {...focusProps("option-send")} testID="option-send" accessibilityRole="button" accessibilityState={{ disabled: sendDisabled }} disabled={sendDisabled} focusable={!sendDisabled} onPress={() => {
+          const current = getOptionSession(agentId);
+          if (!current || current.at !== at || sendDisabled) return;
+          if (draftReady) {
+            if (Platform.OS === "web") root.current?.querySelector<HTMLElement>('[data-testid="option-send"]')?.blur();
+            setFocused(null);
+            confirmCustom(agentId, index);
+            const next = missingQuestion(agentId);
+            if (next !== null) {
+              setActiveQuestion(agentId, next);
+              const after = getOptionSession(agentId);
+              if (after) {
+                // Always start at the first control, regardless of cursor or recommendation.
+                const first = after.set.questions[next]!.options[0];
+                focus(first ? `option-row-${first.letter}` : after.customOpen[next] ? "option-custom-input" : `option-question-${next}`);
+              }
+              return;
+            }
+          }
+          if (missingQuestion(agentId) === null) {
+            pendingSendFocusAgents.set(agentId, Date.now());
+          }
+          prepareSend(draftReady);
+          const pending = pendingSend.current;
+          const finishSend = () => {
+            if (!getOptionSession(agentId)?.readOnly) {
+              pendingSendFocusAgents.delete(agentId);
+              if (pendingSend.current === pending) { pending?.stop(); pendingSend.current = null; }
+              if (Platform.OS === "web") setTimeout(() => {
+                const current = getOptionSession(agentId);
+                if (!current || current.at !== at || current.readOnly || current.sending) return;
+                const send = root.current?.querySelector<HTMLElement>('[data-testid="option-send"]');
+                if (send && !(send as HTMLButtonElement).disabled && send.getAttribute?.("aria-disabled") !== "true") send.focus({ preventScroll: true });
+              }, 0);
+            }
+          };
+          void sendAnswer(agentId).then(finishSend).catch(finishSend);
+        }} style={[{ minHeight: 44, justifyContent: "center", alignItems: "center", paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderStyle: "solid", borderColor: sendDisabled ? tokens.foregroundMuted : tokens.accent, backgroundColor: sendDisabled ? "transparent" : tokens.accent }, focusStyle(sendDisabled ? "" : "option-send")]}>
           <Text style={{ ...label, color: sendDisabled ? tokens.foregroundMuted : tokens.accentForeground, fontWeight: "700" }}>{customOpen && customConfirmed === undefined ? t("answerCard.sendAction") : missing === null ? t("answerCard.send", { answer: answerIndex(agentId) ?? "" }) : t("answerCard.missing", { question: number(missing) })}</Text>
         </Pressable>
       </View>}
