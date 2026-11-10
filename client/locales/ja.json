@@ -643,6 +643,8 @@
     "hintBack": "⇧Tab 戻る",
     "hintSend": "Tab → 送信",
     "hintReopen": "↑ で再表示",
+    "sendAction": "送信",
+    "hintCustom": "Enter で確定 · Shift+Enter で改行",
     "hintEnter": "Enter"
   }
 }

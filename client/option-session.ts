@@ -1,5 +1,5 @@
 import { useCallback, useSyncExternalStore } from "react";
-import { parseOptionQuestions } from "./option-questions";
+import { parseOptionQuestions, questionNumber } from "./option-questions";
 import type { OptionQuestionSet } from "./option-questions";
 import { customAnswerLetter, formatCustomAnswers } from "./option-custom-answer";
 import type { ConfirmedOptionAnswer } from "./option-custom-answer";
@@ -79,7 +79,7 @@ function typedChoices(set: OptionQuestionSet, text: string): Record<number, stri
     const match = /^([A-Z]?[0-9]+)?([A-H])$/.exec(part);
     if (!match) return {};
     const index = match[1] === undefined && set.questions.length === 1 ? 0
-      : set.questions.findIndex((question, i) => String(question.number ?? i + 1).toUpperCase() === match[1]);
+      : set.questions.findIndex((question, i) => String(questionNumber(question, i)).toUpperCase() === match[1]);
     if (index < 0 || choices[index] !== undefined || !set.questions[index]!.options.some(option => option.letter === match[2])) return {};
     choices[index] = match[2]!;
   }
@@ -98,7 +98,7 @@ function reconcileAnswers(agentId: string): boolean {
     if (answer && (session.answerAt !== answer[0] || session.answeredText !== answer[1])) {
       const sent = (session.sending || (session.answerAt === null && session.answeredText === answer[1])) && sessionAnswerText(session) === answer[1];
       const parsed = sent ? null : parseCustomAnswerHistory(session.set, answer[1]);
-      const restored = parsed && formatCustomAnswers(session.set, parsed)?.message === answer[1] ? parsed : null;
+      const restored = parsed;
       const choices: Record<number, string> = {};
       const customConfirmed: Record<number, string> = {};
       const customOpen: Record<number, boolean> = {};

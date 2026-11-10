@@ -1,4 +1,4 @@
-import { formatOptionAnswer, type OptionChoice, type OptionQuestion, type OptionQuestionSet } from './option-questions';
+import { formatOptionAnswer, questionNumber, type OptionChoice, type OptionQuestion, type OptionQuestionSet } from './option-questions';
 
 export type ConfirmedOptionAnswer =
   | ({ kind: 'option' } & OptionChoice)
@@ -18,6 +18,7 @@ export function customAnswerLetter(question: OptionQuestion): string {
 export function formatCustomAnswers(
   set: OptionQuestionSet,
   answers: Record<number, ConfirmedOptionAnswer | undefined>,
+  legacyIdentifiers = false,
 ): FormattedCustomAnswers | null {
   const tokens: string[] = [];
   const blocks: string[] = [];
@@ -28,7 +29,7 @@ export function formatCustomAnswers(
     const question = set.questions[index]!;
     const answer = answers[index];
     if (!answer) return null;
-    const token = `${question.number ?? ''}${answer.letter}`;
+    const token = `${legacyIdentifiers ? question.number ?? '' : questionNumber(question, index)}${answer.letter}`;
     if (answer.kind === 'option') {
       if (!question.options.some(option => option.letter === answer.letter)) return null;
       ordinary[index] = answer;
@@ -48,6 +49,6 @@ export function formatCustomAnswers(
     if (hasOrdinaryNote) return null;
     return { index: answerIndex, message: `${answerIndex}\n\n${blocks.join('\n\n')}` };
   }
-  const message = formatOptionAnswer(set, ordinary);
+  const message = formatOptionAnswer(set, ordinary, legacyIdentifiers);
   return message === null ? null : { index: answerIndex, message };
 }

@@ -5,6 +5,8 @@ import { TextInput } from "@getpaseo/plugin/client/ui";
 import { messages } from "../messages";
 import { answerIndex, answerText, choose, confirmCustom, customLetterFor, dismiss, getOptionSession, missingQuestion, moveCursor, openCustom, sendAnswer, setActiveQuestion, setCustomDraft, useOptionSession } from "../option-session";
 import { customAnswerLetter } from "../option-custom-answer";
+import { questionNumber } from "../option-questions";
+import { withAlpha } from "./theme-tokens";
 import { optionShortName } from "../option-short-name";
 import type { ExtendedThemeTokens } from "./theme-tokens";
 
@@ -371,8 +373,9 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   const missing = missingQuestion(agentId);
   const answer = answerText(agentId);
   const hasCustomAnswer = Object.keys(session.customConfirmed).length > 0;
-  const sendDisabled = disabled || answer === null;
-  const number = (i: number) => session.set.questions[i]!.number === 0 ? i + 1 : session.set.questions[i]!.number ?? i + 1;
+  const draftReady = customOpen && customConfirmed === undefined && !!session.customDrafts[index]?.trim();
+  const sendDisabled = disabled || (answer === null && !draftReady);
+  const number = (i: number) => questionNumber(session.set.questions[i]!, i);
   const label = { color: tokens.foreground, fontFamily: tokens.fontUi, fontSize: tokens.fs(13) };
   const muted = { ...label, color: tokens.foregroundMuted, fontSize: tokens.fs(12) };
   const focusProps = (id: string) => Platform.OS === "web" ? {
@@ -547,7 +550,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   const resizeCustomInput = (height: number) => {
     const current = getOptionSession(agentId);
     if (current?.at !== at || current.activeQuestion !== index) return;
-    const min = width <= 390 ? Math.max(44, tokens.fs(36)) : tokens.fs(36);
+    const min = Math.max(44, tokens.fs(44));
     const capped = (value: number) => Math.max(min, Math.min(tokens.fs(72), value));
     if (capped(height) === capped(currentInputState.height)) return;
     prepareResize(false);
@@ -633,33 +636,20 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
           {(() => {
             const rowId = `option-row-${customLetter}`;
             const customFocused = focused === rowId || focused === "option-custom-input";
-            const rowStyle = { minHeight: 48, flexDirection: "row" as const, alignItems: "center" as const, gap: 10, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: readOnly ? tokens.border : customFocused ? "transparent" : customOpen ? tokens.accent : tokens.border, backgroundColor: readOnly ? tokens.surface2 : customOpen ? tokens.accentBg : tokens.surface1 };
+            const rowStyle = { minHeight: 44, flexDirection: "row" as const, alignItems: "flex-start" as const, gap: 10, paddingHorizontal: customFocused ? 9 : 10, paddingVertical: 0, borderRadius: 8, borderWidth: customFocused ? 2 : 1, borderColor: readOnly ? tokens.border : customFocused ? tokens.accent : customOpen ? withAlpha(tokens.accent, 0.55) : tokens.border, backgroundColor: readOnly ? tokens.surface2 : customOpen ? tokens.accentBg : tokens.surface1 };
             const contents = <>
-              <Text style={{ ...label, color: !readOnly && customOpen ? tokens.accent : tokens.foregroundMuted, fontWeight: "700", overflow: "hidden", borderWidth: 1, borderColor: !readOnly && customOpen ? tokens.accent : tokens.border, borderRadius: 5, paddingHorizontal: 7, paddingVertical: 3 }}>{customLetter}</Text>
+              <Text style={{ ...label, color: !readOnly && customOpen ? tokens.accent : tokens.foregroundMuted, fontWeight: "700", overflow: "hidden", borderWidth: 1, borderColor: !readOnly && customOpen ? tokens.accent : tokens.border, borderRadius: 5, paddingHorizontal: 7, paddingVertical: 3, marginTop: customFocused ? 8 : 9 }}>{customLetter}</Text>
               <View style={{ flex: 1, minWidth: 0 }}>
                 {readOnly ? <Text selectable style={label}>{customConfirmed ?? t("answerCard.other")}</Text> : customOpen ? <>
-                  <TextInput ref={setCustomInput} {...(Platform.OS === "web" ? { onFocus: (event: { stopPropagation(): void }) => { event.stopPropagation(); setFocused("option-custom-input"); }, onBlur: (event: { stopPropagation(): void }) => { event.stopPropagation(); setFocused(current => current === "option-custom-input" ? null : current); } } : {})} testID="option-custom-input" accessibilityLabel={t("answerCard.other")} placeholder={t("answerCard.otherHint")} value={session.customDrafts[index] ?? ""} onChangeText={text => { if (getOptionSession(agentId)?.at === at) { setCustomDraft(agentId, index, text); if (text.trim()) updateInputState({ empty: false }); } }} multiline numberOfLines={2} editable={!disabled} onContentSizeChange={event => resizeCustomInput(event.nativeEvent.contentSize.height)} style={[{ ...label, fontSize: width <= 390 ? Math.max(16, tokens.fs(16)) : label.fontSize, padding: 0, borderWidth: 0, lineHeight: tokens.fs(36), minHeight: width <= 390 ? Math.max(44, tokens.fs(36)) : tokens.fs(36), maxHeight: tokens.fs(72), height: Math.max(tokens.fs(36), Math.min(tokens.fs(72), currentInputState.height)), textAlignVertical: "top" }, Platform.OS === "web" ? { outlineStyle: "none" } as unknown as ViewStyle : undefined]} />
-                  <View testID="option-custom-hint-line" ref={Platform.OS === "web" ? (node: View | null) => {
-                    const line = node as unknown as HTMLElement | null;
-                    if (!line?.style) return;
-                    line.style.display = "grid";
-                    const reduced = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-                    Array.from(line.children).forEach(child => {
-                      const style = (child as HTMLElement).style;
-                      style.gridArea = "1 / 1";
-                      style.transition = reduced ? "none" : "opacity 120ms linear, color 120ms linear";
-                    });
-                  } : undefined}>
-                    <Text numberOfLines={1} accessibilityElementsHidden={currentInputState.empty || customConfirmed !== undefined} importantForAccessibility={currentInputState.empty || customConfirmed !== undefined ? "no-hide-descendants" : "auto"} {...({ "aria-hidden": currentInputState.empty || customConfirmed !== undefined } as object)} style={{ ...muted, opacity: !currentInputState.empty && customConfirmed === undefined ? 1 : 0 }}>{t("answerCard.otherHint")}</Text>
-                    <Text testID={currentInputState.empty ? "option-custom-empty" : undefined} accessibilityLiveRegion="polite" numberOfLines={1} accessibilityElementsHidden={!currentInputState.empty} importantForAccessibility={currentInputState.empty ? "auto" : "no-hide-descendants"} {...({ "aria-hidden": !currentInputState.empty } as object)} style={{ ...muted, color: tokens.danger, opacity: currentInputState.empty ? 1 : 0, ...(Platform.OS !== "web" ? { position: "absolute" as const, left: 0, right: 0 } : {}) }}>{t("answerCard.otherEmpty")}</Text>
-                  </View>
+                  <TextInput ref={setCustomInput} {...(Platform.OS === "web" ? { onFocus: (event: { stopPropagation(): void }) => { event.stopPropagation(); setFocused("option-custom-input"); }, onBlur: (event: { stopPropagation(): void }) => { event.stopPropagation(); setFocused(current => current === "option-custom-input" ? null : current); } } : {})} testID="option-custom-input" accessibilityLabel={t("answerCard.other")} placeholder={t("answerCard.otherHint")} value={session.customDrafts[index] ?? ""} onChangeText={text => { if (getOptionSession(agentId)?.at === at) { setCustomDraft(agentId, index, text); if (text.trim()) updateInputState({ empty: false }); } }} multiline numberOfLines={1} editable={!disabled} onContentSizeChange={event => resizeCustomInput(event.nativeEvent.contentSize.height)} style={[{ ...label, fontSize: width <= 390 ? Math.max(16, tokens.fs(16)) : label.fontSize, padding: 0, borderWidth: 0, lineHeight: tokens.fs(44), minHeight: Math.max(44, tokens.fs(44)), maxHeight: Math.max(44, tokens.fs(72)), height: Math.max(44, tokens.fs(44), Math.min(tokens.fs(72), currentInputState.height)), marginVertical: customFocused ? -2 : -1, textAlignVertical: "top" }, Platform.OS === "web" ? { outlineStyle: "none" } as unknown as ViewStyle : undefined]} />
+                  {currentInputState.empty ? <Text testID="option-custom-empty" accessibilityLiveRegion="polite" style={{ ...muted, color: tokens.danger }}>{t("answerCard.otherEmpty")}</Text> : null}
                 </> : <><Text style={label}>{t("answerCard.other")}</Text><Text style={muted}>{t("answerCard.otherHint")}</Text></>}
               </View>
               {readOnly && customConfirmed !== undefined ? <Text style={{ ...label, color: tokens.foregroundMuted, fontWeight: "700" }}>✓</Text> : null}
             </>;
             return readOnly
               ? <View testID={measure ? undefined : rowId} accessibilityState={{ selected: customOpen, disabled: true }} style={rowStyle}>{contents}</View>
-              : <Pressable {...focusProps(rowId)} {...(Platform.OS === "web" ? { "aria-pressed": customOpen } : {})} testID={rowId} accessibilityRole="button" accessibilityState={{ selected: customOpen, disabled }} disabled={disabled} onPress={openAndFocusCustom} style={[rowStyle, focusStyle(customFocused ? focused! : rowId)]}>{contents}</Pressable>;
+              : <Pressable {...focusProps(rowId)} {...(Platform.OS === "web" ? { "aria-pressed": customOpen } : {})} testID={rowId} accessibilityRole="button" accessibilityState={{ selected: customOpen, disabled }} disabled={disabled} onPress={openAndFocusCustom} style={[rowStyle, Platform.OS === "web" ? { outlineStyle: "none" } as unknown as ViewStyle : undefined]}>{contents}</Pressable>;
           })()}
           {!readOnly && customOpen ? <Pressable {...focusProps("option-custom-confirm")} testID="option-custom-confirm" accessibilityRole="button" disabled={disabled} onPress={confirmCustomInput} style={[{ minHeight: 44, justifyContent: "center", alignItems: "center" }, focusStyle("option-custom-confirm")]}><Text style={label}>{t("answerCard.next")}</Text></Pressable> : null}
         </Animated.View>
@@ -699,12 +689,12 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
       {readOnly ? <View style={{ padding: 16, borderTopWidth: 1, borderColor: tokens.border }}><Text testID="option-answered" style={muted}>{`Answered in the chat: ${session.answeredText}`}</Text></View> : <View style={{ flexDirection: hasCustomAnswer ? "column" : "row", alignItems: hasCustomAnswer ? "stretch" : "center", justifyContent: "space-between", gap: 8, padding: 16, borderTopWidth: 1, borderColor: tokens.border, borderBottomLeftRadius: 11, borderBottomRightRadius: 11, backgroundColor: tokens.surface2 }}>
         {hasCustomAnswer && answer !== null ? <Text testID="option-send-preview" selectable style={{ ...label, color: tokens.foregroundMuted }}>{answer}</Text> : null}
         {Platform.OS === "web" ? <Text testID="option-hint" style={{ ...muted, fontFamily: customOpen && customConfirmed === undefined ? tokens.fontUi : tokens.fontMono, flexShrink: 1 }}>{customOpen && customConfirmed === undefined
-          ? `${t("answerCard.hintEnter")} · ${t("answerCard.otherHint")}`
+          ? t("answerCard.hintCustom")
           : focused === "option-send"
           ? t("answerCard.hintSend").replace(/^Tab →\s*/, "↵ ").toLowerCase()
           : `${t("answerCard.hintMove").replace(/^↑\s*↓/, "↑↓")} · ↵ ${t("answerCard.hintPick").replace(/^A B C D\s*/, "")}`}</Text> : <View />}
-        <Pressable {...focusProps("option-send")} testID="option-send" accessibilityRole="button" accessibilityState={{ disabled: sendDisabled }} disabled={sendDisabled} focusable={!sendDisabled} onPress={() => { if (getOptionSession(agentId)?.at === at) { prepareSend(); const pending = pendingSend.current; void sendAnswer(agentId).then(() => { if (!getOptionSession(agentId)?.readOnly && pendingSend.current === pending) { pending?.stop(); pendingSend.current = null; } }); } }} style={[{ minHeight: 44, justifyContent: "center", alignItems: "center", paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderStyle: sendDisabled ? "dashed" : "solid", borderColor: sendDisabled ? tokens.foregroundMuted : tokens.accent, backgroundColor: sendDisabled ? "transparent" : tokens.accent }, focusStyle("option-send")]}>
-          <Text style={{ ...label, color: sendDisabled ? tokens.foregroundMuted : tokens.accentForeground, fontWeight: "700" }}>{missing === null ? t("answerCard.send", { answer: answerIndex(agentId) ?? "" }) : t("answerCard.missing", { question: number(missing) })}</Text>
+        <Pressable {...focusProps("option-send")} testID="option-send" accessibilityRole="button" accessibilityState={{ disabled: sendDisabled }} disabled={sendDisabled} focusable={!sendDisabled} onPress={() => { const current = getOptionSession(agentId); if (!current || current.at !== at || sendDisabled) return; if (draftReady) { confirmCustom(agentId, index); const next = missingQuestion(agentId); if (next !== null) { setActiveQuestion(agentId, next); return; } } prepareSend(); const pending = pendingSend.current; void sendAnswer(agentId).then(() => { if (!getOptionSession(agentId)?.readOnly && pendingSend.current === pending) { pending?.stop(); pendingSend.current = null; } }); }} style={[{ minHeight: 44, justifyContent: "center", alignItems: "center", paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderStyle: "solid", borderColor: sendDisabled ? tokens.foregroundMuted : tokens.accent, backgroundColor: sendDisabled ? "transparent" : tokens.accent }, focusStyle("option-send")]}>
+          <Text style={{ ...label, color: sendDisabled ? tokens.foregroundMuted : tokens.accentForeground, fontWeight: "700" }}>{customOpen && customConfirmed === undefined ? t("answerCard.sendAction") : missing === null ? t("answerCard.send", { answer: answerIndex(agentId) ?? "" }) : t("answerCard.missing", { question: number(missing) })}</Text>
         </Pressable>
       </View>}
     </View>

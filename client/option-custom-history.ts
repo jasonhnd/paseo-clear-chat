@@ -1,5 +1,5 @@
 import { customAnswerLetter, formatCustomAnswers, type ConfirmedOptionAnswer } from './option-custom-answer';
-import type { OptionQuestionSet } from './option-questions';
+import { questionNumber, type OptionQuestionSet } from './option-questions';
 
 /**
  * Decode a formatter message into question-indexed ConfirmedOptionAnswer values.
@@ -11,6 +11,10 @@ export function parseCustomAnswerHistory(
   set: OptionQuestionSet,
   message: string,
 ): Record<number, ConfirmedOptionAnswer> | null {
+  return parseHistory(set, message, false) ?? parseHistory(set, message, true);
+}
+
+function parseHistory(set: OptionQuestionSet, message: string, legacyIdentifiers: boolean): Record<number, ConfirmedOptionAnswer> | null {
   const separator = message.indexOf('\n\n');
   if (separator < 0) return null;
   const tokens = message.slice(0, separator).split(' ');
@@ -22,7 +26,7 @@ export function parseCustomAnswerHistory(
   const custom: { index: number; token: string; letter: string }[] = [];
   for (let index = 0; index < set.questions.length; index++) {
     const question = set.questions[index]!;
-    const identifier = question.number === null ? '' : String(question.number);
+    const identifier = String(legacyIdentifiers ? question.number ?? '' : questionNumber(question, index));
     if (!/^(?:[0-9]+|[A-Z][0-9]+)?$/.test(identifier) || identifiers.has(identifier)) return null;
     identifiers.add(identifier);
     const letters = question.options.map(option => option.letter);
@@ -59,5 +63,5 @@ export function parseCustomAnswerHistory(
     if (!content.trim() || /^[A-Z]?[0-9]*[A-Z]：\n/.test(content)) return null;
     answers[expected.index] = { kind: 'custom', letter: expected.letter, content };
   }
-  return formatCustomAnswers(set, answers)?.message === message ? answers : null;
+  return formatCustomAnswers(set, answers, legacyIdentifiers)?.message === message ? answers : null;
 }

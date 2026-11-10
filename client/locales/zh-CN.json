@@ -643,6 +643,8 @@
     "hintBack": "⇧Tab 上一题",
     "hintSend": "Tab → 发送",
     "hintReopen": "↑ 重新展开",
+    "sendAction": "发送",
+    "hintCustom": "Enter 确认 · Shift+Enter 换行",
     "hintEnter": "Enter"
   }
 }

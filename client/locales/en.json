@@ -643,6 +643,8 @@
     "hintBack": "⇧Tab back",
     "hintSend": "Tab → Send",
     "hintReopen": "↑ to reopen",
+    "sendAction": "Send",
+    "hintCustom": "Enter to confirm · Shift+Enter for a new line",
     "hintEnter": "Enter"
   }
 }
