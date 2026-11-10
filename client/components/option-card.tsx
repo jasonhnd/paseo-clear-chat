@@ -17,6 +17,8 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   const session = useOptionSession(agentId, at);
   const status = useAgent(agentId, agent => agent.status);
   const root = useRef<HTMLElement | null>(null);
+  const mountedAgentId = useRef(agentId);
+  mountedAgentId.current = agentId;
   const customInput = useRef<NativeTextInput | null>(null);
   const pendingCustomFocus = useRef(false);
   const customKeyHandler = useRef<(event: KeyboardEvent) => void>(() => {});
@@ -338,31 +340,49 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
       collapse.finished.then(finish, finish);
     }, finish);
   }, [session?.readOnly]);
+  useEffect(() => {
+    const id = agentId;
+    return () => { pendingSendFocusAgents.delete(id); };
+  }, [agentId]);
   useCommitEffect(() => {
     const armedAt = pendingSendFocusAgents.get(agentId);
     if (!session?.readOnly || !armedAt) return;
     if (Date.now() - armedAt > 10000) { pendingSendFocusAgents.delete(agentId); return; }
     if (Platform.OS !== "web") { pendingSendFocusAgents.delete(agentId); return; }
-    // The sent reply can be re-rendered as a new DOM subtree, so keep re-focusing
-    // the latest connected tab for a short settle window instead of one detached node.
+    // Retry only while focus is still on the body or this card's tab is not mounted.
+    // A successful focus, or focus already on another control, ends the settle.
     const deadline = Date.now() + 1500;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let placed = false;
+    const stop = () => {
+      pendingSendFocusAgents.delete(agentId);
+      if (timer) clearTimeout(timer);
+      timer = null;
+    };
     const tick = () => {
+      if (Date.now() >= deadline) { stop(); return; }
       const rootNode = root.current as unknown as { querySelector?: (selector: string) => HTMLElement | null } | null;
       const scoped = typeof rootNode?.querySelector === "function" ? rootNode.querySelector('[data-testid="option-question-0"]') : null;
-      let tab = scoped && (scoped as { isConnected?: boolean }).isConnected !== false ? scoped : null;
-      const doc = (globalThis as { document?: Document }).document;
-      if (!tab && doc) tab = Array.from(doc.querySelectorAll<HTMLElement>('[data-testid="option-question-0"]')).find(node => node.isConnected && node.getClientRects().length > 0) ?? null;
-      if (!tab && !doc) { pendingSendFocusAgents.delete(agentId); return; }
+      const tab = scoped && (scoped as { isConnected?: boolean }).isConnected !== false ? scoped : null;
+      if (!tab) { timer = setTimeout(tick, 100); return; }
+      const doc = (globalThis as { document?: { activeElement?: HTMLElement | null; body?: HTMLElement | null } }).document;
       const active = doc?.activeElement ?? null;
-      if (tab && active !== tab) tab.focus({ preventScroll: true });
+      const onBody = !active || active === doc?.body || (active as { tagName?: string }).tagName === "BODY";
+      if (active === tab) { stop(); return; }
+      // The first placement may move focus off Send. Later ticks must not steal it back.
+      if (placed && doc && !onBody) { stop(); return; }
+      tab.focus({ preventScroll: true });
+      placed = true;
+      const now = doc?.activeElement ?? null;
+      if (!doc || now === tab) { stop(); return; }
       if (Date.now() < deadline) timer = setTimeout(tick, 100);
-      else pendingSendFocusAgents.delete(agentId);
+      else stop();
     };
     timer = setTimeout(tick, 0);
     return () => { if (timer) clearTimeout(timer); };
   }, [agentId, session?.readOnly]);
   useEffect(() => () => {
+    pendingSendFocusAgents.delete(mountedAgentId.current);
     pendingSend.current?.stop();
     pendingSend.current = null;
     if (pendingResize.current) {
