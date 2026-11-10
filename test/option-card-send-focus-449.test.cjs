@@ -7,7 +7,7 @@ const byId = (h, tree, id) => h.nodes(tree, node => node.props.testID === id)[0]
 const tick = () => new Promise(resolve => setTimeout(resolve, 5));
 const QUESTION = '[data-testid="option-question-0"]';
 
-function fixture(t, { reducedMotion = false, hideQuestionTab = false } = {}) {
+function fixture(t, { reducedMotion = false, hideQuestionTab = false, stickAfter = 1 } = {}) {
   const globals = Object.create(globalThis);
   globals.matchMedia = () => ({ matches: reducedMotion });
   globals.requestAnimationFrame = callback => setTimeout(callback, 0);
@@ -17,7 +17,7 @@ function fixture(t, { reducedMotion = false, hideQuestionTab = false } = {}) {
   const s = h.load("client/option-session.ts");
   const Card = h.load("client/components/option-card.tsx").OptionCard;
   s.publishAssistantReply("a", { at: 10, text: reply });
-  let tree, active = "BODY";
+  let tree, active = "BODY", questionTries = 0;
   const focusedSelectors = [];
   const docCalls = [];
   const body = { tagName: "BODY" };
@@ -39,9 +39,17 @@ function fixture(t, { reducedMotion = false, hideQuestionTab = false } = {}) {
     if (hideQuestionTab && id === "option-question-0") return null;
     return {
       get disabled() { return !!byId(h, tree, id)?.props.disabled; },
+      getAttribute(name) { return name === "data-testid" ? id : null; },
       focus() {
         focusedSelectors.push(selector);
         const node = byId(h, tree, id);
+        if (id === "option-question-0") {
+          questionTries += 1;
+          if (questionTries < stickAfter) {
+            globals.document.activeElement = { tagName: "BUTTON", getAttribute: (name) => name === "data-testid" ? "option-send" : null };
+            return;
+          }
+        }
         active = id;
         globals.document.activeElement = this;
         node?.props.onFocus?.({ stopPropagation() {} });
@@ -59,14 +67,20 @@ function fixture(t, { reducedMotion = false, hideQuestionTab = false } = {}) {
   const press = id => byId(h, draw(), id).props.onPress();
   const clickSend = () => {
     const button = byId(h, draw(), "option-send");
+    const sendNode = card.querySelector('[data-testid="option-send"]');
     active = "option-send";
+    globals.document.activeElement = sendNode;
     button.props.onFocus();
     button.props.onPress();
   };
   return {
     h, s, draw, press, clickSend, focusedSelectors, docCalls,
-    focusElsewhere: () => { active = "outside"; globals.document.activeElement = { tagName: "BUTTON" }; },
+    focusElsewhere: () => {
+      active = "outside";
+      globals.document.activeElement = { tagName: "BUTTON", getAttribute: () => null };
+    },
     active: () => active,
+    Card,
   };
 }
 
@@ -215,6 +229,56 @@ test("unmount and an agent change drop the pending focus entry", async t => {
   assert.equal(f.docCalls.length, 0);
   assert.ok(!f.focusedSelectors.includes(QUESTION));
   assert.notEqual(f.active(), "option-question-0");
+});
+
+test("does not move focus when the user is already on another control", async t => {
+  const f = fixture(t);
+  await answerLast(f);
+  let resolveSend;
+  f.s.setOptionSender(() => new Promise(resolve => { resolveSend = resolve; }));
+  f.clickSend();
+  f.focusedSelectors.length = 0;
+  f.focusElsewhere();
+  resolveSend();
+  await tick();
+  f.draw();
+  await tick();
+  assert.ok(!f.focusedSelectors.includes(QUESTION));
+  assert.equal(f.active(), "outside");
+});
+
+test("retries when focus stays on Send", async t => {
+  const f = fixture(t, { stickAfter: 2 });
+  await answerLast(f);
+  let resolveSend;
+  f.s.setOptionSender(() => new Promise(resolve => { resolveSend = resolve; }));
+  f.clickSend();
+  resolveSend();
+  await tick();
+  f.draw();
+  await new Promise(resolve => setTimeout(resolve, 180));
+  assert.ok(f.focusedSelectors.filter(selector => selector === QUESTION).length >= 2);
+  assert.equal(f.active(), "option-question-0");
+});
+
+test("another card leaving does not clear this card's pending focus", async t => {
+  const f = fixture(t);
+  await answerLast(f);
+  let resolveSend;
+  f.s.setOptionSender(() => new Promise(resolve => { resolveSend = resolve; }));
+  f.clickSend();
+  f.focusedSelectors.length = 0;
+  const Pair = ({ other }) => [
+    { type: f.Card, props: { agentId: "a", at: 10, tokens: f.h.tokens } },
+    { type: f.Card, props: { agentId: other, at: 20, tokens: f.h.tokens } },
+  ];
+  f.h.draw({ type: Pair, props: { other: "a" } });
+  f.h.draw({ type: Pair, props: { other: "b" } });
+  resolveSend();
+  await tick();
+  f.draw();
+  await tick();
+  assert.ok(f.focusedSelectors.includes(QUESTION));
 });
 
 function assertNoSendRing(f) {

@@ -11,14 +11,15 @@ import { optionShortName } from "../option-short-name";
 import type { ExtendedThemeTokens } from "./theme-tokens";
 
 const pendingSendFocusAgents = new Map<string, number>();
+const focusCardKey = (agentId: string, at: number) => `${agentId}\u0000${at}`;
 
 export function OptionCard({ agentId, at, tokens }: { agentId: string; at: number; tokens: ExtendedThemeTokens }) {
   const { t } = useTranslation(messages);
   const session = useOptionSession(agentId, at);
   const status = useAgent(agentId, agent => agent.status);
   const root = useRef<HTMLElement | null>(null);
-  const mountedAgentId = useRef(agentId);
-  mountedAgentId.current = agentId;
+  const mountedFocusKey = useRef(focusCardKey(agentId, at));
+  mountedFocusKey.current = focusCardKey(agentId, at);
   const customInput = useRef<NativeTextInput | null>(null);
   const pendingCustomFocus = useRef(false);
   const customKeyHandler = useRef<(event: KeyboardEvent) => void>(() => {});
@@ -341,48 +342,52 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     }, finish);
   }, [session?.readOnly]);
   useEffect(() => {
-    const id = agentId;
-    return () => { pendingSendFocusAgents.delete(id); };
-  }, [agentId]);
+    const key = focusCardKey(agentId, at);
+    return () => { pendingSendFocusAgents.delete(key); };
+  }, [agentId, at]);
   useCommitEffect(() => {
-    const armedAt = pendingSendFocusAgents.get(agentId);
+    const key = focusCardKey(agentId, at);
+    const armedAt = pendingSendFocusAgents.get(key);
     if (!session?.readOnly || !armedAt) return;
-    if (Date.now() - armedAt > 10000) { pendingSendFocusAgents.delete(agentId); return; }
-    if (Platform.OS !== "web") { pendingSendFocusAgents.delete(agentId); return; }
-    // Retry only while focus is still on the body or this card's tab is not mounted.
-    // A successful focus, or focus already on another control, ends the settle.
+    if (Date.now() - armedAt > 10000) { pendingSendFocusAgents.delete(key); return; }
+    if (Platform.OS !== "web") { pendingSendFocusAgents.delete(key); return; }
     const deadline = Date.now() + 1500;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    let placed = false;
     const stop = () => {
-      pendingSendFocusAgents.delete(agentId);
+      pendingSendFocusAgents.delete(key);
       if (timer) clearTimeout(timer);
       timer = null;
     };
+    const testId = (node: { getAttribute?: (name: string) => string | null } | null) => node?.getAttribute?.("data-testid") ?? "";
     const tick = () => {
       if (Date.now() >= deadline) { stop(); return; }
       const rootNode = root.current as unknown as { querySelector?: (selector: string) => HTMLElement | null } | null;
       const scoped = typeof rootNode?.querySelector === "function" ? rootNode.querySelector('[data-testid="option-question-0"]') : null;
       const tab = scoped && (scoped as { isConnected?: boolean }).isConnected !== false ? scoped : null;
-      if (!tab) { timer = setTimeout(tick, 100); return; }
       const doc = (globalThis as { document?: { activeElement?: HTMLElement | null; body?: HTMLElement | null } }).document;
       const active = doc?.activeElement ?? null;
       const onBody = !active || active === doc?.body || (active as { tagName?: string }).tagName === "BODY";
-      if (active === tab) { stop(); return; }
-      // The first placement may move focus off Send. Later ticks must not steal it back.
-      if (placed && doc && !onBody) { stop(); return; }
+      const onSend = testId(active) === "option-send";
+      if (tab && active === tab) { stop(); return; }
+      if (doc && active && !onBody && !onSend) { stop(); return; }
+      if (!tab) { timer = setTimeout(tick, 100); return; }
       tab.focus({ preventScroll: true });
-      placed = true;
       const now = doc?.activeElement ?? null;
       if (!doc || now === tab) { stop(); return; }
-      if (Date.now() < deadline) timer = setTimeout(tick, 100);
-      else stop();
+      const nowBody = !now || now === doc?.body || (now as { tagName?: string }).tagName === "BODY";
+      const nowSend = testId(now) === "option-send";
+      if (nowBody || nowSend) {
+        if (Date.now() < deadline) timer = setTimeout(tick, 100);
+        else stop();
+        return;
+      }
+      stop();
     };
     timer = setTimeout(tick, 0);
     return () => { if (timer) clearTimeout(timer); };
-  }, [agentId, session?.readOnly]);
+  }, [agentId, at, session?.readOnly]);
   useEffect(() => () => {
-    pendingSendFocusAgents.delete(mountedAgentId.current);
+    pendingSendFocusAgents.delete(mountedFocusKey.current);
     pendingSend.current?.stop();
     pendingSend.current = null;
     if (pendingResize.current) {
@@ -763,13 +768,13 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
             }
           }
           if (missingQuestion(agentId) === null) {
-            pendingSendFocusAgents.set(agentId, Date.now());
+            pendingSendFocusAgents.set(focusCardKey(agentId, at), Date.now());
           }
           prepareSend(draftReady);
           const pending = pendingSend.current;
           const finishSend = () => {
             if (!getOptionSession(agentId)?.readOnly) {
-              pendingSendFocusAgents.delete(agentId);
+              pendingSendFocusAgents.delete(focusCardKey(agentId, at));
               if (pendingSend.current === pending) { pending?.stop(); pendingSend.current = null; }
               if (Platform.OS === "web") setTimeout(() => {
                 const current = getOptionSession(agentId);
