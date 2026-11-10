@@ -714,19 +714,23 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
             if (next !== null) {
               setActiveQuestion(agentId, next);
               const after = getOptionSession(agentId);
-              if (after) focus(`option-row-${after.set.questions[next]!.options[after.cursor[next] ?? 0]!.letter}`);
+              if (after) {
+                const first = after.set.questions[next]!.options[0];
+                focus(first ? `option-row-${first.letter}` : after.customOpen[next] ? "option-custom-input" : `option-question-${next}`);
+              }
               return;
             }
             pendingSendFocus.current = true;
           }
           prepareSend(draftReady);
           const pending = pendingSend.current;
-          void sendAnswer(agentId).then(() => {
+          const finishSend = () => {
             if (!getOptionSession(agentId)?.readOnly) {
               pendingSendFocus.current = false;
               if (pendingSend.current === pending) { pending?.stop(); pendingSend.current = null; }
             }
-          });
+          };
+          void sendAnswer(agentId).then(finishSend, finishSend);
         }} style={[{ minHeight: 44, justifyContent: "center", alignItems: "center", paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderStyle: "solid", borderColor: sendDisabled ? tokens.foregroundMuted : tokens.accent, backgroundColor: sendDisabled ? "transparent" : tokens.accent }, focusStyle(sendDisabled ? "" : "option-send")]}>
           <Text style={{ ...label, color: sendDisabled ? tokens.foregroundMuted : tokens.accentForeground, fontWeight: "700" }}>{customOpen && customConfirmed === undefined ? t("answerCard.sendAction") : missing === null ? t("answerCard.send", { answer: answerIndex(agentId) ?? "" }) : t("answerCard.missing", { question: number(missing) })}</Text>
         </Pressable>
