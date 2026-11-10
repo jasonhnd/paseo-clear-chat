@@ -47,6 +47,7 @@
 - **触屏上复制按钮更大。** 触屏设备上，Clear Chat 自己画的复制按钮高 44 px（[#388](https://github.com/jasonhnd/paseo-clear-chat/issues/388)）。
 - **下一题直接能写。** 确认自写答案后，焦点移到下一题的「自己写」行（[#434](https://github.com/jasonhnd/paseo-clear-chat/issues/434)）。
 - **更顺，也更听系统的话。** 答题卡过渡约 150–220 ms，跟随系统的「减少动态效果」设置；手机宽度下输入框为 16 px，浏览器不会因获得焦点而放大（[#436](https://github.com/jasonhnd/paseo-clear-chat/issues/436)、[#378](https://github.com/jasonhnd/paseo-clear-chat/issues/378)）。
+- **焦点与旧答案。** 点发送确认当前自写答案后，焦点移到下一道未答题；旧版本（题号从 0 起）发出的普通选项答案，重新加载后也会显示为已答（[#449](https://github.com/jasonhnd/paseo-clear-chat/issues/449)、[#448](https://github.com/jasonhnd/paseo-clear-chat/issues/448)）。
 
 ### 之前几版新增的
 

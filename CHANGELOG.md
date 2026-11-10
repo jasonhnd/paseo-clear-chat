@@ -19,6 +19,8 @@
 
 - When the answer card turns grey read-only after Send, the page's bottom position is no longer clipped by the browser ([#436](https://github.com/jasonhnd/paseo-clear-chat/issues/436)).
 - A reply that ends with extra blank lines no longer loses its diagrams and syntax highlighting ([#444](https://github.com/jasonhnd/paseo-clear-chat/issues/444)).
+- After **Send** confirms the current written answer, the keyboard focus moves to the first focusable control of the next unanswered question; confirming the last question leaves the focus on the first tab of the read-only answer card, and no focus ring is left behind when Send turns grey ([#449](https://github.com/jasonhnd/paseo-clear-chat/issues/449)).
+- An ordinary option answer sent by an older release whose question numbers start at 0 now shows as answered, with the check on the matching row, after the chat is reloaded; the `Answered in the chat: …` text is unchanged and current numbering is not affected ([#448](https://github.com/jasonhnd/paseo-clear-chat/issues/448)).
 
 ### Known limitations
 

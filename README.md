@@ -47,6 +47,7 @@
 - **Bigger copy buttons on touch screens.** On a touch screen, the copy buttons Clear Chat draws are 44 px high ([#388](https://github.com/jasonhnd/paseo-clear-chat/issues/388)).
 - **The next question is ready to type.** After you confirm a written answer, the focus moves to the next question's write-your-own row ([#434](https://github.com/jasonhnd/paseo-clear-chat/issues/434)).
 - **Smoother, and calmer when you ask.** The card animates over about 150–220 ms, follows the system's reduced motion setting, and uses a 16 px input at phone width so the browser does not zoom in ([#436](https://github.com/jasonhnd/paseo-clear-chat/issues/436), [#378](https://github.com/jasonhnd/paseo-clear-chat/issues/378)).
+- **Focus and older answers.** After Send confirms the current written answer the focus moves to the next unanswered question, and an ordinary option answer sent by an older release whose question numbers start at 0 now shows as answered after a reload ([#449](https://github.com/jasonhnd/paseo-clear-chat/issues/449), [#448](https://github.com/jasonhnd/paseo-clear-chat/issues/448)).
 
 ### Added in earlier releases
 
