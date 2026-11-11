@@ -222,6 +222,10 @@ export function getOptionSession(agentId: string, at = replies.get(agentId)): Op
   return session && (at === replies.get(agentId) || session.readOnly) ? session : null;
 }
 
+function sessionForOperation(agentId: string, at?: number): OptionSession | null {
+  return at === undefined ? getOptionSession(agentId) : getOptionSessionAt(agentId, at);
+}
+
 /** Retrieve a specific card, including earlier unanswered cards. */
 export function getOptionSessionAt(agentId: string, at: number): OptionSession | null {
   return snapshots.get(agentId)?.get(at) ?? null;
@@ -385,7 +389,7 @@ export function choose(agentId: string, questionIndex: number, letter: string, a
   }, at);
 }
 
-export function openCustom(agentId: string, questionIndex: number): void {
+export function openCustom(agentId: string, questionIndex: number, at?: number): void {
   update(agentId, snapshot => {
     if (snapshot.readOnly || snapshot.sending || !snapshot.set.questions[questionIndex]) return snapshot;
     if (snapshot.customOpen[questionIndex] && snapshot.choices[questionIndex] === undefined && snapshot.customConfirmed[questionIndex] === undefined) return snapshot;
@@ -394,10 +398,10 @@ export function openCustom(agentId: string, questionIndex: number): void {
     delete choices[questionIndex];
     delete customConfirmed[questionIndex];
     return { ...snapshot, choices, customConfirmed, customOpen: { ...snapshot.customOpen, [questionIndex]: true } };
-  });
+  }, at);
 }
 
-export function setCustomDraft(agentId: string, questionIndex: number, text: string): void {
+export function setCustomDraft(agentId: string, questionIndex: number, text: string, at?: number): void {
   update(agentId, snapshot => {
     if (snapshot.readOnly || snapshot.sending || !snapshot.set.questions[questionIndex] || snapshot.customDrafts[questionIndex] === text) return snapshot;
     const customDrafts = { ...snapshot.customDrafts, [questionIndex]: text };
@@ -407,7 +411,7 @@ export function setCustomDraft(agentId: string, questionIndex: number, text: str
     delete customConfirmed[questionIndex];
     delete choices[questionIndex];
     return { ...snapshot, customDrafts, customConfirmed, choices };
-  });
+  }, at);
 }
 
 export function confirmCustom(agentId: string, questionIndex: number, at?: number): "confirmed" | "blank" | "ignored" {
@@ -434,12 +438,12 @@ export function confirmCustom(agentId: string, questionIndex: number, at?: numbe
   return result;
 }
 
-export function customLetterFor(agentId: string, questionIndex: number): string | null {
-  const question = getOptionSession(agentId)?.set.questions[questionIndex];
+export function customLetterFor(agentId: string, questionIndex: number, at?: number): string | null {
+  const question = sessionForOperation(agentId, at)?.set.questions[questionIndex];
   return question ? customAnswerLetter(question) : null;
 }
 
-export function clearChoice(agentId: string, questionIndex: number): void {
+export function clearChoice(agentId: string, questionIndex: number, at?: number): void {
   update(agentId, snapshot => {
     if (snapshot.readOnly || snapshot.sending || snapshot.choices[questionIndex] === undefined) return snapshot;
     const choices = { ...snapshot.choices };
@@ -447,14 +451,14 @@ export function clearChoice(agentId: string, questionIndex: number): void {
     delete choices[questionIndex];
     delete customConfirmed[questionIndex];
     return { ...snapshot, choices, customConfirmed };
-  });
+  }, at);
 }
 
-export function setNote(agentId: string, questionIndex: number, note: string): void {
+export function setNote(agentId: string, questionIndex: number, note: string, at?: number): void {
   update(agentId, snapshot => {
     if (snapshot.readOnly || snapshot.sending || !snapshot.set.questions[questionIndex] || (snapshot.notes[questionIndex] ?? "") === note) return snapshot;
     return { ...snapshot, notes: { ...snapshot.notes, [questionIndex]: note } };
-  });
+  }, at);
 }
 
 export function setActiveQuestion(agentId: string, questionIndex: number, at?: number): void {
@@ -464,7 +468,7 @@ export function setActiveQuestion(agentId: string, questionIndex: number, at?: n
   }, at);
 }
 
-export function moveCursor(agentId: string, questionIndex: number, delta: number): void {
+export function moveCursor(agentId: string, questionIndex: number, delta: number, at?: number): void {
   update(agentId, snapshot => {
     const question = snapshot.set.questions[questionIndex];
     const current = snapshot.cursor[questionIndex];
@@ -474,23 +478,22 @@ export function moveCursor(agentId: string, questionIndex: number, delta: number
     const cursor = snapshot.cursor.slice();
     cursor[questionIndex] = next;
     return { ...snapshot, cursor };
-  });
+  }, at);
 }
 
-export function retireOptionSession(agentId: string): void {
-  const at = replies.get(agentId);
+export function retireOptionSession(agentId: string, at = replies.get(agentId)): void {
   if (at !== undefined && snapshots.get(agentId)?.delete(at)) notify();
 }
 
-export function dismiss(agentId: string): void {
-  const session = getOptionSession(agentId);
+export function dismiss(agentId: string, at?: number): void {
+  const session = sessionForOperation(agentId, at);
   if (!session || session.readOnly || session.sending) return;
-  retireOptionSession(agentId);
+  retireOptionSession(agentId, session.at);
   void saveDismissedOptionReply(agentId, session.at);
 }
 
-export function missingQuestion(agentId: string): number | null {
-  const snapshot = getOptionSession(agentId);
+export function missingQuestion(agentId: string, at?: number): number | null {
+  const snapshot = sessionForOperation(agentId, at);
   if (!snapshot) return null;
   const index = snapshot.set.questions.findIndex((_, i) => snapshot.choices[i] === undefined);
   return index < 0 ? null : index;
@@ -512,29 +515,29 @@ function sessionAnswerText(snapshot: OptionSession): string | null {
   return sessionAnswer(snapshot)?.message ?? null;
 }
 
-export function answerText(agentId: string): string | null {
-  const snapshot = getOptionSession(agentId);
+export function answerText(agentId: string, at?: number): string | null {
+  const snapshot = sessionForOperation(agentId, at);
   return snapshot ? sessionAnswerText(snapshot) : null;
 }
 
-export function answerIndex(agentId: string): string | null {
-  const snapshot = getOptionSession(agentId);
+export function answerIndex(agentId: string, at?: number): string | null {
+  const snapshot = sessionForOperation(agentId, at);
   return snapshot ? sessionAnswer(snapshot)?.index ?? null : null;
 }
 
 export function setOptionSender(next: Sender | null): void { sender = next; }
 
-export async function sendAnswer(agentId: string): Promise<void> {
-  const snapshot = getOptionSession(agentId);
-  const text = answerText(agentId);
+export async function sendAnswer(agentId: string, at?: number): Promise<void> {
+  const snapshot = sessionForOperation(agentId, at);
+  const text = snapshot ? sessionAnswerText(snapshot) : null;
   if (!snapshot || snapshot.readOnly || text === null || pending.has(agentId)) return;
   const send = sender;
   if (!send) {
-    update(agentId, current => current.error === "Sender unavailable" ? current : { ...current, error: "Sender unavailable" });
+    update(agentId, current => current.error === "Sender unavailable" ? current : { ...current, error: "Sender unavailable" }, snapshot.at);
     return;
   }
   pending.add(agentId);
-  update(agentId, current => ({ ...current, sending: true }));
+  update(agentId, current => ({ ...current, sending: true }), snapshot.at);
   try {
     await send(agentId, text);
     const current = snapshots.get(agentId)?.get(snapshot.at);
