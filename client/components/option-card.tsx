@@ -4,7 +4,7 @@ import * as pluginClient from "@getpaseo/plugin/client";
 import { useAgent, useTranslation } from "@getpaseo/plugin/client";
 import { TextInput } from "@getpaseo/plugin/client/ui";
 import { messages } from "../messages";
-import { resumeAnswerDraft, initializeAnswerState, answerIndex, answerText, choose, confirmCustom, customLetterFor, dismiss, getOptionSessionAt, getOptionSession, missingQuestion, moveCursor, openCustom, sendAnswer, setActiveQuestion, setCustomDraft, useOptionSession } from "../option-session";
+import { resumeAnswerDraft, initializeAnswerState, answerIndex, answerText, choose, confirmCustom, customLetterFor, dismiss, getOptionSessionAt, getOptionSession, hasNewerAnswerCard, missingQuestion, moveCursor, openCustom, sendAnswer, setActiveQuestion, setCustomDraft, useOptionSession } from "../option-session";
 import { customAnswerLetter } from "../option-custom-answer";
 import { areEnhancerPreferencesReady, getEnhancerPreferencesError, getOptionAnswerDraft, saveOptionAnswerDraft } from "../preferences";
 import { questionNumber } from "../option-questions";
@@ -848,7 +848,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
             return <Pressable key={i} testID={`option-question-${i}`} accessibilityRole="tab" accessibilityState={{ selected: i === index }} disabled={!readOnly && disabled} {...(Platform.OS === "web" && readOnly ? { focusable: true, tabIndex: 0, onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => { if (event.key === " ") { event.preventDefault(); switchQuestion(i); } } } : {})} onPress={() => switchQuestion(i)} style={tabStyle}>{tabLabel}</Pressable>;
           })}
           {useComposers && !readOnly && answer !== null ? <Text testID="option-prefill-status" style={muted}>{locale?.startsWith("zh") ? `已选 ${answerIndex(agentId, at)} · 还没发送` : locale?.startsWith("ja") ? `選択済み ${answerIndex(agentId, at)} · 未送信` : `Selected ${answerIndex(agentId, at)} · Not sent`}</Text> : null}
-          {session.followupStatus === "waiting" && getOptionSession(agentId)?.at === at ? <Pressable testID="option-resume" accessibilityRole="button" onPress={() => { void resumeAnswerDraft(agentId, at).then(ok => {
+          {session.followupStatus === "waiting" && !hasNewerAnswerCard(agentId, at) ? <Pressable testID="option-resume" accessibilityRole="button" onPress={() => { void resumeAnswerDraft(agentId, at).then(ok => {
             setResumeRetry(!ok);
             if (ok && Platform.OS === "web") setTimeout(() => {
               const card = root.current;
