@@ -418,7 +418,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     readOnlyTransition.current?.();
     clearScrollSpace();
   }, []);
-  if (!session || session.at !== at || session.dismissed || (status === "running" && !session.readOnly)) return null;
+  if (!session || session.at !== at || session.dismissed || session.superseded || (!session.resumed && !getOptionSession(agentId, at)) || (status === "running" && !session.readOnly)) return null;
 
   const question = session.set.questions[index]!;
   const customLetter = getOptionSessionAt(agentId, at)?.at === at ? customLetterFor(agentId, index, at)! : customAnswerLetter(question);
@@ -520,7 +520,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
       return;
     }
     const current = getOptionSessionAt(agentId, at);
-    if (!current || current.at !== at || current.readOnly || current.sending || current.activeQuestion === nextIndex) return;
+    if (!current || (!current.resumed && !getOptionSession(agentId, at)) || current.at !== at || current.readOnly || current.sending || current.activeQuestion === nextIndex) return;
     prepareQuestionSwitch();
     setActiveQuestion(agentId, nextIndex, at);
   };
@@ -748,7 +748,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
             if (session.followupStatus === "ended") return <View key={i} testID={`option-question-${i}`} accessibilityState={{ selected: i === index, disabled: true }} style={tabStyle}>{tabLabel}</View>;
             return <Pressable key={i} testID={`option-question-${i}`} accessibilityRole="tab" accessibilityState={{ selected: i === index }} disabled={!readOnly && disabled} {...(Platform.OS === "web" && readOnly ? { focusable: true, tabIndex: 0, onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => { if (event.key === " ") { event.preventDefault(); switchQuestion(i); } } } : {})} onPress={() => switchQuestion(i)} style={tabStyle}>{tabLabel}</Pressable>;
           })}
-          {session.followupStatus === "waiting" ? <Pressable testID="option-resume" accessibilityRole="button" onPress={() => { void resumeAnswerDraft(agentId, at).then(ok => {
+          {session.followupStatus === "waiting" && getOptionSession(agentId)?.at === at ? <Pressable testID="option-resume" accessibilityRole="button" onPress={() => { void resumeAnswerDraft(agentId, at).then(ok => {
             setResumeRetry(!ok);
             if (ok && Platform.OS === "web") setTimeout(() => {
               const card = root.current;

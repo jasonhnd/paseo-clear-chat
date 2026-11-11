@@ -166,7 +166,7 @@ const draftTimers = new Map<string, DraftPending>();
 
 function persistDraft(agentId: string, session: OptionSession): void {
   const store = draftStore;
-  if (!store) return;
+  if (!store || typeof store.write !== "function") return;
   const key = answerDraftKey(agentId, session.at);
   draftTimers.get(key)?.cancel();
   let settle!: (ok: boolean) => void;
@@ -203,14 +203,14 @@ function canonicalDraft(draft: AnswerDraftV1): string {
 export async function resumeAnswerDraft(agentId: string, at: number): Promise<boolean> {
   const original = getOptionSessionAt(agentId, at);
   const store = draftStore;
-  if (!original || original.followupStatus !== "waiting" || !store) return false;
+  if (!original || original.followupStatus !== "waiting" || replies.get(agentId) !== at || !store) return false;
   const key = answerDraftKey(agentId, at);
   const before = inspectDraft(agentId, at);
   const pending = draftTimers.get(key);
   if (before.kind !== "valid" && !pending) return false;
   // Also yields once when there is no pending write so click-time mutations are visible.
   const settled = pending ? await pending.completion : (await Promise.resolve(), true);
-  if (!settled || draftStore !== store || getOptionSessionAt(agentId, at) !== original || draftTimers.has(key)) return false;
+  if (!settled || draftStore !== store || replies.get(agentId) !== at || getOptionSessionAt(agentId, at) !== original || draftTimers.has(key)) return false;
   const after = inspectDraft(agentId, at);
   if (after.kind !== "valid") return false;
   if (!pending && (before.kind !== "valid" || canonicalDraft(before.value) !== canonicalDraft(after.value))) return false;
@@ -220,7 +220,7 @@ export async function resumeAnswerDraft(agentId: string, at: number): Promise<bo
   }
   const sessions = snapshots.get(agentId);
   if (!sessions || sessions.get(at) !== original) return false;
-  sessions.set(at, { ...original, readOnly: false, followupStatus: undefined });
+  sessions.set(at, { ...original, readOnly: false, followupStatus: undefined, resumed: true });
   notify();
   return true;
 }
@@ -238,6 +238,8 @@ export interface OptionSession {
   dismissed: boolean;
   readOnly: boolean;
   followupStatus?: "waiting" | "ended" | "unsafe";
+  resumed?: boolean;
+  superseded?: boolean;
   sending: boolean;
   error: string | null;
   answeredText: string | null;
@@ -269,7 +271,7 @@ export function getOptionSessionAgents(): string[] { return [...snapshots.keys()
 export function getOptionSession(agentId: string, at = replies.get(agentId)): OptionSession | null {
   if (at === undefined) return null;
   const session = snapshots.get(agentId)?.get(at);
-  return session && (at === replies.get(agentId) || session.readOnly) ? session : null;
+  return session && !session.superseded && (at === replies.get(agentId) || session.readOnly) ? session : null;
 }
 
 function sessionForOperation(agentId: string, at?: number): OptionSession | null {
@@ -346,8 +348,8 @@ function reconcileAnswers(agentId: string): boolean {
         const sent = (session.sending || (session.answerAt === null && session.answeredText === answer[1])) && sessionAnswerText(session) === answer[1];
         if (!parsed && !Object.keys(typed).length && !sent && !containsAnswerShape(answer[1])) {
           const draft = inspectDraft(agentId, at);
-          const status = draft.kind === "valid" ? "waiting" : draft.kind === "unavailable" ? "unsafe" : "ended";
-          sessions.set(at, { ...session, readOnly: true, followupStatus: status, answeredText: answer[1], answerAt: answer[0], error: null });
+          const status = draft.kind === "valid" || draftTimers.has(answerDraftKey(agentId, at)) ? "waiting" : draft.kind === "unavailable" ? "unsafe" : "ended";
+          sessions.set(at, { ...session, ...(status === "waiting" ? {} : { choices: {}, customConfirmed: {}, customOpen: {} }), readOnly: true, superseded: false, followupStatus: status, answeredText: answer[1], answerAt: answer[0], error: null });
           changed = true;
           continue;
         }
@@ -381,7 +383,7 @@ function reconcileAnswers(agentId: string): boolean {
         customConfirmed: sent ? session.customConfirmed : customConfirmed,
         customDrafts: sent ? session.customDrafts : restored ? { ...customConfirmed } : session.answerAt === null && session.answeredText === null ? session.customDrafts : {},
         customOpen: sent ? session.customOpen : customOpen,
-        readOnly: true, followupStatus: undefined, answeredText: answer[1], answerAt: answer[0], error: null,
+        readOnly: true, superseded: false, followupStatus: undefined, answeredText: answer[1], answerAt: answer[0], error: null,
       });
       changed = true;
     } else if (!answer && session.answerAt !== null) {
@@ -399,7 +401,11 @@ export function publishAssistantReply(agentId: string, reply: { at: number; text
   if (times.has(reply.at)) return;
   times.add(reply.at);
   const latest = replies.get(agentId) ?? -Infinity;
-  if (reply.at > latest) replies.set(agentId, reply.at);
+  if (reply.at > latest) {
+    replies.set(agentId, reply.at);
+    const earlier = snapshots.get(agentId)?.get(latest);
+    if (earlier && !earlier.readOnly) snapshots.get(agentId)!.set(latest, { ...earlier, readOnly: true, superseded: true });
+  }
   const set = !isDismissed(agentId, reply.at) ? parseOptionQuestions(reply.text) : null;
   if (set) {
     let sessions = snapshots.get(agentId);
@@ -407,7 +413,7 @@ export function publishAssistantReply(agentId: string, reply: { at: number; text
     sessions.set(reply.at, {
       at: reply.at, set, choices: {}, notes: {}, customDrafts: {}, customConfirmed: {}, customOpen: {}, activeQuestion: 0,
       cursor: set.questions.map(question => Math.max(0, question.options.findIndex(option => option.recommended))),
-      dismissed: false, readOnly: false, sending: false, error: null, answeredText: null, answerAt: null,
+      dismissed: false, readOnly: reply.at < latest, superseded: reply.at < latest, sending: false, error: null, answeredText: null, answerAt: null,
     });
   }
   let changed = reconcileAnswers(agentId);

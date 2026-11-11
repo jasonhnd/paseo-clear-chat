@@ -238,6 +238,7 @@ async function savePreferences(
 
 function applySavedPreferences(values: PresentationSettings, version: number, reset: number): void {
   answerDrafts = (values.answerDrafts ?? {}) as Record<string, unknown>;
+  draftCacheReliable = true;
   // A queued edit must not be replaced by an older read/write response.
   if (version === localVersion) preferences = { ...DEFAULT_PREFERENCES, ...values.preferences };
   else if (reset === resetVersion) preferences = { ...preferences, dismissedOptionReplies: values.preferences.dismissedOptionReplies ?? [] };
@@ -248,9 +249,12 @@ function applySavedPreferences(values: PresentationSettings, version: number, re
 
 const DRAFT_LIMIT = 40;
 let answerDrafts: Record<string, unknown> = {};
+let draftCacheReliable = false;
+let pendingDraftOperations = 0;
 
 /** Last values read from host settings; used to answer a draft read synchronously. */
 export function getStoredAnswerDraft(key: string): unknown {
+  if (!draftCacheReliable || pendingDraftOperations) throw new SettingsFailure(STARTUP_MESSAGES.settingsRead);
   return answerDrafts[key];
 }
 
@@ -275,9 +279,17 @@ export function clearStoredAnswerDraft(key: string): Promise<void> {
 function enqueue(change: (values: PresentationSettings) => PresentationSettings, propagateFailure = false): Promise<void> {
   const version = localVersion;
   const reset = resetVersion;
+  if (propagateFailure) pendingDraftOperations += 1;
   const operation = pending.then(async () => {
-    const values = await savePreferences(change);
-    applySavedPreferences(values, version, reset);
+    try {
+      const values = await savePreferences(change);
+      applySavedPreferences(values, version, reset);
+    } catch (error) {
+      if (propagateFailure) draftCacheReliable = false;
+      throw error;
+    } finally {
+      if (propagateFailure) pendingDraftOperations -= 1;
+    }
   });
   pending = operation.catch((error: unknown) => {
     storageError = error instanceof SettingsFailure ? error.message : STARTUP_MESSAGES.settingsRead;
