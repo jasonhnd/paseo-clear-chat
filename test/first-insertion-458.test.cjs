@@ -82,7 +82,7 @@ test('different recorded block offers controls without writing', async t => {
 });
 for (const prompt of ['', 'user\r\ntext\n']) test(`host record without block with prompt ${JSON.stringify(prompt)}`, async t => {
   const data = values(); const f = await setup(t, data, prompt); f.press('option-row-B');
-  if (prompt) { assert.equal(f.shared.prompt, prompt); assert.equal(f.shared.writes, 0); controls(f); }
+  if (prompt) { await waitBlock(f, '1B'); assert.equal(f.shared.prompt, `1B\n${prompt}`); assert.equal(f.shared.writes, 1); assert.equal(byId(f.h, f.draw(), 'option-replace-first-line'), undefined); assert.equal(byId(f.h, f.draw(), 'option-keep-edited-first-line'), undefined); }
   else { await waitBlock(f, '1B'); assert.equal(f.shared.prompt, '1B'); assert.equal(f.shared.writes, 1); }
   for (const k of otherKeys) assert.deepEqual(f.host.values.answerDrafts[k], data.answerDrafts[k]);
   assert.equal(f.shared.sent, 0);

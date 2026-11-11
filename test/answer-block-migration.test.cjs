@@ -3,7 +3,7 @@ const test = require('node:test');
 const { createToolHarness } = require('./helpers/tool-harness.cjs');
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
-test('a draft from before answer blocks requires confirmation on a changed choice', async t => {
+test('a draft from before answer blocks is first-inserted above the existing text', async t => {
   let value = '1A\nkeep', writes = 0;
   const stored = { preferences: {}, legacyMigrated: true, answerDrafts: { 'a\u00001': { schema: 1, choices: { 0: 'A' }, customDrafts: {}, customOpen: {}, activeQuestion: 0 } } };
   const host = { async rpc(contract) { assert.equal(contract.name, 'settings.presentation.read'); return { status: 'ready', revision: '0', values: structuredClone(stored) }; } };
@@ -19,8 +19,8 @@ test('a draft from before answer blocks requires confirmation on a changed choic
   const draw = () => h.draw({ type: Card, props: { agentId: 'a', at: 1, tokens: h.tokens } });
   const find = (id) => h.nodes(draw(), node => node.props.testID === id)[0];
   find('option-row-B').props.onPress();
-  assert.equal(value, '1A\nkeep');
-  assert.equal(writes, 0);
-  assert.ok(find('option-replace-first-line'));
-  assert.ok(find('option-keep-edited-first-line'));
+  assert.equal(value, '1B\n1A\nkeep');
+  assert.equal(writes, 1);
+  assert.equal(find('option-replace-first-line'), undefined);
+  assert.equal(find('option-keep-edited-first-line'), undefined);
 });
