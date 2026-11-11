@@ -8,6 +8,18 @@ export function localDayBounds(now: number) {
   return { start, end };
 }
 
+/** PluginAgentSnapshot has no reliable agent start field in 0.13.0; callers pass undefined until the host exposes one. */
+export function runningMinutes(startedAt: string | undefined | null, now: number): number | null {
+  if (!startedAt) return null;
+  const start = Date.parse(startedAt);
+  if (!Number.isFinite(start) || start > now) return null;
+  return Math.floor((now - start) / 60000);
+}
+
+export function isBackgroundAgent(agent: unknown): boolean {
+  return (agent as { background?: unknown } | null)?.background === true;
+}
+
 export function lastActivityTime(agent: Activity) {
   return Date.parse(agent.lastActivityAt);
 }

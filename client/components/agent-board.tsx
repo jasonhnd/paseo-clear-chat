@@ -3,7 +3,7 @@ import type { PluginTheme, PluginText } from "@getpaseo/plugin";
 import React, { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { messages } from "../messages";
-import { boardSection, compareBoardAgents, lastActivityTime, localDayBounds } from "../agent-board-model";
+import { isBackgroundAgent, boardSection, compareBoardAgents, lastActivityTime, localDayBounds, runningMinutes } from "../agent-board-model";
 
 // These types describe the 0.16 API while the plugin still develops against 0.13.
 type Ref = { readonly key: string; readonly hostId: string; readonly id: string };
@@ -39,17 +39,26 @@ function useToday() {
 
 function AgentRow({ agentRef, section, theme, navigation }: BoardProps & { agentRef: AgentRef; section: "running" | "finished" }) {
   const agent = boardHooks.useAgent(agentRef);
-  const { t, locale } = pluginClient.useTranslation(messages);
+  const { t } = pluginClient.useTranslation(messages);
   if (!agent) return null;
-  const time = lastActivityTime(agent);
-  const displayedTime = Number.isFinite(time) ? new Date(time).toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" }) : t("sidebar.unknownTime");
+  const startedAt: string | undefined = undefined; // no reliable agent start field in PluginAgentSnapshot 0.13.0
+  const minutes = runningMinutes(startedAt, Date.now());
   return (
     <Pressable accessibilityRole="button" onPress={() => navigation.openAgent(agent.ref)} style={[styles.row, { borderColor: theme.colors.border }]}>
       <Text numberOfLines={1} style={[styles.rowTitle, { color: theme.colors.foreground }]}>{agent.title?.trim() || agent.id.slice(0, 8)}</Text>
-      {section === "finished" && agent.status !== "error" ? null : (
-        <Text style={[styles.meta, { color: agent.status === "error" ? theme.colors.statusDanger : theme.colors.foregroundMuted }]}>
-          {[section === "finished" ? t("sidebar.status.error") : `${t(`sidebar.status.${agent.status}`)} · ${displayedTime}`]}
-        </Text>
+      {section === "finished" ? (
+        agent.status === "error" ? (
+          <Text style={[styles.meta, { color: theme.colors.statusDanger }]}>{[t("sidebar.status.error")]}</Text>
+        ) : null
+      ) : (
+        <View style={styles.runningMeta}>
+          <View style={[styles.pill, { backgroundColor: theme.colors.accent }]}>
+            <Text style={[styles.pillText, { color: theme.colors.accentForeground }]}>{["● " + t("sidebar.runningPill")]}</Text>
+          </View>
+          {minutes === null ? null : (
+            <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>{[t("sidebar.runningFor").replace("{n}", String(minutes))]}</Text>
+          )}
+        </View>
       )}
     </Pressable>
   );
@@ -61,7 +70,7 @@ function ProjectGroup({ projectRef, bounds, ...props }: BoardProps & { projectRe
   const workspaces = boardHooks.useWorkspaces({ where: workspace => workspace.project.key === projectRef.key });
   const workspaceKeys = new Set(workspaces.map(ref => ref.key));
   const groups = boardHooks.useAgents({
-    where: agent => workspaceKeys.has(agent.workspace.key) && boardSection(agent, bounds) !== null,
+    where: agent => workspaceKeys.has(agent.workspace.key) && !isBackgroundAgent(agent) && boardSection(agent, bounds) !== null,
     groupBy: agent => boardSection(agent, bounds) ?? "",
     orderBy: compareBoardAgents,
   });
@@ -125,6 +134,9 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 12, fontWeight: "600", marginBottom: 5 },
   row: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 5 },
   rowTitle: { fontSize: 13, fontWeight: "500" },
+  runningMeta: { flexDirection: "row", alignItems: "center", gap: 6 },
+  pill: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
+  pillText: { fontSize: 11, fontWeight: "600" },
   meta: { fontSize: 11, marginTop: 3 },
   empty: { fontSize: 12, lineHeight: 18 },
 });
