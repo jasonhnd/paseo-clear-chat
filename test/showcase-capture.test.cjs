@@ -56,6 +56,7 @@ test("all README languages retain matching published pairs alongside the separat
   const catalogImages = [
     "docs/images/answer-card-dark-0154.png",
     "docs/images/answer-card-dark-typed-0154.png",
+    "docs/images/answer-card-dark-typed-0154-2.png",
     "docs/images/ipad-side-dark-0154.png",
     "docs/images/ipad-side-light-0154.png",
     "docs/images/phone-details-dark-0154.png",
