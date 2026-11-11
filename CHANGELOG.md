@@ -1,3 +1,14 @@
+## [0.15.4.2] - YYYY-MM-DD
+
+### Changed
+
+- The one-line description on the plugin's listing page now names the answer card ([#450](https://github.com/jasonhnd/paseo-clear-chat/issues/450)).
+
+### Fixed
+
+- In the dark theme the **Recommended** badge on the answer card is readable: its text contrast rises from 2.36:1 to 12.99:1, and the light theme stays at 4.63:1 ([#451](https://github.com/jasonhnd/paseo-clear-chat/issues/451)).
+- The hint line under the answer card keeps a fixed height, so the card no longer shifts when the hint text changes length ([#454](https://github.com/jasonhnd/paseo-clear-chat/issues/454)).
+
 ## [0.15.4.1] - 2026-11-11
 
 ### Added
@@ -549,6 +560,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.15.4.2]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.4.1...v0.15.4.2
 [0.15.4.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.3.6...v0.15.4.1
 [0.15.3.3]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.3.2...v0.15.3.3
 [0.15.3.2]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.3.1...v0.15.3.2

@@ -39,7 +39,13 @@
 
 <sub>1. Median of five runs in headless Google Chrome on one machine. Your numbers will differ. The method is in [scripts/perf/README.md](scripts/perf/README.md).</sub>
 
-## What's new in 0.15.4.1
+## What's new in 0.15.4.2
+
+- **Easier to find on the plugin list.** The one-line description on the listing page now names the answer card ([#450](https://github.com/jasonhnd/paseo-clear-chat/issues/450)).
+- **The Recommended badge is readable in the dark theme.** Its text contrast rose from 2.36:1 to 12.99:1; the light theme stays at 4.63:1 ([#451](https://github.com/jasonhnd/paseo-clear-chat/issues/451)).
+- **Steady under the answer card.** The hint line keeps a fixed height, so the card no longer shifts when the hint text changes ([#454](https://github.com/jasonhnd/paseo-clear-chat/issues/454)).
+
+### Added in earlier releases
 
 - **Write an answer for each question.** The answer card adds a write-your-own row after the listed options, with the next letter. Press Enter to confirm and move to the next question, or Shift+Enter for a new line. Input-method character selection does not confirm the answer; an empty answer shows a prompt ([#447](https://github.com/jasonhnd/paseo-clear-chat/issues/447)).
 - **Preview, send and review.** Preview the message before sending; the Send button shows only the letter indexes. After sending, switch questions in the grey read-only frame to review each answer. Reloading the chat keeps your full written answers visible ([#447](https://github.com/jasonhnd/paseo-clear-chat/issues/447)).
@@ -48,8 +54,6 @@
 - **The next question is ready to type.** After you confirm a written answer, the focus moves to the next question's write-your-own row ([#434](https://github.com/jasonhnd/paseo-clear-chat/issues/434)).
 - **Smoother, and calmer when you ask.** The card animates over about 150–220 ms, follows the system's reduced motion setting, and uses a 16 px input at phone width so the browser does not zoom in ([#436](https://github.com/jasonhnd/paseo-clear-chat/issues/436), [#378](https://github.com/jasonhnd/paseo-clear-chat/issues/378)).
 - **Focus and older answers.** After Send confirms the current written answer the focus moves to the next unanswered question, and an ordinary option answer sent by an older release whose question numbers start at 0 now shows as answered after a reload ([#449](https://github.com/jasonhnd/paseo-clear-chat/issues/449), [#448](https://github.com/jasonhnd/paseo-clear-chat/issues/448)).
-
-### Added in earlier releases
 
 - **Choose answers in the conversation.** The answer card now sits below the latest assistant reply, in the same text column. Click or use the keyboard to choose; each first answer moves to the next unanswered question, and the last choice puts the focus on **Send**. Question tabs show short names or `✓` with the chosen answer. After sending from the card or replying in Paseo's input box, the old card stays as a grey read-only copy. **Not options** dismisses a wrongly detected list. The existing setting controls it ([#366](https://github.com/jasonhnd/paseo-clear-chat/issues/366) / [#364](https://github.com/jasonhnd/paseo-clear-chat/issues/364) / [#368](https://github.com/jasonhnd/paseo-clear-chat/issues/368) / [#369](https://github.com/jasonhnd/paseo-clear-chat/issues/369) / [#371](https://github.com/jasonhnd/paseo-clear-chat/issues/371) / [PR #367](https://github.com/jasonhnd/paseo-clear-chat/pull/367)).
 
@@ -86,12 +90,12 @@ Verification scope: synthetic-provider replies on isolated hosts, not real-model
 ## Install
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.4.1
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.4.2
 ```
 
 Open Paseo’s plugins page and look for the version at the start of the Clear Chat description. Paseo 0.14.0 displays the default English description there even when the app language is changed.
 
-Clear Chat 0.15.4.1 needs Paseo 0.14.0 or later. Open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
+Clear Chat 0.15.4.2 needs Paseo 0.14.0 or later. Open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
 
 To update later:
 
@@ -153,7 +157,7 @@ This is a source-based explanation for Paseo 0.15.3, not a two-plugin live-page 
 ```bash
 paseo plugin update clear-chat                 # latest on main, asks first
 paseo plugin update clear-chat --yes           # same, no question
-paseo plugin update clear-chat --ref v0.15.4.1 --yes   # pin one release
+paseo plugin update clear-chat --ref v0.15.4.2 --yes   # pin one release
 ```
 
 An update keeps your settings. A rollback to an earlier ref also keeps them, but the effect of a specific rollback on settings is not guaranteed, so back them up first if the settings matter. Removing the plugin deletes its settings.
@@ -345,7 +349,7 @@ On a message that contains text, pick the quote icon beside Copy. A panel opens 
 | Show jump chips on long replies | Off by default. A finished reply of at least 1,200 characters with at least 2 anchors gets a row of chips above its text, one per anchor (up to 8); pressing a chip scrolls the reply to that block. An anchor is a heading of level 1 to 3, or a line that is one bold phrase and starts its own paragraph. Works in the web page and the desktop app; not shown in the native phone apps. Nothing is folded. |
 | Keep each option on its own line | Off by default. Lines whose marker is a capital letter (A to H, also full-width Ａ to Ｈ) followed by a dot, a bracket, `、`, a colon, a tab, a full-width space or a plain space (such as `A.`, `B)`, `A、text`, `A: text`, `A：text`, `A　text`) stay on their own lines instead of running together into one paragraph. A dot, a half-width bracket or a half-width colon needs a space or a tab after it, and the other markers need nothing after them. A tab or a full-width space is enough on its own; every other marker also needs a line just above or just below that is an option line for the neighbouring letter in order. It applies to the replies Clear Chat draws, so Assistant markdown must be on. Switching the setting in the same window redraws replies at once; in another window or on another device, reload the chat to see them redrawn. |
 
-**Installed version.** Under the title of the settings page, Clear Chat shows `Clear Chat version 0.15.4.1`. The line below it explains the value: a directory install keeps the version information already in that directory, so it can show an older release than the one you installed. If the build carries no usable version, the line shows **Unknown**.
+**Installed version.** Under the title of the settings page, Clear Chat shows `Clear Chat version 0.15.4.2`. The line below it explains the value: a directory install keeps the version information already in that directory, so it can show an older release than the one you installed. If the build carries no usable version, the line shows **Unknown**.
 
 **Custom accent colour.** Tap a swatch, or enter `#RGB` or `#RRGGBB` and press **Apply**. An invalid HEX value stays in the field with an error, and the saved colour does not change. Switching to a preset remembers your custom colour. The saved HEX value never changes; only the colour you see is darkened on light themes or lightened on dark themes when text would otherwise be hard to read. Filled buttons use black or white text, whichever has more contrast.
 
@@ -491,14 +495,14 @@ Numbers are issues, pull requests and discussions in Paseo's official repository
 
 **Why do I not see the answer card?** Turn on its setting and **Assistant markdown**. The latest reply must ask numbered questions with at least two lettered options each, and either request a short-form answer or mark a recommendation. Letters need not start at A or be consecutive. Questions inside code blocks or quotations are ignored. The operable frame is hidden while the agent runs; answered frames stay read-only after you reply. **Not options** hides a false detection for that reply, including after reload.
 
-**Which Paseo versions work?** 0.14.0 or later; 0.15.4.1 was checked on isolated Paseo 0.15.4 hosts with a synthetic provider, not real models. The minimum remains Paseo 0.14.0. Paseo 0.13 has an older, untested path described under [Install](#install).
+**Which Paseo versions work?** 0.14.0 or later; 0.15.4.2 was checked on isolated Paseo 0.15.4 hosts with a synthetic provider, not real models. The minimum remains Paseo 0.14.0. Paseo 0.13 has an older, untested path described under [Install](#install).
 
 ## Troubleshooting
 
 | Problem | What to do |
 |---|---|
 | Installing through the Cafe plugin fails, or Paseo reports a missing Shiki dependency such as `@shikijs/core`. | Retry with the Paseo CLI command in [Install](#install), using the same repository and release ref. Clear Chat installs its dependencies with `npm ci --include=dev`, so Node.js and npm must be available on the daemon host, and its network must reach the npm registry. If you manage the checkout yourself, run `npm ci --include=dev` there before retrying. |
-| Installation stops because the plugin needs a newer Paseo version. | For Clear Chat 0.15.4.1, update Paseo on the daemon host and all connected apps to 0.14.0 or later. For older hosts, see the [Install](#install) section for the Paseo 0.13 commands and their untested-status warning, and the separate Paseo 0.12 instructions. |
+| Installation stops because the plugin needs a newer Paseo version. | For Clear Chat 0.15.4.2, update Paseo on the daemon host and all connected apps to 0.14.0 or later. For older hosts, see the [Install](#install) section for the Paseo 0.13 commands and their untested-status warning, and the separate Paseo 0.12 instructions. |
 | Paseo rejects the plugin version, or Clear Chat says plugin settings or timeline support is missing. | Update Paseo on the daemon host and in every connected app, then reload Clear Chat. The Paseo version Clear Chat needs is declared in `paseo-plugin.json`. |
 | Clear Chat cannot start because plugin registration failed. | Update Paseo and reload Clear Chat. If it still fails, back up the plugin settings before you reinstall from the CLI. |
 | Clear Chat cannot read its settings from the host. | Reconnect to the host and choose **Retry** in **Settings → Plugins → Clear Chat**. If it still fails, check that the daemon can access the plugin settings folder. |
@@ -533,7 +537,7 @@ If the `beautiful-chat` settings folder does not exist, you never changed Beauti
 **2. Install**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.4.1
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.4.2
 ```
 
 **3. Check, then remove the old plugin**

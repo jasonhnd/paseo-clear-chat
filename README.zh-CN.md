@@ -39,7 +39,13 @@
 
 <sub>1. 在一台机器上用无头 Google Chrome 跑 5 次取中位数。你的结果会不一样。测法见 [scripts/perf/README.md](scripts/perf/README.md)（英文）。</sub>
 
-## 这一版新增（0.15.4.1）
+## 这一版新增（0.15.4.2）
+
+- **在插件列表里更好认。** 目录页那句一句话描述现在会提到答题卡（[#450](https://github.com/jasonhnd/paseo-clear-chat/issues/450)）。
+- **深色主题下「推荐」徽标看得清。** 文字对比度从 2.36:1 提到 12.99:1，浅色主题仍是 4.63:1（[#451](https://github.com/jasonhnd/paseo-clear-chat/issues/451)）。
+- **答题卡下方不再跳。** 提示行固定高度，提示文字长短变化时卡片不再轻微移动（[#454](https://github.com/jasonhnd/paseo-clear-chat/issues/454)）。
+
+### 之前几版新增的
 
 - **每题都能自己写。** 答题框在每题已有选项后自动加一行「自己写」，字母顺延。按 Enter 确认并跳到下一题，Shift+Enter 换行；输入法选字不会误确认，内容为空时会提示（[#447](https://github.com/jasonhnd/paseo-clear-chat/issues/447)）。
 - **预览、发送和回看。** 发送前可以预览消息；发送（Send）按钮只显示字母索引。发出后可在灰色只读框里切换题签查看每题答案，刷新聊天后仍能看到自己写的全文（[#447](https://github.com/jasonhnd/paseo-clear-chat/issues/447)）。
@@ -48,8 +54,6 @@
 - **下一题直接能写。** 确认自写答案后，焦点移到下一题的「自己写」行（[#434](https://github.com/jasonhnd/paseo-clear-chat/issues/434)）。
 - **更顺，也更听系统的话。** 答题卡过渡约 150–220 ms，跟随系统的「减少动态效果」设置；手机宽度下输入框为 16 px，浏览器不会因获得焦点而放大（[#436](https://github.com/jasonhnd/paseo-clear-chat/issues/436)、[#378](https://github.com/jasonhnd/paseo-clear-chat/issues/378)）。
 - **焦点与旧答案。** 点发送确认当前自写答案后，焦点移到下一道未答题；旧版本（题号从 0 起）发出的普通选项答案，重新加载后也会显示为已答（[#449](https://github.com/jasonhnd/paseo-clear-chat/issues/449)、[#448](https://github.com/jasonhnd/paseo-clear-chat/issues/448)）。
-
-### 之前几版新增的
 
 - **在对话里选答案。** 答题卡现在接在最新助手回复下面，与回复正文同列。可以点选或用键盘选；首次答完一题自动跳到下一道未答题，最后一题选完后焦点到 **发送**（Send）。题签显示简称，答过的显示 `✓` 和答案。从框里发送，或在 Paseo 输入框打字发出答案后，旧框保留为灰色只读框。**不是选项**（Not options）收掉误出的框，沿用现有开关（[#366](https://github.com/jasonhnd/paseo-clear-chat/issues/366) / [#364](https://github.com/jasonhnd/paseo-clear-chat/issues/364) / [#368](https://github.com/jasonhnd/paseo-clear-chat/issues/368) / [#369](https://github.com/jasonhnd/paseo-clear-chat/issues/369) / [#371](https://github.com/jasonhnd/paseo-clear-chat/issues/371) / [PR #367](https://github.com/jasonhnd/paseo-clear-chat/pull/367)）。
 
@@ -86,12 +90,12 @@
 ## 安装
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.4.1
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.4.2
 ```
 
 打开 Paseo 的插件页面，在 Clear Chat 的说明开头查看版本号。Paseo 0.14.0 在这里显示默认英文说明，即使切换应用语言也是如此。
 
-Clear Chat 0.15.4.1 需要 Paseo 0.14.0 或更新的版本。打开 **Settings → Plugins → Clear Chat**，可以选颜色、字体和折叠方式。
+Clear Chat 0.15.4.2 需要 Paseo 0.14.0 或更新的版本。打开 **Settings → Plugins → Clear Chat**，可以选颜色、字体和折叠方式。
 
 以后要更新：
 
@@ -153,7 +157,7 @@ Clear Chat 为自己接手的时间线内容改变显示方式，例如助手回
 ```bash
 paseo plugin update clear-chat                 # 跟 main 上的最新版，改之前会问
 paseo plugin update clear-chat --yes           # 同上，不再问
-paseo plugin update clear-chat --ref v0.15.4.1 --yes   # 固定到某个版本
+paseo plugin update clear-chat --ref v0.15.4.2 --yes   # 固定到某个版本
 ```
 
 升级会保留你的设置。回退到更早的版本一般也保留，但某一次回退对设置的影响没有保证，设置重要的话先备份。卸载插件会删掉它的设置。
@@ -345,7 +349,7 @@ Ctrl/Cmd+F 打开查找栏。只搜当前显示出来的文字：折叠的步骤
 | 在长回复中显示跳转标签（Show jump chips on long replies） | 默认关。写完的回复有 1200 字以上、至少 2 个锚点时，文字上方出现一排标签，每个锚点一个（最多 8 个），点一下回复就滚到那一段。锚点是 1 到 3 级标题，或者整行只有一个加粗短语、自己起一段的行。可在网页和桌面应用中使用，原生手机应用上不显示。内容不会被折叠。 |
 | 让每个选项单独占一行（Keep each option on its own line） | 默认关。以大写字母（A 到 H，也可以是全角 Ａ 到 Ｈ）开头、后面跟着点、括号、顿号 `、`、冒号、制表符、全角空格或半角空格（例如 `A.`、`B)`、`A、文字`、`A: 文字`、`A：文字`、`A　文字`）的行会各占一行，不再连成一段。点和半角括号、半角冒号后面要有空格或制表符，其他标记后面不用；制表符和全角空格本身就够，其余标记还要求紧邻的上一行或下一行是相邻字母的选项行。只对 Clear Chat 自己画的回复生效，所以要开着 **助手回复 Markdown**。在同一个窗口里切换开关，已经显示的回复会立刻重画；换到别的窗口或设备，就要重新加载聊天才会重画。 |
 
-**已安装版本。** 设置页标题下面显示 `Clear Chat 版本 0.15.4.1`，再下面一行说明这个值的来历：从目录安装时会沿用该目录里已有的版本信息，因此可能显示比你安装的更旧的版本。构建里没有可用的版本信息时，这一行显示 **未知**（Unknown）。
+**已安装版本。** 设置页标题下面显示 `Clear Chat 版本 0.15.4.2`，再下面一行说明这个值的来历：从目录安装时会沿用该目录里已有的版本信息，因此可能显示比你安装的更旧的版本。构建里没有可用的版本信息时，这一行显示 **未知**（Unknown）。
 
 **自定强调色。** 点一个色块，或输入 `#RGB`、`#RRGGBB` 后按 **应用**（Apply）。HEX 写错时会留在输入框里并提示错误，已保存的颜色不变。切换到预设色后，你的自定颜色仍会记住。保存的 HEX 值始终不变；只有文字可能看不清时，显示出来的颜色才会在浅色主题下调深、在深色主题下调浅。实心按钮上的文字用黑或白，哪个对比度高用哪个。
 
@@ -491,14 +495,14 @@ Clear Chat 只改变 Paseo 显示对话的方式。下面每一条都是插件�
 
 **为什么看不到回答卡片？** 要打开答题卡设置和 **助手回复 Markdown**（Assistant markdown）。最新回复要有带编号的问题，每题至少两个字母选项，并要求简短作答或标了推荐项；字母不必从 A 开始，也不必连续。代码块和引用里的问题不认。Agent 运行时可操作框隐藏，答过的框在你回复后保留为只读。误认时点 **不是选项**（Not options），这条回复重新加载后也不再出框。
 
-**支持哪些 Paseo 版本？** 0.14.0 或更新；0.15.4.1 在隔离的 Paseo 0.15.4 主机上用合成 provider 检查过，没有真模型验收。最低仍是 Paseo 0.14.0。Paseo 0.13 的旧路径尚未实测，见[安装](#安装)。
+**支持哪些 Paseo 版本？** 0.14.0 或更新；0.15.4.2 在隔离的 Paseo 0.15.4 主机上用合成 provider 检查过，没有真模型验收。最低仍是 Paseo 0.14.0。Paseo 0.13 的旧路径尚未实测，见[安装](#安装)。
 
 ## 常见问题
 
 | 问题 | 怎么办 |
 |---|---|
 | 用 Cafe 插件安装失败，或 Paseo 提示缺少 `@shikijs/core` 等 Shiki 依赖。 | 用[安装](#安装)里的 Paseo CLI 命令重试，仓库和版本标签保持不变。Clear Chat 用 `npm ci --include=dev` 安装依赖，所以运行 daemon 的主机上要有 Node.js 和 npm，网络也要能连到 npm 仓库。如果代码目录是你自己管理的，请先在那里运行 `npm ci --include=dev` 再重试。 |
-| 安装停止，提示插件需要更新的 Paseo 版本。 | 使用 Clear Chat 0.15.4.1 时，请把 daemon 主机和所有连接的应用升级到 Paseo 0.14.0 或更新。旧宿主请看[安装](#安装)中的 Paseo 0.13 命令及其未实测提示，以及单独的 Paseo 0.12 说明。 |
+| 安装停止，提示插件需要更新的 Paseo 版本。 | 使用 Clear Chat 0.15.4.2 时，请把 daemon 主机和所有连接的应用升级到 Paseo 0.14.0 或更新。旧宿主请看[安装](#安装)中的 Paseo 0.13 命令及其未实测提示，以及单独的 Paseo 0.12 说明。 |
 | Paseo 拒绝这个插件版本，或 Clear Chat 提示缺少插件设置或时间线支持。 | 把运行 daemon 的主机和所有连着的应用都更新到新版 Paseo，再重新加载 Clear Chat。Clear Chat 需要的 Paseo 版本写在 `paseo-plugin.json` 里。 |
 | 插件注册失败，Clear Chat 启动不了。 | 更新 Paseo，再重新加载 Clear Chat。还不行的话，先备份插件设置，再用 CLI 重新安装。 |
 | Clear Chat 读不到主机上的设置。 | 重新连接主机，在 **Settings → Plugins → Clear Chat** 里点 **重试**（Retry）。还不行的话，检查 daemon 能不能访问插件设置文件夹。 |
@@ -533,7 +537,7 @@ cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_back
 **2. 安装**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.4.1
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.4.2
 ```
 
 **3. 确认后卸载旧插件**

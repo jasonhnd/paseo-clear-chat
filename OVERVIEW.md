@@ -2,13 +2,11 @@ Clear Chat changes how agent conversations look in Paseo, so an answer is easy t
 
 It is a display layer, not a provider. Finished steps fold into one row each, every tool call gets its own card, replies keep their code, links and paths, and the answer card lets you write an answer to each question in the conversation. The interface text follows the app language: English, Simplified Chinese or Japanese.
 
-## What's new in 0.15.4.1
+## What's new in 0.15.4.2
 
-- **The answer card takes written answers.** Every question gains a write-your-own row after its listed options, with the next letter. Press Enter to confirm and move on, or Shift+Enter for a new line; choosing a character with an input method does not confirm by accident, and an empty answer shows a prompt. After a written answer is confirmed, the focus moves to the next question's write-your-own row.
-- **Preview before you send, review after.** The **Send** button shows only the letter indexes, the message is previewed before it goes, and after sending the grey read-only frame lets you switch questions and read every answer you wrote, including after a reload.
-- **Readable in the dark theme.** The selection and keyboard-focus borders on the write-your-own row use the page's own text colour in the dark theme, so they no longer look dim.
-- **Code blocks are drawn by Paseo.** The fenced code blocks that qualify and Mermaid diagrams use Paseo's own Markdown component, a block shows its language above the code, and a reply that ends with extra blank lines no longer loses its diagrams or highlighting.
-- **Steadier while you work.** Copy buttons Clear Chat draws are 44 px high on touch screens, the page bottom is no longer clipped when the card turns read-only after Send, and the animation follows the system's reduced motion setting.
+- **Easier to find on the plugin list.** The one-line description on the listing page now names the answer card.
+- **The Recommended badge is readable in the dark theme.** Its text contrast rose from 2.36:1 to 12.99:1; the light theme stays at 4.63:1.
+- **Steady under the answer card.** The hint line keeps a fixed height, so the card no longer shifts when the hint text changes.
 
 ## What it does
 
@@ -26,7 +24,7 @@ Measured 2026-11-04 on a 300-step conversation (150 tool calls), three runs per 
 
 ## Setup
 
-Clear Chat 0.15.4.1 needs Paseo 0.14.0 or later and was tested on Paseo 0.15.4.
+Clear Chat 0.15.4.2 needs Paseo 0.14.0 or later and was tested on Paseo 0.15.4.
 
 Installation runs `npm ci` on the daemon host, so Node.js and npm must be available there and the host must be able to reach the npm registry.
 
