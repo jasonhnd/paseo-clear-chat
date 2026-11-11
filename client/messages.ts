@@ -5,7 +5,7 @@ import ja from "./locales/ja.json";
 
 const sidebarEn = {
   title: "Clear Chat", description: "Agents grouped by project",
-  today: "Today", waiting: "Waiting for you", directory: "Directory",
+  today: "Today", waiting: "Waiting for you", directory: "Directory", answered: "{{chosen}}/{{total}} answered",
   waitingEmpty: "Nothing waiting for your answer.", directoryEmpty: "Nothing to show in the directory.",
   running: "Running now", finished: "Finished today", noProjects: "No projects yet.",
   noTodayActivity: "No activity today in this project.", unknownTime: "Time unknown",
@@ -13,7 +13,7 @@ const sidebarEn = {
 };
 const sidebarZhCN = {
   title: "Clear Chat", description: "按项目分组的智能体",
-  today: "今天", waiting: "等你回答", directory: "目录",
+  today: "今天", waiting: "等你回答", directory: "目录", answered: "已答 {{chosen}}/{{total}}",
   waitingEmpty: "还没有等待你回答的内容。", directoryEmpty: "目录中还没有可显示的内容。",
   running: "正在运行", finished: "今天已结束", noProjects: "暂无项目。",
   noTodayActivity: "此项目今天没有活动。", unknownTime: "时间未知",

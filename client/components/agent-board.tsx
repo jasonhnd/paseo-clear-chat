@@ -3,14 +3,14 @@ import type { PluginTheme, PluginText } from "@getpaseo/plugin";
 import React, { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { messages } from "../messages";
-import { boardSection, lastActivityTime, localDayBounds } from "../agent-board-model";
+import { boardSection, lastActivityTime, localDayBounds, pendingSummary } from "../agent-board-model";
 
 // These types describe the 0.16 API while the plugin still develops against 0.13.
 type Ref = { readonly key: string; readonly hostId: string; readonly id: string };
 type AgentRef = Ref & { readonly kind: "agent" };
 type ProjectRef = Ref & { readonly kind: "project" };
 type WorkspaceRef = Ref & { readonly kind: "workspace" };
-type Agent = { readonly ref: AgentRef; readonly workspace: WorkspaceRef; readonly id: string; readonly title: string | null; readonly status: "initializing" | "idle" | "running" | "error" | "closed"; readonly lastActivityAt: string; readonly updatedAt: string };
+type Agent = { readonly ref: AgentRef; readonly workspace: WorkspaceRef; readonly id: string; readonly title: string | null; readonly status: "initializing" | "idle" | "running" | "error" | "closed"; readonly lastActivityAt: string; readonly updatedAt: string; readonly metadata: unknown };
 type Workspace = { readonly ref: WorkspaceRef; readonly project: ProjectRef };
 type Group<T> = { readonly key: string; readonly items: readonly T[] };
 type BoardHooks = {
@@ -19,10 +19,11 @@ type BoardHooks = {
   useWorkspaces(query: { where(workspace: Workspace): boolean }): readonly WorkspaceRef[];
   useAgents(query: { where(agent: Agent): boolean; groupBy(agent: Agent): string; orderBy(a: Agent, b: Agent): number }): readonly Group<AgentRef>[];
   useAgent(ref: AgentRef): Agent | null;
+  useWorkspace(ref: WorkspaceRef): { readonly name: string; readonly title: string | null } | null;
 };
 const boardHooks = pluginClient as unknown as BoardHooks;
 
-type BoardProps = { theme: PluginTheme; navigation: { openAgent(ref: AgentRef): void } };
+type BoardProps = { theme: PluginTheme; active: { workspace: WorkspaceRef | null; agent: AgentRef | null }; navigation: { openAgent(ref: AgentRef): void } };
 export type SidebarViewRegistration = {
   addSidebarView?: (contribution: { id: string; title: PluginText; description: PluginText; Component: React.ComponentType<BoardProps> }) => () => void | Promise<void>;
 };
@@ -90,6 +91,40 @@ function TodayBoard(props: BoardProps) {
   );
 }
 
+function PendingRow({ agentRef, ...props }: BoardProps & { agentRef: AgentRef }) {
+  const agent = boardHooks.useAgent(agentRef);
+  if (!agent) return null;
+  return <PendingAgentRow agent={agent} {...props} />;
+}
+
+function PendingAgentRow({ agent, theme, navigation }: BoardProps & { agent: Agent }) {
+  const workspace = boardHooks.useWorkspace(agent.workspace);
+  const { t, locale } = pluginClient.useTranslation(messages);
+  const marker = pendingSummary(agent.metadata);
+  if (!marker) return null;
+  const time = new Date(marker.time).toLocaleString(locale);
+  return (
+    <Pressable accessibilityRole="button" onPress={() => navigation.openAgent(agent.ref)} style={[styles.row, { borderColor: theme.colors.border }]}>
+      <Text numberOfLines={1} style={[styles.rowTitle, { color: theme.colors.foreground }]}>{workspace?.title?.trim() || workspace?.name || agent.workspace.key}</Text>
+      <Text numberOfLines={1} style={[styles.rowTitle, { color: theme.colors.foreground }]}>{agent.title?.trim() || agent.id.slice(0, 8)}</Text>
+      <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>{t("sidebar.answered", { chosen: marker.total - marker.pending, total: marker.total })} · {time}</Text>
+    </Pressable>
+  );
+}
+
+function WaitingBoard(props: BoardProps) {
+  const { t } = pluginClient.useTranslation(messages);
+  const hostId = props.active.agent?.hostId ?? props.active.workspace?.hostId;
+  const agents = (pluginClient as unknown as { useAgents(query: { where(agent: Agent): boolean; orderBy(a: Agent, b: Agent): number }): readonly AgentRef[] }).useAgents({
+    where: agent => !!hostId && agent.ref.hostId === hostId && pendingSummary(agent.metadata) !== null,
+    orderBy: (a, b) => (pendingSummary(b.metadata)?.time ?? 0) - (pendingSummary(a.metadata)?.time ?? 0),
+  });
+  return <ScrollView contentContainerStyle={styles.board}>
+    {agents.length === 0 ? <Text style={[styles.placeholder, { color: props.theme.colors.foregroundMuted }]}>{t("sidebar.waitingEmpty")}</Text>
+      : agents.map(ref => <PendingRow key={ref.key} agentRef={ref} {...props} />)}
+  </ScrollView>;
+}
+
 export function ClearChatSidebar(props: BoardProps) {
   const [tab, setTab] = useState<"today" | "waiting" | "directory">("today");
   const { t } = pluginClient.useTranslation(messages);
@@ -103,8 +138,8 @@ export function ClearChatSidebar(props: BoardProps) {
           </Pressable>
         ))}
       </View>
-      {tab === "today" ? <TodayBoard {...props} /> :
-        <Text style={[styles.placeholder, { color: props.theme.colors.foregroundMuted }]}>{t(tab === "waiting" ? "sidebar.waitingEmpty" : "sidebar.directoryEmpty")}</Text>}
+      {tab === "today" ? <TodayBoard {...props} /> : tab === "waiting" ? <WaitingBoard {...props} /> :
+        <Text style={[styles.placeholder, { color: props.theme.colors.foregroundMuted }]}>{t("sidebar.directoryEmpty")}</Text>}
     </View>
   );
 }

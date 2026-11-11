@@ -21,3 +21,10 @@ test('board uses local midnight and separates running from today and older activ
     if (oldTz === undefined) delete process.env.TZ; else process.env.TZ = oldTz;
   }
 });
+
+
+test('pending summary accepts only valid positive metadata', () => {
+  const { pendingSummary } = require('../client/agent-board-model.ts');
+  assert.deepEqual(pendingSummary({ clearChat: { pending: 2, total: 3, updatedAt: '2026-11-11T12:00:00Z' } }), { pending: 2, total: 3, updatedAt: '2026-11-11T12:00:00Z', time: Date.parse('2026-11-11T12:00:00Z') });
+  for (const value of [null, {}, { clearChat: { pending: 0, total: 3, updatedAt: '2026-11-11T12:00:00Z' } }, { clearChat: { pending: 4, total: 3, updatedAt: '2026-11-11T12:00:00Z' } }, { clearChat: { pending: 1, total: 3, updatedAt: 'bad' } }]) assert.equal(pendingSummary(value), null);
+});
