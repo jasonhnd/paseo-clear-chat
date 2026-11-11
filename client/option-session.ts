@@ -278,7 +278,7 @@ function isConfidentOrdinaryMessage(text: string): boolean {
   if (/\b(?:[A-H]|[A-Z]?\d+[A-H]?)\b/i.test(value)) return false;
   // Only an explicit request to wait is sufficiently unambiguous. Freeform
   // replies such as "I prefer the latter" may themselves be an answer.
-  return /^(?:please\s+wait(?:\s+until\s+tomorrow)?|please\s+hold|hold\s+on)[.!?]*$/i.test(value);
+  return /^(?:please\s+wait(?:\s+until\s+tomorrow)?|please\s+hold|hold\s+on)[.!?]*$/i.test(value) || value === "我还没选完，你先别改代码" || value === "まだ選び終わっていないので、待ってください。";
 }
 
 function reconcileAnswers(agentId: string): boolean {

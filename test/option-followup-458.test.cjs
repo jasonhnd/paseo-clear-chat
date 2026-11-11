@@ -48,3 +48,12 @@ test('answer-like prose and unsupported freeform messages remain read-only when 
 test('schema-only incomplete draft does not qualify as a valid new-version record', t=>{
  const {s,data}=fixture(t);put(s,data,'a',10,{schema:1,activeQuestion:0});s.publishAssistantReply('a',{at:10,text:questions});s.publishUserMessage('a',11,'Please wait until tomorrow.');assert.equal(s.getOptionSessionAt('a',10).readOnly,true);
 });
+
+test('explicit Chinese and Japanese waiting messages preserve an existing valid draft', t=>{
+ for(const [index,text] of ['我还没选完，你先别改代码','まだ選び終わっていないので、待ってください。'].entries()){
+  const {s,data}=fixture(t);put(s,data,'a',100+index);s.publishAssistantReply('a',{at:100+index,text:questions});s.publishUserMessage('a',110+index,text);const c=s.getOptionSessionAt('a',100+index);assert.equal(c.readOnly,false,text);assert.equal(c.choices[0],'B');
+ }
+});
+test('interleaved explicit older and latest card choices remain isolated', t=>{
+ const {s,data}=fixture(t);put(s,data,'a',10);s.publishAssistantReply('a',{at:10,text:questions});s.publishUserMessage('a',11,'Please wait until tomorrow.');s.publishAssistantReply('a',{at:20,text:questions});s.choose('a',1,'A',10);s.choose('a',0,'A');s.setActiveQuestion('a',2,10);assert.equal(s.getOptionSessionAt('a',10).choices[0],'B');assert.equal(s.getOptionSessionAt('a',10).choices[1],'A');assert.equal(s.getOptionSessionAt('a',10).activeQuestion,2);assert.equal(s.getOptionSession('a').choices[0],'A');assert.equal(s.getOptionSession('a').choices[1],undefined);
+});
