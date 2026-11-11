@@ -42,6 +42,8 @@ export interface MarkdownViewProps {
   cwd?: string | null;
   expansionIdentity?: ToolExpansionIdentity;
   inlineWorkspacePaths?: boolean;
+  activeHeadingIndex?: number | null;
+  headingAccent?: string;
 }
 
 type MdTableBlock = Extract<MdBlock, { kind: "table" }>;
@@ -221,6 +223,8 @@ interface RenderContext {
   inlineWorkspacePaths: boolean;
   codeBlockOpen: boolean;
   foldLongOutputAfter: OutputLineLimit;
+  activeHeadingIndex?: number | null;
+  headingAccent?: string;
 }
 
 /**
@@ -256,7 +260,7 @@ function scaleMetrics(metrics: VariantMetrics, scale: number): VariantMetrics {
   };
 }
 
-export function MarkdownView({ text, tokens, variant, images = [], cwd, expansionIdentity, inlineWorkspacePaths = true }: MarkdownViewProps) {
+export function MarkdownView({ text, tokens, variant, images = [], cwd, expansionIdentity, inlineWorkspacePaths = true, activeHeadingIndex, headingAccent }: MarkdownViewProps) {
   useTranslation(messages);
   const { codeBlockOpen, keepItemLineBreaks, foldLongOutputAfter } = useEnhancerPreferences();
   const filePath = useReplyFilePath(cwd);
@@ -285,8 +289,8 @@ export function MarkdownView({ text, tokens, variant, images = [], cwd, expansio
   );
   const styles = useMemo(() => buildStyles(tokens, variant, metrics), [tokens, variant, metrics]);
   const context = useMemo<RenderContext>(
-    () => ({ styles, tokens, metrics, cwd, expansionIdentity, inlineWorkspacePaths, codeBlockOpen, foldLongOutputAfter, openFilePath: filePath.openFilePath, copyFilePath: filePath.copy }),
-    [styles, tokens, metrics, cwd, expansionIdentity, inlineWorkspacePaths, codeBlockOpen, foldLongOutputAfter, filePath.openFilePath, filePath.copy],
+    () => ({ styles, tokens, metrics, cwd, expansionIdentity, inlineWorkspacePaths, codeBlockOpen, foldLongOutputAfter, openFilePath: filePath.openFilePath, copyFilePath: filePath.copy, activeHeadingIndex, headingAccent }),
+    [styles, tokens, metrics, cwd, expansionIdentity, inlineWorkspacePaths, codeBlockOpen, foldLongOutputAfter, filePath.openFilePath, filePath.copy, activeHeadingIndex, headingAccent],
   );
 
   return (
@@ -335,6 +339,7 @@ function renderBlock(
       return (
         <View key={key} {...(Platform.OS === "web" && headingIndex !== undefined ? { dataSet: { jumpHeading: String(headingIndex) } } : {})} style={first ? styles.headingBlockFirst : styles.headingBlock}>
           {renderFlow(block.spans, headingStyle, key, context, {
+            accentHeading: headingIndex !== undefined && headingIndex === context.activeHeadingIndex,
             prefix: metrics.headingHash ? (
               <Text style={styles.headingHash}>{HASH_LABELS[block.level - 1] ?? "# "}</Text>
             ) : null,
@@ -345,7 +350,7 @@ function renderBlock(
     }
 
     case "paragraph":
-      return renderFlow(block.spans, styles.paragraph, key, context, { headingIndex });
+      return renderFlow(block.spans, styles.paragraph, key, context, { headingIndex, accentHeading: headingIndex !== undefined && headingIndex === context.activeHeadingIndex });
 
     case "list": {
       const numberWidth = orderedColumnWidth(block.items, metrics);
@@ -535,20 +540,24 @@ function renderFlow(
   textStyle: TextStyle | TextStyle[],
   key: string,
   context: RenderContext,
-  options: { containerStyle?: ViewStyle; prefix?: React.ReactNode; headingIndex?: number } = {},
+  options: { containerStyle?: ViewStyle; prefix?: React.ReactNode; headingIndex?: number; accentHeading?: boolean } = {},
 ): React.ReactNode {
   const runs = imageRuns(spans);
+  const inline = (items: MdInline[], inlineKey: string) => renderInline(
+    items, context, inlineKey, undefined, false,
+    options.accentHeading ? context.headingAccent : undefined,
+  );
   const jumpMarker = Platform.OS === "web" && options.headingIndex !== undefined
     ? { dataSet: { jumpHeading: String(options.headingIndex) } } : {};
   if (!runs.some(run => run.kind === "image")) {
-    return <Text key={key} {...jumpMarker} selectable={canSelectInline(spans, context)} style={textStyle}>{options.prefix}{renderInline(spans, context, key)}</Text>;
+    return <Text key={key} {...jumpMarker} selectable={canSelectInline(spans, context)} style={textStyle}>{options.prefix}{inline(spans, key)}</Text>;
   }
   return (
     <View key={key} {...jumpMarker} style={[{ minWidth: 0, gap: 8 }, options.containerStyle]}>
       {options.prefix}
       {runs.map((run, index) => run.kind === "image"
         ? <MarkdownImage key={`${key}i${index}:${run.src}`} src={run.src} alt={run.alt} cwd={context.cwd} tokens={context.tokens} />
-        : <Text key={`${key}t${index}`} selectable={canSelectInline(run.spans, context)} style={[textStyle, { flex: 0 }]}>{renderInline(run.spans, context, `${key}t${index}`)}</Text>)}
+        : <Text key={`${key}t${index}`} selectable={canSelectInline(run.spans, context)} style={[textStyle, { flex: 0 }]}>{inline(run.spans, `${key}t${index}`)}</Text>)}
     </View>
   );
 }
@@ -575,13 +584,17 @@ function renderInline(
   keyPrefix: string,
   selectable = canSelectInline(spans, context),
   insideLink = false,
+  leadingAccent?: string,
 ): React.ReactNode[] {
   const { styles } = context;
   return spans.map((span, index) => {
     const key = `${keyPrefix}i${index}`;
+    const accent = index === 0 ? leadingAccent : undefined;
     switch (span.kind) {
-      case "text":
-        return span.text;
+      case "text": {
+        const match = accent ? span.text.match(/^\s*\d+\./) : null;
+        return match ? <React.Fragment key={key}><Text style={{ color: accent }}>{match[0]}</Text>{span.text.slice(match[0].length)}</React.Fragment> : span.text;
+      }
       case "image":
         return span.alt;
       case "codeSpan":
@@ -603,31 +616,31 @@ function renderInline(
       case "strong":
         return (
           <Text key={key} selectable={selectable} style={styles.strong}>
-            {renderInline(span.spans, context, key, selectable, insideLink)}
+            {renderInline(span.spans, context, key, selectable, insideLink, accent)}
           </Text>
         );
       case "emphasis":
         return (
           <Text key={key} selectable={selectable} style={styles.emphasis}>
-            {renderInline(span.spans, context, key, selectable, insideLink)}
+            {renderInline(span.spans, context, key, selectable, insideLink, accent)}
           </Text>
         );
       case "strike":
         return (
           <Text key={key} selectable={selectable} style={styles.strike}>
-            {renderInline(span.spans, context, key, selectable, insideLink)}
+            {renderInline(span.spans, context, key, selectable, insideLink, accent)}
           </Text>
         );
       case "highlight":
         return (
           <Text key={key} testID="markdown-highlight" selectable={selectable} style={styles.highlight}>
-            {renderInline(span.spans, context, key, selectable, insideLink)}
+            {renderInline(span.spans, context, key, selectable, insideLink, accent)}
           </Text>
         );
       case "link":
         const codePath = span.inlineCode;
         if (codePath && context.inlineWorkspacePaths && !inlineFilePath(span.filePath!)) {
-          return <React.Fragment key={key}>{renderInline(span.spans, context, key, selectable)}</React.Fragment>;
+          return <React.Fragment key={key}>{renderInline(span.spans, context, key, selectable, false, accent)}</React.Fragment>;
         }
         // `onPress` on a Text, not a Pressable wrapper: a link sits mid
         // sentence, and a View there would break the line box and drop the
@@ -647,7 +660,7 @@ function renderInline(
             }}
             style={styles.link}
           >
-            {renderInline(span.spans, context, key, selectable, true)}
+            {renderInline(span.spans, context, key, selectable, true, accent)}
           </Text>
         );
     }
@@ -726,7 +739,7 @@ function buildStyles(
   variant: MarkdownVariant,
   metrics: VariantMetrics,
 ): MarkdownStyles {
-  const bodyFont = metrics.mono ? tokens.fontMono : tokens.fontUi;
+  const bodyFont = metrics.mono ? tokens.fontMono : typeof document === "undefined" ? tokens.fontUi : `"${tokens.fontUi}", sans-serif`;
   const [size1, size2, size3, size4] = metrics.headingSizes;
   // The terminal variant's headings sit within a point of body size, so the
   // accent on h1 and the hash run carry the hierarchy that size cannot.

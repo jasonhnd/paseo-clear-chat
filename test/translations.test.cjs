@@ -336,6 +336,7 @@ function verifyResourceBaseline(locale, text) {
     assert.equal(keys.filter(value => value === key).length, 1, `one ${key} key in the resource`);
   }
   const original = text
+    .replace(/  "reader": \{\n(?:    ".*\n){14}  \},\n/, "")
     .replace(/    "keepItemLineBreaks": \{\n(?:      ".*\n){2}    \},\n/, "")
     .replace(/    "jumpChips": \{\n(?:      ".*\n){2}    \},\n/, "")
     .replace(/,\n    "answerCard": \{\n(?:      ".*\n){2}    \}/, "")

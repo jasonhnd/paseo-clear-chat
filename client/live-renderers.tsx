@@ -444,8 +444,8 @@ export function LiveAssistantRenderer({
             </Pressable>)}
           </ScrollView> : null}
           {Platform.OS === "web" && eligibleChips.length ? <Pressable testID="reader-open" accessibilityRole="button"
-            accessibilityLabel="阅读视图" onPress={openReader} style={{ alignSelf: "flex-start", minHeight: 36, justifyContent: "center", paddingVertical: 10, paddingHorizontal: 14, borderWidth: 1, borderColor: tokens.border, borderRadius: 8, backgroundColor: tokens.surface1 }}>
-            <Text style={{ color: tokens.accent, fontFamily: `"${tokens.fontUi}", sans-serif`, fontSize: tokens.fs(12) }}>阅读视图</Text>
+            accessibilityLabel={t("reader.openA11y")} onPress={openReader} style={{ alignSelf: "flex-start", minHeight: 44, justifyContent: "center", paddingVertical: 10, paddingHorizontal: 14, borderWidth: 1, borderColor: tokens.border, borderRadius: 8, backgroundColor: tokens.surface1 }}>
+            <Text style={{ color: tokens.accent, fontFamily: `"${tokens.fontUi}", sans-serif`, fontSize: tokens.fs(12) }}>{t("reader.open")}</Text>
           </Pressable> : null}
           {Platform.OS === "web" && readerOpen ? <ReaderDialog text={item.data.text} images={item.data.images} cwd={cwd}
             tokens={tokens} variant={preferences.markdownVariant} onClose={closeReader} /> : null}

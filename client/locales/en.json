@@ -1,4 +1,20 @@
 {
+  "reader": {
+    "open": "Reading view",
+    "openA11y": "Open the reading view",
+    "title": "Long reply · Reading view",
+    "sections": "{{count}} sections",
+    "characters": "about {{count}} characters",
+    "heading": "Heading {{number}}",
+    "contents": "Contents",
+    "progress": "Reading progress",
+    "currentSection": "Section {{current}} of {{total}}",
+    "toc": "☰ Contents",
+    "hintDesktop": "↑↓ scroll inside the reader · Esc closes",
+    "hintMobile": "Swipe to read · closing returns to the same place in the chat",
+    "close": "Close and return to the chat",
+    "closeA11y": "Close the reading view"
+  },
   "settings": {
     "foldMessages": {
       "label": "Fold messages that start with",

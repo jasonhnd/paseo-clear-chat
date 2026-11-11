@@ -1,4 +1,20 @@
 {
+  "reader": {
+    "open": "阅读视图",
+    "openA11y": "打开阅读视图",
+    "title": "长回复 · 阅读视图",
+    "sections": "{{count}} 节",
+    "characters": "约 {{count}} 字",
+    "heading": "标题 {{number}}",
+    "contents": "目录",
+    "progress": "阅读进度",
+    "currentSection": "当前第 {{current}} 节 · 共 {{total}} 节",
+    "toc": "☰ 目录",
+    "hintDesktop": "↑↓ 在弹窗内滚动 · Esc 关闭",
+    "hintMobile": "上下滑动阅读 · 关闭后回到对话原位",
+    "close": "关闭，回到对话",
+    "closeA11y": "关闭阅读视图"
+  },
   "settings": {
     "foldMessages": {
       "label": "折叠以下列文字开头的消息",

@@ -1,3 +1,6 @@
+import { useTranslation } from "@getpaseo/plugin/client";
+import { createPortal } from "react-dom";
+import { messages } from "../messages";
 import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { jumpHeadingLines } from "../jump-chips";
@@ -41,13 +44,14 @@ type ReaderDialogProps = Pick<MarkdownViewProps, "text" | "images" | "cwd" | "to
 };
 
 export function ReaderDialog({ text, images, cwd, tokens, variant, onClose }: ReaderDialogProps) {
+  const { t } = useTranslation(messages);
   const scroll = useRef<HTMLElement | null>(null);
   const body = useRef<HTMLElement | null>(null);
   const overlay = useRef<HTMLElement | null>(null);
   const atBottom = useRef(false);
   const [active, setActive] = useState(0);
   const [tocOpen, setTocOpen] = useState(false);
-  const [width, setWidth] = useState(() => window.innerWidth);
+  const [width, setWidth] = useState(() => typeof window === "undefined" ? 1280 : window.innerWidth);
   const headings = useMemo(() => jumpHeadingLines(text), [text]);
   const summaries = useMemo(() => {
     const lines = text.split(/\r?\n/);
@@ -64,16 +68,10 @@ export function ReaderDialog({ text, images, cwd, tokens, variant, onClose }: Re
   const panel = tokens.isDark ? "#15181f" : tokens.surface0;
   const ui = { fontFamily: `"${tokens.fontUi}", sans-serif`, color: tokens.foreground };
 
-  // Keep the overlay outside the conversation while retaining React event delegation.
+  // Keep focus inside the portalled reader until it closes.
   useLayoutEffect(() => {
     const node = overlay.current;
-    if (!node || !node.parentNode) return;
-    const parent = node.parentNode;
-    const marker = document.createComment("reader");
-    parent.insertBefore(marker, node);
-    let reactRoot: HTMLElement | null = node.parentElement;
-    while (reactRoot && !Object.keys(reactRoot).some(key => key.startsWith("__reactContainer$") || key === "_reactRootContainer")) reactRoot = reactRoot.parentElement;
-    (reactRoot ?? document.getElementById("root") ?? document.body).appendChild(node);
+    if (!node || typeof document === "undefined") return;
     const previousFocus = document.activeElement as HTMLElement | null;
     node.querySelector<HTMLElement>('[data-testid="reader-close"]')?.focus();
     const keydown = (event: KeyboardEvent) => {
@@ -88,18 +86,16 @@ export function ReaderDialog({ text, images, cwd, tokens, variant, onClose }: Re
     };
     const backdrop = (event: MouseEvent) => { if (event.target === node) onClose(); };
     node.addEventListener("click", backdrop);
-    node.querySelector<HTMLElement>('[data-testid="reader-panel"]')?.setAttribute("aria-modal", "true");
     document.addEventListener("keydown", keydown);
     return () => {
       document.removeEventListener("keydown", keydown);
       node.removeEventListener("click", backdrop);
-      if (marker.parentNode) marker.parentNode.insertBefore(node, marker);
-      marker.remove();
       previousFocus?.focus();
     };
   }, [onClose]);
 
   useLayoutEffect(() => {
+    if (typeof window === "undefined") return;
     const resize = () => setWidth(window.innerWidth);
     window.addEventListener("resize", resize);
     return () => window.removeEventListener("resize", resize);
@@ -111,7 +107,7 @@ export function ReaderDialog({ text, images, cwd, tokens, variant, onClose }: Re
     if (!node || !content) return;
     const updatePosition = () => {
       atBottom.current = node.scrollHeight - node.clientHeight - node.scrollTop <= 2;
-      const top = node.getBoundingClientRect().top + 24;
+      const top = node.getBoundingClientRect().top + 26;
       const markers = Array.from(node.querySelectorAll<HTMLElement>("[data-jump-heading]"));
       let current = 0;
       for (const marker of markers) {
@@ -128,22 +124,11 @@ export function ReaderDialog({ text, images, cwd, tokens, variant, onClose }: Re
     return () => { node.removeEventListener("scroll", updatePosition); observer.disconnect(); };
   }, []);
 
-  useLayoutEffect(() => {
-    const heading = body.current?.querySelector<HTMLElement>(`[data-jump-heading="${active}"]`);
-    if (!heading) return;
-    const nodes = [heading, ...Array.from(heading.querySelectorAll<HTMLElement>("span, div"))];
-    const old = nodes.map(node => ({ node, color: node.style.color, borderLeft: node.style.borderLeft, paddingLeft: node.style.paddingLeft }));
-    for (const node of nodes) node.style.color = accent;
-    heading.style.borderLeft = `2px solid ${accent}`;
-    heading.style.paddingLeft = "8px";
-    return () => { for (const { node, color, borderLeft, paddingLeft } of old) { node.style.color = color; node.style.borderLeft = borderLeft; node.style.paddingLeft = paddingLeft; } };
-  }, [active, accent, text]);
-
   function goToHeading(index: number) {
     const node = scroll.current;
     const heading = node?.querySelector<HTMLElement>(`[data-jump-heading="${index}"]`);
     if (node && heading) {
-      node.scrollTop += heading.getBoundingClientRect().top - node.getBoundingClientRect().top;
+      node.scrollTop += heading.getBoundingClientRect().top - node.getBoundingClientRect().top - 25;
       atBottom.current = node.scrollHeight - node.clientHeight - node.scrollTop <= 2;
       setActive(index);
     }
@@ -152,47 +137,49 @@ export function ReaderDialog({ text, images, cwd, tokens, variant, onClose }: Re
 
   const toc = <View style={{ gap: 2 }}>
     {headings.map(({ index, heading }) => <Pressable key={index} testID={`reader-toc-${index}`} accessibilityRole="button"
-      accessibilityLabel={heading || `Heading ${index + 1}`} onPress={() => goToHeading(index)}
+      accessibilityLabel={heading || t("reader.heading", { number: index + 1 })} onPress={() => goToHeading(index)}
       style={{ paddingVertical: 7, paddingHorizontal: 10, borderLeftWidth: 2, borderLeftColor: active === index ? accent : "transparent", borderRadius: 6, backgroundColor: active === index ? (tokens.isDark ? "#1e2a3f" : "#e8f0ff") : "transparent" }}>
-      <Text numberOfLines={1} style={{ ...ui, color: active === index ? accent : tokens.foreground, fontSize: tokens.fs(13), fontWeight: active === index ? "600" : "400" }}>{heading || `Heading ${index + 1}`}</Text>
+      <Text numberOfLines={1} style={{ ...ui, color: active === index ? accent : tokens.foreground, fontSize: tokens.fs(13), fontWeight: active === index ? "600" : "400" }}>{heading || t("reader.heading", { number: index + 1 })}</Text>
       {summaries[index] ? <Text numberOfLines={1} style={{ ...ui, color: muted, fontSize: tokens.fs(11), marginTop: 2 }}>{summaries[index]}</Text> : null}
     </Pressable>)}
   </View>;
 
-  return <View ref={node => { overlay.current = node as unknown as HTMLElement | null; }} {...hostFontEscape}
+  if (typeof document === "undefined") return null;
+  return createPortal(<View ref={node => { overlay.current = node as unknown as HTMLElement | null; }} {...hostFontEscape}
     style={{ position: "fixed", inset: 0, zIndex: 10000, alignItems: "center", justifyContent: "center", backgroundColor: tokens.isDark ? "rgba(0,0,0,0.34)" : "rgba(0,0,0,0.16)" } as never}>
-    <View testID="reader-panel" accessibilityRole={"dialog" as never} accessibilityLabel="长回复 · 阅读视图"
-      style={{ width: desktop ? 1000 : mobile ? "calc(100% - 24px)" : "calc(100% - 48px)", maxWidth: "calc(100% - 24px)", height: mobile ? "calc(100% - 80px)" : "min(664px, calc(100% - 80px))", borderRadius: 12, borderWidth: 0, backgroundColor: panel, backgroundImage: `linear-gradient(${tokens.surface1}, ${tokens.surface1})`, overflow: "hidden", boxShadow: `0 0 0 1px ${tokens.border}, 0 18px 60px rgba(0,0,0,0.18)` } as never}>
+    <View testID="reader-panel" accessibilityRole={"dialog" as never} aria-modal={true} accessibilityLabel={t("reader.title")}
+      style={{ width: desktop ? 1000 : mobile ? "calc(100% - 24px)" : "calc(100% - 48px)", maxWidth: "calc(100% - 24px)", height: mobile ? "calc(100% - 80px)" : "min(664px, calc(100% - 80px))", borderRadius: 12, borderWidth: 0, backgroundColor: panel, overflow: "hidden", boxShadow: `0 0 0 1px ${tokens.border}, 0 18px 60px rgba(0,0,0,0.18)` } as never}>
       <View style={{ height: 72, flexShrink: 0, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: tokens.border }}>
-        <View style={{ minWidth: 0 }}><Text numberOfLines={1} style={{ ...ui, fontSize: tokens.fs(16), fontWeight: "600" }}>长回复 · 阅读视图</Text>
-          <Text style={{ ...ui, color: muted, fontSize: tokens.fs(12), marginTop: 4 }}>{subtitle}{headings.length} 节 · 约 {Array.from(text).length.toLocaleString()} 字</Text></View>
-        <Pressable testID="reader-close" accessibilityRole="button" accessibilityLabel="关闭阅读视图" onPress={onClose} style={{ width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: tokens.border }}><Text style={{ ...ui, fontSize: tokens.fs(20), lineHeight: 24 }}>×</Text></Pressable>
+        <View style={{ minWidth: 0 }}><Text numberOfLines={1} style={{ ...ui, fontSize: tokens.fs(16), fontWeight: "600" }}>{t("reader.title")}</Text>
+          <Text style={{ ...ui, color: muted, fontSize: tokens.fs(12), marginTop: 4 }}>{subtitle}{t("reader.sections", { count: headings.length })} · {t("reader.characters", { count: Array.from(text).length, replace: { count: Array.from(text).length.toLocaleString() } })}</Text></View>
+        <Pressable testID="reader-close" accessibilityRole="button" accessibilityLabel={t("reader.closeA11y")} onPress={onClose} style={{ width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: tokens.border }}><Text style={{ ...ui, fontSize: tokens.fs(20), lineHeight: 24 }}>×</Text></Pressable>
       </View>
       {!desktop ? <View style={{ paddingHorizontal: 20, paddingTop: 12 }}>
-        <Pressable testID="reader-toc-toggle" accessibilityRole="button" accessibilityState={{ expanded: tocOpen }} onPress={() => setTocOpen(!tocOpen)} style={{ minHeight: 40, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderWidth: 1, borderColor: tokens.border, borderRadius: 8, backgroundColor: tokens.surface2, paddingHorizontal: 12 }}>
-          <Text style={{ ...ui, fontSize: tokens.fs(12) }}>当前第 {headings.length ? active + 1 : 0} 节 · 共 {headings.length} 节</Text><Text style={{ ...ui, color: accent, fontSize: tokens.fs(12) }}>☰ 目录</Text>
+        <Pressable testID="reader-toc-toggle" accessibilityRole="button" accessibilityState={{ expanded: tocOpen }} aria-expanded={tocOpen} onPress={() => setTocOpen(!tocOpen)} style={{ minHeight: 40, flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <View style={{ minHeight: 40, justifyContent: "center", borderWidth: 1, borderColor: tokens.border, borderRadius: 8, backgroundColor: tokens.surface2, paddingHorizontal: 12 }}><Text style={{ ...ui, fontSize: tokens.fs(12) }}>{t("reader.currentSection", { current: headings.length ? active + 1 : 0, total: headings.length })}</Text></View>
+          <View style={{ minHeight: 40, justifyContent: "center", borderWidth: 1, borderColor: tokens.border, borderRadius: 8, backgroundColor: tokens.surface2, paddingHorizontal: 12 }}><Text style={{ ...ui, color: accent, fontSize: tokens.fs(12) }}>{t("reader.toc")}</Text></View>
         </Pressable>
         {tocOpen ? <View style={{ maxHeight: 220, overflowY: "auto", borderWidth: 1, borderColor: tokens.border, borderRadius: 8, backgroundColor: panel, marginTop: 4 } as never}>{toc}</View> : null}
       </View> : null}
       <View style={{ flex: 1, minHeight: 0, flexDirection: "row" }}>
         {desktop ? <View testID="reader-rail" style={{ width: 240, padding: 12, borderRightWidth: 1, borderRightColor: tokens.border, backgroundColor: tokens.surface2 }}>
-          <Text style={{ ...ui, color: muted, fontSize: tokens.fs(12), marginHorizontal: 10, marginBottom: 12 }}>目录</Text>
+          <Text style={{ ...ui, color: muted, fontSize: tokens.fs(12), marginHorizontal: 10, marginBottom: 12 }}>{t("reader.contents")}</Text>
           <View style={{ flex: 1, overflowY: "auto" } as never}>{toc}</View>
-          <View style={{ borderTopWidth: 1, borderTopColor: tokens.border, paddingHorizontal: 10, paddingTop: 12 }}><View style={{ flexDirection: "row", justifyContent: "space-between" }}><Text style={{ ...ui, color: muted, fontSize: tokens.fs(12) }}>阅读进度</Text><Text testID="reader-progress" style={{ ...ui, color: muted, fontSize: tokens.fs(12) }}>{headings.length ? active + 1 : 0} / {headings.length}</Text></View><View style={{ height: 4, backgroundColor: tokens.border, borderRadius: 2, marginTop: 8 }}><View style={{ width: `${headings.length ? ((active + 1) / headings.length) * 100 : 0}%`, height: 4, borderRadius: 2, backgroundColor: accent }} /></View></View>
+          <View style={{ borderTopWidth: 1, borderTopColor: tokens.border, paddingHorizontal: 10, paddingTop: 12 }}><View style={{ flexDirection: "row", justifyContent: "space-between" }}><Text style={{ ...ui, color: muted, fontSize: tokens.fs(12) }}>{t("reader.progress")}</Text><Text testID="reader-progress" style={{ ...ui, color: muted, fontSize: tokens.fs(12) }}>{headings.length ? active + 1 : 0} / {headings.length}</Text></View><View style={{ height: 4, backgroundColor: tokens.border, borderRadius: 2, marginTop: 8 }}><View style={{ width: `${headings.length ? ((active + 1) / headings.length) * 100 : 0}%`, height: 4, borderRadius: 2, backgroundColor: accent }} /></View></View>
         </View> : null}
         <View testID="reader-content" style={{ flex: 1, minWidth: 0, position: "relative" }}>
           <View testID="reader-scroll" ref={node => { scroll.current = node as unknown as HTMLElement | null; }} style={{ flex: 1, overflowY: "scroll", scrollbarWidth: "thin", overscrollBehavior: "contain" } as never}>
-            <View testID="reader-body" ref={node => { body.current = node as unknown as HTMLElement | null; }} style={{ paddingTop: 24, paddingHorizontal: mobile ? 20 : 28, paddingBottom: 64 }}>
-              <MarkdownView text={text} images={images} cwd={cwd} tokens={tokens} variant={variant} />
+            <View testID="reader-body" ref={node => { body.current = node as unknown as HTMLElement | null; }} style={{ marginTop: 24, paddingHorizontal: mobile ? 20 : 28, paddingBottom: 64 }}>
+              <MarkdownView text={text} images={images} cwd={cwd} tokens={tokens} variant={variant} activeHeadingIndex={active} headingAccent={accent} />
             </View>
           </View>
           <View testID="reader-fade" pointerEvents="none" style={{ position: "absolute", bottom: 0, left: 0, right: 10, height: 46, backgroundImage: `linear-gradient(to top, ${panel}, transparent)` } as never} />
         </View>
       </View>
       <View style={{ minHeight: 56, flexShrink: 0, paddingHorizontal: 20, paddingVertical: 8, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, borderTopWidth: 1, borderTopColor: tokens.border }}>
-        <Text style={{ ...ui, color: muted, fontSize: tokens.fs(12), flexShrink: 1 }}>{mobile ? "上下滑动阅读 · 关闭后回到对话原位" : "↑↓ 在弹窗内滚动 · Esc 关闭"}</Text>
-        <Pressable accessibilityRole="button" onPress={onClose} style={{ borderWidth: 1, borderColor: tokens.border, borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12 }}><Text style={{ ...ui, fontSize: tokens.fs(12) }}>关闭，回到对话</Text></Pressable>
+        <Text style={{ ...ui, color: muted, fontSize: tokens.fs(12), flexShrink: 1 }}>{t(mobile ? "reader.hintMobile" : "reader.hintDesktop")}</Text>
+        <Pressable accessibilityRole="button" onPress={onClose} style={{ borderWidth: 1, borderColor: tokens.border, borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12 }}><Text style={{ ...ui, fontSize: tokens.fs(12) }}>{t("reader.close")}</Text></Pressable>
       </View>
     </View>
-  </View>;
+  </View>, document.body);
 }
