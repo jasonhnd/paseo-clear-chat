@@ -41,7 +41,7 @@ function AgentRow({ agentRef, section, theme, navigation }: BoardProps & { agent
   const agent = boardHooks.useAgent(agentRef);
   const { t } = pluginClient.useTranslation(messages);
   if (!agent) return null;
-  const startedAt: string | undefined = undefined; // no reliable agent start field in PluginAgentSnapshot 0.13.0
+  const startedAt = (agent as { createdAt?: string }).createdAt; // PluginAgentSnapshot.createdAt
   const minutes = runningMinutes(startedAt, Date.now());
   return (
     <Pressable accessibilityRole="button" onPress={() => navigation.openAgent(agent.ref)} style={[styles.row, { borderColor: theme.colors.border }]}>
