@@ -73,6 +73,13 @@ function registerClient(client: PluginClientContext) {
   setAnswerDraftStore({ read: getStoredAnswerDraft, write: storeAnswerDraft, clear: clearStoredAnswerDraft });
   // The sidebar lists conversations with open questions; it reads agent metadata.
   setAnswerStatePublisher({
+    initialize(agentId, pending, total) {
+      try {
+        const composer = (client as unknown as { composers?: (selector: { agentId: string }) => readonly { agent?: { metadata?: Record<string, unknown> }; setMetadata?: (patch: Record<string, unknown>) => Promise<void> }[] }).composers?.({ agentId })?.[0];
+        if (!composer?.setMetadata || composer.agent?.metadata?.clearChat !== undefined) return;
+        void composer.setMetadata({ clearChat: { pending, total, updatedAt: new Date().toISOString() } }).catch(() => {});
+      } catch { /* Metadata must not interrupt rendering. */ }
+    },
     publish(agentId, pending, total) {
       try {
         const composers = (client as unknown as { composers?: (selector: { agentId: string }) => readonly { setMetadata?: (patch: Record<string, unknown>) => Promise<void> }[] }).composers;

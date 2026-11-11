@@ -121,6 +121,7 @@ function restoreDraft(agentId: string, at: number): boolean {
 /** Sidebar hint: how many questions of this card are still open. Carries no draft text. */
 export interface AnswerStatePublisher {
   publish(agentId: string, pending: number, total: number): void;
+  initialize?(agentId: string, pending: number, total: number): void;
 }
 
 let answerStatePublisher: AnswerStatePublisher | null = null;
@@ -136,6 +137,15 @@ function publishAnswerState(agentId: string, session: OptionSession): void {
   let answered = 0;
   for (let i = 0; i < total; i += 1) if (session.choices[i] !== undefined || session.customConfirmed[i] !== undefined) answered += 1;
   try { answerStatePublisher.publish(agentId, Math.max(0, total - answered), total); } catch { /* A hint must never break the card. */ }
+}
+
+/** Initialise an unanswered card once it mounts; the publisher checks existing metadata. */
+export function initializeAnswerState(agentId: string, at: number): void {
+  const session = getOptionSessionAt(agentId, at);
+  if (!session || session.readOnly || session.dismissed || !answerStatePublisher?.initialize) return;
+  const total = session.set.questions.length;
+  const answered = session.set.questions.filter((_, i) => session.choices[i] !== undefined || session.customConfirmed[i] !== undefined).length;
+  try { answerStatePublisher.initialize(agentId, Math.max(0, total - answered), total); } catch { /* A hint must not break rendering. */ }
 }
 
 const draftTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -209,6 +219,11 @@ export function getOptionSession(agentId: string, at = replies.get(agentId)): Op
   if (at === undefined) return null;
   const session = snapshots.get(agentId)?.get(at);
   return session && (at === replies.get(agentId) || session.readOnly) ? session : null;
+}
+
+/** Retrieve a specific card, including earlier unanswered cards. */
+export function getOptionSessionAt(agentId: string, at: number): OptionSession | null {
+  return snapshots.get(agentId)?.get(at) ?? null;
 }
 
 function isDismissed(agentId: string, at: number): boolean {
@@ -329,8 +344,8 @@ export function publishUserMessage(agentId: string, at: number, text = ""): void
   if (reconcileAnswers(agentId)) notify();
 }
 
-function update(agentId: string, change: (snapshot: OptionSession) => OptionSession): void {
-  const previous = getOptionSession(agentId);
+function update(agentId: string, change: (snapshot: OptionSession) => OptionSession, at?: number): void {
+  const previous = at === undefined ? getOptionSession(agentId) : getOptionSessionAt(agentId, at);
   if (!previous) return;
   const next = change(previous);
   if (next === previous) return;
@@ -340,7 +355,7 @@ function update(agentId: string, change: (snapshot: OptionSession) => OptionSess
   notify();
 }
 
-export function choose(agentId: string, questionIndex: number, letter: string): void {
+export function choose(agentId: string, questionIndex: number, letter: string, at?: number): void {
   update(agentId, snapshot => {
     if (snapshot.readOnly || snapshot.sending || !snapshot.set.questions[questionIndex]?.options.some(option => option.letter === letter) || snapshot.choices[questionIndex] === letter) return snapshot;
     const wasAnswered = snapshot.choices[questionIndex] !== undefined;
@@ -351,7 +366,7 @@ export function choose(agentId: string, questionIndex: number, letter: string): 
     const customConfirmed = { ...snapshot.customConfirmed };
     delete customConfirmed[questionIndex];
     return { ...snapshot, choices, customConfirmed, customOpen: { ...snapshot.customOpen, [questionIndex]: false }, activeQuestion: wasAnswered || next < 0 ? snapshot.activeQuestion : next };
-  });
+  }, at);
 }
 
 export function openCustom(agentId: string, questionIndex: number): void {
@@ -379,7 +394,7 @@ export function setCustomDraft(agentId: string, questionIndex: number, text: str
   });
 }
 
-export function confirmCustom(agentId: string, questionIndex: number): "confirmed" | "blank" | "ignored" {
+export function confirmCustom(agentId: string, questionIndex: number, at?: number): "confirmed" | "blank" | "ignored" {
   let result: "confirmed" | "blank" | "ignored" = "ignored";
   update(agentId, snapshot => {
     const question = snapshot.set.questions[questionIndex];
@@ -399,7 +414,7 @@ export function confirmCustom(agentId: string, questionIndex: number): "confirme
     const next = Array.from({ length: count }, (_, offset) => (questionIndex + 1 + offset) % count)
       .find(i => choices[i] === undefined) ?? -1;
     return { ...snapshot, choices, customConfirmed: { ...snapshot.customConfirmed, [questionIndex]: draft }, customOpen: { ...snapshot.customOpen, [questionIndex]: true }, activeQuestion: wasAnswered || next < 0 ? snapshot.activeQuestion : next };
-  });
+  }, at);
   return result;
 }
 
@@ -426,11 +441,11 @@ export function setNote(agentId: string, questionIndex: number, note: string): v
   });
 }
 
-export function setActiveQuestion(agentId: string, questionIndex: number): void {
+export function setActiveQuestion(agentId: string, questionIndex: number, at?: number): void {
   update(agentId, snapshot => {
     if (snapshot.readOnly || snapshot.sending || !Number.isInteger(questionIndex) || !snapshot.set.questions[questionIndex] || snapshot.activeQuestion === questionIndex) return snapshot;
     return { ...snapshot, activeQuestion: questionIndex };
-  });
+  }, at);
 }
 
 export function moveCursor(agentId: string, questionIndex: number, delta: number): void {

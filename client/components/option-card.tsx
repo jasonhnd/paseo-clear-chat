@@ -3,7 +3,7 @@ import { Animated, Platform, Pressable, Text, View, useWindowDimensions, type Te
 import { useAgent, useTranslation } from "@getpaseo/plugin/client";
 import { TextInput } from "@getpaseo/plugin/client/ui";
 import { messages } from "../messages";
-import { answerIndex, answerText, choose, confirmCustom, customLetterFor, dismiss, getOptionSession, missingQuestion, moveCursor, openCustom, sendAnswer, setActiveQuestion, setCustomDraft, useOptionSession } from "../option-session";
+import { initializeAnswerState, answerIndex, answerText, choose, confirmCustom, customLetterFor, dismiss, getOptionSession, missingQuestion, moveCursor, openCustom, sendAnswer, setActiveQuestion, setCustomDraft, useOptionSession } from "../option-session";
 import { customAnswerLetter } from "../option-custom-answer";
 import { questionNumber } from "../option-questions";
 import { withAlpha } from "./theme-tokens";
@@ -25,6 +25,7 @@ export function recommendedBadgeColor(tokens: ExtendedThemeTokens): string {
 export function OptionCard({ agentId, at, tokens }: { agentId: string; at: number; tokens: ExtendedThemeTokens }) {
   const { t } = useTranslation(messages);
   const session = useOptionSession(agentId, at);
+  useEffect(() => { if (session && !session.readOnly) initializeAnswerState(agentId, at); }, [agentId, at, !!session, session?.readOnly]);
   const status = useAgent(agentId, agent => agent.status);
   const root = useRef<HTMLElement | null>(null);
   const mountedFocusKey = useRef(focusCardKey(agentId, at));

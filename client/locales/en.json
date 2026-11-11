@@ -645,7 +645,7 @@
     "hintReopen": "↑ to reopen",
     "sendAction": "Send",
     "hintCustom": "Enter to confirm · Shift+Enter for a new line",
-    "hintEnter": "Enter",
-    "progress": "{{chosen}} of {{total}} answered · {{remaining}} to go"
+    "progress": "{{chosen}} of {{total}} answered · {{remaining}} to go",
+    "hintEnter": "Enter"
   }
 }

@@ -645,7 +645,7 @@
     "hintReopen": "↑ 重新展开",
     "sendAction": "发送",
     "hintCustom": "Enter 确认 · Shift+Enter 换行",
-    "hintEnter": "Enter",
-    "progress": "已答 {{chosen}} / {{total}} · 还差 {{remaining}} 题"
+    "progress": "已答 {{chosen}} / {{total}} · 还差 {{remaining}} 题",
+    "hintEnter": "Enter"
   }
 }

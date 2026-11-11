@@ -133,3 +133,33 @@ test("answering publishes only the open-question counts", async t => {
   assert.deepEqual(seen.at(-1), ["a", 0, 2], "none remain open");
   s.setAnswerStatePublisher(null);
 });
+
+test("explicit timestamp selects and updates an older unanswered card without changing the latest", t => {
+  const { s } = fixture(t);
+  s.publishAssistantReply("a", { at: 10, text: reply });
+  s.openCustom("a", 1);
+  s.setCustomDraft("a", 1, "older custom draft");
+  s.publishAssistantReply("a", { at: 20, text: reply });
+  assert.equal(s.getOptionSession("a", 10), null, "legacy lookup still hides older unanswered cards");
+  assert.ok(s.getOptionSessionAt("a", 10), "explicit lookup exposes older card");
+  s.choose("a", 0, "B", 10);
+  assert.equal(s.getOptionSessionAt("a", 10).choices[0], "B");
+  assert.equal(s.getOptionSession("a").choices[0], undefined, "latest remains unchanged");
+  s.setActiveQuestion("a", 1, 10);
+  assert.equal(s.getOptionSessionAt("a", 10).activeQuestion, 1);
+  assert.equal(s.confirmCustom("a", 1, 10), "confirmed");
+  assert.equal(s.getOptionSessionAt("a", 10).customConfirmed[1], "older custom draft");
+  s.choose("a", 0, "A");
+  assert.equal(s.getOptionSession("a").choices[0], "A", "omitting at still updates latest");
+  assert.equal(s.getOptionSessionAt("a", 10).choices[0], "B");
+});
+
+test("new unanswered card publishes initial pending count", t => {
+  const { s } = fixture(t);
+  const seen = [];
+  s.setAnswerStatePublisher({ publish: () => {}, initialize: (id, pending, total) => seen.push([id, pending, total]) });
+  s.publishAssistantReply("a", { at: 10, text: reply });
+  s.initializeAnswerState("a", 10);
+  assert.deepEqual(seen.at(-1), ["a", 2, 2]);
+  s.setAnswerStatePublisher(null);
+});

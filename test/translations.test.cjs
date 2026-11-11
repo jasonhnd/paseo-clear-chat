@@ -317,7 +317,7 @@ const approvedAnswerCardHashes = {
   "zh-CN": "bd487920e1ba4b63008ed85228907ad51aa0828cfcd53e3146d4136347aa69c3",
   "ja": "d45fce67f549e1250f538b9eeb5c8997346e1caa322575572a58bbd98cc0f095",
 };
-const addedAnswerCardKeys = ["other", "otherHint", "otherEmpty", "readOnlyStatus", "sendAction", "hintCustom"];
+const addedAnswerCardKeys = ["other", "otherHint", "otherEmpty", "readOnlyStatus", "sendAction", "hintCustom", "progress"];
 const signedAnswerCardCopy = {
   en: ["Send", "Enter to confirm · Shift+Enter for a new line"],
   "zh-CN": ["发送", "Enter 确认 · Shift+Enter 换行"],
@@ -329,10 +329,15 @@ function verifyResourceBaseline(locale, text) {
   assert.equal([...text.matchAll(rootAnswerCard)].length, 1, "one root answerCard object");
   const answerCard = JSON.parse(text).answerCard;
   assert.deepEqual([answerCard.sendAction, answerCard.hintCustom], signedAnswerCardCopy[locale]);
+  assert.equal(answerCard.progress, {
+    en: "{{chosen}} of {{total}} answered · {{remaining}} to go",
+    "zh-CN": "已答 {{chosen}} / {{total}} · 还差 {{remaining}} 题",
+    ja: "{{total}} 問中 {{chosen}} 問回答済み · 残り {{remaining}} 問",
+  }[locale]);
   const keys = [...text.matchAll(/"(?:\\.|[^"\\])*"/g)]
     .filter(match => /^\s*:/.test(text.slice(match.index + match[0].length)))
     .map(match => JSON.parse(match[0]));
-  for (const key of addedAnswerCardKeys) {
+  for (const key of addedAnswerCardKeys.filter(key => key !== "progress")) {
     assert.equal(keys.filter(value => value === key).length, 1, `one ${key} key in the resource`);
   }
   const original = text
