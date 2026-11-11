@@ -23,8 +23,9 @@ function createToolHarness(platform = "ios", options = {}) {
   const noop = () => {};
   const cleanup = () => noop;
   // Body replays exercise inline cards; detail/gesture suites opt into details explicitly.
-  const preferences = { showJumpChips: false, keepItemLineBreaks: false, dismissedOptionReplies: [], delegatedTools: "", delegatedCodeBlocks: "", hiddenTools: "", foldMessagePrefixes: "", enhancedUserBubble: true, assistantMarkdown: true, markdownVariant: "document", textScale: 1, foldFinishedSteps: true, foldLongOutputAfter: 15, collapsedStepAction: "inline", ...options.preferences };
+  const preferences = { answerStyle: 'none', savedReplies: ['Go with the recommended', 'Leave it for now', 'Continue'], autoFillAnswer: true, showJumpChips: false, keepItemLineBreaks: false, dismissedOptionReplies: [], delegatedTools: "", delegatedCodeBlocks: "", hiddenTools: "", foldMessagePrefixes: "", enhancedUserBubble: true, assistantMarkdown: true, markdownVariant: "document", textScale: 1, foldFinishedSteps: true, foldLongOutputAfter: 15, collapsedStepAction: "inline", ...options.preferences };
   const getPreferences = () => options.presentationHost ? load("client/preferences.ts").getEnhancerPreferences() : preferences;
+  const answerDrafts = options.answerDrafts ?? new Map();
   const expansionHost = options.expansionHost ?? createExpansionHost();
   const rpcFunctions = new Map();
   const preferenceListeners = new Set();
@@ -111,7 +112,7 @@ function createToolHarness(platform = "ios", options = {}) {
     Linking: { openURL: (...args) => { links.push(args[0]); return options.openURL?.(...args) ?? Promise.resolve(); } },
   };
   const stubs = {
-    "client/preferences": { initializeEnhancerPreferences: async () => {}, areEnhancerPreferencesReady: () => true, onEnhancerPreferencesReady: callback => { callback(); return noop; }, getEnhancerPreferences: () => preferences, saveDismissedOptionReply: async () => {}, subscribeEnhancerPreferences: listener => { preferenceListeners.add(listener); return () => preferenceListeners.delete(listener); }, useEnhancerPreferences: () => preferences, useEnhancerPreferencesError: () => null, updateEnhancerPreferences: async patch => Object.assign(preferences, patch), resetEnhancerPreferences: async () => {}, OUTPUT_LINE_OPTIONS: [10, 15, 30, "never"].map(value => ({ value: String(value), label: value === "never" ? "Never" : `${value} lines` })), TEXT_SIZE_OPTIONS: [], ACCENT_PRESETS: {} },
+    "client/preferences": { getEnhancerPreferencesError: () => null, getOptionAnswerDraft: (agentId, at) => answerDrafts.get(JSON.stringify([agentId, at])), saveOptionAnswerDraft: async (agentId, at, block) => { answerDrafts.set(JSON.stringify([agentId, at]), { block }); }, initializeEnhancerPreferences: async () => {}, areEnhancerPreferencesReady: () => true, onEnhancerPreferencesReady: callback => { callback(); return noop; }, getEnhancerPreferences: () => preferences, saveDismissedOptionReply: async () => {}, subscribeEnhancerPreferences: listener => { preferenceListeners.add(listener); return () => preferenceListeners.delete(listener); }, useEnhancerPreferences: () => preferences, useEnhancerPreferencesError: () => null, updateEnhancerPreferences: async patch => Object.assign(preferences, patch), resetEnhancerPreferences: async () => {}, OUTPUT_LINE_OPTIONS: [10, 15, 30, "never"].map(value => ({ value: String(value), label: value === "never" ? "Never" : `${value} lines` })), TEXT_SIZE_OPTIONS: [], ACCENT_PRESETS: {} },
     "client/settings-page": { ClearChatSettingsPage: noop },
     "server/settings-migration": { migrateHostSettings: noop },
     "client/image-file": { useImageFile: noop, isImagePath: path => /\.(png|jpe?g|gif|webp)$/i.test(path ?? "") },
@@ -208,6 +209,7 @@ function createToolHarness(platform = "ios", options = {}) {
       if (id === "react/jsx-runtime") return { jsx, jsxs: jsx, Fragment: "Fragment" };
       if (id === "react-native") return native;
       if (id === "@getpaseo/plugin/client") return {
+        ...(options.useComposers ? { useComposers: options.useComposers } : {}),
         defineTranslations: translations.defineTranslations,
         useTranslation: translations.useTranslation,
         useSettings: definition => options.settingsHost?.(definition) ?? {

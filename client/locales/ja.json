@@ -647,5 +647,17 @@
     "hintCustom": "Enter で確定 · Shift+Enter で改行",
     "progress": "{{total}} 問中 {{chosen}} 問回答済み · 残り {{remaining}} 問",
     "hintEnter": "Enter"
+  },
+  "answerStyle": {
+    "title": "次の返信の回答スタイル",
+    "none": "追加しない",
+    "concise": "簡潔",
+    "formal": "フォーマル",
+    "casual": "カジュアル",
+    "oneLine": "一文",
+    "savedRepliesLabel": "よく使う回答",
+    "savedRepliesDescription": "1行に1つ入力します。挿入しても送信されません。",
+    "autoFillLabel": "回答を自動入力",
+    "autoFillDescription": "選んだ回答を入力欄に入れ、送信前に確認できます。"
   }
 }

@@ -30,6 +30,9 @@ export const preferenceOverridesSchema = z.object({
   foldFinishedSteps: z.boolean().optional(),
   collapsedStepAction: z.enum(["details", "inline"]).optional(),
   foldLongOutputAfter: z.union([z.literal(10), z.literal(15), z.literal(30), z.literal("never")]).optional(),
+  answerStyle: z.enum(["none", "concise", "formal", "casual", "oneLine"]).optional(),
+  savedReplies: z.array(z.string()).optional(),
+  autoFillAnswer: z.boolean().optional(),
   showAnswerCard: z.boolean().optional(),
   showJumpChips: z.boolean().optional(),
   keepItemLineBreaks: z.boolean().optional(),
@@ -48,6 +51,7 @@ export const answerDraftSchema = z.object({
   customDrafts: z.record(z.string(), z.string()).default({}),
   customOpen: z.record(z.string(), z.boolean()).default({}),
   activeQuestion: z.number().int().min(0).default(0),
+  block: z.string().optional(),
 });
 
 export type AnswerDraft = z.output<typeof answerDraftSchema>;

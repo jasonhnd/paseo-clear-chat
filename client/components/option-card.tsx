@@ -1,14 +1,25 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Animated, Platform, Pressable, Text, View, useWindowDimensions, type TextInput as NativeTextInput, type ViewStyle } from "react-native";
+import * as pluginClient from "@getpaseo/plugin/client";
 import { useAgent, useTranslation } from "@getpaseo/plugin/client";
 import { TextInput } from "@getpaseo/plugin/client/ui";
 import { messages } from "../messages";
 import { resumeAnswerDraft, initializeAnswerState, answerIndex, answerText, choose, confirmCustom, customLetterFor, dismiss, getOptionSessionAt, getOptionSession, missingQuestion, moveCursor, openCustom, sendAnswer, setActiveQuestion, setCustomDraft, useOptionSession } from "../option-session";
 import { customAnswerLetter } from "../option-custom-answer";
+import { areEnhancerPreferencesReady, getEnhancerPreferencesError, getOptionAnswerDraft, saveOptionAnswerDraft } from "../preferences";
 import { questionNumber } from "../option-questions";
 import { withAlpha } from "./theme-tokens";
 import { optionShortName } from "../option-short-name";
 import type { ExtendedThemeTokens } from "./theme-tokens";
+
+// This optional surface is supplied by newer hosts; older hosts retain card sending.
+interface Composer {
+  readonly prompt: string;
+  setPrompt(text: string): void | Promise<void>;
+  insertText(text: string): void;
+  focus(options?: { selection?: { start: number; end: number } }): Promise<void>;
+}
+const useComposers = (pluginClient as unknown as { useComposers?: (selector: { agentId: string }) => readonly Composer[] }).useComposers;
 
 const pendingSendFocusAgents = new Map<string, number>();
 const focusCardKey = (agentId: string, at: number) => `${agentId}\u0000${at}`;
@@ -24,6 +35,14 @@ export function recommendedBadgeColor(tokens: ExtendedThemeTokens): string {
 
 export function OptionCard({ agentId, at, tokens }: { agentId: string; at: number; tokens: ExtendedThemeTokens }) {
   const { t, locale } = useTranslation(messages);
+  const composers = useComposers ? useComposers({ agentId }) : [];
+  const composer = composers[0];
+  const latestComposer = useRef(composer);
+  latestComposer.current = composer;
+  const insertedAnswer = useRef<{ agentId: string; at: number } | null>(null);
+  const prefillPending = useRef(false);
+  const [prefillBusy, setPrefillBusy] = useState(false);
+  const [prefillNotice, setPrefillNotice] = useState<"edited" | "changed" | "unavailable" | null>(null);
   const session = useOptionSession(agentId, at);
   useEffect(() => { if (session && !session.readOnly) initializeAnswerState(agentId, at); }, [agentId, at, !!session, session?.readOnly]);
   const status = useAgent(agentId, agent => agent.status);
@@ -431,7 +450,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
       ? state : { agentId, at, index, height: 0, empty: false }), ...change }));
   };
   const readOnly = session.readOnly;
-  const disabled = readOnly || session.sending || status === "running";
+  const disabled = readOnly || session.sending || prefillBusy || status === "running";
   const missing = missingQuestion(agentId, at);
   const answer = answerText(agentId, at);
   const answeredCount = session.set.questions.filter((_, i) => session.choices[i] !== undefined || session.customConfirmed[i] !== undefined).length;
@@ -550,14 +569,89 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     pendingSend.current = pending;
     observer?.observe(card);
   };
+  const answerBlock = () => Object.keys(getOptionSessionAt(agentId, at)?.customConfirmed ?? {}).length ? answerText(agentId, at) : answerIndex(agentId, at);
+  const prefill = (text: string, clickPrompt: string | undefined, replaceEdited = false, firstInsertion = false) => {
+    const current = getOptionSessionAt(agentId, at);
+    const target = latestComposer.current;
+    if (!current || current.at !== at || current.readOnly || prefillPending.current || status === "running") return;
+    if (!target || typeof target.setPrompt !== "function" || !areEnhancerPreferencesReady() || typeof clickPrompt !== "string") {
+      setPrefillNotice("unavailable");
+      return;
+    }
+    if (!firstInsertion && !getOptionAnswerDraft(agentId, at)
+        && (insertedAnswer.current?.agentId !== agentId || insertedAnswer.current.at !== at)) {
+      // Persist the card identity before the first write. If the app reloads
+      // before the block is saved, the empty record requires confirmation.
+      prefillPending.current = true;
+      setPrefillBusy(true);
+      void saveOptionAnswerDraft(agentId, at, null, {
+        schema: 1, choices: Object.fromEntries(Object.entries(current.choices).filter((entry): entry is [string, string] => typeof entry[1] === "string")),
+        customDrafts: { ...current.customDrafts }, customOpen: { ...current.customOpen }, activeQuestion: current.activeQuestion,
+      }).then(() => {
+        prefillPending.current = false;
+        setPrefillBusy(false);
+        if (getEnhancerPreferencesError()) { setPrefillNotice("unavailable"); return; }
+        prefill(text, clickPrompt, false, true);
+      }, () => {
+        prefillPending.current = false;
+        setPrefillBusy(false);
+        setPrefillNotice("unavailable");
+      });
+      return;
+    }
+    try {
+      const prompt = target.prompt;
+      if (prompt !== clickPrompt) {
+        setPrefillNotice("changed");
+        return;
+      }
+      const record = getOptionAnswerDraft(agentId, at);
+      let next: string;
+      if (firstInsertion) {
+        next = prompt ? `${text}\n${prompt}` : text;
+      } else if (record?.block && prompt.startsWith(record.block)
+          && (record.block.endsWith("\n") || prompt.length === record.block.length || prompt[record.block.length] === "\n")) {
+        next = text + prompt.slice(record.block.length);
+      } else if (replaceEdited) {
+        // The extent of an edited block is unknown. Replace only the first
+        // line that the user explicitly chose to replace; preserve the rest.
+        const newline = prompt.indexOf("\n");
+        next = text + (newline < 0 ? "" : prompt.slice(newline));
+      } else {
+        setPrefillNotice("edited");
+        return;
+      }
+      const write = target.setPrompt(next);
+      const recordWrite = () => {
+        insertedAnswer.current = { agentId, at };
+        void saveOptionAnswerDraft(agentId, at, text);
+        setPrefillNotice(null);
+      };
+      if (write) {
+        prefillPending.current = true;
+        setPrefillBusy(true);
+        void write.then(recordWrite, () => setPrefillNotice("unavailable")).finally(() => {
+          prefillPending.current = false;
+          setPrefillBusy(false);
+        });
+      } else recordWrite();
+    } catch {
+      setPrefillNotice("unavailable");
+    }
+  };
   const select = (letter: string) => {
     const before = getOptionSessionAt(agentId, at);
-    if (!before || before.at !== at || before.readOnly || before.sending || status === "running") return;
+    if (!before || before.at !== at || before.readOnly || before.sending || prefillPending.current || status === "running") return;
+    const clickPrompt = latestComposer.current?.prompt;
     const wasAnswered = before.choices[index] !== undefined;
     const previewPending = !wasAnswered && Object.keys(before.customConfirmed).length > 0 && before.set.questions.every((_, i) => i === index || before.choices[i] !== undefined) && preparePreview();
     if (!wasAnswered && !previewPending) prepareQuestionSwitch();
     choose(agentId, index, letter, at);
     const after = getOptionSessionAt(agentId, at);
+    if (useComposers && (getOptionAnswerDraft(agentId, at) || (insertedAnswer.current?.agentId === agentId && insertedAnswer.current.at === at)) && after && !after.readOnly) {
+      const nextText = answerBlock();
+      if (nextText !== null) prefill(nextText, clickPrompt);
+    }
     cancelUnchangedSwitch(after?.activeQuestion ?? index);
     if (!after || wasAnswered) return;
     if (missingQuestion(agentId, at) === null) { if (!previewPending) focus("option-send"); }
@@ -628,8 +722,9 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   };
   const confirmCustomInput = () => {
     const current = getOptionSessionAt(agentId, at);
-    if (current?.at !== at || current.activeQuestion !== index || !current.customOpen[index] || current.readOnly || current.sending) return;
+    if (current?.at !== at || current.activeQuestion !== index || !current.customOpen[index] || current.readOnly || current.sending || prefillPending.current) return;
     pendingCustomFocus.current = false;
+    const clickPrompt = latestComposer.current?.prompt;
     const wasAnswered = current.choices[index] !== undefined;
     const previewPending = !wasAnswered && !!current.customDrafts[index]?.trim() && current.set.questions.every((_, i) => i === index || current.choices[i] !== undefined) && preparePreview();
     if (!wasAnswered && !previewPending) prepareQuestionSwitch();
@@ -637,6 +732,10 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     cancelUnchangedSwitch(getOptionSessionAt(agentId, at)?.activeQuestion ?? index);
     if (result === "blank") updateInputState({ empty: true });
     else if (result === "confirmed") {
+      if (useComposers && (getOptionAnswerDraft(agentId, at) || (insertedAnswer.current?.agentId === agentId && insertedAnswer.current.at === at))) {
+        const text = answerBlock();
+        if (text !== null) prefill(text, clickPrompt);
+      }
       updateInputState({ empty: false });
       if (!wasAnswered) {
         const after = getOptionSessionAt(agentId, at);
@@ -748,6 +847,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
             if (session.followupStatus === "ended") return <View key={i} testID={`option-question-${i}`} accessibilityState={{ selected: i === index, disabled: true }} style={tabStyle}>{tabLabel}</View>;
             return <Pressable key={i} testID={`option-question-${i}`} accessibilityRole="tab" accessibilityState={{ selected: i === index }} disabled={!readOnly && disabled} {...(Platform.OS === "web" && readOnly ? { focusable: true, tabIndex: 0, onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => { if (event.key === " ") { event.preventDefault(); switchQuestion(i); } } } : {})} onPress={() => switchQuestion(i)} style={tabStyle}>{tabLabel}</Pressable>;
           })}
+          {useComposers && !readOnly && answer !== null ? <Text testID="option-prefill-status" style={muted}>{locale?.startsWith("zh") ? `已选 ${answerIndex(agentId, at)} · 还没发送` : locale?.startsWith("ja") ? `選択済み ${answerIndex(agentId, at)} · 未送信` : `Selected ${answerIndex(agentId, at)} · Not sent`}</Text> : null}
           {session.followupStatus === "waiting" && getOptionSession(agentId)?.at === at ? <Pressable testID="option-resume" accessibilityRole="button" onPress={() => { void resumeAnswerDraft(agentId, at).then(ok => {
             setResumeRetry(!ok);
             if (ok && Platform.OS === "web") setTimeout(() => {
@@ -765,6 +865,13 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
         </View>
         {session.followupStatus === "waiting" ? <Text testID="option-current-question" style={muted}>{locale?.startsWith("zh") ? `Q${number(session.activeQuestion)} · 当前题` : `Q${number(session.activeQuestion)} · Current question`}</Text> : null}
         <Text testID="option-progress" style={muted}>{t("answerCard.progress", { chosen: answeredCount, total: session.set.questions.length, remaining: session.set.questions.length - answeredCount })}</Text>
+        {prefillNotice ? <View>
+          <Text testID="option-prefill-notice" accessibilityRole="alert" style={{ ...muted, color: tokens.danger }}>{prefillNotice === "edited" ? "The answer block was edited or its record is missing." : prefillNotice === "changed" ? "The composer changed meanwhile. Please try again." : (locale?.startsWith("zh") ? "无法更新输入框，请稍后重试。" : locale?.startsWith("ja") ? "入力欄を更新できません。後でもう一度お試しください。" : "Could not update the composer. Please try again.")}</Text>
+          {prefillNotice === "edited" ? <><Text testID="option-prefill-limitation" style={muted}>{locale?.startsWith("zh") ? "你改过答案后再点「替换第一行」，只换第一行；多行答案的其余部分会留着，请自己删。" : "If you edited the answer and then choose Replace first line, only the first line is replaced; the rest of a multi-line answer stays for you to remove."}</Text><View style={{ flexDirection: "row", gap: 12 }}>
+            <Pressable testID="option-replace-first-line" accessibilityRole="button" style={{ minHeight: 44, justifyContent: "center" }} onPress={() => { const clickPrompt = latestComposer.current?.prompt; const text = answerBlock(); if (text !== null) prefill(text, clickPrompt, true); }}><Text style={label}>Replace first line</Text></Pressable>
+            <Pressable testID="option-keep-edited-first-line" accessibilityRole="button" style={{ minHeight: 44, justifyContent: "center" }} onPress={() => setPrefillNotice(null)}><Text style={label}>Keep edited text</Text></Pressable>
+          </View></> : null}
+        </View> : null}
         {readOnly && Platform.OS === "web" ? <View style={{ backgroundColor: tokens.surface1 }} ref={(node: View | null) => {
           const frame = node as unknown as HTMLElement | null;
           if (!frame?.style) return;
@@ -780,9 +887,10 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
         {Platform.OS === "web" || (customOpen && customConfirmed === undefined) ? <Text testID="option-hint" style={{ ...muted, lineHeight: hintHeight, minHeight: hintHeight, fontFamily: customOpen && customConfirmed === undefined ? tokens.fontUi : tokens.fontMono, flexShrink: 1 }}>{customOpen && customConfirmed === undefined
           ? t("answerCard.hintCustom")
           : focused === "option-send"
-          ? t("answerCard.hintSend").replace(/^Tab →\s*/, "↵ ").toLowerCase()
+          ? useComposers ? (locale?.startsWith("zh") ? "↵ 放入输入框" : locale?.startsWith("ja") ? "↵ 入力欄に追加" : "↵ put in composer") : t("answerCard.hintSend").replace(/^Tab →\s*/, "↵ ").toLowerCase()
           : `${t("answerCard.hintMove").replace(/^↑\s*↓/, "↑↓")} · ↵ ${t("answerCard.hintPick").replace(/^A B C D\s*/, "")}`}</Text> : <View testID="option-hint-slot" style={{ minHeight: hintHeight }} />}
         <Pressable {...focusProps("option-send")} testID="option-send" accessibilityRole="button" accessibilityState={{ disabled: sendDisabled }} disabled={sendDisabled} focusable={!sendDisabled} onPress={() => {
+          const clickPrompt = latestComposer.current?.prompt;
           const current = getOptionSessionAt(agentId, at);
           if (!current || current.at !== at || sendDisabled) return;
           if (draftReady) {
@@ -800,6 +908,11 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
               }
               return;
             }
+          }
+          if (useComposers) {
+            const text = answerBlock();
+            if (text !== null) prefill(text, clickPrompt);
+            return;
           }
           if (missingQuestion(agentId, at) === null) {
             pendingSendFocusAgents.set(focusCardKey(agentId, at), Date.now());
@@ -820,7 +933,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
           };
           void sendAnswer(agentId, at).then(finishSend).catch(finishSend);
         }} style={[{ minHeight: 44, justifyContent: "center", alignItems: "center", paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderStyle: "solid", borderColor: sendDisabled ? tokens.foregroundMuted : tokens.accent, backgroundColor: sendDisabled ? "transparent" : tokens.accent }, focusStyle(sendDisabled ? "" : "option-send")]}>
-          <Text style={{ ...label, color: sendDisabled ? tokens.foregroundMuted : tokens.accentForeground, fontWeight: "700" }}>{customOpen && customConfirmed === undefined ? t("answerCard.sendAction") : missing === null ? t("answerCard.send", { answer: answerIndex(agentId, at) ?? "" }) : t("answerCard.missing", { question: number(missing) })}</Text>
+          <Text style={{ ...label, color: sendDisabled ? tokens.foregroundMuted : tokens.accentForeground, fontWeight: "700" }}>{customOpen && customConfirmed === undefined ? t("answerCard.sendAction") : missing === null ? useComposers ? (locale?.startsWith("zh") ? `放入输入框 ${answerIndex(agentId, at) ?? ""}` : locale?.startsWith("ja") ? `入力欄に追加 ${answerIndex(agentId, at) ?? ""}` : `Put in composer ${answerIndex(agentId, at) ?? ""}`) : t("answerCard.send", { answer: answerIndex(agentId, at) ?? "" }) : t("answerCard.missing", { question: number(missing) })}</Text>
         </Pressable>
       </View>}
     </View>

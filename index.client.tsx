@@ -16,6 +16,7 @@ import { extractGeneratedImages } from "./client/generated-images";
 import { containsComponentFence } from "./client/component-fences";
 import { projectedApprovalStatus } from "./client/tool-approval";
 import { installStepDetailPanel } from "./client/components/step-detail-host";
+import { AnswerStyleControl, answerStyleSupported } from "./client/components/answer-style-control";
 import { setOptionSender, setAnswerDraftStore, setAnswerStatePublisher } from "./client/option-session";
 import {
   getEnhancerPreferences,
@@ -101,6 +102,11 @@ function registerClient(client: PluginClientContext) {
   const removeChatFind = installChatFind();
   const removeToolSpacing = installCompactToolSpacing();
   const removeStepDetails = installStepDetailPanel(client);
+  // Composer item needs the 0.16 host API; an older host simply does not get the control.
+  const removeAnswerStyle = typeof (client as { addComposerItem?: unknown }).addComposerItem === "function"
+    ? (client as unknown as { addComposerItem(c: { id: string; Component: unknown }): () => void })
+        .addComposerItem({ id: "answer-style", Component: AnswerStyleControl })
+    : null;
 
   // Configuration lives in the host Settings area.
   client.addSettingsScreen({

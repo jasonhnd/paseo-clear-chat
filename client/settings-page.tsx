@@ -77,6 +77,19 @@ const KNOB = 16;
 
 const CUSTOM_SWATCHES = ["#e63946", "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899"];
 
+function SavedRepliesEditor({ value, tokens }: { value: string[]; tokens: ExtendedThemeTokens }) {
+  const { t } = useTranslation(messages);
+  const joined = value.join("\n");
+  const [draft, setDraft] = useState(joined);
+  useEffect(() => { setDraft(joined); }, [joined]);
+  const save = () => updateEnhancerPreferences({ savedReplies: draft.split(/\r?\n/).map(item => item.trim()).filter(Boolean) });
+  return <View style={[styles.row, { borderTopColor: tokens.borderSubtle }]}>
+    <Text style={[styles.rowTitle, { color: tokens.foreground, fontFamily: tokens.fontUi }]}>{t("answerStyle.savedRepliesLabel")}</Text>
+    <Text style={[styles.rowDescription, { color: tokens.foregroundMuted, fontFamily: tokens.fontUi }]}>{t("answerStyle.savedRepliesDescription")}</Text>
+    <TextInput testID="saved-replies-input" accessibilityLabel={t("answerStyle.savedRepliesLabel")} accessibilityHint={t("answerStyle.savedRepliesDescription")} value={draft} onChangeText={setDraft} onBlur={() => { void save(); }} multiline autoCorrect={false} style={[styles.toolNamesInput, { color: tokens.foreground, borderColor: tokens.border, fontFamily: tokens.fontUi }]} />
+  </View>;
+}
+
 function CustomAccentPicker({ value, tokens }: { value: string; tokens: ExtendedThemeTokens }) {
   const { t } = useTranslation(messages);
   const [draft, setDraft] = useState(value);
@@ -616,6 +629,16 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
           description={t("settings.answerCard.description")}
           value={preferences.showAnswerCard}
           onChange={(showAnswerCard) => updateEnhancerPreferences({ showAnswerCard })}
+          tokens={tokens}
+        />
+
+        <SavedRepliesEditor value={preferences.savedReplies} tokens={tokens} />
+
+        <ToggleRow
+          title={t("answerStyle.autoFillLabel")}
+          description={t("answerStyle.autoFillDescription")}
+          value={preferences.autoFillAnswer}
+          onChange={(autoFillAnswer) => updateEnhancerPreferences({ autoFillAnswer })}
           tokens={tokens}
         />
 

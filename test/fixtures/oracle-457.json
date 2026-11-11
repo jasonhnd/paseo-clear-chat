@@ -1,0 +1,36 @@
+[
+  {
+    "id": "mixed",
+    "reply": "1) First?\nA Alpha\nB Beta\n\n2) Second?\nA One\nB Two\nC Three\nD Four\n\nReply: A",
+    "answers": {
+      "0": {
+        "kind": "option",
+        "letter": "B"
+      },
+      "1": {
+        "kind": "custom",
+        "letter": "E",
+        "content": "  雪：🌸\n第二行，句号。  \n"
+      }
+    },
+    "index": "1B 2E",
+    "message": "1B 2E\n\n2E：\n  雪：🌸\n第二行，句号。  \n"
+  },
+  {
+    "id": "legacy",
+    "reply": "0) First?\nA Alpha\nB Beta\n\n1) Second?\nA One\nB Two\n\nReply: A",
+    "answers": {
+      "0": {
+        "kind": "option",
+        "letter": "B"
+      },
+      "1": {
+        "kind": "custom",
+        "letter": "C",
+        "content": "旧答：あ\nline two!"
+      }
+    },
+    "index": "1B 2C",
+    "message": "1B 2C\n\n2C：\n旧答：あ\nline two!"
+  }
+]
