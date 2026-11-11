@@ -3,7 +3,7 @@ import { Animated, Platform, Pressable, Text, View, useWindowDimensions, type Te
 import { useAgent, useTranslation } from "@getpaseo/plugin/client";
 import { TextInput } from "@getpaseo/plugin/client/ui";
 import { messages } from "../messages";
-import { initializeAnswerState, answerIndex, answerText, choose, confirmCustom, customLetterFor, dismiss, getOptionSession, missingQuestion, moveCursor, openCustom, sendAnswer, setActiveQuestion, setCustomDraft, useOptionSession } from "../option-session";
+import { resumeAnswerDraft, initializeAnswerState, answerIndex, answerText, choose, confirmCustom, customLetterFor, dismiss, getOptionSessionAt, getOptionSession, missingQuestion, moveCursor, openCustom, sendAnswer, setActiveQuestion, setCustomDraft, useOptionSession } from "../option-session";
 import { customAnswerLetter } from "../option-custom-answer";
 import { questionNumber } from "../option-questions";
 import { withAlpha } from "./theme-tokens";
@@ -23,7 +23,7 @@ export function recommendedBadgeColor(tokens: ExtendedThemeTokens): string {
 }
 
 export function OptionCard({ agentId, at, tokens }: { agentId: string; at: number; tokens: ExtendedThemeTokens }) {
-  const { t } = useTranslation(messages);
+  const { t, locale } = useTranslation(messages);
   const session = useOptionSession(agentId, at);
   useEffect(() => { if (session && !session.readOnly) initializeAnswerState(agentId, at); }, [agentId, at, !!session, session?.readOnly]);
   const status = useAgent(agentId, agent => agent.status);
@@ -48,6 +48,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   const { width } = useWindowDimensions();
   const [viewed, setViewed] = useState<{ agentId: string; at: number; index: number } | null>(null);
   const [focused, setFocused] = useState<string | null>(null);
+  const [resumeRetry, setResumeRetry] = useState(false);
   const [inputState, setInputState] = useState({ agentId, at, index: 0, height: 0, empty: false });
   const fade = useRef(new Animated.Value(1)).current;
   const transition = useRef<{ index: number; height: number; old: HTMLElement | null; card: HTMLElement; scroller: HTMLElement | null; scrollTop: number; restore: () => void; readOnly: boolean } | null>(null);
@@ -420,7 +421,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   if (!session || session.at !== at || session.dismissed || (status === "running" && !session.readOnly)) return null;
 
   const question = session.set.questions[index]!;
-  const customLetter = getOptionSession(agentId)?.at === at ? customLetterFor(agentId, index)! : customAnswerLetter(question);
+  const customLetter = getOptionSessionAt(agentId, at)?.at === at ? customLetterFor(agentId, index, at)! : customAnswerLetter(question);
   const customOpen = !!session.customOpen[index];
   const customConfirmed = session.customConfirmed[index];
   const currentInputState = inputState.agentId === agentId && inputState.at === at && inputState.index === index
@@ -431,8 +432,8 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   };
   const readOnly = session.readOnly;
   const disabled = readOnly || session.sending || status === "running";
-  const missing = missingQuestion(agentId);
-  const answer = answerText(agentId);
+  const missing = missingQuestion(agentId, at);
+  const answer = answerText(agentId, at);
   const answeredCount = session.set.questions.filter((_, i) => session.choices[i] !== undefined || session.customConfirmed[i] !== undefined).length;
   const hasCustomAnswer = Object.keys(session.customConfirmed).length > 0;
   const draftReady = customOpen && customConfirmed === undefined && !!session.customDrafts[index]?.trim();
@@ -452,7 +453,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   } as ViewStyle : undefined;
   const focus = (testId: string) => {
     setTimeout(() => {
-      const current = getOptionSession(agentId);
+      const current = getOptionSessionAt(agentId, at);
       if (current?.at !== at || current.readOnly || current.sending || status === "running") return;
       if (Platform.OS === "web") root.current?.querySelector<HTMLElement>(`[data-testid="${testId}"]`)?.focus({ preventScroll: true });
       else if (testId === "option-custom-input") customInput.current?.focus();
@@ -518,10 +519,10 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
       setViewed({ agentId, at, index: nextIndex });
       return;
     }
-    const current = getOptionSession(agentId);
+    const current = getOptionSessionAt(agentId, at);
     if (!current || current.at !== at || current.readOnly || current.sending || current.activeQuestion === nextIndex) return;
     prepareQuestionSwitch();
-    setActiveQuestion(agentId, nextIndex);
+    setActiveQuestion(agentId, nextIndex, at);
   };
   const prepareSend = (clearSendFocus = false) => {
     if (Platform.OS !== "web") return;
@@ -543,23 +544,23 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     pendingSend.current?.stop();
     const pending = { card, old, height: card.getBoundingClientRect().height, scroller, scrollTop: scroller?.scrollTop ?? 0, stop: () => {} };
     const observer = typeof globalThis.ResizeObserver === "function" ? new globalThis.ResizeObserver(() => {
-      if (pendingSend.current === pending && !getOptionSession(agentId)?.readOnly) pending.height = card.getBoundingClientRect().height;
+      if (pendingSend.current === pending && !getOptionSessionAt(agentId, at)?.readOnly) pending.height = card.getBoundingClientRect().height;
     }) : null;
     pending.stop = () => observer?.disconnect();
     pendingSend.current = pending;
     observer?.observe(card);
   };
   const select = (letter: string) => {
-    const before = getOptionSession(agentId);
+    const before = getOptionSessionAt(agentId, at);
     if (!before || before.at !== at || before.readOnly || before.sending || status === "running") return;
     const wasAnswered = before.choices[index] !== undefined;
     const previewPending = !wasAnswered && Object.keys(before.customConfirmed).length > 0 && before.set.questions.every((_, i) => i === index || before.choices[i] !== undefined) && preparePreview();
     if (!wasAnswered && !previewPending) prepareQuestionSwitch();
-    choose(agentId, index, letter);
-    const after = getOptionSession(agentId);
+    choose(agentId, index, letter, at);
+    const after = getOptionSessionAt(agentId, at);
     cancelUnchangedSwitch(after?.activeQuestion ?? index);
     if (!after || wasAnswered) return;
-    if (missingQuestion(agentId) === null) { if (!previewPending) focus("option-send"); }
+    if (missingQuestion(agentId, at) === null) { if (!previewPending) focus("option-send"); }
     else focus(`option-row-${after.set.questions[after.activeQuestion]!.options[after.cursor[after.activeQuestion] ?? 0]!.letter}`);
   };
   const preparePreview = () => {
@@ -577,16 +578,16 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     return true;
   };
   const openAndFocusCustom = () => {
-    const current = getOptionSession(agentId);
+    const current = getOptionSessionAt(agentId, at);
     if (!current || current.at !== at || current.activeQuestion !== index || current.readOnly || current.sending || status === "running") return;
     if (!current.customOpen[index]) {
       prepareResize(true);
       pendingCustomFocus.current = true;
-      openCustom(agentId, index);
+      openCustom(agentId, index, at);
       setTimeout(() => {
         if (!pendingCustomFocus.current) return;
         pendingCustomFocus.current = false;
-        const latest = getOptionSession(agentId);
+        const latest = getOptionSessionAt(agentId, at);
         if (latest?.at !== at || latest.activeQuestion !== index || !latest.customOpen[index] || latest.readOnly || latest.sending) return;
         if (Platform.OS === "web") root.current?.querySelector<HTMLElement>('[data-testid="option-custom-input"]')?.focus({ preventScroll: true });
         else customInput.current?.focus();
@@ -617,7 +618,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     card.style.overflow = "hidden";
   };
   const resizeCustomInput = (height: number) => {
-    const current = getOptionSession(agentId);
+    const current = getOptionSessionAt(agentId, at);
     if (current?.at !== at || current.activeQuestion !== index) return;
     const min = Math.max(44, tokens.fs(44));
     const capped = (value: number) => Math.max(min, Math.min(tokens.fs(72), value));
@@ -626,27 +627,27 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     updateInputState({ height });
   };
   const confirmCustomInput = () => {
-    const current = getOptionSession(agentId);
+    const current = getOptionSessionAt(agentId, at);
     if (current?.at !== at || current.activeQuestion !== index || !current.customOpen[index] || current.readOnly || current.sending) return;
     pendingCustomFocus.current = false;
     const wasAnswered = current.choices[index] !== undefined;
     const previewPending = !wasAnswered && !!current.customDrafts[index]?.trim() && current.set.questions.every((_, i) => i === index || current.choices[i] !== undefined) && preparePreview();
     if (!wasAnswered && !previewPending) prepareQuestionSwitch();
-    const result = confirmCustom(agentId, index);
-    cancelUnchangedSwitch(getOptionSession(agentId)?.activeQuestion ?? index);
+    const result = confirmCustom(agentId, index, at);
+    cancelUnchangedSwitch(getOptionSessionAt(agentId, at)?.activeQuestion ?? index);
     if (result === "blank") updateInputState({ empty: true });
     else if (result === "confirmed") {
       updateInputState({ empty: false });
       if (!wasAnswered) {
-        const after = getOptionSession(agentId);
-        if (after && missingQuestion(agentId) === null) { if (!previewPending) focus("option-send"); }
+        const after = getOptionSessionAt(agentId, at);
+        if (after && missingQuestion(agentId, at) === null) { if (!previewPending) focus("option-send"); }
         else if (after) focus(`option-row-${after.set.questions[after.activeQuestion]!.options[after.cursor[after.activeQuestion] ?? 0]!.letter}`);
       }
     }
   };
   const handleCustomKey = (event: KeyboardEvent) => {
     if (disabled || event.defaultPrevented || event.key !== "Enter" || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.isComposing) return;
-    const current = getOptionSession(agentId);
+    const current = getOptionSessionAt(agentId, at);
     if (current?.at !== at || current.activeQuestion !== index || !current.customOpen[index] || current.readOnly || current.sending) return;
     event.preventDefault(); event.stopPropagation();
     confirmCustomInput();
@@ -655,7 +656,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   const keyboardProps = Platform.OS === "web" ? {
     ref: (node: View | null) => { root.current = node as unknown as HTMLElement | null; },
     onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
-      if (disabled || event.defaultPrevented || getOptionSession(agentId)?.at !== at || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.nativeEvent.isComposing) return;
+      if (disabled || event.defaultPrevented || getOptionSessionAt(agentId, at)?.at !== at || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.nativeEvent.isComposing) return;
       const target = event.target as HTMLElement;
       if (target.getAttribute?.("data-testid") === "option-custom-input" || target.closest?.('[data-testid="option-custom-input"]')?.getAttribute?.("data-testid") === "option-custom-input") return;
       if (event.key.length === 1 && (/^[a-h]$/i.test(event.key) || event.key.toUpperCase() === customLetter)) {
@@ -675,14 +676,14 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
         event.preventDefault(); event.stopPropagation();
         const current = question.options.findIndex(option => target.getAttribute("data-testid") === `option-row-${option.letter}`);
         const next = Math.max(0, Math.min(question.options.length - 1, current + (event.key === "ArrowUp" ? -1 : 1)));
-        moveCursor(agentId, index, next - (session.cursor[index] ?? 0));
+        moveCursor(agentId, index, next - (session.cursor[index] ?? 0), at);
         focus(`option-row-${question.options[next]!.letter}`);
       }
     },
   } : {};
   const renderQuestion = (index: number, measure = false) => {
     const question = session.set.questions[index]!;
-    const customLetter = getOptionSession(agentId)?.at === at ? customLetterFor(agentId, index)! : customAnswerLetter(question);
+    const customLetter = getOptionSessionAt(agentId, at)?.at === at ? customLetterFor(agentId, index, at)! : customAnswerLetter(question);
     const customOpen = !!session.customOpen[index];
     const customConfirmed = session.customConfirmed[index];
     return (
@@ -710,7 +711,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
               <Text style={{ ...label, color: !readOnly && customOpen ? tokens.accent : tokens.foregroundMuted, fontWeight: "700", overflow: "hidden", borderWidth: 1, borderColor: !readOnly && customOpen ? tokens.accent : tokens.border, borderRadius: 5, paddingHorizontal: 7, paddingVertical: 3, marginTop: customFocused ? 8 : 9 }}>{customLetter}</Text>
               <View style={{ flex: 1, minWidth: 0 }}>
                 {readOnly ? <Text selectable style={label}>{customConfirmed ?? t("answerCard.other")}</Text> : customOpen ? <>
-                  <TextInput ref={setCustomInput} {...(Platform.OS === "web" ? { onFocus: (event: { stopPropagation(): void }) => { event.stopPropagation(); setFocused("option-custom-input"); }, onBlur: (event: { stopPropagation(): void }) => { event.stopPropagation(); setFocused(current => current === "option-custom-input" ? null : current); } } : {})} testID="option-custom-input" accessibilityLabel={t("answerCard.other")} placeholder={t("answerCard.otherHint")} value={session.customDrafts[index] ?? ""} onChangeText={text => { if (getOptionSession(agentId)?.at === at) { setCustomDraft(agentId, index, text); if (text.trim()) updateInputState({ empty: false }); } }} multiline numberOfLines={1} editable={!disabled} onContentSizeChange={event => resizeCustomInput(event.nativeEvent.contentSize.height)} style={[{ ...label, fontSize: width <= 390 ? Math.max(16, tokens.fs(16)) : label.fontSize, padding: 0, borderWidth: 0, lineHeight: tokens.fs(20), paddingVertical: Math.max(0, (Math.max(44, tokens.fs(44)) - tokens.fs(20)) / 2), minHeight: Math.max(44, tokens.fs(44)), maxHeight: Math.max(44, tokens.fs(72)), height: Math.max(44, tokens.fs(44), Math.min(tokens.fs(72), currentInputState.height)), marginVertical: customFocused ? -2 : -1, textAlignVertical: "top" }, Platform.OS === "web" ? { outlineStyle: "none" } as unknown as ViewStyle : undefined]} />
+                  <TextInput ref={setCustomInput} {...(Platform.OS === "web" ? { onFocus: (event: { stopPropagation(): void }) => { event.stopPropagation(); setFocused("option-custom-input"); }, onBlur: (event: { stopPropagation(): void }) => { event.stopPropagation(); setFocused(current => current === "option-custom-input" ? null : current); } } : {})} testID="option-custom-input" accessibilityLabel={t("answerCard.other")} placeholder={t("answerCard.otherHint")} value={session.customDrafts[index] ?? ""} onChangeText={text => { if (getOptionSessionAt(agentId, at)?.at === at) { setCustomDraft(agentId, index, text, at); if (text.trim()) updateInputState({ empty: false }); } }} multiline numberOfLines={1} editable={!disabled} onContentSizeChange={event => resizeCustomInput(event.nativeEvent.contentSize.height)} style={[{ ...label, fontSize: width <= 390 ? Math.max(16, tokens.fs(16)) : label.fontSize, padding: 0, borderWidth: 0, lineHeight: tokens.fs(20), paddingVertical: Math.max(0, (Math.max(44, tokens.fs(44)) - tokens.fs(20)) / 2), minHeight: Math.max(44, tokens.fs(44)), maxHeight: Math.max(44, tokens.fs(72)), height: Math.max(44, tokens.fs(44), Math.min(tokens.fs(72), currentInputState.height)), marginVertical: customFocused ? -2 : -1, textAlignVertical: "top" }, Platform.OS === "web" ? { outlineStyle: "none" } as unknown as ViewStyle : undefined]} />
                   {currentInputState.empty ? <Text testID="option-custom-empty" accessibilityLiveRegion="polite" style={{ ...muted, color: tokens.danger }}>{t("answerCard.otherEmpty")}</Text> : null}
                 </> : <><Text style={label}>{t("answerCard.other")}</Text><Text style={muted}>{t("answerCard.otherHint")}</Text></>}
               </View>
@@ -725,8 +726,12 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     );
   };
   return (
-    <View {...keyboardProps} testID="option-card" accessibilityState={{ disabled: readOnly }} style={{ marginTop: 12, borderWidth: 1, borderColor: tokens.border, borderRadius: 12, backgroundColor: tokens.surface1, opacity: readOnly ? 0.55 : 1 }}>
+    <View {...keyboardProps} testID="option-card" accessibilityState={{ disabled: readOnly }} style={{ marginTop: 12, borderWidth: 1, borderColor: tokens.border, borderRadius: 12, backgroundColor: session.followupStatus === "waiting" ? (tokens.isDark ? tokens.surface0 : "#ffffff") : session.followupStatus === "ended" ? (tokens.isDark ? tokens.surface1 : "#f0f0f0") : tokens.surface1, opacity: readOnly && !session.followupStatus ? 0.55 : 1 }}>
       <View style={{ padding: 16, gap: 12 }}>
+        {session.followupStatus === "waiting" ? <Text testID="option-followup-heading" style={muted}>{locale?.startsWith("zh") ? `答题卡 · 已答 ${answeredCount}/${session.set.questions.length} · 未完成` : `Answer card · ${answeredCount} / ${session.set.questions.length} answered · Incomplete`}</Text> : null}
+        {session.followupStatus === "ended" ? <Text testID="option-followup-heading" style={muted}>{locale?.startsWith("zh") ? `答题卡 · 已答 ${answeredCount}/${session.set.questions.length} · 已结束` : `Answer card · ${answeredCount} / ${session.set.questions.length} answered · Ended`}</Text> : null}
+        {session.followupStatus === "waiting" ? <Text testID="option-saved-position" style={muted}>{locale?.startsWith("zh") ? `上次停在 Q${number(session.activeQuestion)}，进度已保存。` : `You stopped at Q${number(session.activeQuestion)}. Your progress is saved.`}</Text> : null}
+        {session.followupStatus === "ended" ? <Text testID="option-ended-message" style={muted}>{locale?.startsWith("zh") ? "这组题已结束，不能再修改。" : "This card has ended and can't be edited."}</Text> : null}
         <View testID="option-tabs" style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
           {session.set.questions.map((q, i) => {
             const chosen = q.options.find(option => option.letter === session.choices[i]);
@@ -740,11 +745,25 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
               : `Q${number(i)} · ${optionShortName(q.title, number(i))}`;
             const tabStyle = { minHeight: 36, justifyContent: "center" as const, borderRadius: 18, paddingHorizontal: 12, backgroundColor: i === index ? tokens.surface2 : "transparent" };
             const tabLabel = <Text style={{ ...label, color: i === index ? tokens.foreground : tokens.foregroundMuted, fontWeight: i === index ? "700" : "400" }}>{Platform.OS === "web" && !readOnly && i === index && answer !== null && customText !== undefined ? <><Text testID="option-confirmed-check" style={{ display: "inline-block" } as unknown as ViewStyle}>✓</Text>{tabText.slice(1)}</> : tabText}</Text>;
+            if (session.followupStatus === "ended") return <View key={i} testID={`option-question-${i}`} accessibilityState={{ selected: i === index, disabled: true }} style={tabStyle}>{tabLabel}</View>;
             return <Pressable key={i} testID={`option-question-${i}`} accessibilityRole="tab" accessibilityState={{ selected: i === index }} disabled={!readOnly && disabled} {...(Platform.OS === "web" && readOnly ? { focusable: true, tabIndex: 0, onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => { if (event.key === " ") { event.preventDefault(); switchQuestion(i); } } } : {})} onPress={() => switchQuestion(i)} style={tabStyle}>{tabLabel}</Pressable>;
           })}
-          {readOnly ? <Text testID="option-read-only-status" style={{ ...muted, marginLeft: "auto" }}>{t("answerCard.readOnlyStatus")}</Text> : null}
-          {!readOnly && !session.sending ? <Pressable testID="option-dismiss" accessibilityRole="button" onPress={() => { if (getOptionSession(agentId)?.at === at) dismiss(agentId); }} style={{ minHeight: 44, justifyContent: "center", marginLeft: "auto" }}><Text style={muted}>{t("answerCard.notOptions")}</Text></Pressable> : null}
+          {session.followupStatus === "waiting" ? <Pressable testID="option-resume" accessibilityRole="button" onPress={() => { void resumeAnswerDraft(agentId, at).then(ok => {
+            setResumeRetry(!ok);
+            if (ok && Platform.OS === "web") setTimeout(() => {
+              const card = root.current;
+              card?.scrollIntoView?.({ block: "nearest" });
+              const active = getOptionSessionAt(agentId, at);
+              if (!active || active.readOnly) return;
+              const first = active.set.questions[active.activeQuestion]?.options[0];
+              if (first) card?.querySelector<HTMLElement>(`[data-testid="option-row-${first.letter}"]`)?.focus({ preventScroll: true });
+            }, 0);
+          }).catch(() => setResumeRetry(true)); }} style={{ minHeight: 44, justifyContent: "center" }}><Text>{locale?.startsWith("zh") ? "继续作答" : "Continue answering"}</Text></Pressable> : null}
+          {resumeRetry ? <Text testID="option-resume-retry" accessibilityRole="alert">{locale?.startsWith("zh") ? "请再点一次" : "Please try again"}</Text> : null}
+          {readOnly && !session.followupStatus ? <Text testID="option-read-only-status" style={{ ...muted, marginLeft: "auto" }}>{t("answerCard.readOnlyStatus")}</Text> : null}
+          {!readOnly && !session.sending ? <Pressable testID="option-dismiss" accessibilityRole="button" onPress={() => { if (getOptionSessionAt(agentId, at)?.at === at) dismiss(agentId, at); }} style={{ minHeight: 44, justifyContent: "center", marginLeft: "auto" }}><Text style={muted}>{t("answerCard.notOptions")}</Text></Pressable> : null}
         </View>
+        {session.followupStatus === "waiting" ? <Text testID="option-current-question" style={muted}>{locale?.startsWith("zh") ? `Q${number(session.activeQuestion)} · 当前题` : `Q${number(session.activeQuestion)} · Current question`}</Text> : null}
         <Text testID="option-progress" style={muted}>{t("answerCard.progress", { chosen: answeredCount, total: session.set.questions.length, remaining: session.set.questions.length - answeredCount })}</Text>
         {readOnly && Platform.OS === "web" ? <View style={{ backgroundColor: tokens.surface1 }} ref={(node: View | null) => {
           const frame = node as unknown as HTMLElement | null;
@@ -764,16 +783,16 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
           ? t("answerCard.hintSend").replace(/^Tab →\s*/, "↵ ").toLowerCase()
           : `${t("answerCard.hintMove").replace(/^↑\s*↓/, "↑↓")} · ↵ ${t("answerCard.hintPick").replace(/^A B C D\s*/, "")}`}</Text> : <View testID="option-hint-slot" style={{ minHeight: hintHeight }} />}
         <Pressable {...focusProps("option-send")} testID="option-send" accessibilityRole="button" accessibilityState={{ disabled: sendDisabled }} disabled={sendDisabled} focusable={!sendDisabled} onPress={() => {
-          const current = getOptionSession(agentId);
+          const current = getOptionSessionAt(agentId, at);
           if (!current || current.at !== at || sendDisabled) return;
           if (draftReady) {
             if (Platform.OS === "web") root.current?.querySelector<HTMLElement>('[data-testid="option-send"]')?.blur();
             setFocused(null);
-            confirmCustom(agentId, index);
-            const next = missingQuestion(agentId);
+            confirmCustom(agentId, index, at);
+            const next = missingQuestion(agentId, at);
             if (next !== null) {
-              setActiveQuestion(agentId, next);
-              const after = getOptionSession(agentId);
+              setActiveQuestion(agentId, next, at);
+              const after = getOptionSessionAt(agentId, at);
               if (after) {
                 // Always start at the first control, regardless of cursor or recommendation.
                 const first = after.set.questions[next]!.options[0];
@@ -782,26 +801,26 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
               return;
             }
           }
-          if (missingQuestion(agentId) === null) {
+          if (missingQuestion(agentId, at) === null) {
             pendingSendFocusAgents.set(focusCardKey(agentId, at), Date.now());
           }
           prepareSend(draftReady);
           const pending = pendingSend.current;
           const finishSend = () => {
-            if (!getOptionSession(agentId)?.readOnly) {
+            if (!getOptionSessionAt(agentId, at)?.readOnly) {
               pendingSendFocusAgents.delete(focusCardKey(agentId, at));
               if (pendingSend.current === pending) { pending?.stop(); pendingSend.current = null; }
               if (Platform.OS === "web") setTimeout(() => {
-                const current = getOptionSession(agentId);
+                const current = getOptionSessionAt(agentId, at);
                 if (!current || current.at !== at || current.readOnly || current.sending) return;
                 const send = root.current?.querySelector<HTMLElement>('[data-testid="option-send"]');
                 if (send && !(send as HTMLButtonElement).disabled && send.getAttribute?.("aria-disabled") !== "true") send.focus({ preventScroll: true });
               }, 0);
             }
           };
-          void sendAnswer(agentId).then(finishSend).catch(finishSend);
+          void sendAnswer(agentId, at).then(finishSend).catch(finishSend);
         }} style={[{ minHeight: 44, justifyContent: "center", alignItems: "center", paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderStyle: "solid", borderColor: sendDisabled ? tokens.foregroundMuted : tokens.accent, backgroundColor: sendDisabled ? "transparent" : tokens.accent }, focusStyle(sendDisabled ? "" : "option-send")]}>
-          <Text style={{ ...label, color: sendDisabled ? tokens.foregroundMuted : tokens.accentForeground, fontWeight: "700" }}>{customOpen && customConfirmed === undefined ? t("answerCard.sendAction") : missing === null ? t("answerCard.send", { answer: answerIndex(agentId) ?? "" }) : t("answerCard.missing", { question: number(missing) })}</Text>
+          <Text style={{ ...label, color: sendDisabled ? tokens.foregroundMuted : tokens.accentForeground, fontWeight: "700" }}>{customOpen && customConfirmed === undefined ? t("answerCard.sendAction") : missing === null ? t("answerCard.send", { answer: answerIndex(agentId, at) ?? "" }) : t("answerCard.missing", { question: number(missing) })}</Text>
         </Pressable>
       </View>}
     </View>

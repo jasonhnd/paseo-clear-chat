@@ -255,34 +255,37 @@ export function getStoredAnswerDraft(key: string): unknown {
 }
 
 /** Best effort: a draft write never blocks or breaks the card. */
-export function storeAnswerDraft(key: string, draft: AnswerDraft): void {
-  void enqueue((values) => {
+export function storeAnswerDraft(key: string, draft: AnswerDraft): Promise<void> {
+  return enqueue((values) => {
     const entries = Object.entries({ ...(values.answerDrafts ?? {}), [key]: draft });
     const kept = entries.length <= DRAFT_LIMIT ? entries : entries.slice(entries.length - DRAFT_LIMIT);
     return { ...values, answerDrafts: Object.fromEntries(kept) };
-  });
+  }, true);
 }
 
-export function clearStoredAnswerDraft(key: string): void {
-  void enqueue((values) => {
+export function clearStoredAnswerDraft(key: string): Promise<void> {
+  return enqueue((values) => {
     if (!(key in (values.answerDrafts ?? {}))) return values;
     const next = { ...(values.answerDrafts ?? {}) };
     delete next[key];
     return { ...values, answerDrafts: next };
-  });
+  }, true);
 }
 
-function enqueue(change: (values: PresentationSettings) => PresentationSettings): Promise<void> {
+function enqueue(change: (values: PresentationSettings) => PresentationSettings, propagateFailure = false): Promise<void> {
   const version = localVersion;
   const reset = resetVersion;
-  pending = pending.then(async () => {
+  const operation = pending.then(async () => {
     const values = await savePreferences(change);
     applySavedPreferences(values, version, reset);
-  }).catch((error: unknown) => {
+  });
+  pending = operation.catch((error: unknown) => {
     storageError = error instanceof SettingsFailure ? error.message : STARTUP_MESSAGES.settingsRead;
     publish();
   });
-  return pending;
+  // A legacy fire-and-forget caller is observed by pending.catch above; draft
+  // callers can still await the original rejection without poisoning the queue.
+  return propagateFailure ? operation : pending;
 }
 
 export function initializeEnhancerPreferences(rpc: PluginClientContext["rpc"]): Promise<void> {

@@ -23,8 +23,8 @@ export interface AnswerDraftV1 {
 export interface AnswerDraftStore {
   /** Returns whatever was stored; the caller validates before using it. */
   read(key: string): unknown;
-  write(key: string, draft: AnswerDraftV1): void;
-  clear?(key: string): void;
+  write(key: string, draft: AnswerDraftV1): void | Promise<void>;
+  clear?(key: string): void | Promise<void>;
 }
 
 let draftStore: AnswerDraftStore | null = null;
@@ -61,10 +61,7 @@ function booleanRecord(value: unknown): Record<string, boolean> | null {
 }
 
 /** A shape we do not recognise is dropped, never migrated and never guessed at. */
-function readDraft(agentId: string, at: number): AnswerDraftV1 | null {
-  if (!draftStore) return null;
-  let raw: unknown;
-  try { raw = draftStore.read(answerDraftKey(agentId, at)); } catch { return null; }
+function decodeDraft(raw: unknown): AnswerDraftV1 | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const value = raw as Record<string, unknown>;
   if (value.schema !== 1) return null;
@@ -76,6 +73,21 @@ function readDraft(agentId: string, at: number): AnswerDraftV1 | null {
   if (!choices || !customDrafts || !customOpen) return null;
   if (typeof activeQuestion !== "number" || !Number.isInteger(activeQuestion) || activeQuestion < 0) return null;
   return { schema: 1, choices, customDrafts, customOpen, activeQuestion };
+}
+
+type DraftRead = { kind: "valid"; value: AnswerDraftV1 } | { kind: "absent" | "invalid" | "unavailable" };
+function inspectDraft(agentId: string, at: number): DraftRead {
+  if (!draftStore) return { kind: "unavailable" };
+  try {
+    const raw = draftStore.read(answerDraftKey(agentId, at));
+    if (raw === undefined || raw === null) return { kind: "absent" };
+    const value = decodeDraft(raw);
+    return value ? { kind: "valid", value } : { kind: "invalid" };
+  } catch { return { kind: "unavailable" }; }
+}
+function readDraft(agentId: string, at: number): AnswerDraftV1 | null {
+  const result = inspectDraft(agentId, at);
+  return result.kind === "valid" ? result.value : null;
 }
 
 /**
@@ -149,31 +161,68 @@ export function initializeAnswerState(agentId: string, at: number): void {
   try { answerStatePublisher.initialize(agentId, Math.max(0, total - answered), total); } catch { /* A hint must not break rendering. */ }
 }
 
-const draftTimers = new Map<string, ReturnType<typeof setTimeout>>();
+type DraftPending = { timer: ReturnType<typeof setTimeout>; completion: Promise<boolean>; cancel(): void };
+const draftTimers = new Map<string, DraftPending>();
 
 function persistDraft(agentId: string, session: OptionSession): void {
-  if (!draftStore) return;
+  const store = draftStore;
+  if (!store) return;
   const key = answerDraftKey(agentId, session.at);
-  const previous = draftTimers.get(key);
-  if (previous) clearTimeout(previous);
-  if (session.readOnly) {
-    draftTimers.delete(key);
-    try { draftStore.clear?.(key); } catch { /* A failed clear must not break sending. */ }
-    return;
-  }
-  const choices: Record<string, string> = {};
-  for (const [index, letter] of Object.entries(session.choices)) if (typeof letter === "string") choices[index] = letter;
+  draftTimers.get(key)?.cancel();
+  let settle!: (ok: boolean) => void;
+  const completion = new Promise<boolean>(resolve => { settle = resolve; });
   const draft: AnswerDraftV1 = {
     schema: 1,
-    choices,
-    customDrafts: { ...session.customDrafts },
-    customOpen: { ...session.customOpen },
-    activeQuestion: session.activeQuestion,
+    choices: Object.fromEntries(Object.entries(session.choices).filter((entry): entry is [string, string] => typeof entry[1] === "string")),
+    customDrafts: { ...session.customDrafts }, customOpen: { ...session.customOpen }, activeQuestion: session.activeQuestion,
   };
-  draftTimers.set(key, setTimeout(() => {
-    draftTimers.delete(key);
-    try { draftStore?.write(key, draft); } catch { /* Drafts are best effort. */ }
-  }, 400));
+  const entry: DraftPending = {
+    completion,
+    timer: setTimeout(() => {
+      void (async () => {
+        try {
+          if (draftStore !== store) { settle(false); return; }
+          if (session.readOnly) await store.clear?.(key);
+          else await store.write(key, draft);
+          settle(true);
+        } catch { settle(false); }
+        finally { if (draftTimers.get(key) === entry) draftTimers.delete(key); }
+      })();
+    }, session.readOnly ? 0 : 400),
+    cancel: () => { clearTimeout(entry.timer); settle(false); },
+  };
+  draftTimers.set(key, entry);
+}
+
+function canonicalDraft(draft: AnswerDraftV1): string {
+  function sort<T>(obj: Record<string, T>) { return Object.fromEntries(Object.entries(obj).sort(([a], [b]) => a.localeCompare(b))); }
+  return JSON.stringify({ schema: draft.schema, choices: sort(draft.choices), customDrafts: sort(draft.customDrafts), customOpen: sort(draft.customOpen), activeQuestion: draft.activeQuestion });
+}
+
+/** Resume exactly this card only if its draft and identity remain stable. */
+export async function resumeAnswerDraft(agentId: string, at: number): Promise<boolean> {
+  const original = getOptionSessionAt(agentId, at);
+  const store = draftStore;
+  if (!original || original.followupStatus !== "waiting" || !store) return false;
+  const key = answerDraftKey(agentId, at);
+  const before = inspectDraft(agentId, at);
+  const pending = draftTimers.get(key);
+  if (before.kind !== "valid" && !pending) return false;
+  // Also yields once when there is no pending write so click-time mutations are visible.
+  const settled = pending ? await pending.completion : (await Promise.resolve(), true);
+  if (!settled || draftStore !== store || getOptionSessionAt(agentId, at) !== original || draftTimers.has(key)) return false;
+  const after = inspectDraft(agentId, at);
+  if (after.kind !== "valid") return false;
+  if (!pending && (before.kind !== "valid" || canonicalDraft(before.value) !== canonicalDraft(after.value))) return false;
+  if (pending) {
+    const expected: AnswerDraftV1 = { schema: 1, choices: Object.fromEntries(Object.entries(original.choices).filter((entry): entry is [string, string] => typeof entry[1] === "string")), customDrafts: { ...original.customDrafts }, customOpen: { ...original.customOpen }, activeQuestion: original.activeQuestion };
+    if (canonicalDraft(expected) !== canonicalDraft(after.value)) return false;
+  }
+  const sessions = snapshots.get(agentId);
+  if (!sessions || sessions.get(at) !== original) return false;
+  sessions.set(at, { ...original, readOnly: false, followupStatus: undefined });
+  notify();
+  return true;
 }
 
 export interface OptionSession {
@@ -188,6 +237,7 @@ export interface OptionSession {
   cursor: number[];
   dismissed: boolean;
   readOnly: boolean;
+  followupStatus?: "waiting" | "ended" | "unsafe";
   sending: boolean;
   error: string | null;
   answeredText: string | null;
@@ -246,7 +296,7 @@ onEnhancerPreferencesReady(() => {
 });
 
 export function useOptionSession(agentId: string, at?: number): OptionSession | null {
-  const read = useCallback(() => getOptionSession(agentId, at), [agentId, at]);
+  const read = useCallback(() => at === undefined ? getOptionSession(agentId) : getOptionSessionAt(agentId, at), [agentId, at]);
   return useSyncExternalStore(subscribeOptionSession, read, read);
 }
 
@@ -273,16 +323,11 @@ function matchTypedChoices(set: OptionQuestionSet, text: string, legacyIdentifie
   return choices;
 }
 
-/** Conservative distinction: obvious sentence-like, single-line prose with no
- * answer-shaped token or block marker. All other input remains ambiguous and
- * keeps the pre-existing read-only history behavior. */
-function isConfidentOrdinaryMessage(text: string): boolean {
-  const value = text.trim();
-  if (!value || /[\r\n：:]/.test(value)) return false;
-  if (/\b(?:[A-H]|[A-Z]?\d+[A-H]?)\b/i.test(value)) return false;
-  // Only an explicit request to wait is sufficiently unambiguous. Freeform
-  // replies such as "I prefer the latter" may themselves be an answer.
-  return /^(?:please\s+wait(?:\s+until\s+tomorrow)?|please\s+hold|hold\s+on)[.!?]*$/i.test(value) || value === "我还没选完，你先别改代码" || value === "まだ選び終わっていないので、待ってください。";
+/** Detect answer-shaped tokens without guessing intent. */
+function containsAnswerShape(text: string): boolean {
+  const firstLine = text.split(/\r?\n/, 1)[0] ?? "";
+  if (/^(?:[A-Z]?\d+[A-H](?:\s+|$))+/i.test(firstLine.trim())) return true;
+  return text.split(/\s+/).some(token => /^([A-Z]?[0-9]+)?([A-H])$/i.test(token));
 }
 
 function reconcileAnswers(agentId: string): boolean {
@@ -293,10 +338,25 @@ function reconcileAnswers(agentId: string): boolean {
   let changed = false;
   for (const [at, session] of sessions) {
     const nextReply = times.find(time => time > at) ?? Infinity;
-    // Only an already validated per-card draft permits skipping confidently
-    // ordinary prose. Ambiguous and answer-shaped messages retain legacy logic.
-    const draft = readDraft(agentId, at);
-    const answer = userMessages.find(([time, text]) => time > at && time < nextReply && !(draft && isConfidentOrdinaryMessage(text)));
+    const answer = userMessages.find(([time]) => time > at && time < nextReply);
+    if (answer && (session.answerAt !== answer[0] || session.answeredText !== answer[1])) {
+      try {
+        const parsed = parseCustomAnswerHistory(session.set, answer[1]);
+        const typed = typedChoices(session.set, answer[1]);
+        const sent = (session.sending || (session.answerAt === null && session.answeredText === answer[1])) && sessionAnswerText(session) === answer[1];
+        if (!parsed && !Object.keys(typed).length && !sent && !containsAnswerShape(answer[1])) {
+          const draft = inspectDraft(agentId, at);
+          const status = draft.kind === "valid" ? "waiting" : draft.kind === "unavailable" ? "unsafe" : "ended";
+          sessions.set(at, { ...session, readOnly: true, followupStatus: status, answeredText: answer[1], answerAt: answer[0], error: null });
+          changed = true;
+          continue;
+        }
+      } catch {
+        sessions.set(at, { ...session, readOnly: true, followupStatus: "unsafe", answeredText: answer[1], answerAt: answer[0] });
+        changed = true;
+        continue;
+      }
+    }
     if (answer && (session.answerAt !== answer[0] || session.answeredText !== answer[1])) {
       const sent = (session.sending || (session.answerAt === null && session.answeredText === answer[1])) && sessionAnswerText(session) === answer[1];
       const parsed = sent ? null : parseCustomAnswerHistory(session.set, answer[1]);
@@ -321,7 +381,7 @@ function reconcileAnswers(agentId: string): boolean {
         customConfirmed: sent ? session.customConfirmed : customConfirmed,
         customDrafts: sent ? session.customDrafts : restored ? { ...customConfirmed } : session.answerAt === null && session.answeredText === null ? session.customDrafts : {},
         customOpen: sent ? session.customOpen : customOpen,
-        readOnly: true, answeredText: answer[1], answerAt: answer[0], error: null,
+        readOnly: true, followupStatus: undefined, answeredText: answer[1], answerAt: answer[0], error: null,
       });
       changed = true;
     } else if (!answer && session.answerAt !== null) {
