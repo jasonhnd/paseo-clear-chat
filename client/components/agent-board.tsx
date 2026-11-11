@@ -106,20 +106,23 @@ function TodayBoard(props: BoardProps) {
   );
 }
 
+type UseAgentById = (id: string, selector: (snapshot: Agent) => Agent) => Agent | null;
+type UseWorkspaceName = (id: string, selector: (snapshot: { readonly name: string }) => string) => string | null;
+
 function WaitingRow({ agentRef, theme, navigation }: BoardProps & { agentRef: AgentRef }) {
-  const agent = boardHooks.useAgent(agentRef);
+  const agent = (boardHooks.useAgent as unknown as UseAgentById)(agentRef.id, snapshot => snapshot);
   if (!agent) return null;
   return <WaitingAgentRow agent={agent} theme={theme} navigation={navigation} />;
 }
 
 function WaitingAgentRow({ agent, theme, navigation }: BoardProps & { agent: Agent }) {
-  const workspace = boardHooks.useWorkspace(agent.workspace);
+  const workspaceName = (boardHooks.useWorkspace as unknown as UseWorkspaceName)(agent.workspace.id, snapshot => snapshot.name);
   const { t } = pluginClient.useTranslation(messages);
   const marker = answerMarker(agent);
   if (!marker) return null;
   return (
     <Pressable accessibilityRole="button" onPress={() => navigation.openAgent(agent.ref)} style={[styles.row, { borderColor: theme.colors.border }]}>
-      <Text numberOfLines={1} style={[styles.meta, { color: theme.colors.foregroundMuted }]}>{workspace?.name ?? agent.workspace.id}</Text>
+      <Text numberOfLines={1} style={[styles.meta, { color: theme.colors.foregroundMuted }]}>{workspaceName ?? agent.workspace.id}</Text>
       <Text numberOfLines={1} style={[styles.rowTitle, { color: theme.colors.foreground }]}>{agent.title?.trim() || agent.id.slice(0, 8)}</Text>
       <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>{t("sidebar.answeredOf", { answered: marker.answered, total: marker.total })}</Text>
       <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>{marker.time === null ? t("sidebar.unknownTime") : new Date(marker.time).toLocaleString()}</Text>
