@@ -46,7 +46,11 @@ function AgentRow({ agentRef, section, theme, navigation }: BoardProps & { agent
   return (
     <Pressable accessibilityRole="button" onPress={() => navigation.openAgent(agent.ref)} style={[styles.row, { borderColor: theme.colors.border }]}>
       <Text numberOfLines={1} style={[styles.rowTitle, { color: theme.colors.foreground }]}>{agent.title?.trim() || agent.id.slice(0, 8)}</Text>
-      <Text style={[styles.meta, { color: agent.status === "error" ? theme.colors.statusDanger : theme.colors.foregroundMuted }]}>{t(`sidebar.status.${agent.status}`)}{section === "running" ? ` · ${displayedTime}` : null}</Text>
+      {section === "finished" && agent.status !== "error" ? null : (
+        <Text style={[styles.meta, { color: agent.status === "error" ? theme.colors.statusDanger : theme.colors.foregroundMuted }]}>
+          {[section === "finished" ? t("sidebar.status.error") : `${t(`sidebar.status.${agent.status}`)} · ${displayedTime}`]}
+        </Text>
+      )}
     </Pressable>
   );
 }

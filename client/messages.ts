@@ -5,7 +5,7 @@ import ja from "./locales/ja.json";
 
 const sidebarEn = {
   title: "Clear Chat", description: "Agents grouped by project",
-  today: "Today", waiting: "Waiting for you", directory: "Directory",
+  today: "Today", waiting: "Answers waiting", directory: "Outline",
   waitingEmpty: "Nothing waiting for your answer.", directoryEmpty: "Nothing to show in the directory.",
   running: "Running now", finished: "Finished today", noProjects: "No projects yet.",
   noTodayActivity: "No activity today in this project.", unknownTime: "Time unknown",
