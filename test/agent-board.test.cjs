@@ -9,7 +9,7 @@ test('board uses local midnight and separates running from today and older activ
     const bounds = localDayBounds(Date.parse('2026-03-08T19:00:00Z'));
     assert.equal(new Date(bounds.start).toISOString(), '2026-03-08T08:00:00.000Z');
     assert.equal(new Date(bounds.end).toISOString(), '2026-03-09T07:00:00.000Z');
-    const agent = { status: 'idle', lastActivityAt: '2026-03-08T07:59:59.999Z', updatedAt: '2026-03-08T07:59:59.999Z' };
+    const agent = { status: 'idle', attentionReason: 'finished', lastActivityAt: '2026-03-08T07:59:59.999Z', updatedAt: '2026-03-08T07:59:59.999Z' };
     assert.equal(boardSection(agent, bounds), null);
     assert.equal(boardSection({ ...agent, status: 'running' }, bounds), 'running');
     assert.equal(boardSection({ ...agent, updatedAt: '2026-03-08T08:00:00.000Z' }, bounds), null);

@@ -3,14 +3,14 @@ import type { PluginTheme, PluginText } from "@getpaseo/plugin";
 import React, { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { messages } from "../messages";
-import { boardSection, lastActivityTime, localDayBounds } from "../agent-board-model";
+import { boardSection, compareBoardAgents, lastActivityTime, localDayBounds } from "../agent-board-model";
 
 // These types describe the 0.16 API while the plugin still develops against 0.13.
 type Ref = { readonly key: string; readonly hostId: string; readonly id: string };
 type AgentRef = Ref & { readonly kind: "agent" };
 type ProjectRef = Ref & { readonly kind: "project" };
 type WorkspaceRef = Ref & { readonly kind: "workspace" };
-type Agent = { readonly ref: AgentRef; readonly workspace: WorkspaceRef; readonly id: string; readonly title: string | null; readonly status: "initializing" | "idle" | "running" | "error" | "closed"; readonly lastActivityAt: string; readonly updatedAt: string };
+type Agent = { readonly ref: AgentRef; readonly workspace: WorkspaceRef; readonly id: string; readonly title: string | null; readonly status: "initializing" | "idle" | "running" | "error" | "closed"; readonly lastActivityAt: string; readonly updatedAt: string; readonly attentionReason: "finished" | "error" | "permission" | null };
 type Workspace = { readonly ref: WorkspaceRef; readonly project: ProjectRef };
 type Group<T> = { readonly key: string; readonly items: readonly T[] };
 type BoardHooks = {
@@ -37,7 +37,7 @@ function useToday() {
   return localDayBounds(now);
 }
 
-function AgentRow({ agentRef, theme, navigation }: BoardProps & { agentRef: AgentRef }) {
+function AgentRow({ agentRef, section, theme, navigation }: BoardProps & { agentRef: AgentRef; section: "running" | "finished" }) {
   const agent = boardHooks.useAgent(agentRef);
   const { t, locale } = pluginClient.useTranslation(messages);
   if (!agent) return null;
@@ -46,7 +46,7 @@ function AgentRow({ agentRef, theme, navigation }: BoardProps & { agentRef: Agen
   return (
     <Pressable accessibilityRole="button" onPress={() => navigation.openAgent(agent.ref)} style={[styles.row, { borderColor: theme.colors.border }]}>
       <Text numberOfLines={1} style={[styles.rowTitle, { color: theme.colors.foreground }]}>{agent.title?.trim() || agent.id.slice(0, 8)}</Text>
-      <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>{t(`sidebar.status.${agent.status}`)} · {displayedTime}</Text>
+      <Text style={[styles.meta, { color: agent.status === "error" ? theme.colors.statusDanger : theme.colors.foregroundMuted }]}>{t(`sidebar.status.${agent.status}`)}{section === "running" ? ` · ${displayedTime}` : null}</Text>
     </Pressable>
   );
 }
@@ -59,7 +59,7 @@ function ProjectGroup({ projectRef, bounds, ...props }: BoardProps & { projectRe
   const groups = boardHooks.useAgents({
     where: agent => workspaceKeys.has(agent.workspace.key) && boardSection(agent, bounds) !== null,
     groupBy: agent => boardSection(agent, bounds) ?? "",
-    orderBy: (a, b) => lastActivityTime(b) - lastActivityTime(a),
+    orderBy: compareBoardAgents,
   });
   if (!project) return null;
   const running = groups.find(group => group.key === "running")?.items ?? [];
@@ -71,7 +71,7 @@ function ProjectGroup({ projectRef, bounds, ...props }: BoardProps & { projectRe
       {([ ["running", running], ["finished", finished] ] as const).map(([section, rows]) => (
         <View key={section} style={styles.section}>
           <Text style={[styles.sectionTitle, { color: props.theme.colors.foregroundMuted }]}>{t(section === "running" ? "sidebar.running" : "sidebar.finished")}</Text>
-          {rows.map(ref => <AgentRow key={ref.key} agentRef={ref} {...props} />)}
+          {rows.map(ref => <AgentRow key={ref.key} agentRef={ref} section={section} {...props} />)}
         </View>
       ))}
     </View>

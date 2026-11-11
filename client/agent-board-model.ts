@@ -1,4 +1,4 @@
-type Activity = { status: string; lastActivityAt: string };
+type Activity = { status: string; lastActivityAt: string; attentionReason?: string | null };
 
 // Calendar boundaries use the user's local timezone, including DST transitions.
 export function localDayBounds(now: number) {
@@ -13,7 +13,14 @@ export function lastActivityTime(agent: Activity) {
 }
 
 export function boardSection(agent: Activity, bounds: { start: number; end: number }): "running" | "finished" | null {
-  if (agent.status === "running") return "running";
+  if (agent.status === "initializing" || agent.status === "running") return "running";
+  if (agent.status !== "error" && !(agent.status === "idle" && agent.attentionReason === "finished")) return null;
   const time = lastActivityTime(agent);
   return time >= bounds.start && time < bounds.end ? "finished" : null;
+}
+
+/** Errors lead the finished section; other rows retain last-activity ordering. */
+export function compareBoardAgents(a: Activity, b: Activity): number {
+  const priority = Number(b.status === "error") - Number(a.status === "error");
+  return priority || lastActivityTime(b) - lastActivityTime(a);
 }

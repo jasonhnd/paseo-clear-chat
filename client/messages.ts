@@ -17,7 +17,7 @@ const sidebarZhCN = {
   waitingEmpty: "还没有等待你回答的内容。", directoryEmpty: "目录中还没有可显示的内容。",
   running: "正在运行", finished: "今天已结束", noProjects: "暂无项目。",
   noTodayActivity: "此项目今天没有活动。", unknownTime: "时间未知",
-  status: { initializing: "初始化中", idle: "空闲", running: "运行中", error: "错误", closed: "已关闭" },
+  status: { initializing: "启动中", idle: "空闲", running: "运行中", error: "出错", closed: "已关闭" },
 };
 
 export const messages = defineTranslations({
