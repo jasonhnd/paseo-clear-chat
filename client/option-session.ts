@@ -6,6 +6,145 @@ import type { ConfirmedOptionAnswer } from "./option-custom-answer";
 import { parseCustomAnswerHistory } from "./option-custom-history";
 import { getEnhancerPreferences, onEnhancerPreferencesReady, saveDismissedOptionReply } from "./preferences";
 
+/**
+ * Unfinished drafts of the answer card, keyed per card. Answers that were really
+ * sent are rebuilt from the message history by `reconcileAnswers`; this store
+ * only carries what the history cannot know: choices not yet sent, the custom
+ * text being typed, which row is open, and which question the reader is on.
+ */
+export interface AnswerDraftV1 {
+  schema: 1;
+  choices: Record<string, string>;
+  customDrafts: Record<string, string>;
+  customOpen: Record<string, boolean>;
+  activeQuestion: number;
+}
+
+export interface AnswerDraftStore {
+  /** Returns whatever was stored; the caller validates before using it. */
+  read(key: string): unknown;
+  write(key: string, draft: AnswerDraftV1): void;
+  clear?(key: string): void;
+}
+
+let draftStore: AnswerDraftStore | null = null;
+
+/** Wire the host-backed store once at startup. Without one, drafts stay in memory only. */
+export function setAnswerDraftStore(store: AnswerDraftStore | null): void {
+  draftStore = store;
+}
+
+export function answerDraftKey(agentId: string, at: number): string {
+  return `${agentId}\u0000${at}`;
+}
+
+function stringRecord(value: unknown): Record<string, string> | null {
+  if (value === undefined) return {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const out: Record<string, string> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (!/^\d+$/.test(key) || typeof entry !== "string") return null;
+    out[key] = entry;
+  }
+  return out;
+}
+
+function booleanRecord(value: unknown): Record<string, boolean> | null {
+  if (value === undefined) return {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const out: Record<string, boolean> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (!/^\d+$/.test(key) || typeof entry !== "boolean") return null;
+    out[key] = entry;
+  }
+  return out;
+}
+
+/** A shape we do not recognise is dropped, never migrated and never guessed at. */
+function readDraft(agentId: string, at: number): AnswerDraftV1 | null {
+  if (!draftStore) return null;
+  let raw: unknown;
+  try { raw = draftStore.read(answerDraftKey(agentId, at)); } catch { return null; }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  if (value.schema !== 1) return null;
+  const choices = stringRecord(value.choices);
+  const customDrafts = stringRecord(value.customDrafts);
+  const customOpen = booleanRecord(value.customOpen);
+  const activeQuestion = value.activeQuestion;
+  if (!choices || !customDrafts || !customOpen) return null;
+  if (typeof activeQuestion !== "number" || !Number.isInteger(activeQuestion) || activeQuestion < 0) return null;
+  return { schema: 1, choices, customDrafts, customOpen, activeQuestion };
+}
+
+/**
+ * Restore a draft on top of what history already reconstructed. History wins on
+ * any question it answered; nothing is invented for a question the user never
+ * touched.
+ */
+function restoreDraft(agentId: string, at: number): boolean {
+  const sessions = snapshots.get(agentId);
+  const session = sessions?.get(at);
+  if (!session || session.readOnly || session.dismissed) return false;
+  const draft = readDraft(agentId, at);
+  if (!draft) return false;
+  let touched = false;
+  const choices = { ...session.choices };
+  for (const [index, letter] of Object.entries(draft.choices)) {
+    const i = Number(index);
+    if (choices[i] !== undefined || !session.set.questions[i]) continue;
+    if (!session.set.questions[i]!.options.some(option => option.letter === letter)) continue;
+    choices[i] = letter;
+    touched = true;
+  }
+  const customDrafts = { ...session.customDrafts };
+  for (const [index, text] of Object.entries(draft.customDrafts)) {
+    const i = Number(index);
+    if (customDrafts[i] !== undefined || !session.set.questions[i]) continue;
+    customDrafts[i] = text;
+    touched = true;
+  }
+  const customOpen = { ...session.customOpen };
+  for (const [index, open] of Object.entries(draft.customOpen)) {
+    const i = Number(index);
+    if (customOpen[i] !== undefined || !session.set.questions[i]) continue;
+    customOpen[i] = open;
+    touched = true;
+  }
+  const active = draft.activeQuestion < session.set.questions.length ? draft.activeQuestion : session.activeQuestion;
+  if (active !== session.activeQuestion) touched = true;
+  if (!touched) return false;
+  sessions!.set(at, { ...session, choices, customDrafts, customOpen, activeQuestion: active });
+  return true;
+}
+
+const draftTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function persistDraft(agentId: string, session: OptionSession): void {
+  if (!draftStore) return;
+  const key = answerDraftKey(agentId, session.at);
+  const previous = draftTimers.get(key);
+  if (previous) clearTimeout(previous);
+  if (session.readOnly) {
+    draftTimers.delete(key);
+    try { draftStore.clear?.(key); } catch { /* A failed clear must not break sending. */ }
+    return;
+  }
+  const choices: Record<string, string> = {};
+  for (const [index, letter] of Object.entries(session.choices)) if (typeof letter === "string") choices[index] = letter;
+  const draft: AnswerDraftV1 = {
+    schema: 1,
+    choices,
+    customDrafts: { ...session.customDrafts },
+    customOpen: { ...session.customOpen },
+    activeQuestion: session.activeQuestion,
+  };
+  draftTimers.set(key, setTimeout(() => {
+    draftTimers.delete(key);
+    try { draftStore?.write(key, draft); } catch { /* Drafts are best effort. */ }
+  }, 400));
+}
+
 export interface OptionSession {
   at: number;
   set: OptionQuestionSet;
@@ -156,7 +295,8 @@ export function publishAssistantReply(agentId: string, reply: { at: number; text
       dismissed: false, readOnly: false, sending: false, error: null, answeredText: null, answerAt: null,
     });
   }
-  const changed = reconcileAnswers(agentId);
+  let changed = reconcileAnswers(agentId);
+  if (set && restoreDraft(agentId, reply.at)) changed = true;
   if (reply.at > latest || changed) notify();
 }
 
@@ -175,6 +315,7 @@ function update(agentId: string, change: (snapshot: OptionSession) => OptionSess
   const next = change(previous);
   if (next === previous) return;
   snapshots.get(agentId)!.set(previous.at, next);
+  persistDraft(agentId, next);
   notify();
 }
 
@@ -346,7 +487,9 @@ export async function sendAnswer(agentId: string): Promise<void> {
     await send(agentId, text);
     const current = snapshots.get(agentId)?.get(snapshot.at);
     if (current) {
-      snapshots.get(agentId)!.set(snapshot.at, { ...current, sending: false, readOnly: true, answeredText: current.answeredText ?? text, error: null });
+      const settled = { ...current, sending: false, readOnly: true, answeredText: current.answeredText ?? text, error: null };
+      snapshots.get(agentId)!.set(snapshot.at, settled);
+      persistDraft(agentId, settled);
       notify();
     }
   } catch (error) {

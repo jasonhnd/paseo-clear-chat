@@ -16,11 +16,14 @@ import { extractGeneratedImages } from "./client/generated-images";
 import { containsComponentFence } from "./client/component-fences";
 import { projectedApprovalStatus } from "./client/tool-approval";
 import { installStepDetailPanel } from "./client/components/step-detail-host";
-import { setOptionSender } from "./client/option-session";
+import { setOptionSender, setAnswerDraftStore } from "./client/option-session";
 import {
   getEnhancerPreferences,
   initializeEnhancerPreferences,
   onEnhancerPreferencesReady,
+  getStoredAnswerDraft,
+  storeAnswerDraft,
+  clearStoredAnswerDraft,
 } from "./client/preferences";
 import {
   LiveToolCallRenderer,
@@ -66,6 +69,8 @@ export default function contribute(client: PluginClientContext) {
 function registerClient(client: PluginClientContext) {
   setOptionSender((agentId, text) => client.paseo.agents.ref(agentId).send(text));
   void initializeEnhancerPreferences((contract, input) => client.rpc(contract, input));
+  // Drafts of an unfinished answer card live in host settings, one entry per card.
+  setAnswerDraftStore({ read: getStoredAnswerDraft, write: storeAnswerDraft, clear: clearStoredAnswerDraft });
   // Install the bundled faces before any surface paints.
   const removeFonts = embedFonts();
   const removeFrost = installFrostedGlass();

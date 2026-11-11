@@ -7,6 +7,7 @@ import {
   presentationSettingsRpc,
   type PresentationSettings,
   type PreferenceOverrides,
+  type AnswerDraft,
 } from "../shared/settings";
 
 export const ACCENT_PRESETS = {
@@ -236,12 +237,39 @@ async function savePreferences(
 }
 
 function applySavedPreferences(values: PresentationSettings, version: number, reset: number): void {
+  answerDrafts = (values.answerDrafts ?? {}) as Record<string, unknown>;
   // A queued edit must not be replaced by an older read/write response.
   if (version === localVersion) preferences = { ...DEFAULT_PREFERENCES, ...values.preferences };
   else if (reset === resetVersion) preferences = { ...preferences, dismissedOptionReplies: values.preferences.dismissedOptionReplies ?? [] };
   ready = true;
   storageError = null;
   publish();
+}
+
+const DRAFT_LIMIT = 40;
+let answerDrafts: Record<string, unknown> = {};
+
+/** Last values read from host settings; used to answer a draft read synchronously. */
+export function getStoredAnswerDraft(key: string): unknown {
+  return answerDrafts[key];
+}
+
+/** Best effort: a draft write never blocks or breaks the card. */
+export function storeAnswerDraft(key: string, draft: AnswerDraft): void {
+  void enqueue((values) => {
+    const entries = Object.entries({ ...(values.answerDrafts ?? {}), [key]: draft });
+    const kept = entries.length <= DRAFT_LIMIT ? entries : entries.slice(entries.length - DRAFT_LIMIT);
+    return { ...values, answerDrafts: Object.fromEntries(kept) };
+  });
+}
+
+export function clearStoredAnswerDraft(key: string): void {
+  void enqueue((values) => {
+    if (!(key in (values.answerDrafts ?? {}))) return values;
+    const next = { ...(values.answerDrafts ?? {}) };
+    delete next[key];
+    return { ...values, answerDrafts: next };
+  });
 }
 
 function enqueue(change: (values: PresentationSettings) => PresentationSettings): Promise<void> {
@@ -272,6 +300,7 @@ export function initializeEnhancerPreferences(rpc: PluginClientContext["rpc"]): 
     return {
       preferences: { ...legacy, ...values.preferences },
       legacyMigrated: true,
+      answerDrafts: values.answerDrafts,
     };
   });
 }
@@ -291,6 +320,7 @@ export function updateEnhancerPreferences(update: Partial<EnhancerPreferences>):
   return enqueue((values) => ({
     preferences: { ...values.preferences, ...patch },
     legacyMigrated: true,
+    answerDrafts: values.answerDrafts,
   }));
 }
 
@@ -321,7 +351,7 @@ export function resetEnhancerPreferences(): Promise<void> {
   publish();
   // SDK reset would also clear the migration marker, so write an empty set of
   // explicit choices instead. Each platform then uses its own defaults.
-  return enqueue(() => ({ preferences: {}, legacyMigrated: true }));
+  return enqueue(() => ({ preferences: {}, legacyMigrated: true, answerDrafts: {} }));
 }
 
 export function subscribeEnhancerPreferences(listener: () => void): () => void {

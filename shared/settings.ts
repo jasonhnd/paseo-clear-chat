@@ -39,9 +39,23 @@ export const preferenceOverridesSchema = z.object({
   hiddenTools: z.string().optional(),
 });
 
+// Unfinished answer-card drafts survive a reload here. One entry per card
+// (agent plus reply timestamp); the value carries its own schema number so a
+// shape change can drop old entries instead of migrating or guessing.
+export const answerDraftSchema = z.object({
+  schema: z.literal(1),
+  choices: z.record(z.string(), z.string()).default({}),
+  customDrafts: z.record(z.string(), z.string()).default({}),
+  customOpen: z.record(z.string(), z.boolean()).default({}),
+  activeQuestion: z.number().int().min(0).default(0),
+});
+
+export type AnswerDraft = z.output<typeof answerDraftSchema>;
+
 const presentationSchema = z.object({
   preferences: preferenceOverridesSchema.default({}),
   legacyMigrated: z.boolean().default(false),
+  answerDrafts: z.record(z.string(), answerDraftSchema).optional(),
 });
 
 export const presentationSettings = defineSettings({
@@ -49,7 +63,8 @@ export const presentationSettings = defineSettings({
   scope: "host",
   version: 2,
   schema: presentationSchema,
-  // Version 1 values remain explicit choices. New options use client defaults.
+  // Version 1 and 2 values remain explicit choices. Drafts are an optional field
+  // so older clients strip them instead of failing the schema.
   migrate: (values) => presentationSchema.parse(values),
 });
 
