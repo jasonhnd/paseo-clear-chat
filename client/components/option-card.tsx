@@ -607,7 +607,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
       }
       const record = getOptionAnswerDraft(agentId, at);
       let next: string;
-      if (firstInsertion) {
+      if (firstInsertion || !record || (record.block === undefined && prompt === "")) {
         next = prompt ? `${text}\n${prompt}` : text;
       } else if (record?.block && prompt.startsWith(record.block)
           && (record.block.endsWith("\n") || prompt.length === record.block.length || prompt[record.block.length] === "\n")) {
