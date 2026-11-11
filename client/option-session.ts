@@ -257,7 +257,7 @@ const listeners = new Set<() => void>();
 const pending = new Set<string>();
 let sender: Sender | null = null;
 
-function hasNewerAnswerCard(agentId: string, at: number): boolean {
+export function hasNewerAnswerCard(agentId: string, at: number): boolean {
   return [...(answerCardTimes.get(agentId) ?? [])].some(time => time > at);
 }
 
