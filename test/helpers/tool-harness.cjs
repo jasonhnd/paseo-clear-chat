@@ -208,6 +208,7 @@ function createToolHarness(platform = "ios", options = {}) {
       if (id === "react/jsx-runtime") return { jsx, jsxs: jsx, Fragment: "Fragment" };
       if (id === "react-native") return native;
       if (id === "@getpaseo/plugin/client") return {
+        ...(options.useComposers ? { useComposers: options.useComposers } : {}),
         defineTranslations: translations.defineTranslations,
         useTranslation: translations.useTranslation,
         useSettings: definition => options.settingsHost?.(definition) ?? {
