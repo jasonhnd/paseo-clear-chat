@@ -68,6 +68,7 @@ function readDraft(agentId: string, at: number): AnswerDraftV1 | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const value = raw as Record<string, unknown>;
   if (value.schema !== 1) return null;
+  if (!["choices", "customDrafts", "customOpen", "activeQuestion"].every(key => Object.prototype.hasOwnProperty.call(value, key))) return null;
   const choices = stringRecord(value.choices);
   const customDrafts = stringRecord(value.customDrafts);
   const customOpen = booleanRecord(value.customOpen);
@@ -268,6 +269,18 @@ function matchTypedChoices(set: OptionQuestionSet, text: string, legacyIdentifie
   return choices;
 }
 
+/** Conservative distinction: obvious sentence-like, single-line prose with no
+ * answer-shaped token or block marker. All other input remains ambiguous and
+ * keeps the pre-existing read-only history behavior. */
+function isConfidentOrdinaryMessage(text: string): boolean {
+  const value = text.trim();
+  if (!value || /[\r\n：:]/.test(value)) return false;
+  if (/\b(?:[A-H]|[A-Z]?\d+[A-H]?)\b/i.test(value)) return false;
+  // Only an explicit request to wait is sufficiently unambiguous. Freeform
+  // replies such as "I prefer the latter" may themselves be an answer.
+  return /^(?:please\s+wait(?:\s+until\s+tomorrow)?|please\s+hold|hold\s+on)[.!?]*$/i.test(value);
+}
+
 function reconcileAnswers(agentId: string): boolean {
   const sessions = snapshots.get(agentId);
   if (!sessions) return false;
@@ -276,7 +289,10 @@ function reconcileAnswers(agentId: string): boolean {
   let changed = false;
   for (const [at, session] of sessions) {
     const nextReply = times.find(time => time > at) ?? Infinity;
-    const answer = userMessages.find(([time]) => time > at && time < nextReply);
+    // Only an already validated per-card draft permits skipping confidently
+    // ordinary prose. Ambiguous and answer-shaped messages retain legacy logic.
+    const draft = readDraft(agentId, at);
+    const answer = userMessages.find(([time, text]) => time > at && time < nextReply && !(draft && isConfidentOrdinaryMessage(text)));
     if (answer && (session.answerAt !== answer[0] || session.answeredText !== answer[1])) {
       const sent = (session.sending || (session.answerAt === null && session.answeredText === answer[1])) && sessionAnswerText(session) === answer[1];
       const parsed = sent ? null : parseCustomAnswerHistory(session.set, answer[1]);
