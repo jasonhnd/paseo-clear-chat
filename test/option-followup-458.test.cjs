@@ -11,9 +11,9 @@ function fixture(t, draftByKey={}) {
 const valid={schema:1,choices:{0:'B'},customDrafts:{},customOpen:{},activeQuestion:1};
 const put=(s,data,id,at,value=valid)=>{data[s.answerDraftKey(id,at)]=value};
 
-test('new-version valid draft plus ordinary message stays editable, no invented answers', t=>{
+test('new-version valid draft plus ordinary message stays editable, no invented answers', async t=>{
  const {s,data}=fixture(t);put(s,data,'a',10);s.publishAssistantReply('a',{at:10,text:questions});s.publishUserMessage('a',11,'Please wait until tomorrow.');
- const card=s.getOptionSessionAt('a',10);assert.equal(card.readOnly,false);assert.equal(card.choices[0],'B');assert.equal(card.choices[1],undefined);
+ const card=s.getOptionSessionAt('a',10);assert.equal(card.readOnly,true);assert.equal(card.followupStatus,'waiting');assert.equal(card.choices[0],'B');assert.equal(card.choices[1],undefined);assert.equal(await s.resumeAnswerDraft('a',10),true);assert.equal(s.getOptionSessionAt('a',10).readOnly,false);assert.equal(s.getOptionSessionAt('a',10).choices[0],'B');assert.equal(s.getOptionSessionAt('a',10).choices[1],undefined);
 });
 test('ordinary message with no valid draft retains legacy read-only raw echo', t=>{
  const {s}=fixture(t);s.publishAssistantReply('a',{at:10,text:questions});s.publishUserMessage('a',11,'Please wait until tomorrow.');const c=s.getOptionSessionAt('a',10);assert.equal(c.readOnly,true);assert.equal(c.answeredText,'Please wait until tomorrow.');
@@ -33,11 +33,11 @@ test('recognised custom answer remains read-only, exact and takes priority', t=>
 test('ambiguous numbered text remains read-only, with raw original', t=>{
  const {s,data}=fixture(t);put(s,data,'a',10);s.publishAssistantReply('a',{at:10,text:questions});const text='1B maybe';s.publishUserMessage('a',11,text);const c=s.getOptionSessionAt('a',10);assert.equal(c.readOnly,true);assert.equal(c.answeredText,text);
 });
-test('draft identity stays isolated across agents and card timestamps', t=>{
- const {s,data}=fixture(t);put(s,data,'a',10);s.publishAssistantReply('a',{at:10,text:questions});s.publishUserMessage('a',11,'Please wait until tomorrow.');s.publishAssistantReply('a',{at:20,text:questions});s.publishUserMessage('a',21,'Please wait until tomorrow.');s.publishAssistantReply('b',{at:10,text:questions});s.publishUserMessage('b',11,'Please wait until tomorrow.');assert.equal(s.getOptionSessionAt('a',10).readOnly,false);assert.equal(s.getOptionSessionAt('a',20).readOnly,true);assert.equal(s.getOptionSessionAt('b',10).readOnly,true);
+test('draft identity stays isolated across agents and card timestamps', async t=>{
+ const {s,data}=fixture(t);put(s,data,'a',10);s.publishAssistantReply('a',{at:10,text:questions});s.publishUserMessage('a',11,'Please wait until tomorrow.');s.publishAssistantReply('a',{at:20,text:questions});s.publishUserMessage('a',21,'Please wait until tomorrow.');s.publishAssistantReply('b',{at:10,text:questions});s.publishUserMessage('b',11,'Please wait until tomorrow.');assert.equal(s.getOptionSessionAt('a',10).readOnly,true);assert.equal(s.getOptionSessionAt('a',10).followupStatus,'waiting');assert.equal(s.getOptionSessionAt('a',20).readOnly,true);assert.equal(s.getOptionSessionAt('a',20).followupStatus,'ended');assert.equal(s.getOptionSessionAt('b',10).readOnly,true);assert.equal(s.getOptionSessionAt('b',10).followupStatus,'ended');assert.equal(await s.resumeAnswerDraft('a',10),true);assert.equal(s.getOptionSessionAt('a',10).readOnly,false);assert.equal(s.getOptionSessionAt('a',10).choices[0],'B');
 });
 test('ordinary follow-up created after an actual draft write keeps that card editable', async t=>{
- const {s}=fixture(t);s.publishAssistantReply('a',{at:10,text:questions});s.choose('a',0,'B');await new Promise(r=>setTimeout(r,650));s.publishUserMessage('a',11,'Please wait until tomorrow.');const c=s.getOptionSessionAt('a',10);assert.equal(c.readOnly,false);assert.equal(c.choices[0],'B');
+ const {s}=fixture(t);s.publishAssistantReply('a',{at:10,text:questions});s.choose('a',0,'B');await new Promise(r=>setTimeout(r,650));s.publishUserMessage('a',11,'Please wait until tomorrow.');const c=s.getOptionSessionAt('a',10);assert.equal(c.readOnly,true);assert.equal(c.followupStatus,'waiting');assert.equal(c.choices[0],'B');assert.equal(await s.resumeAnswerDraft('a',10),true);assert.equal(s.getOptionSessionAt('a',10).readOnly,false);assert.equal(s.getOptionSessionAt('a',10).choices[0],'B');
 });
 
 test('answer-like prose and unsupported freeform messages remain read-only when classification is uncertain', t=>{
@@ -51,9 +51,13 @@ test('schema-only incomplete draft does not qualify as a valid new-version recor
 
 test('explicit Chinese and Japanese waiting messages preserve an existing valid draft', t=>{
  for(const [index,text] of ['我还没选完，你先别改代码','まだ選び終わっていないので、待ってください。'].entries()){
-  const {s,data}=fixture(t);put(s,data,'a',100+index);s.publishAssistantReply('a',{at:100+index,text:questions});s.publishUserMessage('a',110+index,text);const c=s.getOptionSessionAt('a',100+index);assert.equal(c.readOnly,false,text);assert.equal(c.choices[0],'B');
+  const {s,data}=fixture(t);put(s,data,'a',100+index);s.publishAssistantReply('a',{at:100+index,text:questions});s.publishUserMessage('a',110+index,text);const c=s.getOptionSessionAt('a',100+index);assert.equal(c.readOnly,true,text);assert.equal(c.followupStatus,'waiting',text);assert.equal(c.choices[0],'B');
  }
 });
-test('interleaved explicit older and latest card choices remain isolated', t=>{
- const {s,data}=fixture(t);put(s,data,'a',10);s.publishAssistantReply('a',{at:10,text:questions});s.publishUserMessage('a',11,'Please wait until tomorrow.');s.publishAssistantReply('a',{at:20,text:questions});s.choose('a',1,'A',10);s.choose('a',0,'A');s.setActiveQuestion('a',2,10);assert.equal(s.getOptionSessionAt('a',10).choices[0],'B');assert.equal(s.getOptionSessionAt('a',10).choices[1],'A');assert.equal(s.getOptionSessionAt('a',10).activeQuestion,2);assert.equal(s.getOptionSession('a').choices[0],'A');assert.equal(s.getOptionSession('a').choices[1],undefined);
+test('interleaved explicit older and latest card choices remain isolated', async t=>{
+ const {s,data}=fixture(t);put(s,data,'a',10);s.publishAssistantReply('a',{at:10,text:questions});s.publishUserMessage('a',11,'Please wait until tomorrow.');s.publishAssistantReply('a',{at:20,text:questions});assert.equal(s.getOptionSessionAt('a',10).readOnly,true);assert.equal(s.getOptionSessionAt('a',10).followupStatus,'waiting');s.choose('a',1,'A',10);assert.equal(s.getOptionSessionAt('a',10).choices[1],undefined);assert.equal(await s.resumeAnswerDraft('a',10),true);assert.equal(s.getOptionSessionAt('a',10).readOnly,false);s.choose('a',1,'A',10);s.choose('a',0,'A');s.setActiveQuestion('a',2,10);assert.equal(s.getOptionSessionAt('a',10).choices[0],'B');assert.equal(s.getOptionSessionAt('a',10).choices[1],'A');assert.equal(s.getOptionSessionAt('a',10).activeQuestion,2);assert.equal(s.getOptionSession('a').choices[0],'A');assert.equal(s.getOptionSession('a').choices[1],undefined);
+});
+
+test('stored draft is restored automatically when no user message follows', t=>{
+ const {s,data}=fixture(t);put(s,data,'a',10);s.publishAssistantReply('a',{at:10,text:questions});const card=s.getOptionSessionAt('a',10);assert.equal(card.readOnly,false);assert.equal(card.followupStatus,undefined);assert.equal(card.choices[0],'B');assert.equal(card.choices[1],undefined);
 });

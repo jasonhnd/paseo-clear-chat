@@ -203,14 +203,15 @@ function canonicalDraft(draft: AnswerDraftV1): string {
 export async function resumeAnswerDraft(agentId: string, at: number): Promise<boolean> {
   const original = getOptionSessionAt(agentId, at);
   const store = draftStore;
-  if (!original || original.followupStatus !== "waiting" || replies.get(agentId) !== at || !store) return false;
+  const latest = replies.get(agentId);
+  if (!original || original.followupStatus !== "waiting" || !store) return false;
   const key = answerDraftKey(agentId, at);
   const before = inspectDraft(agentId, at);
   const pending = draftTimers.get(key);
   if (before.kind !== "valid" && !pending) return false;
   // Also yields once when there is no pending write so click-time mutations are visible.
   const settled = pending ? await pending.completion : (await Promise.resolve(), true);
-  if (!settled || draftStore !== store || replies.get(agentId) !== at || getOptionSessionAt(agentId, at) !== original || draftTimers.has(key)) return false;
+  if (!settled || draftStore !== store || replies.get(agentId) !== latest || getOptionSessionAt(agentId, at) !== original || draftTimers.has(key)) return false;
   const after = inspectDraft(agentId, at);
   if (after.kind !== "valid") return false;
   if (!pending && (before.kind !== "valid" || canonicalDraft(before.value) !== canonicalDraft(after.value))) return false;
@@ -403,8 +404,6 @@ export function publishAssistantReply(agentId: string, reply: { at: number; text
   const latest = replies.get(agentId) ?? -Infinity;
   if (reply.at > latest) {
     replies.set(agentId, reply.at);
-    const earlier = snapshots.get(agentId)?.get(latest);
-    if (earlier && !earlier.readOnly) snapshots.get(agentId)!.set(latest, { ...earlier, readOnly: true, superseded: true });
   }
   const set = !isDismissed(agentId, reply.at) ? parseOptionQuestions(reply.text) : null;
   if (set) {
@@ -413,11 +412,11 @@ export function publishAssistantReply(agentId: string, reply: { at: number; text
     sessions.set(reply.at, {
       at: reply.at, set, choices: {}, notes: {}, customDrafts: {}, customConfirmed: {}, customOpen: {}, activeQuestion: 0,
       cursor: set.questions.map(question => Math.max(0, question.options.findIndex(option => option.recommended))),
-      dismissed: false, readOnly: reply.at < latest, superseded: reply.at < latest, sending: false, error: null, answeredText: null, answerAt: null,
+      dismissed: false, readOnly: false, sending: false, error: null, answeredText: null, answerAt: null,
     });
   }
-  let changed = reconcileAnswers(agentId);
-  if (set && restoreDraft(agentId, reply.at)) changed = true;
+  let changed = !!set && restoreDraft(agentId, reply.at);
+  if (reconcileAnswers(agentId)) changed = true;
   if (reply.at > latest || changed) notify();
 }
 
