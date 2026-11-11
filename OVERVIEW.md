@@ -52,7 +52,7 @@ Clear Chat changes only how Paseo shows a conversation; the repository README li
 - Interface text follows the app language in English, Simplified Chinese and Japanese.
 - On the iOS and Android apps, code uses the system monospace font, and hardware keyboard shortcuts for steps are not available.
 - In the iPhone app you cannot long-press to select text in paragraphs containing links or in step summaries; use the reply's **Copy** button to copy the whole reply.
-- In the checked web cases, if you scroll up above the answer card and then confirm an answer, the page may jump straight back to the bottom; when the page was already at the bottom the confirmation was smooth. The cause is still being investigated.
+- After you confirm an answer, Paseo scrolls the conversation to the bottom. If you had scrolled up above the answer card, you are taken back to the bottom. This is Paseo's own behaviour after the content changes; the plugin cannot prevent it.
 - In the read-only answer frame, Space on a focused question tab does not switch questions because Paseo handles that key first; click the tab or press Enter instead.
 - When a code block is drawn by Paseo, its own **Copy** button is about 22 × 22 px on a phone-width screen and does not include trailing blank lines; the plugin interface offers no way to resize that button.
 - Pasted images in your original Hermes agents need the **·CC** provider copy, because Paseo removes the images before a plugin sees them.
