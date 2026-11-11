@@ -36,3 +36,26 @@ export function compareBoardAgents(a: Activity, b: Activity): number {
   const priority = Number(b.status === "error") - Number(a.status === "error");
   return priority || lastActivityTime(b) - lastActivityTime(a);
 }
+type WaitingAgent = { readonly id: string; readonly title: string | null; readonly metadata?: unknown };
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+export function answerMarker(agent: WaitingAgent): { pending: number; total: number; answered: number; time: number | null } | null {
+  const marker = record(record(agent.metadata)?.clearChat);
+  const pending = marker?.pending;
+  if (typeof pending !== "number" || !Number.isFinite(pending) || pending <= 0) return null;
+  const total = typeof marker?.total === "number" && Number.isFinite(marker.total) && marker.total >= 0 ? marker.total : 0;
+  const parsed = typeof marker?.updatedAt === "string" ? Date.parse(marker.updatedAt) : NaN;
+  return { pending, total, answered: Math.max(0, Math.min(total, total - pending)), time: Number.isFinite(parsed) ? parsed : null };
+}
+
+export function compareWaitingAgents(a: WaitingAgent, b: WaitingAgent): number {
+  const at = answerMarker(a)?.time ?? null;
+  const bt = answerMarker(b)?.time ?? null;
+  if (at === null && bt !== null) return 1;
+  if (bt === null && at !== null) return -1;
+  if (at !== null && bt !== null && at !== bt) return bt - at;
+  return (a.title?.trim() || a.id.slice(0, 8)).localeCompare(b.title?.trim() || b.id.slice(0, 8)) || a.id.localeCompare(b.id);
+}

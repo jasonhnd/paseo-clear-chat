@@ -2,8 +2,12 @@ import { defineTranslations } from "@getpaseo/plugin/client";
 import en from "./locales/en.json";
 import zhCN from "./locales/zh-CN.json";
 import ja from "./locales/ja.json";
+import sidebarEnExtra from "./sidebar-locales/en.json";
+import sidebarZhCNExtra from "./sidebar-locales/zh-CN.json";
+import sidebarJaExtra from "./sidebar-locales/ja.json";
 
 const sidebarEn = {
+  ...sidebarEnExtra,
   title: "Clear Chat", description: "Agents grouped by project",
   today: "Today", waiting: "Answers waiting", directory: "Outline",
   waitingEmpty: "Nothing waiting for your answer.", directoryEmpty: "Nothing to show in the directory.",
@@ -12,6 +16,7 @@ const sidebarEn = {
   status: { initializing: "Initializing", idle: "Idle", running: "Running", error: "Error", closed: "Closed" },
 };
 const sidebarZhCN = {
+  ...sidebarZhCNExtra,
   title: "Clear Chat", description: "按项目分组的智能体",
   today: "今天", waiting: "等你回答", directory: "目录",
   waitingEmpty: "还没有等待你回答的内容。", directoryEmpty: "目录中还没有可显示的内容。",
@@ -22,6 +27,7 @@ const sidebarZhCN = {
 
 
 const sidebarJa = {
+  ...sidebarJaExtra,
   title: "Clear Chat", description: "プロジェクト別のエージェント",
   today: "今日", waiting: "回答待ち", directory: "一覧",
   waitingEmpty: "回答待ちはありません。", directoryEmpty: "一覧に表示する内容はありません。",
