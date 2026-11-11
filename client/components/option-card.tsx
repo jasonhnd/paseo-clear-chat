@@ -13,6 +13,15 @@ import type { ExtendedThemeTokens } from "./theme-tokens";
 const pendingSendFocusAgents = new Map<string, number>();
 const focusCardKey = (agentId: string, at: number) => `${agentId}\u0000${at}`;
 
+/**
+ * The Recommended badge sits on a tinted accent background. On dark themes the
+ * accent itself falls below 4.5:1 against that tint, so the badge uses the host
+ * foreground there. Light themes keep the accent exactly as before.
+ */
+export function recommendedBadgeColor(tokens: ExtendedThemeTokens): string {
+  return tokens.isDark ? tokens.foreground : tokens.accent;
+}
+
 export function OptionCard({ agentId, at, tokens }: { agentId: string; at: number; tokens: ExtendedThemeTokens }) {
   const { t } = useTranslation(messages);
   const session = useOptionSession(agentId, at);
@@ -429,6 +438,9 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   const number = (i: number) => questionNumber(session.set, i);
   const label = { color: tokens.foreground, fontFamily: tokens.fontUi, fontSize: tokens.fs(13) };
   const muted = { ...label, color: tokens.foregroundMuted, fontSize: tokens.fs(12) };
+  // Reserve one hint row so the card does not jump when the hint appears or clears.
+  // A hint that needs a second line grows once, on purpose.
+  const hintHeight = tokens.fs(16);
   const focusProps = (id: string) => Platform.OS === "web" ? {
     onFocus: () => setFocused(id),
     onBlur: () => setFocused(current => current === id ? null : current),
@@ -681,7 +693,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
             const contents = <>
               <Text style={{ ...label, color: readOnly ? tokens.foregroundMuted : selected ? tokens.accent : tokens.foregroundMuted, fontWeight: "700", overflow: "hidden", borderWidth: 1, borderColor: readOnly ? tokens.border : selected ? tokens.accent : tokens.border, borderRadius: 5, paddingHorizontal: 7, paddingVertical: 3 }}>{option.letter}</Text>
               <View style={{ flex: 1 }}><Text style={label}>{first}</Text>{rest.length ? <Text style={muted}>{rest.join("\n")}</Text> : null}</View>
-              {option.recommended ? <Text style={{ ...muted, color: readOnly ? tokens.foregroundMuted : tokens.accent, overflow: "hidden", borderRadius: 10, backgroundColor: readOnly ? "transparent" : tokens.accentBg, paddingHorizontal: 8, paddingVertical: 3 }}>{t("answerCard.recommended")}</Text> : null}
+              {option.recommended ? <Text style={{ ...muted, color: readOnly ? tokens.foregroundMuted : recommendedBadgeColor(tokens), overflow: "hidden", borderRadius: 10, backgroundColor: readOnly ? "transparent" : tokens.accentBg, paddingHorizontal: 8, paddingVertical: 3 }}>{t("answerCard.recommended")}</Text> : null}
               {selected ? <Text style={{ ...label, color: readOnly ? tokens.foregroundMuted : tokens.accent, fontWeight: "700" }}>✓</Text> : null}
             </>;
             return readOnly
@@ -743,11 +755,11 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
       </View>
       {readOnly ? <View style={{ padding: 16, borderTopWidth: 1, borderColor: tokens.border }}><Text testID="option-answered" style={muted}>{`Answered in the chat: ${session.answeredText}`}</Text></View> : <View style={{ flexDirection: hasCustomAnswer ? "column" : "row", alignItems: hasCustomAnswer ? "stretch" : "center", justifyContent: "space-between", gap: 8, padding: 16, borderTopWidth: 1, borderColor: tokens.border, borderBottomLeftRadius: 11, borderBottomRightRadius: 11, backgroundColor: tokens.surface2 }}>
         {hasCustomAnswer && answer !== null ? <Text testID="option-send-preview" selectable style={{ ...label, color: tokens.foregroundMuted }}>{answer}</Text> : null}
-        {Platform.OS === "web" || (customOpen && customConfirmed === undefined) ? <Text testID="option-hint" style={{ ...muted, fontFamily: customOpen && customConfirmed === undefined ? tokens.fontUi : tokens.fontMono, flexShrink: 1 }}>{customOpen && customConfirmed === undefined
+        {Platform.OS === "web" || (customOpen && customConfirmed === undefined) ? <Text testID="option-hint" style={{ ...muted, lineHeight: hintHeight, minHeight: hintHeight, fontFamily: customOpen && customConfirmed === undefined ? tokens.fontUi : tokens.fontMono, flexShrink: 1 }}>{customOpen && customConfirmed === undefined
           ? t("answerCard.hintCustom")
           : focused === "option-send"
           ? t("answerCard.hintSend").replace(/^Tab →\s*/, "↵ ").toLowerCase()
-          : `${t("answerCard.hintMove").replace(/^↑\s*↓/, "↑↓")} · ↵ ${t("answerCard.hintPick").replace(/^A B C D\s*/, "")}`}</Text> : <View />}
+          : `${t("answerCard.hintMove").replace(/^↑\s*↓/, "↑↓")} · ↵ ${t("answerCard.hintPick").replace(/^A B C D\s*/, "")}`}</Text> : <View testID="option-hint-slot" style={{ minHeight: hintHeight }} />}
         <Pressable {...focusProps("option-send")} testID="option-send" accessibilityRole="button" accessibilityState={{ disabled: sendDisabled }} disabled={sendDisabled} focusable={!sendDisabled} onPress={() => {
           const current = getOptionSession(agentId);
           if (!current || current.at !== at || sendDisabled) return;
