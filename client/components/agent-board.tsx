@@ -50,6 +50,8 @@ function AgentRow({ agentRef, section, theme, navigation }: BoardProps & { agent
         agent.status === "error" ? (
           <Text style={[styles.meta, { color: theme.colors.statusDanger }]}>{[t("sidebar.status.error")]}</Text>
         ) : null
+      ) : agent.status === "initializing" ? (
+        <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>{[t("sidebar.status.initializing")]}</Text>
       ) : (
         <View style={styles.runningMeta}>
           <View style={[styles.pill, { backgroundColor: theme.colors.accent }]}>
