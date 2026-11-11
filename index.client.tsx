@@ -3,6 +3,7 @@ import { initializeClientTranslations, translate as t } from "./client/translati
 import type { PluginClientContext, PluginTimelineTransformerContribution } from "@getpaseo/plugin/client";
 import { z } from "zod";
 import { requireHostMethods, STARTUP_MESSAGES } from "./shared/startup-diagnostics";
+import { ClearChatSidebar, type SidebarViewRegistration } from "./client/components/agent-board";
 import { ClearChatSettingsPage } from "./client/settings-page";
 import { embedFonts } from "./client/components/embed-fonts";
 import { installFrostedGlass } from "./client/components/frosted";
@@ -64,6 +65,12 @@ export default function contribute(client: PluginClientContext) {
 }
 
 function registerClient(client: PluginClientContext) {
+  // Sidebar views were introduced in Paseo 0.16.
+  const sidebarClient = client as PluginClientContext & SidebarViewRegistration;
+  const removeSidebar = typeof sidebarClient.addSidebarView === "function"
+    ? sidebarClient.addSidebarView({ id: "clear-chat", title: messages.message("sidebar.title"),
+      description: messages.message("sidebar.description"), Component: ClearChatSidebar })
+    : undefined;
   setOptionSender((agentId, text) => client.paseo.agents.ref(agentId).send(text));
   void initializeEnhancerPreferences((contract, input) => client.rpc(contract, input));
   // Install the bundled faces before any surface paints.
@@ -341,6 +348,7 @@ function registerClient(client: PluginClientContext) {
   });
 
   return () => {
+    removeSidebar?.();
     setOptionSender(null);
     removeFonts();
     removeFrost();
