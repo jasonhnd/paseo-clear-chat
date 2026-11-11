@@ -432,6 +432,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   const disabled = readOnly || session.sending || status === "running";
   const missing = missingQuestion(agentId);
   const answer = answerText(agentId);
+  const answeredCount = session.set.questions.filter((_, i) => session.choices[i] !== undefined || session.customConfirmed[i] !== undefined).length;
   const hasCustomAnswer = Object.keys(session.customConfirmed).length > 0;
   const draftReady = customOpen && customConfirmed === undefined && !!session.customDrafts[index]?.trim();
   const sendDisabled = disabled || (answer === null && !draftReady);
@@ -743,6 +744,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
           {readOnly ? <Text testID="option-read-only-status" style={{ ...muted, marginLeft: "auto" }}>{t("answerCard.readOnlyStatus")}</Text> : null}
           {!readOnly && !session.sending ? <Pressable testID="option-dismiss" accessibilityRole="button" onPress={() => { if (getOptionSession(agentId)?.at === at) dismiss(agentId); }} style={{ minHeight: 44, justifyContent: "center", marginLeft: "auto" }}><Text style={muted}>{t("answerCard.notOptions")}</Text></Pressable> : null}
         </View>
+        <Text testID="option-progress" style={muted}>{t("answerCard.progress", { chosen: answeredCount, total: session.set.questions.length, remaining: session.set.questions.length - answeredCount })}</Text>
         {readOnly && Platform.OS === "web" ? <View style={{ backgroundColor: tokens.surface1 }} ref={(node: View | null) => {
           const frame = node as unknown as HTMLElement | null;
           if (!frame?.style) return;
