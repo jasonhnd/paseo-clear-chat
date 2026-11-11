@@ -204,14 +204,14 @@ export async function resumeAnswerDraft(agentId: string, at: number): Promise<bo
   const original = getOptionSessionAt(agentId, at);
   const store = draftStore;
   const latest = replies.get(agentId);
-  if (!original || original.followupStatus !== "waiting" || !store) return false;
+  if (!original || original.followupStatus !== "waiting" || !store || hasNewerAnswerCard(agentId, at)) return false;
   const key = answerDraftKey(agentId, at);
   const before = inspectDraft(agentId, at);
   const pending = draftTimers.get(key);
   if (before.kind !== "valid" && !pending) return false;
   // Also yields once when there is no pending write so click-time mutations are visible.
   const settled = pending ? await pending.completion : (await Promise.resolve(), true);
-  if (!settled || draftStore !== store || replies.get(agentId) !== latest || getOptionSessionAt(agentId, at) !== original || draftTimers.has(key)) return false;
+  if (!settled || draftStore !== store || replies.get(agentId) !== latest || getOptionSessionAt(agentId, at) !== original || hasNewerAnswerCard(agentId, at) || draftTimers.has(key)) return false;
   const after = inspectDraft(agentId, at);
   if (after.kind !== "valid") return false;
   if (!pending && (before.kind !== "valid" || canonicalDraft(before.value) !== canonicalDraft(after.value))) return false;
@@ -251,10 +251,15 @@ type Sender = (agentId: string, text: string) => Promise<unknown>;
 const replies = new Map<string, number>();
 const messages = new Map<string, Map<number, string>>();
 const replyTimes = new Map<string, Set<number>>();
+const answerCardTimes = new Map<string, Set<number>>();
 const snapshots = new Map<string, Map<number, OptionSession>>();
 const listeners = new Set<() => void>();
 const pending = new Set<string>();
 let sender: Sender | null = null;
+
+function hasNewerAnswerCard(agentId: string, at: number): boolean {
+  return [...(answerCardTimes.get(agentId) ?? [])].some(time => time > at);
+}
 
 function notify(): void {
   for (const listener of listeners) {
@@ -342,6 +347,11 @@ function reconcileAnswers(agentId: string): boolean {
   for (const [at, session] of sessions) {
     const nextReply = times.find(time => time > at) ?? Infinity;
     const answer = userMessages.find(([time]) => time > at && time < nextReply);
+    if (answer && session.answerAt === answer[0] && session.answeredText === answer[1] && (session.followupStatus === "waiting" || session.resumed) && hasNewerAnswerCard(agentId, at)) {
+      sessions.set(at, { ...session, readOnly: true, resumed: false, followupStatus: "ended" });
+      changed = true;
+      continue;
+    }
     if (answer && (session.answerAt !== answer[0] || session.answeredText !== answer[1])) {
       try {
         const parsed = parseCustomAnswerHistory(session.set, answer[1]);
@@ -349,7 +359,7 @@ function reconcileAnswers(agentId: string): boolean {
         const sent = (session.sending || (session.answerAt === null && session.answeredText === answer[1])) && sessionAnswerText(session) === answer[1];
         if (!parsed && !Object.keys(typed).length && !sent && !containsAnswerShape(answer[1])) {
           const draft = inspectDraft(agentId, at);
-          const status = draft.kind === "valid" || draftTimers.has(answerDraftKey(agentId, at)) ? "waiting" : draft.kind === "unavailable" ? "unsafe" : "ended";
+          const status = hasNewerAnswerCard(agentId, at) ? "ended" : draft.kind === "valid" || draftTimers.has(answerDraftKey(agentId, at)) ? "waiting" : draft.kind === "unavailable" ? "unsafe" : "ended";
           sessions.set(at, { ...session, ...(status === "waiting" ? {} : { choices: {}, customConfirmed: {}, customOpen: {} }), readOnly: true, superseded: false, followupStatus: status, answeredText: answer[1], answerAt: answer[0], error: null });
           changed = true;
           continue;
@@ -405,7 +415,13 @@ export function publishAssistantReply(agentId: string, reply: { at: number; text
   if (reply.at > latest) {
     replies.set(agentId, reply.at);
   }
-  const set = !isDismissed(agentId, reply.at) ? parseOptionQuestions(reply.text) : null;
+  const parsed = parseOptionQuestions(reply.text);
+  if (parsed) {
+    let cardTimes = answerCardTimes.get(agentId);
+    if (!cardTimes) answerCardTimes.set(agentId, cardTimes = new Set());
+    cardTimes.add(reply.at);
+  }
+  const set = !isDismissed(agentId, reply.at) ? parsed : null;
   if (set) {
     let sessions = snapshots.get(agentId);
     if (!sessions) snapshots.set(agentId, sessions = new Map());

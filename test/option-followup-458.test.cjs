@@ -34,7 +34,7 @@ test('ambiguous numbered text remains read-only, with raw original', t=>{
  const {s,data}=fixture(t);put(s,data,'a',10);s.publishAssistantReply('a',{at:10,text:questions});const text='1B maybe';s.publishUserMessage('a',11,text);const c=s.getOptionSessionAt('a',10);assert.equal(c.readOnly,true);assert.equal(c.answeredText,text);
 });
 test('draft identity stays isolated across agents and card timestamps', async t=>{
- const {s,data}=fixture(t);put(s,data,'a',10);s.publishAssistantReply('a',{at:10,text:questions});s.publishUserMessage('a',11,'Please wait until tomorrow.');s.publishAssistantReply('a',{at:20,text:questions});s.publishUserMessage('a',21,'Please wait until tomorrow.');s.publishAssistantReply('b',{at:10,text:questions});s.publishUserMessage('b',11,'Please wait until tomorrow.');assert.equal(s.getOptionSessionAt('a',10).readOnly,true);assert.equal(s.getOptionSessionAt('a',10).followupStatus,'waiting');assert.equal(s.getOptionSessionAt('a',20).readOnly,true);assert.equal(s.getOptionSessionAt('a',20).followupStatus,'ended');assert.equal(s.getOptionSessionAt('b',10).readOnly,true);assert.equal(s.getOptionSessionAt('b',10).followupStatus,'ended');assert.equal(await s.resumeAnswerDraft('a',10),true);assert.equal(s.getOptionSessionAt('a',10).readOnly,false);assert.equal(s.getOptionSessionAt('a',10).choices[0],'B');
+ const {s,data}=fixture(t);put(s,data,'a',10);s.publishAssistantReply('a',{at:10,text:questions});s.publishUserMessage('a',11,'Please wait until tomorrow.');s.publishAssistantReply('a',{at:20,text:questions});s.publishUserMessage('a',21,'Please wait until tomorrow.');s.publishAssistantReply('b',{at:10,text:questions});s.publishUserMessage('b',11,'Please wait until tomorrow.');assert.equal(s.getOptionSessionAt('a',10).readOnly,true);assert.equal(s.getOptionSessionAt('a',10).followupStatus,'ended');assert.equal(s.getOptionSessionAt('a',20).readOnly,true);assert.equal(s.getOptionSessionAt('a',20).followupStatus,'ended');assert.equal(s.getOptionSessionAt('b',10).readOnly,true);assert.equal(s.getOptionSessionAt('b',10).followupStatus,'ended');assert.equal(await s.resumeAnswerDraft('a',10),false);assert.equal(s.getOptionSessionAt('a',10).readOnly,true);assert.equal(s.getOptionSessionAt('a',10).choices[0],'B');
 });
 test('ordinary follow-up created after an actual draft write keeps that card editable', async t=>{
  const {s}=fixture(t);s.publishAssistantReply('a',{at:10,text:questions});s.choose('a',0,'B');await new Promise(r=>setTimeout(r,650));s.publishUserMessage('a',11,'Please wait until tomorrow.');const c=s.getOptionSessionAt('a',10);assert.equal(c.readOnly,true);assert.equal(c.followupStatus,'waiting');assert.equal(c.choices[0],'B');assert.equal(await s.resumeAnswerDraft('a',10),true);assert.equal(s.getOptionSessionAt('a',10).readOnly,false);assert.equal(s.getOptionSessionAt('a',10).choices[0],'B');
@@ -55,9 +55,27 @@ test('explicit Chinese and Japanese waiting messages preserve an existing valid 
  }
 });
 test('interleaved explicit older and latest card choices remain isolated', async t=>{
- const {s,data}=fixture(t);put(s,data,'a',10);s.publishAssistantReply('a',{at:10,text:questions});s.publishUserMessage('a',11,'Please wait until tomorrow.');s.publishAssistantReply('a',{at:20,text:questions});assert.equal(s.getOptionSessionAt('a',10).readOnly,true);assert.equal(s.getOptionSessionAt('a',10).followupStatus,'waiting');s.choose('a',1,'A',10);assert.equal(s.getOptionSessionAt('a',10).choices[1],undefined);assert.equal(await s.resumeAnswerDraft('a',10),false);assert.equal(s.getOptionSessionAt('a',10).readOnly,true);s.choose('a',1,'A',10);s.choose('a',0,'A');s.setActiveQuestion('a',2,10);assert.equal(s.getOptionSessionAt('a',10).choices[0],'B');assert.equal(s.getOptionSessionAt('a',10).choices[1],undefined);assert.equal(s.getOptionSessionAt('a',10).activeQuestion,1);assert.equal(s.getOptionSession('a').choices[0],'A');assert.equal(s.getOptionSession('a').choices[1],undefined);
+ const {s,data}=fixture(t);put(s,data,'a',10);s.publishAssistantReply('a',{at:10,text:questions});s.publishUserMessage('a',11,'Please wait until tomorrow.');s.publishAssistantReply('a',{at:20,text:questions});assert.equal(s.getOptionSessionAt('a',10).readOnly,true);assert.equal(s.getOptionSessionAt('a',10).followupStatus,'ended');s.choose('a',1,'A',10);assert.equal(s.getOptionSessionAt('a',10).choices[1],undefined);assert.equal(await s.resumeAnswerDraft('a',10),false);assert.equal(s.getOptionSessionAt('a',10).readOnly,true);s.choose('a',1,'A',10);s.choose('a',0,'A');s.setActiveQuestion('a',2,10);assert.equal(s.getOptionSessionAt('a',10).choices[0],'B');assert.equal(s.getOptionSessionAt('a',10).choices[1],undefined);assert.equal(s.getOptionSessionAt('a',10).activeQuestion,1);assert.equal(s.getOptionSession('a').choices[0],'A');assert.equal(s.getOptionSession('a').choices[1],undefined);
 });
 
 test('stored draft is restored automatically when no user message follows', t=>{
  const {s,data}=fixture(t);put(s,data,'a',10);s.publishAssistantReply('a',{at:10,text:questions});const card=s.getOptionSessionAt('a',10);assert.equal(card.readOnly,false);assert.equal(card.followupStatus,undefined);assert.equal(card.choices[0],'B');assert.equal(card.choices[1],undefined);
+});
+
+
+test('a newer answer card ends an older followed-up draft without a continue action', async t=>{
+ const h=createToolHarness('web',{width:390,agents:{a:{status:'idle'}}});
+ const s=h.load('client/option-session.ts');
+ const Card=h.load('client/components/option-card.tsx').OptionCard;
+ const data={};s.setAnswerDraftStore({read:k=>data[k],write:(k,v)=>{data[k]=v}});
+ t.after(()=>{s.setAnswerDraftStore(null);h.unmount();h.dispose()});
+ put(s,data,'a',10);
+ // Replay out of order to exercise classification when the newer card already exists.
+ s.publishAssistantReply('a',{at:20,text:questions});
+ s.publishAssistantReply('a',{at:10,text:questions});
+ s.publishUserMessage('a',11,'Please wait until tomorrow.');
+ assert.equal(s.getOptionSessionAt('a',10).followupStatus,'ended');
+ assert.equal(await s.resumeAnswerDraft('a',10),false);
+ const tree=h.draw({type:Card,props:{agentId:'a',at:10,tokens:h.tokens}});
+ assert.equal(h.nodes(tree,node=>node.props.testID==='option-resume').length,0);
 });
