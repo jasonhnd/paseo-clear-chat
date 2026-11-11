@@ -29,10 +29,24 @@ test('composer prefill handles an unavailable or locked composer visibly and nev
   assert.match(f.h.text(byId(f.h, f.draw(), 'option-prefill-notice')), /Could not update the composer/);
 });
 
-test('prefill replaces only its first line and refuses an edited first line', async t => {
+// The answer lives on the first line and any user text stays below it, byte for byte
+// (approved design: answers on the first line, original prompt preserved underneath).
+test('insertion puts the answer on the first line and keeps existing user text below', async t => {
+  const f = fixture(); t.after(() => { f.h.unmount(); f.h.dispose(); });
+  f.value = 'my own words';
+  f.press('option-row-A'); f.press('option-send'); await tick();
+  assert.equal(f.value, '1A\nmy own words');
+  assert.equal(f.sent, 0);
+});
+
+// Migrated: a first line the user edited is never rewritten; explicit controls replace it.
+test('prefill replaces only its own first line, refuses an edited first line and offers both choices', async t => {
   const f = fixture(); t.after(() => { f.h.unmount(); f.h.dispose(); });
   f.press('option-row-A'); f.press('option-send'); await tick(); assert.equal(f.value, '1A');
   f.value = '1A\nUser text'; f.press('option-row-C'); await tick(); assert.equal(f.value, '1C\nUser text');
   f.value = 'Edited\nUser text'; f.press('option-row-B'); await tick(); assert.equal(f.value, 'Edited\nUser text');
-  assert.match(f.h.text(byId(f.h, f.draw(), 'option-prefill-notice')), /first line was edited/); assert.equal(f.sent, 0);
+  const board = f.draw();
+  assert.ok(byId(f.h, board, 'option-replace-first-line'), 'expected the replace-first-line control');
+  assert.ok(byId(f.h, board, 'option-keep-edited-first-line'), 'expected the keep-edited-first-line control');
+  assert.equal(f.sent, 0);
 });
