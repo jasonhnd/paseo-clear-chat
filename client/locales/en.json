@@ -648,9 +648,15 @@
     "hintEnter": "Enter"
   },
   "answerStyle": {
-    "title": "Answer style",
-    "recommended": "As recommended",
-    "brief": "Brief",
-    "detailed": "Detailed"
+    "title": "Answer style for the next reply",
+    "none": "None",
+    "concise": "Concise",
+    "formal": "Formal",
+    "casual": "Casual",
+    "oneLine": "One line",
+    "savedRepliesLabel": "Saved replies",
+    "savedRepliesDescription": "One phrase per line. Replies are inserted without sending.",
+    "autoFillLabel": "Automatically fill the answer",
+    "autoFillDescription": "Put the selected answer in the input box so you can review it."
   }
 }

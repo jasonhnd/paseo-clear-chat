@@ -80,6 +80,9 @@ export interface EnhancerPreferences {
   foldFinishedSteps: boolean;
   collapsedStepAction: CollapsedStepAction;
   foldLongOutputAfter: OutputLineLimit;
+  answerStyle: NonNullable<PreferenceOverrides["answerStyle"]>;
+  savedReplies: string[];
+  autoFillAnswer: boolean;
   showAnswerCard: boolean;
   showJumpChips: boolean;
   keepItemLineBreaks: boolean;
@@ -111,6 +114,9 @@ export const DEFAULT_PREFERENCES: Readonly<EnhancerPreferences> = {
   foldFinishedSteps: true,
   collapsedStepAction: "details",
   foldLongOutputAfter: 15,
+  answerStyle: "none",
+  savedReplies: ["Go with the recommended", "Leave it for now", "Continue"],
+  autoFillAnswer: true,
   showAnswerCard: false,
   showJumpChips: false,
   keepItemLineBreaks: false,

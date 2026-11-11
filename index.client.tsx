@@ -79,7 +79,7 @@ function registerClient(client: PluginClientContext) {
   const removeToolSpacing = installCompactToolSpacing();
   const removeStepDetails = installStepDetailPanel(client);
   // Composer item needs the 0.16 host API; an older host simply does not get the control.
-  const removeAnswerStyle = answerStyleSupported(client)
+  const removeAnswerStyle = typeof (client as { addComposerItem?: unknown }).addComposerItem === "function"
     ? (client as unknown as { addComposerItem(c: { id: string; Component: unknown }): () => void })
         .addComposerItem({ id: "answer-style", Component: AnswerStyleControl })
     : null;

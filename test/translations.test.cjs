@@ -323,11 +323,59 @@ const signedAnswerCardCopy = {
   "zh-CN": ["发送", "Enter 确认 · Shift+Enter 换行"],
   ja: ["送信", "Enter で確定 · Shift+Enter で改行"],
 };
+const signedAnswerStyleCopy = {
+  "en": {
+    "title": "Answer style for the next reply",
+    "none": "None",
+    "concise": "Concise",
+    "formal": "Formal",
+    "casual": "Casual",
+    "oneLine": "One line",
+    "savedRepliesLabel": "Saved replies",
+    "savedRepliesDescription": "One phrase per line. Replies are inserted without sending.",
+    "autoFillLabel": "Automatically fill the answer",
+    "autoFillDescription": "Put the selected answer in the input box so you can review it."
+  },
+  "zh-CN": {
+    "title": "下一次回复的回答风格",
+    "none": "不追加",
+    "concise": "简洁",
+    "formal": "正式",
+    "casual": "口语",
+    "oneLine": "一句话",
+    "savedRepliesLabel": "常用回答",
+    "savedRepliesDescription": "每行一个短语；插入后不会自动发送。",
+    "autoFillLabel": "自动填入答案",
+    "autoFillDescription": "将所选答案填入输入框，供你检查。"
+  },
+  "ja": {
+    "title": "次の返信の回答スタイル",
+    "none": "追加しない",
+    "concise": "簡潔",
+    "formal": "フォーマル",
+    "casual": "カジュアル",
+    "oneLine": "一文",
+    "savedRepliesLabel": "よく使う回答",
+    "savedRepliesDescription": "1行に1つ入力します。挿入しても送信されません。",
+    "autoFillLabel": "回答を自動入力",
+    "autoFillDescription": "選んだ回答を入力欄に入れ、送信前に確認できます。"
+  }
+};
+const rootAnswerStyle = /,\n  "answerStyle": \{\n(?:    .*\n)*  \}/gm;
 const rootAnswerCard = /^  "answerCard": \{\n(?:    .*\n)*  \}/gm;
 
 function verifyResourceBaseline(locale, text) {
   assert.equal([...text.matchAll(rootAnswerCard)].length, 1, "one root answerCard object");
-  const answerCard = JSON.parse(text).answerCard;
+  const parsed = JSON.parse(text);
+  const styleBlocks = [...text.matchAll(rootAnswerStyle)];
+  assert.equal(styleBlocks.length, 1, "one root answerStyle object");
+  assert.equal([...text.matchAll(/"answerStyle"\s*:/g)].length, 1, "one answerStyle key in the resource");
+  assert.deepEqual(parsed.answerStyle, signedAnswerStyleCopy[locale]);
+  for (const key of Object.keys(signedAnswerStyleCopy[locale])) {
+    const keyPattern = new RegExp(`^    "${key}":`, "gm");
+    assert.equal([...styleBlocks[0][0].matchAll(keyPattern)].length, 1, `one answerStyle.${key}`);
+  }
+  const answerCard = parsed.answerCard;
   assert.deepEqual([answerCard.sendAction, answerCard.hintCustom], signedAnswerCardCopy[locale]);
   const keys = [...text.matchAll(/"(?:\\.|[^"\\])*"/g)]
     .filter(match => /^\s*:/.test(text.slice(match.index + match[0].length)))
@@ -336,6 +384,7 @@ function verifyResourceBaseline(locale, text) {
     assert.equal(keys.filter(value => value === key).length, 1, `one ${key} key in the resource`);
   }
   const original = text
+    .replace(rootAnswerStyle, "")
     .replace(/    "keepItemLineBreaks": \{\n(?:      ".*\n){2}    \},\n/, "")
     .replace(/    "jumpChips": \{\n(?:      ".*\n){2}    \},\n/, "")
     .replace(/,\n    "answerCard": \{\n(?:      ".*\n){2}    \}/, "")

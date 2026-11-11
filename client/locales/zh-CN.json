@@ -648,9 +648,15 @@
     "hintEnter": "Enter"
   },
   "answerStyle": {
-    "title": "回答风格",
-    "recommended": "照推荐",
-    "brief": "简短",
-    "detailed": "详细"
+    "title": "下一次回复的回答风格",
+    "none": "不追加",
+    "concise": "简洁",
+    "formal": "正式",
+    "casual": "口语",
+    "oneLine": "一句话",
+    "savedRepliesLabel": "常用回答",
+    "savedRepliesDescription": "每行一个短语；插入后不会自动发送。",
+    "autoFillLabel": "自动填入答案",
+    "autoFillDescription": "将所选答案填入输入框，供你检查。"
   }
 }

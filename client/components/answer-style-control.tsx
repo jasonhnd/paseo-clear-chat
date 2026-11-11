@@ -2,6 +2,7 @@ import React from "react";
 import * as pluginClient from "@getpaseo/plugin/client";
 import * as pluginUi from "@getpaseo/plugin/client/ui";
 import { messages } from "../messages";
+import { getEnhancerPreferences, updateEnhancerPreferences, useEnhancerPreferences } from "../preferences";
 
 /**
  * Phrasing presets for the text this plugin puts into the composer. The host owns
@@ -12,13 +13,12 @@ import { messages } from "../messages";
  * older host has none of them, so everything is looked up at runtime and the
  * control simply does not register there.
  */
-export const ANSWER_STYLES = ["recommended", "brief", "detailed"] as const;
+export const ANSWER_STYLES = ["none", "concise", "formal", "casual", "oneLine"] as const;
 export type AnswerStyle = (typeof ANSWER_STYLES)[number];
 
 type HostComposer = {
   readonly context: "agent" | "draft" | "new-workspace";
   readonly prompt: string;
-  insertText(text: string): void;
 };
 
 type HostSelectProps = {
@@ -38,43 +38,33 @@ export function answerStyleSupported(client: unknown): boolean {
   return typeof (client as { addComposerItem?: unknown } | null)?.addComposerItem === "function";
 }
 
-let currentStyle: AnswerStyle = "recommended";
-
 export function getAnswerStyle(): AnswerStyle {
-  return currentStyle;
+  return getEnhancerPreferences().answerStyle;
 }
 
 export function setAnswerStyle(style: AnswerStyle): void {
-  currentStyle = style;
+  void updateEnhancerPreferences({ answerStyle: style });
 }
 
-/**
- * Shape the text this plugin inserts into the composer. `recommended` keeps it as
- * written; `brief` keeps the first non-empty line; `detailed` keeps every line.
- * Nothing here ever sends.
- */
-export function composeAnswerText(base: string, style: AnswerStyle = currentStyle): string {
+const styleInstructions = {
+  en: { concise: "Answer briefly.", formal: "Use a formal tone.", casual: "Use a casual tone.", oneLine: "Answer in one sentence." },
+  "zh-CN": { concise: "请简洁回答。", formal: "请用正式语气。", casual: "请用口语。", oneLine: "请一句话回答。" },
+} as const;
+
+/** Append only to the inserted answer's first line; do not alter existing text. */
+export function composeAnswerText(base: string, style: AnswerStyle = getAnswerStyle(), locale = "en"): string {
   const text = base.trim();
-  if (!text) return "";
-  if (style === "brief") {
-    const first = text.split("\n").map(line => line.trim()).find(line => line.length > 0);
-    return first ?? "";
-  }
-  return text;
-}
-
-/** Put the styled text into the composer without sending it. */
-export function insertAnswer(composer: Pick<HostComposer, "insertText"> | null, base: string, style: AnswerStyle = currentStyle): string {
-  const text = composeAnswerText(base, style);
-  if (!composer || !text) return text;
-  composer.insertText(text);
-  return text;
+  if (!text || style === "none") return text;
+  const translations = locale.toLowerCase().startsWith("zh") ? styleInstructions["zh-CN"] : styleInstructions.en;
+  const instruction = translations[style];
+  const newline = text.indexOf("\n");
+  return newline < 0 ? `${text} ${instruction}` : `${text.slice(0, newline)} ${instruction}${text.slice(newline)}`;
 }
 
 export function AnswerStyleControl() {
   const composer = useHostComposer?.();
   const { t } = pluginClient.useTranslation(messages);
-  const [style, setStyle] = React.useState<AnswerStyle>(currentStyle);
+  const style = useEnhancerPreferences().answerStyle;
   if (!HostSelect) return null;
   // A workspace still being created locks its composer; the host draws the control
   // disabled and nothing may be written into the prompt.
@@ -88,7 +78,6 @@ export function AnswerStyleControl() {
       options={ANSWER_STYLES.map(value => ({ value, label: t(`answerStyle.${value}` as const) }))}
       onValueChange={({ value }) => {
         if (locked) return;
-        setStyle(value);
         setAnswerStyle(value);
       }}
     />
