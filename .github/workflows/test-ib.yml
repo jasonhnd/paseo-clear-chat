@@ -1,0 +1,26 @@
+name: Test on InstaBox
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-ib:
+    name: Install, typecheck, and test (InstaBox)
+    runs-on: instabox-small
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm ci
+      - name: Test
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: npm test
+      - name: Typecheck
+        run: npx tsc --noEmit
