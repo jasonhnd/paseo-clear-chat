@@ -21,6 +21,7 @@ import { useEnhancerPreferences } from "./preferences";
 import { publishHubSnapshot } from "./hub-activity";
 import { publishAssistantReply, publishUserMessage } from "./option-session";
 import { MarkdownView } from "./components/markdown/markdown-view";
+import { beginReader, ReaderDialog } from "./components/reader-dialog";
 import { buildJumpChips, jumpHeadingLines } from "./jump-chips";
 import { OptionCard } from "./components/option-card";
 import { TimelineTailHub } from "./components/hub-live";
@@ -398,8 +399,21 @@ export function LiveAssistantRenderer({
   // the model's words, so they are drawn as a card, not as prose.
   const envelope = useMemo(() => parseSystemEnvelope(item.data.text), [item.data.text, t]);
   const replyRoot = useRef<HTMLElement | null>(null);
-  const chips = useMemo(() => preferences.showJumpChips && item.data.phase === "complete"
-    ? buildJumpChips(item.data.text) : [], [preferences.showJumpChips, item.data.phase, item.data.text]);
+  const eligibleChips = useMemo(() => item.data.phase === "complete"
+    ? buildJumpChips(item.data.text) : [], [item.data.phase, item.data.text]);
+  const chips = preferences.showJumpChips ? eligibleChips : [];
+  const [readerOpen, setReaderOpen] = useState(false);
+  const releaseReader = useRef<(() => void) | null>(null);
+  const closeReader = useCallback(() => {
+    releaseReader.current?.();
+    releaseReader.current = null;
+    setReaderOpen(false);
+  }, []);
+  useEffect(() => () => { releaseReader.current?.(); }, []);
+  const openReader = () => {
+    releaseReader.current = beginReader(replyRoot.current, closeReader);
+    setReaderOpen(true);
+  };
   const headingLabels = useMemo(() => chips.length ? new Map(jumpHeadingLines(item.data.text)
     .map(({ index, heading }) => [index, heading])) : new Map<number, string>(), [chips, item.data.text]);
   const scrollToHeading = (index: number) => {
@@ -429,6 +443,12 @@ export function LiveAssistantRenderer({
               <Text style={{ color: tokens.foreground, fontSize: tokens.fs(12) }}>{chip.label}</Text>
             </Pressable>)}
           </ScrollView> : null}
+          {Platform.OS === "web" && eligibleChips.length ? <Pressable testID="reader-open" accessibilityRole="button"
+            accessibilityLabel="Open reader" onPress={openReader} style={{ alignSelf: "flex-start", padding: 8 }}>
+            <Text style={{ color: tokens.accent, fontSize: tokens.fs(12) }}>Reader</Text>
+          </Pressable> : null}
+          {Platform.OS === "web" && readerOpen ? <ReaderDialog text={item.data.text} images={item.data.images} cwd={cwd}
+            tokens={tokens} variant={preferences.markdownVariant} onClose={closeReader} /> : null}
           <MarkdownView text={item.data.text} images={item.data.images} cwd={cwd} tokens={tokens} variant={preferences.markdownVariant}
             expansionIdentity={{ hostId: host.id, agentId, callId: item.data.messageId, name: "assistant-message", timestamp: timestamp.getTime() }} />
         </>
