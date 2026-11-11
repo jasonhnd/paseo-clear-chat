@@ -20,6 +20,16 @@ const sidebarZhCN = {
   status: { initializing: "启动中", idle: "空闲", running: "运行中", error: "出错", closed: "已关闭" },
 };
 
+
+const sidebarJa = {
+  title: "Clear Chat", description: "プロジェクト別のエージェント",
+  today: "今日", waiting: "回答待ち", directory: "一覧",
+  waitingEmpty: "回答待ちはありません。", directoryEmpty: "一覧に表示する内容はありません。",
+  running: "実行中", runningPill: "実行中", runningFor: "{n}分経過", finished: "今日完了", noProjects: "プロジェクトはまだありません。",
+  noTodayActivity: "このプロジェクトに今日の活動はありません。", unknownTime: "時刻不明",
+  status: { initializing: "起動中", idle: "待機中", running: "実行中", error: "エラー", closed: "終了" },
+};
+
 export const messages = defineTranslations({
-  resources: { en: { ...en, sidebar: sidebarEn }, "zh-CN": { ...zhCN, sidebar: sidebarZhCN }, ja },
+  resources: { en: { ...en, sidebar: sidebarEn }, "zh-CN": { ...zhCN, sidebar: sidebarZhCN }, ja: { ...ja, sidebar: sidebarJa } },
 });
