@@ -646,5 +646,11 @@
     "sendAction": "发送",
     "hintCustom": "Enter 确认 · Shift+Enter 换行",
     "hintEnter": "Enter"
+  },
+  "answerStyle": {
+    "title": "回答风格",
+    "recommended": "照推荐",
+    "brief": "简短",
+    "detailed": "详细"
   }
 }

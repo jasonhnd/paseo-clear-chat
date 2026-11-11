@@ -646,5 +646,11 @@
     "sendAction": "送信",
     "hintCustom": "Enter で確定 · Shift+Enter で改行",
     "hintEnter": "Enter"
+  },
+  "answerStyle": {
+    "title": "回答スタイル",
+    "recommended": "おすすめどおり",
+    "brief": "簡潔",
+    "detailed": "詳しく"
   }
 }

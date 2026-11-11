@@ -646,5 +646,11 @@
     "sendAction": "Send",
     "hintCustom": "Enter to confirm · Shift+Enter for a new line",
     "hintEnter": "Enter"
+  },
+  "answerStyle": {
+    "title": "Answer style",
+    "recommended": "As recommended",
+    "brief": "Brief",
+    "detailed": "Detailed"
   }
 }
