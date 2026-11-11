@@ -118,6 +118,26 @@ function restoreDraft(agentId: string, at: number): boolean {
   return true;
 }
 
+/** Sidebar hint: how many questions of this card are still open. Carries no draft text. */
+export interface AnswerStatePublisher {
+  publish(agentId: string, pending: number, total: number): void;
+}
+
+let answerStatePublisher: AnswerStatePublisher | null = null;
+
+/** Wire once at startup; without one the sidebar simply learns nothing. */
+export function setAnswerStatePublisher(publisher: AnswerStatePublisher | null): void {
+  answerStatePublisher = publisher;
+}
+
+function publishAnswerState(agentId: string, session: OptionSession): void {
+  if (!answerStatePublisher) return;
+  const total = session.set.questions.length;
+  let answered = 0;
+  for (let i = 0; i < total; i += 1) if (session.choices[i] !== undefined || session.customConfirmed[i] !== undefined) answered += 1;
+  try { answerStatePublisher.publish(agentId, Math.max(0, total - answered), total); } catch { /* A hint must never break the card. */ }
+}
+
 const draftTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function persistDraft(agentId: string, session: OptionSession): void {
@@ -316,6 +336,7 @@ function update(agentId: string, change: (snapshot: OptionSession) => OptionSess
   if (next === previous) return;
   snapshots.get(agentId)!.set(previous.at, next);
   persistDraft(agentId, next);
+  publishAnswerState(agentId, next);
   notify();
 }
 
@@ -490,6 +511,7 @@ export async function sendAnswer(agentId: string): Promise<void> {
       const settled = { ...current, sending: false, readOnly: true, answeredText: current.answeredText ?? text, error: null };
       snapshots.get(agentId)!.set(snapshot.at, settled);
       persistDraft(agentId, settled);
+      publishAnswerState(agentId, settled);
       notify();
     }
   } catch (error) {

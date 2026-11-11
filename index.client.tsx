@@ -16,7 +16,7 @@ import { extractGeneratedImages } from "./client/generated-images";
 import { containsComponentFence } from "./client/component-fences";
 import { projectedApprovalStatus } from "./client/tool-approval";
 import { installStepDetailPanel } from "./client/components/step-detail-host";
-import { setOptionSender, setAnswerDraftStore } from "./client/option-session";
+import { setOptionSender, setAnswerDraftStore, setAnswerStatePublisher } from "./client/option-session";
 import {
   getEnhancerPreferences,
   initializeEnhancerPreferences,
@@ -71,6 +71,18 @@ function registerClient(client: PluginClientContext) {
   void initializeEnhancerPreferences((contract, input) => client.rpc(contract, input));
   // Drafts of an unfinished answer card live in host settings, one entry per card.
   setAnswerDraftStore({ read: getStoredAnswerDraft, write: storeAnswerDraft, clear: clearStoredAnswerDraft });
+  // The sidebar lists conversations with open questions; it reads agent metadata.
+  setAnswerStatePublisher({
+    publish(agentId, pending, total) {
+      try {
+        const composers = (client as unknown as { composers?: (selector: { agentId: string }) => readonly { setMetadata?: (patch: Record<string, unknown>) => Promise<void> }[] }).composers;
+        const composer = composers?.({ agentId })?.[0];
+        if (!composer?.setMetadata) return;
+        void composer.setMetadata({ clearChat: { pending, total, updatedAt: new Date().toISOString() } })
+          .catch(() => { /* a sidebar hint must never surface as a card error */ });
+      } catch { /* same */ }
+    },
+  });
   // Install the bundled faces before any surface paints.
   const removeFonts = embedFonts();
   const removeFrost = installFrostedGlass();

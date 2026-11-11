@@ -121,3 +121,15 @@ test("the card shows how many questions are answered", t => {
   s.choose("a", 0, "B");
   assert.match(h.text(byId(draw(), "option-progress")), /1 of 2 answered · 1 to go/);
 });
+
+test("answering publishes only the open-question counts", async t => {
+  const { s } = fixture(t);
+  const seen = [];
+  s.setAnswerStatePublisher({ publish: (agentId, pending, total) => seen.push([agentId, pending, total]) });
+  s.publishAssistantReply("a", { at: 10, text: reply });
+  s.choose("a", 0, "B");
+  assert.deepEqual(seen.at(-1), ["a", 1, 2], "one of two questions remains open");
+  s.choose("a", 1, "A");
+  assert.deepEqual(seen.at(-1), ["a", 0, 2], "none remain open");
+  s.setAnswerStatePublisher(null);
+});
