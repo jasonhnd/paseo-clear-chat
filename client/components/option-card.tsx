@@ -6,6 +6,7 @@ import { TextInput } from "@getpaseo/plugin/client/ui";
 import { messages } from "../messages";
 import { answerIndex, answerText, choose, confirmCustom, customLetterFor, dismiss, getOptionSession, missingQuestion, moveCursor, openCustom, sendAnswer, setActiveQuestion, setCustomDraft, useOptionSession } from "../option-session";
 import { customAnswerLetter } from "../option-custom-answer";
+import { areEnhancerPreferencesReady, getEnhancerPreferencesError, getOptionAnswerDraft, saveOptionAnswerDraft } from "../preferences";
 import { questionNumber } from "../option-questions";
 import { withAlpha } from "./theme-tokens";
 import { optionShortName } from "../option-short-name";
@@ -14,7 +15,7 @@ import type { ExtendedThemeTokens } from "./theme-tokens";
 // This optional surface is supplied by newer hosts; older hosts retain card sending.
 interface Composer {
   readonly prompt: string;
-  setPrompt(text: string): void;
+  setPrompt(text: string): void | Promise<void>;
   insertText(text: string): void;
   focus(options?: { selection?: { start: number; end: number } }): Promise<void>;
 }
@@ -38,10 +39,10 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   const composer = composers[0];
   const latestComposer = useRef(composer);
   latestComposer.current = composer;
-  const previousAnswer = useRef<string | null>(null);
+  const insertedAnswer = useRef<{ agentId: string; at: number } | null>(null);
   const prefillPending = useRef(false);
   const [prefillBusy, setPrefillBusy] = useState(false);
-  const [prefillNotice, setPrefillNotice] = useState<"edited" | "unavailable" | null>(null);
+  const [prefillNotice, setPrefillNotice] = useState<"edited" | "changed" | "unavailable" | null>(null);
   const session = useOptionSession(agentId, at);
   const status = useAgent(agentId, agent => agent.status);
   const root = useRef<HTMLElement | null>(null);
@@ -565,71 +566,85 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     pendingSend.current = pending;
     observer?.observe(card);
   };
-  const prefill = async (text: string, firstLine: string) => {
+  const answerBlock = () => Object.keys(getOptionSession(agentId)?.customConfirmed ?? {}).length ? answerText(agentId) : answerIndex(agentId);
+  const prefill = (text: string, clickPrompt: string | undefined, replaceEdited = false, firstInsertion = false) => {
     const current = getOptionSession(agentId);
     const target = latestComposer.current;
-    if (!current || current.at !== at || current.readOnly || prefillPending.current) return;
-    if (!target || typeof target.prompt !== "string" || typeof target.setPrompt !== "function" || typeof target.insertText !== "function" || typeof target.focus !== "function") {
+    if (!current || current.at !== at || current.readOnly || prefillPending.current || status === "running") return;
+    if (!target || typeof target.setPrompt !== "function" || !areEnhancerPreferencesReady() || typeof clickPrompt !== "string") {
       setPrefillNotice("unavailable");
       return;
     }
-    const prompt = target.prompt;
-    const oldLine = prompt.split("\n", 1)[0] ?? "";
-    if (previousAnswer.current && prompt && oldLine !== previousAnswer.current && oldLine !== firstLine) {
-      setPrefillNotice("edited");
+    if (!firstInsertion && !getOptionAnswerDraft(agentId, at)
+        && (insertedAnswer.current?.agentId !== agentId || insertedAnswer.current.at !== at)) {
+      // Persist the card identity before the first write. If the app reloads
+      // before the block is saved, the empty record requires confirmation.
+      prefillPending.current = true;
+      setPrefillBusy(true);
+      void saveOptionAnswerDraft(agentId, at, null).then(() => {
+        prefillPending.current = false;
+        setPrefillBusy(false);
+        if (getEnhancerPreferencesError()) { setPrefillNotice("unavailable"); return; }
+        prefill(text, clickPrompt, false, true);
+      }, () => {
+        prefillPending.current = false;
+        setPrefillBusy(false);
+        setPrefillNotice("unavailable");
+      });
       return;
     }
-    // Read the web input's selection before focus moves to the card. The SDK only
-    // exposes a selection setter, so native hosts fall back to the host's caret.
-    let pane = root.current;
-    while (pane && !pane.querySelector('[data-testid="message-input-root"] textarea')) pane = pane.parentElement;
-    const input = Array.from(pane?.querySelectorAll<HTMLTextAreaElement>('[data-testid="message-input-root"] textarea') ?? []).find(node => node.getClientRects().length > 0);
-    const selection = input && input.value === prompt ? { start: input.selectionStart, end: input.selectionEnd } : null;
-    prefillPending.current = true;
-    setPrefillBusy(true);
     try {
-      if (!prompt) {
-        target.setPrompt(text);
-        await target.focus({ selection: { start: firstLine.length, end: firstLine.length } });
-      } else if (oldLine === firstLine) {
-        await target.focus();
-      } else {
-        const replacing = previousAnswer.current !== null;
-        const end = replacing ? oldLine.length : 0;
-        const inserted = replacing ? firstLine : text + "\n";
-        await target.focus({ selection: { start: 0, end } });
-        const afterFocus = getOptionSession(agentId);
-        if (!afterFocus || afterFocus.at !== at || afterFocus.readOnly) return;
-        if (latestComposer.current?.prompt !== prompt || (input && input.value !== prompt)) {
-          setPrefillNotice("edited");
-          return;
-        }
-        target.insertText(inserted);
-        if (selection && selection.start >= end && (replacing ? selection.start > end : true)) {
-          const delta = inserted.length - end;
-          await target.focus({ selection: { start: selection.start + delta, end: selection.end + delta } });
-        }
+      const prompt = target.prompt;
+      if (prompt !== clickPrompt) {
+        setPrefillNotice("changed");
+        return;
       }
-      previousAnswer.current = firstLine;
-      setPrefillNotice(null);
+      const record = getOptionAnswerDraft(agentId, at);
+      let next: string;
+      if (firstInsertion) {
+        next = prompt ? `${text}\n${prompt}` : text;
+      } else if (record?.block && prompt.startsWith(record.block)
+          && (record.block.endsWith("\n") || prompt.length === record.block.length || prompt[record.block.length] === "\n")) {
+        next = text + prompt.slice(record.block.length);
+      } else if (replaceEdited) {
+        // The extent of an edited block is unknown. Replace only the first
+        // line that the user explicitly chose to replace; preserve the rest.
+        const newline = prompt.indexOf("\n");
+        next = text + (newline < 0 ? "" : prompt.slice(newline));
+      } else {
+        setPrefillNotice("edited");
+        return;
+      }
+      const write = target.setPrompt(next);
+      const recordWrite = () => {
+        insertedAnswer.current = { agentId, at };
+        void saveOptionAnswerDraft(agentId, at, text);
+        setPrefillNotice(null);
+      };
+      if (write) {
+        prefillPending.current = true;
+        setPrefillBusy(true);
+        void write.then(recordWrite, () => setPrefillNotice("unavailable")).finally(() => {
+          prefillPending.current = false;
+          setPrefillBusy(false);
+        });
+      } else recordWrite();
     } catch {
       setPrefillNotice("unavailable");
-    } finally {
-      prefillPending.current = false;
-      setPrefillBusy(false);
     }
   };
   const select = (letter: string) => {
     const before = getOptionSession(agentId);
     if (!before || before.at !== at || before.readOnly || before.sending || prefillPending.current || status === "running") return;
+    const clickPrompt = latestComposer.current?.prompt;
     const wasAnswered = before.choices[index] !== undefined;
     const previewPending = !wasAnswered && Object.keys(before.customConfirmed).length > 0 && before.set.questions.every((_, i) => i === index || before.choices[i] !== undefined) && preparePreview();
     if (!wasAnswered && !previewPending) prepareQuestionSwitch();
     choose(agentId, index, letter);
     const after = getOptionSession(agentId);
-    if (useComposers && previousAnswer.current && after && !after.readOnly) {
-      const nextText = answerText(agentId), nextLine = answerIndex(agentId);
-      if (nextText !== null && nextLine !== null) void prefill(nextText, nextLine);
+    if (useComposers && (getOptionAnswerDraft(agentId, at) || (insertedAnswer.current?.agentId === agentId && insertedAnswer.current.at === at)) && after && !after.readOnly) {
+      const nextText = answerBlock();
+      if (nextText !== null) prefill(nextText, clickPrompt);
     }
     cancelUnchangedSwitch(after?.activeQuestion ?? index);
     if (!after || wasAnswered) return;
@@ -701,8 +716,9 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
   };
   const confirmCustomInput = () => {
     const current = getOptionSession(agentId);
-    if (current?.at !== at || current.activeQuestion !== index || !current.customOpen[index] || current.readOnly || current.sending) return;
+    if (current?.at !== at || current.activeQuestion !== index || !current.customOpen[index] || current.readOnly || current.sending || prefillPending.current) return;
     pendingCustomFocus.current = false;
+    const clickPrompt = latestComposer.current?.prompt;
     const wasAnswered = current.choices[index] !== undefined;
     const previewPending = !wasAnswered && !!current.customDrafts[index]?.trim() && current.set.questions.every((_, i) => i === index || current.choices[i] !== undefined) && preparePreview();
     if (!wasAnswered && !previewPending) prepareQuestionSwitch();
@@ -710,6 +726,10 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     cancelUnchangedSwitch(getOptionSession(agentId)?.activeQuestion ?? index);
     if (result === "blank") updateInputState({ empty: true });
     else if (result === "confirmed") {
+      if (useComposers && (getOptionAnswerDraft(agentId, at) || (insertedAnswer.current?.agentId === agentId && insertedAnswer.current.at === at))) {
+        const text = answerBlock();
+        if (text !== null) prefill(text, clickPrompt);
+      }
       updateInputState({ empty: false });
       if (!wasAnswered) {
         const after = getOptionSession(agentId);
@@ -820,6 +840,13 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
           {readOnly ? <Text testID="option-read-only-status" style={{ ...muted, marginLeft: "auto" }}>{t("answerCard.readOnlyStatus")}</Text> : null}
           {!readOnly && !session.sending ? <Pressable testID="option-dismiss" accessibilityRole="button" onPress={() => { if (getOptionSession(agentId)?.at === at) dismiss(agentId); }} style={{ minHeight: 44, justifyContent: "center", marginLeft: "auto" }}><Text style={muted}>{t("answerCard.notOptions")}</Text></Pressable> : null}
         </View>
+        {prefillNotice ? <View>
+          <Text testID="option-prefill-notice" accessibilityRole="alert" style={{ ...muted, color: tokens.danger }}>{prefillNotice === "edited" ? "The answer block was edited or its record is missing." : prefillNotice === "changed" ? "The composer changed meanwhile. Please try again." : (locale?.startsWith("zh") ? "无法更新输入框，请稍后重试。" : locale?.startsWith("ja") ? "入力欄を更新できません。後でもう一度お試しください。" : "Could not update the composer. Please try again.")}</Text>
+          {prefillNotice === "edited" ? <View style={{ flexDirection: "row", gap: 12 }}>
+            <Pressable testID="option-replace-first-line" accessibilityRole="button" style={{ minHeight: 44, justifyContent: "center" }} onPress={() => { const clickPrompt = latestComposer.current?.prompt; const text = answerBlock(); if (text !== null) prefill(text, clickPrompt, true); }}><Text style={label}>Replace first line</Text></Pressable>
+            <Pressable testID="option-keep-edited-first-line" accessibilityRole="button" style={{ minHeight: 44, justifyContent: "center" }} onPress={() => setPrefillNotice(null)}><Text style={label}>Keep edited text</Text></Pressable>
+          </View> : null}
+        </View> : null}
         {readOnly && Platform.OS === "web" ? <View style={{ backgroundColor: tokens.surface1 }} ref={(node: View | null) => {
           const frame = node as unknown as HTMLElement | null;
           if (!frame?.style) return;
@@ -828,7 +855,6 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
         }}>
           {session.set.questions.map((_, i) => i === index ? renderQuestion(i) : <View key={i} testID="option-question-measure" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" {...({ "aria-hidden": true } as object)} style={{ visibility: "hidden", pointerEvents: "none" } as ViewStyle}>{renderQuestion(i, true)}</View>)}
         </View> : renderQuestion(index)}
-        {prefillNotice ? <Text testID="option-prefill-notice" accessibilityRole="alert" style={{ ...muted, color: tokens.danger }}>{prefillNotice === "edited" ? (locale?.startsWith("zh") ? "输入框第一行已修改，请手动更新答案。" : locale?.startsWith("ja") ? "入力欄の1行目が変更されています。回答を手動で更新してください。" : "The first line was edited. Update the answer manually.") : (locale?.startsWith("zh") ? "无法更新输入框，请稍后重试。" : locale?.startsWith("ja") ? "入力欄を更新できません。後でもう一度お試しください。" : "Could not update the composer. Please try again.")}</Text> : null}
         {session.error ? <Text testID="option-send-error" accessibilityRole="alert" style={{ ...muted, color: tokens.danger }}>{t("answerCard.error", { reason: session.error })}</Text> : null}
       </View>
       {readOnly ? <View style={{ padding: 16, borderTopWidth: 1, borderColor: tokens.border }}><Text testID="option-answered" style={muted}>{`Answered in the chat: ${session.answeredText}`}</Text></View> : <View style={{ flexDirection: hasCustomAnswer ? "column" : "row", alignItems: hasCustomAnswer ? "stretch" : "center", justifyContent: "space-between", gap: 8, padding: 16, borderTopWidth: 1, borderColor: tokens.border, borderBottomLeftRadius: 11, borderBottomRightRadius: 11, backgroundColor: tokens.surface2 }}>
@@ -839,6 +865,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
           ? useComposers ? (locale?.startsWith("zh") ? "↵ 放入输入框" : locale?.startsWith("ja") ? "↵ 入力欄に追加" : "↵ put in composer") : t("answerCard.hintSend").replace(/^Tab →\s*/, "↵ ").toLowerCase()
           : `${t("answerCard.hintMove").replace(/^↑\s*↓/, "↑↓")} · ↵ ${t("answerCard.hintPick").replace(/^A B C D\s*/, "")}`}</Text> : <View testID="option-hint-slot" style={{ minHeight: hintHeight }} />}
         <Pressable {...focusProps("option-send")} testID="option-send" accessibilityRole="button" accessibilityState={{ disabled: sendDisabled }} disabled={sendDisabled} focusable={!sendDisabled} onPress={() => {
+          const clickPrompt = latestComposer.current?.prompt;
           const current = getOptionSession(agentId);
           if (!current || current.at !== at || sendDisabled) return;
           if (draftReady) {
@@ -858,8 +885,8 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
             }
           }
           if (useComposers) {
-            const text = answerText(agentId), firstLine = answerIndex(agentId);
-            if (text !== null && firstLine !== null) void prefill(text, firstLine);
+            const text = answerBlock();
+            if (text !== null) prefill(text, clickPrompt);
             return;
           }
           if (missingQuestion(agentId) === null) {

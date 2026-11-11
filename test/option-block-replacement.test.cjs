@@ -19,15 +19,16 @@ test('changing the choice replaces the whole recorded answer block, including a 
   const session = h.load('client/option-session.ts');
   const Card = h.load('client/components/option-card.tsx').OptionCard;
   session.setOptionSender(async () => { sent++; });
-  const mixed = oracle.find(entry => entry.id === 'mixed');
+  const content = oracle.find(entry => entry.id === 'mixed').answers[1].content;
+  const mixed = { reply: 'Pick?\nA Alpha\nB Beta\n\nReply: A', answers: { 0: { content } }, message: `1C\n\n1C：\n${content}` };
   session.publishAssistantReply('a', { at: 1, text: mixed.reply });
   const draw = () => h.draw({ type: Card, props: { agentId: 'a', at: 1, tokens: h.tokens } });
   const press = id => { const node = byId(h, draw(), id); assert.ok(node, 'missing control ' + id); node.props.onPress(); };
   t.after(() => { h.unmount(); h.dispose(); });
 
   session.choose('a', 0, 'B');
-  session.setCustomDraft('a', 1, mixed.answers[1].content);
-  assert.equal(session.confirmCustom('a', 1), 'confirmed');
+  session.setCustomDraft('a', 0, mixed.answers[0].content);
+  assert.equal(session.confirmCustom('a', 0), 'confirmed');
   press('option-send');
   await tick();
   assert.equal(value, mixed.message, 'the complete formatter message is the recorded block');

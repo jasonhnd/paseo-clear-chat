@@ -180,6 +180,10 @@ let localVersion = 0;
 let resetVersion = 0;
 let ready = false;
 let storageError: string | null = null;
+let answerDrafts: NonNullable<PresentationSettings["answerDrafts"]> = [];
+let draftVersion = 0;
+const dirtyAnswerDrafts = new Map<string, NonNullable<PresentationSettings["answerDrafts"]>[number]>();
+const draftKey = (agentId: string, at: number) => JSON.stringify([agentId, at]);
 
 class SettingsFailure extends Error {}
 
@@ -229,7 +233,13 @@ async function savePreferences(
     });
     if (result.status !== "ready") throw new SettingsFailure(STARTUP_MESSAGES.settingsInvalid);
     const current = parseSettings(result.values);
-    const next = change(current);
+    let next = change(current);
+    if (dirtyAnswerDrafts.size) {
+      next = { ...next, answerDrafts: [
+        ...(next.answerDrafts ?? []).filter(item => !dirtyAnswerDrafts.has(draftKey(item.agentId, item.at))),
+        ...dirtyAnswerDrafts.values(),
+      ] };
+    }
     if (next === current) return current;
     const saved = await invoke(presentationSettingsRpc.write, {
       revision: result.revision,
@@ -241,7 +251,11 @@ async function savePreferences(
   throw new SettingsFailure(STARTUP_MESSAGES.settingsConflict);
 }
 
-function applySavedPreferences(values: PresentationSettings, version: number, reset: number): void {
+function applySavedPreferences(values: PresentationSettings, version: number, reset: number, draft: number): void {
+  if (draft === draftVersion) {
+    dirtyAnswerDrafts.clear();
+    answerDrafts = values.answerDrafts ?? [];
+  }
   // A queued edit must not be replaced by an older read/write response.
   if (version === localVersion) preferences = { ...DEFAULT_PREFERENCES, ...values.preferences };
   else if (reset === resetVersion) preferences = { ...preferences, dismissedOptionReplies: values.preferences.dismissedOptionReplies ?? [] };
@@ -253,9 +267,10 @@ function applySavedPreferences(values: PresentationSettings, version: number, re
 function enqueue(change: (values: PresentationSettings) => PresentationSettings): Promise<void> {
   const version = localVersion;
   const reset = resetVersion;
+  const draft = draftVersion;
   pending = pending.then(async () => {
     const values = await savePreferences(change);
-    applySavedPreferences(values, version, reset);
+    applySavedPreferences(values, version, reset, draft);
   }).catch((error: unknown) => {
     storageError = error instanceof SettingsFailure ? error.message : STARTUP_MESSAGES.settingsRead;
     publish();
@@ -276,6 +291,7 @@ export function initializeEnhancerPreferences(rpc: PluginClientContext["rpc"]): 
     // Existing SDK choices win over legacy values. The host marker prevents
     // stale localStorage from restoring settings after an edit or reset.
     return {
+      ...values,
       preferences: { ...legacy, ...values.preferences },
       legacyMigrated: true,
     };
@@ -295,6 +311,7 @@ export function updateEnhancerPreferences(update: Partial<EnhancerPreferences>):
   preferences = { ...preferences, ...patch };
   publish();
   return enqueue((values) => ({
+    ...values,
     preferences: { ...values.preferences, ...patch },
     legacyMigrated: true,
   }));
@@ -303,6 +320,7 @@ export function updateEnhancerPreferences(update: Partial<EnhancerPreferences>):
 export function saveDismissedOptionReply(agentId: string, at: number): Promise<void> {
   const version = localVersion;
   const reset = resetVersion;
+  const draft = draftVersion;
   pending = pending.then(async () => {
     const values = await savePreferences((current) => ({
       ...current,
@@ -315,9 +333,24 @@ export function saveDismissedOptionReply(agentId: string, at: number): Promise<v
       },
       legacyMigrated: true,
     }));
-    applySavedPreferences(values, version, reset);
+    applySavedPreferences(values, version, reset, draft);
   }).catch(() => { /* Dismissal remains effective locally if persistence fails. */ });
   return pending;
+}
+
+export function getOptionAnswerDraft(agentId: string, at: number): { block?: string | null } | undefined {
+  return answerDrafts.find(entry => entry.agentId === agentId && entry.at === at);
+}
+
+export function saveOptionAnswerDraft(agentId: string, at: number, block: string | null): Promise<void> {
+  const entry = { agentId, at, block };
+  draftVersion += 1;
+  dirtyAnswerDrafts.set(draftKey(agentId, at), entry);
+  answerDrafts = [...answerDrafts.filter(item => item.agentId !== agentId || item.at !== at), entry];
+  return enqueue(values => ({
+    ...values,
+    answerDrafts: [...(values.answerDrafts ?? []).filter(item => item.agentId !== agentId || item.at !== at), entry],
+  }));
 }
 
 export function resetEnhancerPreferences(): Promise<void> {
@@ -327,7 +360,7 @@ export function resetEnhancerPreferences(): Promise<void> {
   publish();
   // SDK reset would also clear the migration marker, so write an empty set of
   // explicit choices instead. Each platform then uses its own defaults.
-  return enqueue(() => ({ preferences: {}, legacyMigrated: true }));
+  return enqueue((values) => ({ ...values, preferences: {}, legacyMigrated: true }));
 }
 
 export function subscribeEnhancerPreferences(listener: () => void): () => void {

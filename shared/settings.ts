@@ -45,6 +45,7 @@ export const preferenceOverridesSchema = z.object({
 const presentationSchema = z.object({
   preferences: preferenceOverridesSchema.default({}),
   legacyMigrated: z.boolean().default(false),
+  answerDrafts: z.array(z.object({ agentId: z.string(), at: z.number().finite(), block: z.string().nullable().optional() })).optional(),
 });
 
 export const presentationSettings = defineSettings({
