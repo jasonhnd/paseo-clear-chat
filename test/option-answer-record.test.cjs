@@ -44,7 +44,7 @@ async function fixture(t, storage, shared) {
 }
 async function persisted(storage, block) {
   for (let i = 0; i < 100; i++) {
-    if (storage.values.answerDrafts?.[0]?.block === block) return;
+    if (storage.values.answerDrafts?.['a\u00001']?.block === block) return;
     await tick();
   }
   assert.fail('answer record did not persist');
@@ -58,7 +58,7 @@ for (const initial of ['', ' original\r\ntext\n']) {
     assert.equal(shared.value, initial ? `1A\n${initial}` : '1A');
     assert.equal(shared.writes, 1); assert.equal(shared.sent, 0);
     await persisted(storage, '1A');
-    assert.deepEqual(storage.values.answerDrafts, [{ agentId: 'a', at: 1, block: '1A' }]);
+    assert.deepEqual(storage.values.answerDrafts, { 'a\u00001': { schema: 1, choices: { 0: 'A' }, customDrafts: {}, customOpen: { 0: false }, activeQuestion: 0, block: '1A' } });
   });
 }
 
@@ -143,7 +143,7 @@ test('a missing block in a retained draft refuses replacement', async t => {
   f.h.unmount(); f.h.dispose();
   // Simulate an older or partially cleared persisted draft with its identity retained.
   const saved = storage.values;
-  delete saved.answerDrafts[0].block;
+  delete saved.answerDrafts['a\u00001'].block;
   const oldRpc = storage.rpc;
   let first = true;
   storage.rpc = async (contract, input) => {
@@ -250,7 +250,7 @@ test('an asynchronous successful write records the block only after it resolves'
   shared.write = value => new Promise(resolve => { finishWrite = () => { shared.value = value; resolve(); }; });
   f.press('option-row-A'); f.press('option-send'); await tick();
   assert.equal(shared.value, 'tail');
-  assert.equal(f.preferences.getOptionAnswerDraft('a', 1).block, null);
+  assert.equal(f.preferences.getOptionAnswerDraft('a', 1).block, undefined);
   finishWrite(); await tick(); await tick();
   assert.equal(shared.value, '1A\ntail');
   assert.equal(f.preferences.getOptionAnswerDraft('a', 1).block, '1A');
@@ -293,7 +293,7 @@ test('a saved card marker prevents duplicate insertion after the block save fail
   f.press('option-row-A'); f.press('option-send'); await tick();
   for (let i = 0; i < 100 && !f.preferences.getEnhancerPreferencesError(); i++) await tick();
   assert.ok(f.preferences.getEnhancerPreferencesError());
-  assert.equal(storage.values.answerDrafts[0].block, null);
+  assert.equal(storage.values.answerDrafts['a\u00001'].block, undefined);
   f.h.unmount(); f.h.dispose();
   delete shared.write; storage.failWrites = false;
   const reloaded = await fixture(t, storage, shared);
