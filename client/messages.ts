@@ -15,7 +15,7 @@ const sidebarZhCN = {
   title: "Clear Chat", description: "按项目分组的智能体",
   today: "今天", waiting: "等你回答", directory: "目录",
   waitingEmpty: "还没有等待你回答的内容。", directoryEmpty: "目录中还没有可显示的内容。",
-  running: "正在运行", finished: "今天已结束", noProjects: "暂无项目。",
+  running: "正在运行", finished: "今天完成", noProjects: "暂无项目。",
   noTodayActivity: "此项目今天没有活动。", unknownTime: "时间未知",
   status: { initializing: "启动中", idle: "空闲", running: "运行中", error: "出错", closed: "已关闭" },
 };
