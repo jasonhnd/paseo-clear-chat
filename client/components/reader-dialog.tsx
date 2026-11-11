@@ -1,5 +1,4 @@
 import { useTranslation } from "@getpaseo/plugin/client";
-import { createPortal } from "react-dom";
 import { messages } from "../messages";
 import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
@@ -73,7 +72,7 @@ export function ReaderDialog({ text, images, cwd, tokens, variant, onClose }: Re
     const node = overlay.current;
     if (!node || typeof document === "undefined") return;
     const previousFocus = document.activeElement as HTMLElement | null;
-    node.querySelector<HTMLElement>('[data-testid="reader-close"]')?.focus();
+    node.querySelector<HTMLElement>('[data-testid="reader-close"]')?.focus({ preventScroll: true });
     const keydown = (event: KeyboardEvent) => {
       if (event.key === "Escape") { event.preventDefault(); onClose(); }
       if (event.key !== "Tab") return;
@@ -90,7 +89,7 @@ export function ReaderDialog({ text, images, cwd, tokens, variant, onClose }: Re
     return () => {
       document.removeEventListener("keydown", keydown);
       node.removeEventListener("click", backdrop);
-      previousFocus?.focus();
+      previousFocus?.focus({ preventScroll: true });
     };
   }, [onClose]);
 
@@ -145,13 +144,15 @@ export function ReaderDialog({ text, images, cwd, tokens, variant, onClose }: Re
   </View>;
 
   if (typeof document === "undefined") return null;
+  // This component is mounted only on web; avoid evaluating react-dom on native.
+  const { createPortal } = require("react-dom") as typeof import("react-dom");
   return createPortal(<View ref={node => { overlay.current = node as unknown as HTMLElement | null; }} {...hostFontEscape}
     style={{ position: "fixed", inset: 0, zIndex: 10000, alignItems: "center", justifyContent: "center", backgroundColor: tokens.isDark ? "rgba(0,0,0,0.34)" : "rgba(0,0,0,0.16)" } as never}>
     <View testID="reader-panel" accessibilityRole={"dialog" as never} aria-modal={true} accessibilityLabel={t("reader.title")}
       style={{ width: desktop ? 1000 : mobile ? "calc(100% - 24px)" : "calc(100% - 48px)", maxWidth: "calc(100% - 24px)", height: mobile ? "calc(100% - 80px)" : "min(664px, calc(100% - 80px))", borderRadius: 12, borderWidth: 0, backgroundColor: panel, overflow: "hidden", boxShadow: `0 0 0 1px ${tokens.border}, 0 18px 60px rgba(0,0,0,0.18)` } as never}>
       <View style={{ height: 72, flexShrink: 0, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: tokens.border }}>
         <View style={{ minWidth: 0 }}><Text numberOfLines={1} style={{ ...ui, fontSize: tokens.fs(16), fontWeight: "600" }}>{t("reader.title")}</Text>
-          <Text style={{ ...ui, color: muted, fontSize: tokens.fs(12), marginTop: 4 }}>{subtitle}{t("reader.sections", { count: headings.length })} · {t("reader.characters", { count: Array.from(text).length, replace: { count: Array.from(text).length.toLocaleString() } })}</Text></View>
+          <Text style={{ ...ui, color: muted, fontSize: tokens.fs(12), marginTop: 4 }}>{subtitle}{t("reader.sections", { count: headings.length })} · {t("reader.characters", { count: Array.from(text).length })}</Text></View>
         <Pressable testID="reader-close" accessibilityRole="button" accessibilityLabel={t("reader.closeA11y")} onPress={onClose} style={{ width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: tokens.border }}><Text style={{ ...ui, fontSize: tokens.fs(20), lineHeight: 24 }}>×</Text></Pressable>
       </View>
       {!desktop ? <View style={{ paddingHorizontal: 20, paddingTop: 12 }}>
