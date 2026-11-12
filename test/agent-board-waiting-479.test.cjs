@@ -32,7 +32,7 @@ function harness(agents, { live = false, hosts = [{ serverId: 'srv_1', status: '
       }
     },
   };
-  const hooks = {
+  const hooks = { useComposers: () => [],
     useProjects: () => [],
     useTranslation: () => ({ t: (key, options) => h.translations.runtime.t(messages, key, options) }),
     useAgents: q => [{ key: 'waiting', items: agents.filter(q.where).sort(q.orderBy).map(a => a.ref) }],
@@ -54,6 +54,7 @@ function harness(agents, { live = false, hosts = [{ serverId: 'srv_1', status: '
     if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'Fragment' };
     if (id === 'react-native') return native;
     if (id === '@getpaseo/plugin/client') return hooks;
+    if (id === '../preferences') return { useEnhancerPreferences: () => ({ savedReplies: [] }) };
     if (id === '../messages') return { messages };
     if (id === '../agent-board-model') return require('../client/agent-board-model.ts');
     if (id === '../outline-model') return require('../client/outline-model.ts');
