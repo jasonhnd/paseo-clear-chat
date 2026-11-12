@@ -6,7 +6,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { messages } from "../messages";
 import { isBackgroundAgent, boardSection, compareBoardAgents, lastActivityTime, localDayBounds, runningMinutes, answerMarker, compareWaitingAgents } from "../agent-board-model";
 
-type BoardProps = { theme: PluginTheme; navigation: { openAgent(ref: AgentRef): void } };
+type BoardProps = { theme: PluginTheme; navigation: { openAgent(ref: AgentRef): void }; active?: { agent: AgentRef | null } };
 export type SidebarViewRegistration = {
   addSidebarView?: (contribution: { id: string; title: PluginText; description: PluginText; Component: React.ComponentType<BoardProps> }) => () => void | Promise<void>;
 };
@@ -174,6 +174,31 @@ function WaitingBoard(props: BoardProps) {
   );
 }
 
+function OutlineForAgent({ agentRef, theme }: { agentRef: AgentRef; theme: PluginTheme }) {
+  const { parseOutline, syncOutline } = require("../outline-model") as typeof import("../outline-model");
+  const hosts = pluginClient.useHosts();
+  const snapshot = pluginClient.useAgent(agentRef);
+  const { t } = pluginClient.useTranslation(messages);
+  const serverId = hosts.find(h => h.serverId === agentRef.hostId)?.serverId;
+  const marker = serverId ? parseOutline(snapshot?.metadata?.clearChatOutline) : null;
+  useEffect(() => {
+    if (!serverId) return;
+    let current = true;
+    void syncOutline([{ serverId }], agentRef, pluginClient.getPaseoClient, undefined, () => current).catch(() => {});
+    return () => { current = false; };
+  }, [serverId, agentRef.hostId, agentRef.id, snapshot?.updatedAt]);
+  if (!marker?.headings.length) return <Text style={[styles.placeholder, { color: theme.colors.foregroundMuted }]}>{t("sidebar.directoryEmpty")}</Text>;
+  return <ScrollView contentContainerStyle={styles.board}>{marker.headings.map((heading, index) =>
+    <Text key={`${heading.offset}:${index}`} style={{ color: theme.colors.foreground, paddingLeft: (heading.level - 1) * 12, paddingVertical: 4 }}>{heading.text}</Text>)}</ScrollView>;
+}
+
+function OutlineBoard(props: BoardProps) {
+  const { t } = pluginClient.useTranslation(messages);
+  const agent = props.active?.agent;
+  return agent ? <OutlineForAgent agentRef={agent} theme={props.theme} /> :
+    <Text style={[styles.placeholder, { color: props.theme.colors.foregroundMuted }]}>{t("sidebar.directoryEmpty")}</Text>;
+}
+
 export function ClearChatSidebar(props: BoardProps) {
   const [tab, setTab] = useState<"today" | "waiting" | "directory">("today");
   const { t } = pluginClient.useTranslation(messages);
@@ -188,7 +213,7 @@ export function ClearChatSidebar(props: BoardProps) {
         ))}
       </View>
       {tab === "today" ? <TodayBoard {...props} /> : tab === "waiting" ? <WaitingBoard {...props} /> :
-        <Text style={[styles.placeholder, { color: props.theme.colors.foregroundMuted }]}>{t("sidebar.directoryEmpty")}</Text>}
+        <OutlineBoard {...props} />}
     </View>
   );
 }
