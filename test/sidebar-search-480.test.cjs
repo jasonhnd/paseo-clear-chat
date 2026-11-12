@@ -69,6 +69,7 @@ function harness(locale = 'en', missingKeyReturnsKey = false) {
     if (id === 'react-native') return native;
     if (id === '@getpaseo/plugin/client') return hooks;
     if (id === '../messages') return { messages };
+    if (id === '../preferences') return { useEnhancerPreferences: () => ({ savedReplies: [] }) };
     if (id === '../agent-board-model') return require('../client/agent-board-model.ts');
     if (id === '../outline-model') return require('../client/outline-model.ts');
     throw Error(`unexpected import ${id}`);
