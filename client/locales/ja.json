@@ -646,6 +646,9 @@
     "sendAction": "送信",
     "hintCustom": "Enter で確定 · Shift+Enter で改行",
     "progress": "{{total}} 問中 {{chosen}} 問回答済み · 残り {{remaining}} 問",
+    "replaceFirstLine": "1行目を{{answer}}に置き換える",
+    "keepEdited": "自分の編集を残す",
+    "limitEdited": "回答を編集したあとで「置き換える」ボタンを押しても、置き換わるのは1行目だけです。複数行の回答の2行目以降はそのまま残るので、自分で消してください。",
     "hintEnter": "Enter"
   },
   "answerStyle": {
