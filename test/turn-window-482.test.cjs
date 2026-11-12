@@ -88,7 +88,9 @@ test("a canceled turn is visibly incomplete and a completed one is not", async (
   await canceled.after("a", "t1", "/sample", "canceled");
   const canceledResult = await canceled.get("a", "t1");
   assert.equal(canceledResult.incomplete, true);
-  assert.match(await displayed(canceledResult), /ended before it completed/i);
+  const canceledVisible = await displayed(canceledResult);
+  assert.match(canceledVisible, /ended before it completed/i);
+  assert.ok(!canceledVisible.includes("Snapshot timing or overlap"), "the generic incomplete note must not double up with the specific one");
   const done = make();
   await done.before("a", "t2", "workspace", "/sample");
   await done.after("a", "t2", "/sample", "completed");
