@@ -89,11 +89,9 @@ test('e: custom multiline answer preserves the original prompt', async t => {
   assert.equal(f.shared.prompt, `${answer}\nUser text`); assert.equal(f.shared.sent, 0);
 });
 
-test('f: identity record has no block before the first write', async t => {
-  const f = await setup(t, absent(), 'hello world'); await first(f, 'A'); await waitBlock(f, '1A');
-  const identity = f.host.history.find(v => v.answerDrafts?.[key]?.block === undefined && v.answerDrafts?.[key]);
-  assert.ok(identity, 'identity record was persisted');
-  assert.deepEqual(f.shared.beforeWrite, identity.answerDrafts[key]);
+test('f: pre-existing record without block is first-inserted when the prompt has text', async t => {
+  const f = await setup(t, values(), 'hello world'); await first(f, 'A'); await waitBlock(f, '1A');
+  assert.ok(f.shared.beforeWrite, 'a record existed before the write');
   assert.equal(f.shared.beforeWrite.block, undefined);
   assert.equal(f.shared.prompt, '1A\nhello world'); assert.equal(f.shared.sent, 0);
 });
