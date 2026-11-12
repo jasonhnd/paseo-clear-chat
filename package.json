@@ -16,7 +16,7 @@
     "@shikijs/themes": "^4.0.2"
   },
   "devDependencies": {
-    "@getpaseo/plugin": "0.13.0",
+    "@getpaseo/plugin": "0.16.0-beta.2",
     "@getpaseo/server": "0.14.0",
     "@tanstack/react-query": "^5.90.11",
     "@types/node": "^22.15.3",
