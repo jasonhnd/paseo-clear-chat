@@ -1,6 +1,6 @@
 const assert=require("node:assert/strict"),test=require("node:test"),fs=require("node:fs");
-const {createToolHarness}=require("/data/home/qa-457-red/w/repo/test/helpers/tool-harness.cjs");
-const oracle=JSON.parse(fs.readFileSync("/data/home/qa-457-red/qa3-457/oracle.json","utf8"));
+const {createToolHarness}=require("./helpers/tool-harness.cjs");
+const oracle=JSON.parse(fs.readFileSync(require("node:path").join(__dirname,"fixtures","oracle-457.json"),"utf8"));
 const tick=()=>new Promise(r=>setTimeout(r,0));
 function fixture(t,initial="",sel={start:0,end:0}){
  let value=initial,selection={...sel},sent=0;
