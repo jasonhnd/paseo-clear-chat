@@ -218,17 +218,17 @@ function SearchBoard(props: BoardProps) {
   const paseo = pluginClient.usePaseo();
   const candidates = pluginClient.useAgents({ where: agent => !!hostId && agent.ref.hostId === hostId });
   const candidateKey = JSON.stringify(candidates.map(ref => [ref.id, ref.hostId, ref.key]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))));
-  const [loaded, setLoaded] = useState<{ hostId: string; texts: Record<string, string[]> } | null>(null);
+  const [loaded, setLoaded] = useState<{ hostId: string; texts: Record<string, string[]>; hasOlder: boolean } | null>(null);
   useEffect(() => {
     if (!hostId) return;
     let current = true;
-    setLoaded({ hostId, texts: {} });
+    setLoaded({ hostId, texts: {}, hasOlder: false });
     for (const ref of candidates) {
       void paseo.agents.ref(ref).timeline.refetch({ direction: "tail", limit: 100, projection: "canonical" }).then(page => {
         if (!current || page.error) return;
         const texts = page.entries.flatMap(({ item }) => "text" in item && typeof item.text === "string" ? [item.text] : []);
         setLoaded(previous => previous?.hostId === hostId
-          ? { hostId, texts: { ...previous.texts, [ref.key]: texts } } : previous);
+          ? { hostId, texts: { ...previous.texts, [ref.key]: texts }, hasOlder: previous.hasOlder || page.hasOlder === true } : previous);
       }).catch(() => {});
     }
     return () => { current = false; };
@@ -244,7 +244,7 @@ function SearchBoard(props: BoardProps) {
       <TextInput value={query} onChangeText={setQuery} placeholder={t("sidebar.searchPlaceholder")}
         placeholderTextColor={props.theme.colors.foregroundMuted} accessibilityLabel={t("sidebar.search")}
         style={[styles.searchInput, { borderColor: props.theme.colors.border, color: props.theme.colors.foreground }]} />
-      <Text style={[styles.searchLimit, { color: props.theme.colors.foregroundMuted }]}>{t("sidebar.searchLimit")}</Text>
+      <Text style={[styles.searchLimit, { color: props.theme.colors.foregroundMuted }]}>{t(loaded && loaded.hostId === hostId && loaded.hasOlder ? "sidebar.searchLimitOlder" : "sidebar.searchLimit")}</Text>
       {needle && (agents.length ? agents.map(ref => <SearchRow key={ref.key} agentRef={ref} {...props} />)
         : <Text style={[styles.empty, { color: props.theme.colors.foregroundMuted }]}>{t("sidebar.searchEmpty")}</Text>)}
     </ScrollView>

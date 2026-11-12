@@ -99,7 +99,7 @@ test('searches titles and fetched timeline text on the active host and opens a h
   text = h.render();
   assert.ok(!text.includes('Summer Planning'));
   assert.ok(!text.includes('No matching conversations.'));
-  assert.ok(text.includes('Only loaded titles and timeline text on the current host are searched. Unloaded history, archived conversations, and other providers are not included.'));
+  assert.ok(text.includes('Only loaded titles and fetched timeline text on the current host are searched. Older pages were not fetched, so their text was not searched. Unloaded history, archived conversations, and other providers are not included.'));
   text = h.search('sUMMer');
   assert.ok(text.includes('Summer Planning'));
   assert.ok(!text.includes('Winter Notes'));
@@ -123,6 +123,18 @@ test('searches titles and fetched timeline text on the active host and opens a h
   text = h.render();
   assert.ok(!text.includes('Summer Planning'));
   assert.ok(text.includes('No matching conversations.'));
+});
+
+test('shows the shorter limitation when the fetched page has no older pages', async () => {
+  const h = harness();
+  h.setActive({ agent: agents[2].ref });
+  h.render();
+  h.nodes().filter(node => node.type === 'Pressable' && node.props.accessibilityRole === 'tab')[3].props.onPress();
+  h.render();
+  await new Promise(resolve => setImmediate(resolve));
+  const text = h.render();
+  assert.ok(text.includes('Only loaded titles and timeline text on the current host are searched. Unloaded history, archived conversations, and other providers are not included.'));
+  assert.deepEqual(h.requests.map(request => request.ref.id), ['c']);
 });
 
 test('uses a single host as fallback and handles no hosts', () => {
