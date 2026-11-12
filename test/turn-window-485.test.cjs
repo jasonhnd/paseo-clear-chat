@@ -14,6 +14,12 @@ const {
   createTurnWindows, parseNumstatPath, collectFileDetails,
   MAX_DIFF_BYTES, DIFF_TRUNCATED_MARKER, NO_TEXT_DIFF, DIFF_OMITTED_FILE_LIMIT, MAX_DIFF_FILES,
 } = mod.exports;
+const schemaFilename = resolve(__dirname, "../client/components/turn-window-schema.ts");
+const schemaMod = { exports: {} };
+new Function("require", "module", "exports", ts.transpileModule(fs.readFileSync(schemaFilename, "utf8"), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText)(createRequire(schemaFilename), schemaMod, schemaMod.exports);
+const { turnWindowItemSchema } = schemaMod.exports;
 
 const state = entries => ({ kind: "ok", files: new Map(entries), root: "/repo" });
 const diffExecute = ({ numstat = "", patch = "" } = {}) => async (_cwd, args) => {
@@ -194,4 +200,32 @@ test("a file row opens the read-only diff and closes again", async () => {
 test("snapshots without details still render file names", async () => {
   const visible = openedText({ files: ["legacy.txt"], message: null, warning: null, incomplete: true });
   assert.ok(visible.includes("legacy.txt"));
+});
+
+test("the timeline schema keeps per-file details after parse", async () => {
+  const payload = {
+    files: ["src/a.ts", "img/logo.png"],
+    details: {
+      "src/a.ts": { added: 2, deleted: 1, binary: false, renamedFrom: null, diff: "+two\n-one", truncated: false, note: null },
+      "img/logo.png": { added: null, deleted: null, binary: true, renamedFrom: null, diff: null, truncated: false, note: "binary file" },
+    },
+    message: null, warning: null, incomplete: true,
+  };
+  const parsed = turnWindowItemSchema.parse(payload);
+  assert.deepEqual(parsed.details, payload.details);
+  const visible = openedText(parsed);
+  assert.ok(visible.includes("src/a.ts  +2 / -1"), visible);
+  assert.ok(visible.includes("binary file"), visible);
+});
+
+test("legacy timeline items without details still parse", () => {
+  const parsed = turnWindowItemSchema.parse({ files: ["legacy.txt"], message: null, warning: null, incomplete: true });
+  assert.deepEqual(parsed.details, {});
+});
+
+test("the client registers the turn-window renderer with the shared schema", () => {
+  const source = fs.readFileSync(resolve(__dirname, "../index.client.tsx"), "utf8");
+  assert.ok(source.includes('from "./client/components/turn-window-schema"'));
+  assert.ok(source.includes("schema: turnWindowItemSchema"));
+  assert.equal((source.match(/turnWindowItemSchema/g) || []).length >= 2, true);
 });

@@ -6,6 +6,7 @@ import { turnWindowItemSchema } from "./client/turn-window-schema";
 import { requireHostMethods, STARTUP_MESSAGES } from "./shared/startup-diagnostics";
 import { ClearChatSidebar, type SidebarViewRegistration } from "./client/components/agent-board";
 import { TurnWindowItem } from "./client/live-renderers";
+import { turnWindowItemSchema } from "./client/components/turn-window-schema";
 import { SidebarHintItem } from "./client/components/sidebar-hint-item";
 import { ClearChatSettingsPage } from "./client/settings-page";
 import { embedFonts } from "./client/components/embed-fonts";
