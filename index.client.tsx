@@ -74,7 +74,16 @@ function registerClient(client: PluginClientContext) {
   // Sidebar views were introduced in Paseo 0.16.
   const sidebarClient = client as PluginClientContext & SidebarViewRegistration;
   const removeTurnWindow = typeof (client as { addTimelineRenderer?: unknown }).addTimelineRenderer === "function"
-    ? (client as unknown as { addTimelineRenderer(c: unknown): () => void }).addTimelineRenderer({ kind: "turn-window", version: 1, Component: TurnWindowItem })
+    ? (client as unknown as { addTimelineRenderer(c: unknown): () => void }).addTimelineRenderer({
+      kind: "turn-window", version: 1,
+      schema: z.object({
+        files: z.array(z.string()),
+        message: z.string().nullable(),
+        warning: z.string().nullable(),
+        incomplete: z.boolean(),
+      }),
+      Component: TurnWindowItem,
+    })
     : undefined;
   const removeSidebar = typeof sidebarClient.addSidebarView === "function"
     ? sidebarClient.addSidebarView({ id: "clear-chat", title: messages.message("sidebar.title"),
