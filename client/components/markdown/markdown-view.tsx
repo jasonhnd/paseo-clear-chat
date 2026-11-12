@@ -42,6 +42,7 @@ export interface MarkdownViewProps {
   cwd?: string | null;
   expansionIdentity?: ToolExpansionIdentity;
   inlineWorkspacePaths?: boolean;
+  unfoldCode?: boolean;
 }
 
 type MdTableBlock = Extract<MdBlock, { kind: "table" }>;
@@ -221,6 +222,7 @@ interface RenderContext {
   inlineWorkspacePaths: boolean;
   codeBlockOpen: boolean;
   foldLongOutputAfter: OutputLineLimit;
+  unfoldCode: boolean;
 }
 
 /**
@@ -256,7 +258,7 @@ function scaleMetrics(metrics: VariantMetrics, scale: number): VariantMetrics {
   };
 }
 
-export function MarkdownView({ text, tokens, variant, images = [], cwd, expansionIdentity, inlineWorkspacePaths = true }: MarkdownViewProps) {
+export function MarkdownView({ text, tokens, variant, images = [], cwd, expansionIdentity, inlineWorkspacePaths = true, unfoldCode = false }: MarkdownViewProps) {
   useTranslation(messages);
   const { codeBlockOpen, keepItemLineBreaks, foldLongOutputAfter } = useEnhancerPreferences();
   const filePath = useReplyFilePath(cwd);
@@ -285,8 +287,8 @@ export function MarkdownView({ text, tokens, variant, images = [], cwd, expansio
   );
   const styles = useMemo(() => buildStyles(tokens, variant, metrics), [tokens, variant, metrics]);
   const context = useMemo<RenderContext>(
-    () => ({ styles, tokens, metrics, cwd, expansionIdentity, inlineWorkspacePaths, codeBlockOpen, foldLongOutputAfter, openFilePath: filePath.openFilePath, copyFilePath: filePath.copy }),
-    [styles, tokens, metrics, cwd, expansionIdentity, inlineWorkspacePaths, codeBlockOpen, foldLongOutputAfter, filePath.openFilePath, filePath.copy],
+    () => ({ styles, tokens, metrics, cwd, expansionIdentity, inlineWorkspacePaths, codeBlockOpen, foldLongOutputAfter, unfoldCode, openFilePath: filePath.openFilePath, copyFilePath: filePath.copy }),
+    [styles, tokens, metrics, cwd, expansionIdentity, inlineWorkspacePaths, codeBlockOpen, foldLongOutputAfter, unfoldCode, filePath.openFilePath, filePath.copy],
   );
 
   return (
@@ -366,6 +368,12 @@ function renderBlock(
       );
 
     case "code": {
+      if (context.unfoldCode) return <View key={key} style={styles.codeBlock}>
+        <SyntaxHighlightBlock code={block.code} copyText={block.code}
+          openAddress={context.codeBlockOpen ? codeBlockWebAddress(block.code) : undefined}
+          language={block.language === "" ? "plaintext" : block.language} tokens={tokens}
+          compact={metrics.codeCompact} showLineNumbers={metrics.codeLineNumbers} />
+      </View>;
       const fallback = (
           <MessageOutput text={block.code} tokens={tokens} identity={context.expansionIdentity} part={key}>
             {(code) => <SyntaxHighlightBlock
