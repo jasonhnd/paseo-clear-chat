@@ -88,13 +88,17 @@ test('a saved reply respects whitespace and the start of the prompt', async t =>
 
 for (const [name, prompt, cursor, exposeSelection, expected] of [
   ['at the start with a selection', 'hello world', 0, true, 'Continuehello world'],
-  ['at the start after selection is unavailable', 'hello world', 0, false, 'Continuehello world'],
+  ['at the start after selection is unavailable', 'hello world', 0, false, ' Continuehello world'],
   ['after an existing space', 'hello world', 6, true, 'hello Continueworld'],
-  ['after an existing space without a selection', 'hello world', 6, false, 'hello Continueworld'],
+  ['after an existing space without a selection', 'hello world', 6, false, 'hello  Continueworld'],
   ['after a non-space', 'hello world', 5, true, 'hello Continue world'],
   ['in an empty prompt', '', 0, true, 'Continue'],
   ['at the end of a prompt', 'my own words', 12, true, 'my own words Continue'],
-  ['at the end without a selection', 'my own words', 12, false, 'my own wordsContinue'],
+  ['at the end without a selection', 'my own words', 12, false, 'my own words Continue'],
+  ['in an empty prompt without a selection', '', 0, false, 'Continue'],
+  ['at the end of a space without a selection', 'my own words ', 13, false, 'my own words Continue'],
+  ['at the end of a newline without a selection', 'my own words\n', 13, false, 'my own words\nContinue'],
+  ['at the end of a tab without a selection', 'my own words\t', 13, false, 'my own words\tContinue'],
 ]) {
   test(`saved reply ${name}`, async t => {
     const f = await fixture(t, undefined, 'ios', exposeSelection);
@@ -104,13 +108,13 @@ for (const [name, prompt, cursor, exposeSelection, expected] of [
   });
 }
 
-test('a saved reply at the start after blur loses selection does not guess the caret', async t => {
+test('a saved reply at the start after blur loses selection assumes the end', async t => {
   const f = await fixture(t);
   f.setPrompt('hello world', 0);
   f.draw();
   f.loseSelection();
   f.press('saved-reply-2');
-  assert.equal(f.prompt, 'Continuehello world');
+  assert.equal(f.prompt, ' Continuehello world');
   assert.equal(f.sent, 0); assert.equal(f.setCalls, 0); assert.equal(f.focusCalls, 0);
 });
 
