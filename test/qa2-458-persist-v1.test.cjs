@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const {createToolHarness}=require('/data/home/w/test/helpers/tool-harness.cjs');
+const {createToolHarness}=require('./helpers/tool-harness.cjs');
 const draft={schema:1,choices:{0:'B'},customDrafts:{},customOpen:{},activeQuestion:1};
 function host(){
  let values={preferences:{},legacyMigrated:true,answerDrafts:{}}, rev=0, block=null, release=null, fail=false;

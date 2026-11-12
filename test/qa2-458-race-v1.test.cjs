@@ -1,6 +1,6 @@
 const assert=require('node:assert/strict');
 const test=require('node:test');
-const {createToolHarness}=require('/data/home/w/test/helpers/tool-harness.cjs');
+const {createToolHarness}=require('./helpers/tool-harness.cjs');
 const Q='1) First?\nA One\nB Two\n\n2) Second?\nA One\nB Two\n\nReply: A';
 const V={schema:1,choices:{0:'B'},customDrafts:{},customOpen:{},activeQuestion:1};
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
