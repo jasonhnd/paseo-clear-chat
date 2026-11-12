@@ -96,6 +96,15 @@ test('f: pre-existing record without block is first-inserted when the prompt has
   assert.equal(f.shared.prompt, '1A\nhello world'); assert.equal(f.shared.sent, 0);
 });
 
+test('f2: card mount writes a no-block identity record before the first write', async t => {
+  const f = await setup(t, absent(), 'hello world'); await first(f, 'A'); await waitBlock(f, '1A');
+  const identity = f.host.history.find(v => v.answerDrafts?.[key]?.block === undefined && v.answerDrafts?.[key]);
+  assert.ok(identity, 'identity record was persisted');
+  assert.deepEqual(f.shared.beforeWrite, identity.answerDrafts[key]);
+  assert.equal(f.shared.beforeWrite.block, undefined);
+  assert.equal(f.shared.prompt, '1A\nhello world'); assert.equal(f.shared.sent, 0);
+});
+
 test('g: selection does not discard any original prompt', async t => {
   const f = await setup(t, values(), 'hello world'); f.composer.selection = { start: 0, end: 6 };
   await first(f, 'A'); await waitBlock(f, '1A');
