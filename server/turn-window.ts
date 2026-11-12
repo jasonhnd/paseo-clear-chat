@@ -135,6 +135,8 @@ export function diffChunkPaths(patchText: string): { destination: string | null;
     if (line.startsWith("@@")) break;
     if (line.startsWith("+++ ")) destination = cleanDiffPath(line.slice(4), "b/");
     else if (line.startsWith("--- ")) source = cleanDiffPath(line.slice(4), "a/");
+    else if (line.startsWith("rename to ")) destination = cleanDiffPath(line.slice(10), "");
+    else if (line.startsWith("rename from ")) source = cleanDiffPath(line.slice(12), "");
   }
   return { destination, source };
 }

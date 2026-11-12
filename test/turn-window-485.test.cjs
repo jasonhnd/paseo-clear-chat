@@ -290,6 +290,21 @@ test("a file without a diff gets no expand arrow and no open action", () => {
   h.unmount(); h.dispose();
 });
 
+function expandedCard(snapshot, index) {
+  const { h, element } = card(snapshot);
+  let tree = h.draw(element);
+  h.nodes(tree, node => node.props?.testID === "turn-window-toggle")[0].props.onPress();
+  tree = h.draw(element);
+  const row = h.nodes(tree, node => node.props?.testID === `turn-window-file-${index}`)[0];
+  if (typeof row?.props?.onPress === "function") row.props.onPress();
+  tree = h.draw(element);
+  const hasDiff = h.nodes(tree, node => node.props?.testID === `turn-window-diff-${index}`).length === 1;
+  const text = h.text(tree);
+  h.unmount();
+  h.dispose();
+  return { hasDiff, text };
+}
+
 test("a path with spaces keeps its diff and its expand action", async () => {
   const captures = [state([["my file.txt", "1"]]), state([["my file.txt", "2"]])];
   const patch = [
@@ -311,6 +326,108 @@ test("a path with spaces keeps its diff and its expand action", async () => {
   const visible = openedText(result);
   assert.ok(visible.includes("my file.txt  +1 / -0"), visible);
   assert.ok(visible.includes("▾"), visible);
+  const expanded = expandedCard(result, 0);
+  assert.equal(expanded.hasDiff, true);
+  assert.ok(expanded.text.includes("+added line"), expanded.text);
+});
+
+test("Chinese file names (with and without a space) keep their diff and expand", async () => {
+  const captures = [state([["中文.txt", "1"], ["中文 文件.txt", "1"]]), state([["中文.txt", "2"], ["中文 文件.txt", "2"]])];
+  const patch = [
+    "diff --git a/中文.txt b/中文.txt",
+    "index 1111111..2222222 100644",
+    "--- a/中文.txt",
+    "+++ b/中文.txt",
+    "@@ -1 +1,2 @@",
+    " keep",
+    "+中文新增",
+    "diff --git a/中文 文件.txt b/中文 文件.txt",
+    "index 3333333..4444444 100644",
+    "--- a/中文 文件.txt\t",
+    "+++ b/中文 文件.txt\t",
+    "@@ -1 +1,2 @@",
+    " keep",
+    "+带空格新增",
+  ].join("\n");
+  const numstat = ["1\t0\t中文.txt", "1\t0\t中文 文件.txt"].join("\n");
+  const windows = createTurnWindows(async () => captures.shift(), diffExecute({ numstat, patch }));
+  windows.before("a", "t1", "workspace", "/repo");
+  await windows.after("a", "t1", "/repo");
+  const result = await windows.get("a", "t1");
+  assert.equal(result.details["中文.txt"].added, 1);
+  assert.match(result.details["中文.txt"].diff, /\+中文新增/);
+  assert.equal(result.details["中文 文件.txt"].added, 1);
+  assert.match(result.details["中文 文件.txt"].diff, /\+带空格新增/);
+  const plainIndex = result.files.indexOf("中文.txt");
+  const spacedIndex = result.files.indexOf("中文 文件.txt");
+  assert.equal(expandedCard(result, plainIndex).hasDiff, true);
+  const spaced = expandedCard(result, spacedIndex);
+  assert.equal(spaced.hasDiff, true);
+  assert.ok(spaced.text.includes("+带空格新增"), spaced.text);
+});
+
+test("a simple rename is attributed to the new path and labelled once", async () => {
+  const captures = [state([["old-name.txt", "1"]]), state([["new-name.txt", "2"]])];
+  const patch = [
+    "diff --git a/old-name.txt b/new-name.txt",
+    "similarity index 100%",
+    "rename from old-name.txt",
+    "rename to new-name.txt",
+  ].join("\n");
+  const windows = createTurnWindows(async () => captures.shift(), diffExecute({ numstat: "0\t0\told-name.txt => new-name.txt", patch }));
+  windows.before("a", "t1", "workspace", "/repo");
+  await windows.after("a", "t1", "/repo");
+  const result = await windows.get("a", "t1");
+  assert.equal(result.details["new-name.txt"].renamedFrom, "old-name.txt");
+  assert.match(result.details["new-name.txt"].diff, /rename to new-name\.txt/);
+  assert.equal(result.details["new-name.txt"].added, 0);
+  const visible = openedText(result);
+  assert.equal((visible.match(/renamed from old-name\.txt/g) || []).length, 1, visible);
+  const index = result.files.indexOf("new-name.txt");
+  assert.equal(expandedCard(result, index).hasDiff, true);
+});
+
+test("a braced directory rename is attributed to the new path", async () => {
+  const captures = [state([["dir/old/file.txt", "1"]]), state([["dir/new/file.txt", "2"]])];
+  const patch = [
+    "diff --git a/dir/old/file.txt b/dir/new/file.txt",
+    "similarity index 90%",
+    "rename from dir/old/file.txt",
+    "rename to dir/new/file.txt",
+    "--- a/dir/old/file.txt",
+    "+++ b/dir/new/file.txt",
+    "@@ -1 +1 @@",
+    "-old line",
+    "+new line",
+  ].join("\n");
+  const windows = createTurnWindows(async () => captures.shift(), diffExecute({ numstat: "1\t1\tdir/{old => new}/file.txt", patch }));
+  windows.before("a", "t1", "workspace", "/repo");
+  await windows.after("a", "t1", "/repo");
+  const result = await windows.get("a", "t1");
+  assert.equal(result.details["dir/new/file.txt"].renamedFrom, "dir/old/file.txt");
+  assert.deepEqual({ added: result.details["dir/new/file.txt"].added, deleted: result.details["dir/new/file.txt"].deleted }, { added: 1, deleted: 1 });
+  assert.match(result.details["dir/new/file.txt"].diff, /\+new line/);
+});
+
+test("a binary change is labelled and never gets an empty expandable diff", async () => {
+  const captures = [state([["img.bin", "1"]]), state([["img.bin", "2"]])];
+  const patch = [
+    "diff --git a/img.bin b/img.bin",
+    "index 1111111..2222222 100644",
+    "Binary files a/img.bin and b/img.bin differ",
+  ].join("\n");
+  const windows = createTurnWindows(async () => captures.shift(), diffExecute({ numstat: "-\t-\timg.bin", patch }));
+  windows.before("a", "t1", "workspace", "/repo");
+  await windows.after("a", "t1", "/repo");
+  const result = await windows.get("a", "t1");
+  assert.equal(result.details["img.bin"].binary, true);
+  assert.equal(result.details["img.bin"].added, null);
+  assert.equal(result.details["img.bin"].deleted, null);
+  assert.match(result.details["img.bin"].note, /binary/);
+  assert.equal(result.details["img.bin"].diff, null);
+  const opened = expandedCard(result, 0);
+  assert.equal(opened.hasDiff, false);
+  assert.ok(!opened.text.includes("▾"));
 });
 
 test("a deletion is attributed through the --- a/<path> line", async () => {
@@ -329,4 +446,6 @@ test("a deletion is attributed through the --- a/<path> line", async () => {
   const result = await windows.get("a", "t1");
   assert.equal(result.details["gone file.txt"].deleted, 1);
   assert.match(result.details["gone file.txt"].diff, /-removed line/);
+  const expanded = expandedCard(result, 0);
+  assert.equal(expanded.hasDiff, true);
 });
