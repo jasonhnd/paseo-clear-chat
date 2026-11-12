@@ -5,7 +5,7 @@ const test = require("node:test");
 
 const root = join(__dirname, "..");
 const readJson = file => JSON.parse(readFileSync(file, "utf8"));
-const target = "0.13.0";
+const target = "0.16.0-beta.2";
 
 test("the installed SDK and protocol peers match the development SDK contract", () => {
   const manifest = readJson(join(root, "package.json"));

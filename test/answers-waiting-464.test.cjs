@@ -29,10 +29,10 @@ function render(agents = [], { locale = 'en', projectCount = 1, workspaceName = 
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key).push(a.ref);
       }
-      return [...groups].map(([key, items]) => ({ key, items }));
+      return [...groups].map(([key, items]) => ({ key, title: null, color: null, items }));
     },
-    useAgent: (idOrRef, selector) => { if (typeof idOrRef !== "string") return null; const found = agents.find(a => a.id === idOrRef) ?? null; return found && selector ? selector(found) : found; },
-    useWorkspace: (id, selector) => { const name = id === workspace.id ? workspaceName : id; return selector ? selector({ name }) : { name }; },
+    useAgent: (idOrRef, selector) => { const found = agents.find(a => typeof idOrRef === "string" ? a.id === idOrRef : a.ref.key === idOrRef.key) ?? null; return found && selector ? selector(found) : found; },
+    useWorkspace: (idOrRef, selector) => { const id = typeof idOrRef === "string" ? idOrRef : idOrRef.id; const found = id === workspace.id ? { ref: workspace, id, name: workspaceName } : null; return found && selector ? selector(found) : found; },
     useProject: () => null, useWorkspaces: () => [],
   };
   const react = { useState: () => ['waiting', () => {}], useEffect: () => {} };

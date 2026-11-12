@@ -1,27 +1,10 @@
 import * as pluginClient from "@getpaseo/plugin/client";
-import type { PluginTheme, PluginText } from "@getpaseo/plugin";
+import type { PluginTheme, PluginText, PluginAgentSnapshot } from "@getpaseo/plugin";
+import type { AgentRef, ProjectRef } from "@getpaseo/plugin/client";
 import React, { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { messages } from "../messages";
 import { isBackgroundAgent, boardSection, compareBoardAgents, lastActivityTime, localDayBounds, runningMinutes, answerMarker, compareWaitingAgents } from "../agent-board-model";
-
-// These types describe the 0.16 API while the plugin still develops against 0.13.
-type Ref = { readonly key: string; readonly hostId: string; readonly id: string };
-type AgentRef = Ref & { readonly kind: "agent" };
-type ProjectRef = Ref & { readonly kind: "project" };
-type WorkspaceRef = Ref & { readonly kind: "workspace" };
-type Agent = { readonly ref: AgentRef; readonly workspace: WorkspaceRef; readonly id: string; readonly title: string | null; readonly metadata?: unknown; readonly status: "initializing" | "idle" | "running" | "error" | "closed"; readonly lastActivityAt: string; readonly updatedAt: string; readonly attentionReason: "finished" | "error" | "permission" | null };
-type Workspace = { readonly ref: WorkspaceRef; readonly project: ProjectRef };
-type Group<T> = { readonly key: string; readonly items: readonly T[] };
-type BoardHooks = {
-  useProjects(): readonly ProjectRef[];
-  useProject(ref: ProjectRef): { readonly displayName: string; readonly rootPath: string } | null;
-  useWorkspaces(query: { where(workspace: Workspace): boolean }): readonly WorkspaceRef[];
-  useAgents(query: { where(agent: Agent): boolean; groupBy(agent: Agent): string; orderBy(a: Agent, b: Agent): number }): readonly Group<AgentRef>[];
-  useAgent(ref: AgentRef): Agent | null;
-  useWorkspace(ref: WorkspaceRef): { readonly name: string } | null;
-};
-const boardHooks = pluginClient as unknown as BoardHooks;
 
 type BoardProps = { theme: PluginTheme; navigation: { openAgent(ref: AgentRef): void } };
 export type SidebarViewRegistration = {
@@ -39,7 +22,7 @@ function useToday() {
 }
 
 function AgentRow({ agentRef, section, theme, navigation }: BoardProps & { agentRef: AgentRef; section: "running" | "finished" }) {
-  const agent = boardHooks.useAgent(agentRef);
+  const agent = pluginClient.useAgent(agentRef);
   const { t } = pluginClient.useTranslation(messages);
   if (!agent) return null;
   const startedAt: string | undefined = undefined; // createdAt is agent creation, not this run start (PM ruling 2026-11-12; see #470)
@@ -69,10 +52,10 @@ function AgentRow({ agentRef, section, theme, navigation }: BoardProps & { agent
 
 function ProjectGroup({ projectRef, bounds, ...props }: BoardProps & { projectRef: ProjectRef; bounds: { start: number; end: number } }) {
   const { t } = pluginClient.useTranslation(messages);
-  const project = boardHooks.useProject(projectRef);
-  const workspaces = boardHooks.useWorkspaces({ where: workspace => workspace.project.key === projectRef.key });
+  const project = pluginClient.useProject(projectRef);
+  const workspaces = pluginClient.useWorkspaces({ where: workspace => workspace.project.key === projectRef.key });
   const workspaceKeys = new Set(workspaces.map(ref => ref.key));
-  const groups = boardHooks.useAgents({
+  const groups = pluginClient.useAgents({
     where: agent => workspaceKeys.has(agent.workspace.key) && !isBackgroundAgent(agent) && boardSection(agent, bounds) !== null,
     groupBy: agent => boardSection(agent, bounds) ?? "",
     orderBy: compareBoardAgents,
@@ -95,7 +78,7 @@ function ProjectGroup({ projectRef, bounds, ...props }: BoardProps & { projectRe
 }
 
 function TodayBoard(props: BoardProps) {
-  const projects = boardHooks.useProjects();
+  const projects = pluginClient.useProjects();
   const bounds = useToday();
   const { t } = pluginClient.useTranslation(messages);
   return (
@@ -106,17 +89,14 @@ function TodayBoard(props: BoardProps) {
   );
 }
 
-type UseAgentById = (id: string, selector: (snapshot: Agent) => Agent) => Agent | null;
-type UseWorkspaceName = (id: string, selector: (snapshot: { readonly name: string }) => string) => string | null;
-
 function WaitingRow({ agentRef, theme, navigation }: BoardProps & { agentRef: AgentRef }) {
-  const agent = (boardHooks.useAgent as unknown as UseAgentById)(agentRef.id, snapshot => snapshot);
+  const agent = pluginClient.useAgent(agentRef.id, snapshot => snapshot);
   if (!agent) return null;
   return <WaitingAgentRow agent={agent} theme={theme} navigation={navigation} />;
 }
 
-function WaitingAgentRow({ agent, theme, navigation }: BoardProps & { agent: Agent }) {
-  const workspaceName = (boardHooks.useWorkspace as unknown as UseWorkspaceName)(agent.workspace.id, snapshot => snapshot.name);
+function WaitingAgentRow({ agent, theme, navigation }: BoardProps & { agent: PluginAgentSnapshot }) {
+  const workspaceName = pluginClient.useWorkspace(agent.workspace.id, snapshot => snapshot.name);
   const { t } = pluginClient.useTranslation(messages);
   const marker = answerMarker(agent);
   if (!marker) return null;
@@ -132,7 +112,7 @@ function WaitingAgentRow({ agent, theme, navigation }: BoardProps & { agent: Age
 
 function WaitingBoard(props: BoardProps) {
   const { t } = pluginClient.useTranslation(messages);
-  const groups = boardHooks.useAgents({
+  const groups = pluginClient.useAgents({
     where: agent => answerMarker(agent) !== null,
     groupBy: () => "waiting",
     orderBy: compareWaitingAgents,
