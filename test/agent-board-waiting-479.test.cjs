@@ -131,3 +131,40 @@ test('a pending refresh does not delay a different live row', async () => {
   assert.ok(text.includes('fast'));
   assert.ok(!text.includes('slow'));
 });
+
+test('unanswered cards remain in the first group and errors appear in a separate group', () => {
+  const unanswered = agent('needs-answer', marker());
+  const failed = { ...agent('failed'), status: 'error' };
+  const both = { ...agent('failed-with-answer', marker()), status: 'error' };
+  const h = harness([unanswered, failed, both]);
+  const text = h.start();
+  const firstGroup = text.lastIndexOf('Answers waiting');
+  const errorGroup = text.indexOf('Errors');
+  assert.ok(firstGroup >= 0 && errorGroup > firstGroup);
+  assert.ok(text.slice(firstGroup, errorGroup).includes('needs-answer'));
+  assert.ok(text.slice(firstGroup, errorGroup).includes('failed-with-answer'));
+  assert.ok(!text.slice(firstGroup, errorGroup).includes('failed'));
+  assert.ok(text.slice(errorGroup).includes('failed'));
+  assert.ok(text.slice(errorGroup).includes('failed-with-answer'));
+  h.nodes().find(n => n.type === 'Pressable' && n.props.accessibilityRole === 'button' && n.props.children.some(child => child?.props?.children === 'failed')).props.onPress();
+  assert.deepEqual(h.opened, [failed.ref]);
+});
+
+test('idle, running and unknown status are neither unread nor errors', () => {
+  const timestamp = '2026-11-12T12:00:00Z';
+  const agents = ['idle', 'running', 'unknown'].map(status => ({
+    ...agent(`${status}-agent`, { clearChat: { pending: 0, total: 1, updatedAt: timestamp } }),
+    status, updatedAt: timestamp, lastActivityAt: timestamp, attentionReason: 'finished',
+  }));
+  const h = harness(agents);
+  let text = h.start();
+  for (const a of agents) assert.ok(!text.includes(a.id));
+  assert.ok(!text.some(value => /unread/i.test(value)));
+  assert.ok(text.includes('Nothing waiting for your answer.'));
+  agents[0].status = 'error';
+  text = h.render();
+  assert.ok(text.slice(text.indexOf('Errors')).includes('idle-agent'));
+  agents[0].status = 'idle';
+  text = h.render();
+  assert.ok(!text.includes('idle-agent'));
+});

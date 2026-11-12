@@ -111,6 +111,24 @@ function WaitingAgentRow({ agent, theme, navigation }: BoardProps & { agent: Plu
   );
 }
 
+function ErrorRow({ agentRef, theme, navigation }: BoardProps & { agentRef: AgentRef }) {
+  const agent = pluginClient.useAgent(agentRef, snapshot => snapshot);
+  if (!agent || agent.status !== "error") return null;
+  return <ErrorAgentRow agent={agent} theme={theme} navigation={navigation} />;
+}
+
+function ErrorAgentRow({ agent, theme, navigation }: BoardProps & { agent: PluginAgentSnapshot }) {
+  const workspaceName = pluginClient.useWorkspace(agent.workspace, snapshot => snapshot.name);
+  const { t } = pluginClient.useTranslation(messages);
+  return (
+    <Pressable accessibilityRole="button" onPress={() => navigation.openAgent(agent.ref)} style={[styles.row, { borderColor: theme.colors.border }]}>
+      <Text numberOfLines={1} style={[styles.meta, { color: theme.colors.foregroundMuted }]}>{workspaceName ?? agent.workspace.id}</Text>
+      <Text numberOfLines={1} style={[styles.rowTitle, { color: theme.colors.foreground }]}>{agent.title?.trim() || agent.id.slice(0, 8)}</Text>
+      <Text style={[styles.meta, { color: theme.colors.statusDanger }]}>{t("sidebar.status.error")}</Text>
+    </Pressable>
+  );
+}
+
 type WaitingLiveAgent = Pick<PluginAgentSnapshot, "id" | "title" | "metadata">;
 
 function WaitingBoard(props: BoardProps) {
@@ -120,6 +138,11 @@ function WaitingBoard(props: BoardProps) {
     groupBy: () => "waiting",
     orderBy: compareWaitingAgents,
   });
+  const errors = pluginClient.useAgents({
+    where: agent => agent.status === "error",
+    groupBy: () => "error",
+    orderBy: compareWaitingAgents,
+  }).flatMap(group => group.items);
   const candidates = pluginClient.useAgents({
     where: agent => !isBackgroundAgent(agent),
     groupBy: () => "waiting",
@@ -169,8 +192,15 @@ function WaitingBoard(props: BoardProps) {
   const agents = [...rows, ...extras];
   return (
     <ScrollView contentContainerStyle={styles.board}>
-      {agents.length ? agents.map(ref => <WaitingRow key={ref.key} agentRef={ref} live={live[ref.id] ?? undefined} {...props} />)
-        : <Text style={[styles.empty, { color: props.theme.colors.foregroundMuted }]}>{t("sidebar.waitingEmpty")}</Text>}
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: props.theme.colors.foregroundMuted }]}>{t("sidebar.waiting")}</Text>
+        {agents.length ? agents.map(ref => <WaitingRow key={ref.key} agentRef={ref} live={live[ref.id] ?? undefined} {...props} />)
+          : <Text style={[styles.empty, { color: props.theme.colors.foregroundMuted }]}>{t("sidebar.waitingEmpty")}</Text>}
+      </View>
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: props.theme.colors.foregroundMuted }]}>{t("sidebar.errors")}</Text>
+        {errors.map(ref => <ErrorRow key={ref.key} agentRef={ref} {...props} />)}
+      </View>
     </ScrollView>
   );
 }
