@@ -216,8 +216,8 @@ test("the registered schema keeps the message code and the card renders it in Ch
   assert.equal(parsed.data.warningCode, null);
   const Card = h.load("client/components/turn-window-card.tsx").TurnWindowCard;
   h.setLocale("zh-CN");
-  const zh = h.text(h.draw({ type: Card, props: { snapshot: parsed.data, tokens: h.tokens } }));
-  assert.ok(zh.some(value => String(value).includes("没有跑完")), "the parsed payload must render Chinese");
+  const zh = String(h.text(h.draw({ type: Card, props: { snapshot: parsed.data, tokens: h.tokens } })));
+  assert.ok(zh.includes("没有跑完"), "the parsed payload must render Chinese");
   h.unmount(); h.dispose();
 });
 
