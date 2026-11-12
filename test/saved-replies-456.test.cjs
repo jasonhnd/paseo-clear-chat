@@ -4,10 +4,11 @@ const { createToolHarness } = require('./helpers/tool-harness.cjs');
 
 const byId = (h, tree, id) => h.nodes(tree, node => node.props.testID === id)[0];
 
-async function fixture(t, savedReplies, platform = 'ios') {
+async function fixture(t, savedReplies, platform = 'ios', exposeSelection = true) {
   let prompt = '', cursor = 0, sent = 0, setCalls = 0, focusCalls = 0;
   const composer = {
     get prompt() { return prompt; },
+    get selection() { return exposeSelection ? { start: cursor, end: cursor } : undefined; },
     setPrompt(text) { setCalls++; prompt = text; },
     insertText(text) { prompt = prompt.slice(0, cursor) + text + prompt.slice(cursor); cursor += text.length; },
     async focus() { focusCalls++; },
@@ -45,17 +46,52 @@ test('default saved replies render in order with accessible labels', async t => 
 
 test('a saved reply inserts into an empty composer without sending', async t => {
   const f = await fixture(t);
-  f.press('saved-reply-1');
-  assert.equal(f.prompt, 'Leave it for now');
+  f.press('saved-reply-2');
+  assert.equal(f.prompt, 'Continue');
   assert.equal(f.sent, 0); assert.equal(f.setCalls, 0); assert.equal(f.focusCalls, 0);
 });
 
-test('a saved reply inserts at the cursor without replacing existing text', async t => {
+test('a saved reply separates from existing text at the end', async t => {
   const f = await fixture(t);
   f.setPrompt('my own words'); f.press('saved-reply-2');
-  assert.equal(f.prompt, 'my own wordsContinue');
-  f.setPrompt('before after', 6); f.press('saved-reply-2');
-  assert.equal(f.prompt, 'beforeContinue after');
+  assert.equal(f.prompt, 'my own words Continue');
+  assert.equal(f.sent, 0); assert.equal(f.setCalls, 0); assert.equal(f.focusCalls, 0);
+});
+
+test('a saved reply inserts after whitespace in the middle without an extra space', async t => {
+  const f = await fixture(t);
+  f.setPrompt('my own words', 7); f.press('saved-reply-2');
+  assert.equal(f.prompt, 'my own Continuewords');
+  assert.equal(f.sent, 0); assert.equal(f.setCalls, 0); assert.equal(f.focusCalls, 0);
+});
+
+test('a saved reply separates from a non-space in the middle', async t => {
+  const f = await fixture(t);
+  f.setPrompt('my own words', 6); f.press('saved-reply-2');
+  assert.equal(f.prompt, 'my own Continue words');
+  assert.equal(f.sent, 0); assert.equal(f.setCalls, 0); assert.equal(f.focusCalls, 0);
+});
+
+test('a saved reply respects whitespace and the start of the prompt', async t => {
+  const f = await fixture(t);
+  for (const [prompt, cursor, expected] of [
+    [' words', 1, ' Continuewords'],
+    ['\nwords', 1, '\nContinuewords'],
+    ['\twords', 1, '\tContinuewords'],
+    ['words', 0, 'Continuewords'],
+  ]) {
+    f.setPrompt(prompt, cursor); f.press('saved-reply-2');
+    assert.equal(f.prompt, expected);
+  }
+  assert.equal(f.sent, 0); assert.equal(f.setCalls, 0); assert.equal(f.focusCalls, 0);
+});
+
+test('a saved reply uses the prompt end when selection is unavailable', async t => {
+  const f = await fixture(t, undefined, 'ios', false);
+  f.setPrompt('my own words'); f.press('saved-reply-2');
+  assert.equal(f.prompt, 'my own words Continue');
+  f.setPrompt('my own words '); f.press('saved-reply-2');
+  assert.equal(f.prompt, 'my own words Continue');
   assert.equal(f.sent, 0); assert.equal(f.setCalls, 0); assert.equal(f.focusCalls, 0);
 });
 

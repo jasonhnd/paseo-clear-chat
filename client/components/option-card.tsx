@@ -15,6 +15,7 @@ import type { ExtendedThemeTokens } from "./theme-tokens";
 // This optional surface is supplied by newer hosts; older hosts retain card sending.
 interface Composer {
   readonly prompt: string;
+  readonly selection?: { readonly start: number };
   setPrompt(text: string): void | Promise<void>;
   insertText(text: string): void;
   focus(options?: { selection?: { start: number; end: number } }): Promise<void>;
@@ -885,7 +886,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
         {session.error ? <Text testID="option-send-error" accessibilityRole="alert" style={{ ...muted, color: tokens.danger }}>{t("answerCard.error", { reason: session.error })}</Text> : null}
       </View>
       {!readOnly && preferences.savedReplies.length > 0 ? <View testID="saved-replies-row" accessibilityLabel={t("answerStyle.savedRepliesLabel")} style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: 16, paddingBottom: 12 }}>
-        {preferences.savedReplies.map((phrase, index) => <Pressable key={index} testID={`saved-reply-${index}`} accessibilityRole="button" accessibilityLabel={phrase} {...(Platform.OS === "web" ? { onMouseDown: (event: React.MouseEvent) => event.preventDefault() } : {})} onPress={() => latestComposer.current?.insertText(phrase)} style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: 12, borderWidth: 1, borderColor: tokens.border, borderRadius: 18 }}><Text style={label}>{phrase}</Text></Pressable>)}
+        {preferences.savedReplies.map((phrase, index) => <Pressable key={index} testID={`saved-reply-${index}`} accessibilityRole="button" accessibilityLabel={phrase} {...(Platform.OS === "web" ? { onMouseDown: (event: React.MouseEvent) => event.preventDefault() } : {})} onPress={() => { const target = latestComposer.current; if (!target) return; const start = target.selection?.start ?? target.prompt.length; const previous = target.prompt.charAt(start - 1); target.insertText(previous && !/\s/.test(previous) ? ` ${phrase}` : phrase); }} style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: 12, borderWidth: 1, borderColor: tokens.border, borderRadius: 18 }}><Text style={label}>{phrase}</Text></Pressable>)}
       </View> : null}
       {readOnly ? <View style={{ padding: 16, borderTopWidth: 1, borderColor: tokens.border }}><Text testID="option-answered" style={muted}>{`Answered in the chat: ${session.answeredText}`}</Text></View> : <View style={{ flexDirection: hasCustomAnswer ? "column" : "row", alignItems: hasCustomAnswer ? "stretch" : "center", justifyContent: "space-between", gap: 8, padding: 16, borderTopWidth: 1, borderColor: tokens.border, borderBottomLeftRadius: 11, borderBottomRightRadius: 11, backgroundColor: tokens.surface2 }}>
         {hasCustomAnswer && answer !== null ? <Text testID="option-send-preview" selectable style={{ ...label, color: tokens.foregroundMuted }}>{answer}</Text> : null}
