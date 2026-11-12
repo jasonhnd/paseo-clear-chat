@@ -24,7 +24,7 @@ export function extractHeadings(text: string): Heading[] {
     } else {
       const match = /^ {0,3}(#{1,3})(?:[ \t]+|$)(.*)$/.exec(line);
       if (match) {
-        const title = (match[2] ?? "").replace(/#+\s*$/, "").trim();
+        const title = (match[2] ?? "").replace(/(?:^|\s)#+\s*$/, "").trim();
         if (title && headings.length < MAX_HEADINGS) headings.push({ text: Array.from(title).slice(0, MAX_TEXT).join(""), level: match[1]!.length, offset: offset + line.indexOf("#") });
       }
     }
