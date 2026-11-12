@@ -75,7 +75,7 @@ test('reload restores the record and reselect replaces an identical manually typ
   await persisted(storage, '1B');
 });
 
-test('cleared record refuses a reselect and provides explicit controls', async t => {
+test('cleared record is first-inserted on a reselect', async t => {
   const shared = { value: '', writes: 0, sent: 0 }, storage = host();
   const first = await fixture(t, storage, shared);
   first.press('option-row-A'); first.press('option-send'); await persisted(storage, '1A');
@@ -83,12 +83,10 @@ test('cleared record refuses a reselect and provides explicit controls', async t
   first.h.unmount(); first.h.dispose();
   const second = await fixture(t, storage, shared);
   second.press('option-row-B');
-  assert.equal(shared.value, '1A'); assert.equal(shared.writes, 1);
-  assert.ok(byId(second.h, second.draw(), 'option-prefill-notice'));
-  assert.ok(byId(second.h, second.draw(), 'option-replace-first-line'));
-  assert.ok(byId(second.h, second.draw(), 'option-keep-edited-first-line'));
-  second.press('option-keep-edited-first-line');
-  assert.equal(shared.value, '1A'); assert.equal(shared.writes, 1);
+  assert.equal(shared.value, '1B\n1A'); assert.equal(shared.writes, 2);
+  assert.equal(byId(second.h, second.draw(), 'option-prefill-notice'), undefined);
+  assert.equal(byId(second.h, second.draw(), 'option-replace-first-line'), undefined);
+  assert.equal(byId(second.h, second.draw(), 'option-keep-edited-first-line'), undefined);
 });
 
 test('edited block stays unchanged until explicit replacement', async t => {
@@ -135,7 +133,7 @@ test('prompt changed after click is never written, including explicit replacemen
   assert.match(f.h.text(byId(f.h, f.draw(), 'option-prefill-notice')), /changed meanwhile/i);
 });
 
-test('a missing block in a retained draft refuses replacement', async t => {
+test('a missing block in a retained draft is first-inserted on reselect', async t => {
   const shared = { value: '', writes: 0, sent: 0 }, storage = host();
   const f = await fixture(t, storage, shared);
   f.press('option-row-A'); f.press('option-send'); await tick();
@@ -156,9 +154,9 @@ test('a missing block in a retained draft refuses replacement', async t => {
   };
   const reloaded = await fixture(t, storage, shared);
   reloaded.press('option-row-B');
-  assert.equal(shared.value, '1A'); assert.equal(shared.writes, 1);
-  assert.ok(byId(reloaded.h, reloaded.draw(), 'option-replace-first-line'));
-  assert.ok(byId(reloaded.h, reloaded.draw(), 'option-keep-edited-first-line'));
+  assert.equal(shared.value, '1B\n1A'); assert.equal(shared.writes, 2);
+  assert.equal(byId(reloaded.h, reloaded.draw(), 'option-replace-first-line'), undefined);
+  assert.equal(byId(reloaded.h, reloaded.draw(), 'option-keep-edited-first-line'), undefined);
 });
 
 test('ordinary answers insert their index even when a note exists', async t => {
@@ -182,16 +180,16 @@ test('confirming a custom reselect replaces the previous answer block', async t 
 });
 
 
-test('an empty cleared record does not match an empty composer', async t => {
+test('an empty cleared record is first-inserted into an empty composer', async t => {
   const shared = { value: '', writes: 0, sent: 0 }, storage = host();
   const f = await fixture(t, storage, shared);
   f.press('option-row-A'); f.press('option-send'); await tick();
   await f.preferences.saveOptionAnswerDraft('a', 1, '');
   shared.value = '';
   f.press('option-row-B');
-  assert.equal(shared.value, ''); assert.equal(shared.writes, 1);
-  assert.ok(byId(f.h, f.draw(), 'option-replace-first-line'));
-  assert.ok(byId(f.h, f.draw(), 'option-keep-edited-first-line'));
+  assert.equal(shared.value, '1B'); assert.equal(shared.writes, 2);
+  assert.equal(byId(f.h, f.draw(), 'option-replace-first-line'), undefined);
+  assert.equal(byId(f.h, f.draw(), 'option-keep-edited-first-line'), undefined);
 });
 
 
@@ -286,7 +284,7 @@ test('failed persistence before the first insertion does not write the composer'
   assert.match(f.h.text(byId(f.h, f.draw(), 'option-prefill-notice')), /Could not update/);
 });
 
-test('a saved card marker prevents duplicate insertion after the block save fails and reloads', async t => {
+test('a saved card marker without a block is first-inserted after reload', async t => {
   const shared = { value: '', writes: 0, sent: 0 }, storage = host();
   const f = await fixture(t, storage, shared);
   shared.write = value => { shared.value = value; storage.failWrites = true; };
@@ -298,9 +296,9 @@ test('a saved card marker prevents duplicate insertion after the block save fail
   delete shared.write; storage.failWrites = false;
   const reloaded = await fixture(t, storage, shared);
   reloaded.press('option-row-B');
-  assert.equal(shared.value, '1A'); assert.equal(shared.writes, 1);
-  assert.ok(byId(reloaded.h, reloaded.draw(), 'option-replace-first-line'));
-  assert.ok(byId(reloaded.h, reloaded.draw(), 'option-keep-edited-first-line'));
+  assert.equal(shared.value, '1B\n1A'); assert.equal(shared.writes, 2);
+  assert.equal(byId(reloaded.h, reloaded.draw(), 'option-replace-first-line'), undefined);
+  assert.equal(byId(reloaded.h, reloaded.draw(), 'option-keep-edited-first-line'), undefined);
 });
 
 

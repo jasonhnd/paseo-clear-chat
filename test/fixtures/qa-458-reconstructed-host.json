@@ -1,0 +1,39 @@
+{
+  "_note": "Reconstructed from the live host file read at 06:07 JST on cc-qa-466457-final; original bytes were NOT captured into the evidence package and the machine is deleted. Field names, types and the agentId\\u0000at key shape are as observed; user-written text is replaced with placeholders.",
+  "source": {
+    "path": "/data/home/cc466qa-host/paseo-qa/plugin-settings/clear-chat/presentation.json",
+    "observed_at": "2026-11-12T06:07Z+09:00",
+    "original_sha256": null,
+    "original_sha256_reason": "file not copied before machine deletion; only the structure was printed"
+  },
+  "document": {
+    "version": 2,
+    "values": {
+      "preferences": { "showAnswerCard": true },
+      "legacyMigrated": true,
+      "answerDrafts": {
+        "11111111-1111-4111-8111-111111111111\u00001794431311227": {
+          "schema": 1,
+          "choices": { "0": "A" },
+          "customDrafts": { "0": "<user text A>" },
+          "customOpen": { "0": false },
+          "activeQuestion": 0
+        },
+        "22222222-2222-4222-8222-222222222222\u00001794431327044": {
+          "schema": 1,
+          "choices": { "0": "E" },
+          "customDrafts": { "0": "<user text B, multi-line>" },
+          "customOpen": { "0": true },
+          "activeQuestion": 0
+        },
+        "33333333-3333-4333-8333-333333333333\u00001794431339028": {
+          "schema": 1,
+          "choices": { "0": "E" },
+          "customDrafts": { "0": "<user text C, multi-line>" },
+          "customOpen": { "0": true },
+          "activeQuestion": 0
+        }
+      }
+    }
+  }
+}

@@ -580,8 +580,9 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     }
     if (!firstInsertion && !getOptionAnswerDraft(agentId, at)
         && (insertedAnswer.current?.agentId !== agentId || insertedAnswer.current.at !== at)) {
-      // Persist the card identity before the first write. If the app reloads
-      // before the block is saved, the empty record requires confirmation.
+      // Persist the card identity before the first write. A record without a block
+      // (or a cleared record) is first-inserted by the guard below; a record
+      // with a block still uses the matching/edited checks.
       prefillPending.current = true;
       setPrefillBusy(true);
       void saveOptionAnswerDraft(agentId, at, null, {
@@ -607,7 +608,7 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
       }
       const record = getOptionAnswerDraft(agentId, at);
       let next: string;
-      if (firstInsertion) {
+      if (!record || record.block == null || prompt === "") {
         next = prompt ? `${text}\n${prompt}` : text;
       } else if (record?.block && prompt.startsWith(record.block)
           && (record.block.endsWith("\n") || prompt.length === record.block.length || prompt[record.block.length] === "\n")) {
