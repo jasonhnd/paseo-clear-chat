@@ -6,7 +6,7 @@ import { TextInput } from "@getpaseo/plugin/client/ui";
 import { messages } from "../messages";
 import { resumeAnswerDraft, initializeAnswerState, answerIndex, answerText, choose, confirmCustom, customLetterFor, dismiss, getOptionSessionAt, getOptionSession, hasNewerAnswerCard, missingQuestion, moveCursor, openCustom, sendAnswer, setActiveQuestion, setCustomDraft, useOptionSession } from "../option-session";
 import { customAnswerLetter } from "../option-custom-answer";
-import { areEnhancerPreferencesReady, getEnhancerPreferencesError, getOptionAnswerDraft, saveOptionAnswerDraft } from "../preferences";
+import { areEnhancerPreferencesReady, getEnhancerPreferencesError, getOptionAnswerDraft, saveOptionAnswerDraft, useEnhancerPreferences } from "../preferences";
 import { questionNumber } from "../option-questions";
 import { withAlpha } from "./theme-tokens";
 import { optionShortName } from "../option-short-name";
@@ -35,6 +35,7 @@ export function recommendedBadgeColor(tokens: ExtendedThemeTokens): string {
 
 export function OptionCard({ agentId, at, tokens }: { agentId: string; at: number; tokens: ExtendedThemeTokens }) {
   const { t, locale } = useTranslation(messages);
+  const preferences = useEnhancerPreferences();
   const composers = useComposers ? useComposers({ agentId }) : [];
   const composer = composers[0];
   const latestComposer = useRef(composer);
@@ -883,6 +884,9 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
         </View> : renderQuestion(index)}
         {session.error ? <Text testID="option-send-error" accessibilityRole="alert" style={{ ...muted, color: tokens.danger }}>{t("answerCard.error", { reason: session.error })}</Text> : null}
       </View>
+      {!readOnly && preferences.savedReplies.length > 0 ? <View testID="saved-replies-row" accessibilityLabel={t("answerStyle.savedRepliesLabel")} style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: 16, paddingBottom: 12 }}>
+        {preferences.savedReplies.map((phrase, index) => <Pressable key={index} testID={`saved-reply-${index}`} accessibilityRole="button" accessibilityLabel={phrase} {...(Platform.OS === "web" ? { onMouseDown: (event: React.MouseEvent) => event.preventDefault() } : {})} onPress={() => latestComposer.current?.insertText(phrase)} style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: 12, borderWidth: 1, borderColor: tokens.border, borderRadius: 18 }}><Text style={label}>{phrase}</Text></Pressable>)}
+      </View> : null}
       {readOnly ? <View style={{ padding: 16, borderTopWidth: 1, borderColor: tokens.border }}><Text testID="option-answered" style={muted}>{`Answered in the chat: ${session.answeredText}`}</Text></View> : <View style={{ flexDirection: hasCustomAnswer ? "column" : "row", alignItems: hasCustomAnswer ? "stretch" : "center", justifyContent: "space-between", gap: 8, padding: 16, borderTopWidth: 1, borderColor: tokens.border, borderBottomLeftRadius: 11, borderBottomRightRadius: 11, backgroundColor: tokens.surface2 }}>
         {hasCustomAnswer && answer !== null ? <Text testID="option-send-preview" selectable style={{ ...label, color: tokens.foregroundMuted }}>{answer}</Text> : null}
         {Platform.OS === "web" || (customOpen && customConfirmed === undefined) ? <Text testID="option-hint" style={{ ...muted, lineHeight: hintHeight, minHeight: hintHeight, fontFamily: customOpen && customConfirmed === undefined ? tokens.fontUi : tokens.fontMono, flexShrink: 1 }}>{customOpen && customConfirmed === undefined
