@@ -5,6 +5,7 @@ import React, { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { messages } from "../messages";
 import { isBackgroundAgent, boardSection, compareBoardAgents, lastActivityTime, localDayBounds, runningMinutes, answerMarker, compareWaitingAgents } from "../agent-board-model";
+import { parseOutline, syncOutline } from "../outline-model";
 
 type BoardProps = { theme: PluginTheme; navigation: { openAgent(ref: AgentRef): void }; active?: { agent: AgentRef | null } };
 export type SidebarViewRegistration = {
@@ -175,7 +176,6 @@ function WaitingBoard(props: BoardProps) {
 }
 
 function OutlineForAgent({ agentRef, theme }: { agentRef: AgentRef; theme: PluginTheme }) {
-  const { parseOutline, syncOutline } = require("../outline-model") as typeof import("../outline-model");
   const hosts = pluginClient.useHosts();
   const snapshot = pluginClient.useAgent(agentRef);
   const { t } = pluginClient.useTranslation(messages);

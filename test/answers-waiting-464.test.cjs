@@ -48,6 +48,7 @@ function render(agents = [], { locale = 'en', projectCount = 1, workspaceName = 
     if (id === '@getpaseo/plugin/client') return hooks;
     if (id === '../messages') return { messages };
     if (id === '../agent-board-model') return require('../client/agent-board-model.ts');
+    if (id === '../outline-model') return require('../client/outline-model.ts');
     if (id === '../answers-waiting-model') return require('../client/answers-waiting-model.ts');
     throw Error(`unexpected import ${id}`);
   };
