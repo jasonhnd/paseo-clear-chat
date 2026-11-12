@@ -90,7 +90,7 @@ function TodayBoard(props: BoardProps) {
 }
 
 function WaitingRow({ agentRef, live, theme, navigation }: BoardProps & { agentRef: AgentRef; live?: WaitingLiveAgent }) {
-  const agent = pluginClient.useAgent(agentRef, snapshot => snapshot);
+  const agent = pluginClient.useAgent(agentRef.id, snapshot => snapshot);
   if (!agent) return null;
   return <WaitingAgentRow agent={live ? { ...agent, ...live, ref: agentRef, workspace: agent.workspace } : agent} theme={theme} navigation={navigation} />;
 }
