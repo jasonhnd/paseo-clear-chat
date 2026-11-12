@@ -547,6 +547,11 @@
   "hover": {
     "noOutput": "No output reported."
   },
+  "reader": {
+    "title": "Reader",
+    "open": "Read reply",
+    "close": "Close"
+  },
   "detail": {
     "panelTitle": "Step details",
     "empty": "Select a collapsed step to see its details. Use the panel tab's close control to return this space to chat.",
