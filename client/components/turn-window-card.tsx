@@ -4,9 +4,24 @@ import * as pluginClient from "@getpaseo/plugin/client";
 import { messages } from "../messages";
 import type { ExtendedThemeTokens } from "./theme-tokens";
 
+export type TurnWindowFileStats = {
+  added: number | null;
+  deleted: number | null;
+  binary: boolean;
+  renamedFrom: string | null;
+  diff: string | null;
+  truncated: boolean;
+  note: string | null;
+};
+
 export type TurnWindowSnapshot = {
-  files: string[]; message: string | null; warning: string | null; incomplete: boolean;
-  messageCode?: string | null; warningCode?: string | null;
+  files: string[];
+  details?: Record<string, TurnWindowFileStats>;
+  message: string | null;
+  warning: string | null;
+  incomplete: boolean;
+  messageCode?: string | null;
+  warningCode?: string | null;
 };
 
 const FALLBACK: Record<string, string> = {
@@ -17,9 +32,26 @@ const FALLBACK: Record<string, string> = {
   turnOverlap: "Other conversations were running in this workspace during this period, so these changes may not all belong to this turn.",
 };
 
+function fileLabel(file: string, stats: TurnWindowFileStats | undefined): string {
+  if (!stats) return file;
+  if (stats.added !== null && stats.deleted !== null) return `${file}  +${stats.added} / -${stats.deleted}`;
+  return file;
+}
+
+function fileNote(file: string, stats: TurnWindowFileStats | undefined): string | null {
+  if (!stats) return null;
+  const parts: string[] = [];
+  if (stats.renamedFrom) parts.push(`renamed from ${stats.renamedFrom}`);
+  if (stats.binary) parts.push("binary file");
+  if (stats.note) parts.push(stats.note);
+  if (stats.added === null && stats.deleted === null && !stats.binary && !stats.note) parts.push("no textual diff");
+  return parts.length ? parts.join(" · ") : null;
+}
+
 /** Renders only a snapshot already attached to this reply. No fetching, no timeline reads. */
 export function TurnWindowCard({ snapshot, tokens }: { snapshot?: TurnWindowSnapshot | null; tokens: ExtendedThemeTokens }) {
   const [open, setOpen] = useState(false);
+  const [openFile, setOpenFile] = useState<string | null>(null);
   const { t } = pluginClient.useTranslation(messages);
   // The typed t() only accepts literal keys, so call it through a widened signature.
   const translate = t as unknown as (value: string) => string;
@@ -51,7 +83,21 @@ export function TurnWindowCard({ snapshot, tokens }: { snapshot?: TurnWindowSnap
       {message ? <Text selectable style={{ color: tokens.foregroundMuted }}>{message}</Text> : null}
       {warning ? <Text selectable style={{ color: tokens.foregroundMuted }}>{warning}</Text> : null}
       {incompleteText ? <Text selectable style={{ color: tokens.foregroundMuted }}>{incompleteText}</Text> : null}
-      {files.map(file => <Text selectable key={file} style={{ color: tokens.foreground }}>{file}</Text>)}
+      {files.map((file, index) => {
+        const stats = snapshot.details?.[file];
+        const note = fileNote(file, stats);
+        const expanded = openFile === file;
+        return <View key={file} style={{ gap: 2 }}>
+          <Pressable testID={`turn-window-file-${index}`} accessibilityRole="button" accessibilityState={{ expanded }} onPress={() => setOpenFile((value: string | null) => value === file ? null : file)}>
+            <Text selectable style={{ color: tokens.foreground }}>{fileLabel(file, stats)}{stats?.diff || stats?.binary ? (expanded ? "  ▴" : "  ▾") : ""}</Text>
+            {note ? <Text selectable style={{ color: tokens.foregroundMuted, fontSize: tokens.fs(11) }}>{note}</Text> : null}
+          </Pressable>
+          {expanded && stats?.diff ? <View testID={`turn-window-diff-${index}`} style={{ padding: 8, borderWidth: 1, borderColor: tokens.border, borderRadius: 6, backgroundColor: tokens.surface1 }}>
+            <Text selectable style={{ color: tokens.foreground, fontSize: tokens.fs(11), fontFamily: "monospace" }}>{stats.diff}</Text>
+            {stats.truncated ? <Text selectable style={{ color: tokens.foregroundMuted, fontSize: tokens.fs(11) }}>{stats.note ?? "diff truncated"}</Text> : null}
+          </View> : null}
+        </View>;
+      })}
     </View> : null}
   </View>;
 }
