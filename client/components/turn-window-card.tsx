@@ -24,7 +24,7 @@ export function TurnWindowCard({ snapshot, tokens }: { snapshot?: TurnWindowSnap
     {open ? <View style={{ gap: 4, marginTop: 8 }}>
       {snapshot.message ? <Text selectable style={{ color: tokens.foregroundMuted }}>{snapshot.message}</Text> : null}
       {snapshot.warning ? <Text selectable style={{ color: tokens.foregroundMuted }}>{snapshot.warning}</Text> : null}
-      {snapshot.incomplete ? <Text selectable style={{ color: tokens.foregroundMuted }}>Snapshot timing or overlap with other conversations may be incomplete.</Text> : null}
+      {snapshot.incomplete && !snapshot.message ? <Text selectable style={{ color: tokens.foregroundMuted }}>Snapshot timing or overlap with other conversations may be incomplete.</Text> : null}
       {files.map(file => <Text selectable key={file} style={{ color: tokens.foreground }}>{file}</Text>)}
     </View> : null}
   </View>;
