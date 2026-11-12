@@ -10,14 +10,21 @@ const root = path.resolve(__dirname, '..');
 const ref = id => ({ kind: 'agent', id, hostId: 'host-one', key: `host-one:${id}` });
 const agents = [
   { id: 'a', ref: ref('a'), title: 'Summer Planning' },
-  { id: 'b', ref: ref('b'), title: 'Winter Notes' },
+  { id: 'b', ref: ref('b'), title: 'Winter Notes', metadata: { clearChatOutline: {
+    version: 1, replyId: 'reply', at: 'now', updatedAt: 'now',
+    headings: [{ text: 'Hidden Snapshot Text', level: 1, offset: 0 }],
+  } } },
+  { id: 'c', ref: { kind: 'agent', id: 'c', hostId: 'host-two', key: 'host-two:c' }, title: 'Other host', metadata: { clearChatOutline: {
+    version: 1, replyId: 'reply', at: 'now', updatedAt: 'now',
+    headings: [{ text: 'Hidden Snapshot Text', level: 1, offset: 0 }],
+  } } },
 ];
 
 function harness() {
   const h = require('./helpers/tool-harness.cjs').createToolHarness('ios', { locale: 'en' });
   const messages = h.load('client/messages.ts').messages;
   const states = new Map(), opened = [];
-  let current, index, nodes = [], active = { agent: agents[0].ref };
+  let current, index, nodes = [], active = { agent: agents[0].ref }, hosts = [{ serverId: 'host-one' }, { serverId: 'host-two' }];
   const react = {
     useState(initial) {
       const key = `${current}:${index++}`;
@@ -28,7 +35,7 @@ function harness() {
   };
   const hooks = {
     useProjects: () => [],
-    useHosts: () => [{ serverId: 'host-one' }, { serverId: 'host-two' }],
+    useHosts: () => hosts,
     useAgents: query => agents.filter(query.where).map(agent => agent.ref),
     useAgent: agentRef => agents.find(agent => agent.ref.key === agentRef.key) ?? null,
     useTranslation: () => ({ t: key => h.translations.runtime.t(messages, key) }),
@@ -62,7 +69,7 @@ function harness() {
     return nodes.filter(node => node.type === 'literal').map(node => node.text);
   }
   function search(query) { nodes.find(node => node.type === 'TextInput').props.onChangeText(query); return render(); }
-  return { render, search, opened, nodes: () => nodes, setActive: value => { active = value; } };
+  return { render, search, opened, nodes: () => nodes, setActive: value => { active = value; }, setHosts: value => { hosts = value; } };
 }
 
 test('searches loaded titles on the active host and opens a matching agent', () => {
@@ -78,11 +85,32 @@ test('searches loaded titles on the active host and opens a matching agent', () 
   assert.ok(!text.includes('Winter Notes'));
   h.nodes().find(node => node.type === 'Pressable' && node.props.accessibilityRole === 'button').props.onPress();
   assert.deepEqual(h.opened, [agents[0].ref]);
+  text = h.search('sNaPsHoT');
+  assert.ok(text.includes('Winter Notes'));
+  assert.ok(!text.includes('Other host'));
+  assert.ok(!text.includes('Summer Planning'));
   text = h.search('missing');
   assert.ok(text.includes('No matching conversations.'));
   h.search('summer');
   h.setActive({ agent: { hostId: 'host-two' } });
   text = h.render();
   assert.ok(!text.includes('Summer Planning'));
+  assert.ok(text.includes('No matching conversations.'));
+});
+
+test('uses a single host as fallback and handles no hosts', () => {
+  const h = harness();
+  h.setActive(undefined);
+  h.setHosts([]);
+  h.render();
+  h.nodes().filter(node => node.type === 'Pressable' && node.props.accessibilityRole === 'tab')[3].props.onPress();
+  h.render();
+  let text = h.search('summer');
+  assert.ok(text.includes('No matching conversations.'));
+  h.setHosts([{ serverId: 'host-one' }]);
+  text = h.render();
+  assert.ok(text.includes('Summer Planning'));
+  h.setHosts([{ serverId: 'host-one' }, { serverId: 'host-two' }]);
+  text = h.render();
   assert.ok(text.includes('No matching conversations.'));
 });

@@ -213,10 +213,13 @@ function SearchBoard(props: BoardProps) {
   const [query, setQuery] = useState("");
   const { t } = pluginClient.useTranslation(messages);
   const hosts = pluginClient.useHosts();
-  const hostId = props.active?.agent?.hostId ?? props.active?.workspace?.hostId ?? (hosts.length === 1 ? hosts[0].serverId : undefined);
+  const hostId = props.active?.agent?.hostId ?? props.active?.workspace?.hostId ?? (hosts.length === 1 ? hosts[0]?.serverId : undefined);
   const needle = query.trim().toLocaleLowerCase();
   const agents = pluginClient.useAgents({
-    where: agent => !!hostId && agent.ref.hostId === hostId && !!needle && (agent.title ?? "").toLocaleLowerCase().includes(needle),
+    where: agent => !!hostId && agent.ref.hostId === hostId && !!needle && (
+      (agent.title ?? "").toLocaleLowerCase().includes(needle) ||
+      (parseOutline(agent.metadata?.clearChatOutline)?.headings ?? []).some(heading => heading.text.toLocaleLowerCase().includes(needle))
+    ),
   });
   return (
     <ScrollView contentContainerStyle={styles.board} keyboardShouldPersistTaps="handled">

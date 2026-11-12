@@ -34,8 +34,6 @@ const sidebarJa = {
   ...sidebarJaExtra,
   title: "Clear Chat", description: "プロジェクト別のエージェント",
   today: "今日", waiting: "回答待ち", directory: "一覧",
-  search: "検索", searchPlaceholder: "読み込み済みのタイトルを検索", searchEmpty: "一致する会話はありません。",
-  searchLimit: "現在のホストで読み込み済みのタイトルのみを検索します。アーカイブ済みの会話と他のプロバイダーは含まれません。",
   waitingEmpty: "回答待ちはありません。", directoryEmpty: "一覧に表示する内容はありません。",
   running: "実行中", runningPill: "実行中", runningFor: "{n}分経過", finished: "今日完了", noProjects: "プロジェクトはまだありません。",
   noTodayActivity: "このプロジェクトに今日の活動はありません。", unknownTime: "時刻不明",
