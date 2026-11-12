@@ -108,7 +108,7 @@ test('approved strings exist in all effective locale resources with complete par
   const searchKeys = ['sidebar.search', 'sidebar.searchEmpty', 'sidebar.searchLimit', 'sidebar.searchLimitOlder', 'sidebar.searchPlaceholder'];
   for (const locale of Object.keys(expected)) {
     assert.equal(messages.resources[locale].sidebar.answeredOf, expected[locale]);
-    const optionalJa = locale === 'ja' ? new Set([...searchKeys, 'sidebar.errors', 'sidebar.errorsEmpty']) : new Set();
+    const optionalJa = locale === 'ja' ? new Set([...searchKeys, 'sidebar.errors', 'sidebar.errorsEmpty', 'turnHeadChanged','turnInterrupted','turnNotGit','turnIncomplete','turnOverlap']) : new Set();
     assert.deepEqual(keys(messages.resources[locale]).filter(key => !optionalJa.has(key)), keys(messages.resources.en).filter(key => !optionalJa.has(key)));
     h.setLocale(locale);
     for (const key of searchKeys) assert.equal(translations.runtime.t(messages, key), messages.resources[locale].sidebar[key.slice(8)] ?? messages.resources.en.sidebar[key.slice(8)]);

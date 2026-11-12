@@ -2,6 +2,7 @@ import { messages } from "./client/messages";
 import { initializeClientTranslations, translate as t } from "./client/translation";
 import type { PluginClientContext, PluginTimelineTransformerContribution } from "@getpaseo/plugin/client";
 import { z } from "zod";
+import { turnWindowItemSchema } from "./client/turn-window-schema";
 import { requireHostMethods, STARTUP_MESSAGES } from "./shared/startup-diagnostics";
 import { ClearChatSidebar, type SidebarViewRegistration } from "./client/components/agent-board";
 import { TurnWindowItem } from "./client/live-renderers";
@@ -76,12 +77,7 @@ function registerClient(client: PluginClientContext) {
   const removeTurnWindow = typeof (client as { addTimelineRenderer?: unknown }).addTimelineRenderer === "function"
     ? (client as unknown as { addTimelineRenderer(c: unknown): () => void }).addTimelineRenderer({
       kind: "turn-window", version: 1,
-      schema: z.object({
-        files: z.array(z.string()),
-        message: z.string().nullable(),
-        warning: z.string().nullable(),
-        incomplete: z.boolean(),
-      }),
+      schema: turnWindowItemSchema,
       Component: TurnWindowItem,
     })
     : undefined;
