@@ -32,7 +32,8 @@ function render(agents = [], { locale = 'en', projectCount = 1, workspaceName = 
       return [...groups].map(([key, items]) => ({ key, title: null, color: null, items }));
     },
     useAgent: (ref, selector) => { const found = typeof ref === "object" && ref && typeof ref.key === "string" ? (agents.find(a => a.ref.key === ref.key) ?? null) : null; return found && selector ? selector(found) : found; },
-    useWorkspace: (id, selector) => { const found = typeof id === "string" ? (id === workspace.id ? { ref: workspace, id, name: workspaceName } : null) : null; return found && selector ? selector(found) : found; },
+    // waitA showed wks_... instead of ws-n1 when the workspace was looked up by id.
+    useWorkspace: (ref, selector) => { const found = typeof ref === "object" && ref && typeof ref.key === "string" ? (ref.key === workspace.key ? { ref: workspace, id: workspace.id, name: workspaceName, displayName: workspaceName } : null) : null; return found && selector ? selector(found) : found; },
     useProject: () => null, useWorkspaces: () => [],
   };
   const react = { useState: () => ['waiting', () => {}], useEffect: () => {} };

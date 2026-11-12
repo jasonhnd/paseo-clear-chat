@@ -96,7 +96,7 @@ function WaitingRow({ agentRef, live, theme, navigation }: BoardProps & { agentR
 }
 
 function WaitingAgentRow({ agent, theme, navigation }: BoardProps & { agent: PluginAgentSnapshot }) {
-  const workspaceName = pluginClient.useWorkspace(agent.workspace.id, snapshot => snapshot.name);
+  const workspaceName = pluginClient.useWorkspace(agent.workspace, snapshot => (snapshot as typeof snapshot & { displayName?: string | null }).displayName ?? snapshot.name);
   const { t } = pluginClient.useTranslation(messages);
   const marker = answerMarker(agent);
   if (!marker) return null;
