@@ -481,7 +481,7 @@ export function LiveAssistantRenderer({
                       <Text style={{ color: tokens.foreground }}>{heading}</Text>
                     </Pressable>)}
                 </ScrollView>
-                <ScrollView testID="reader-scroll" ref={(node: View | null) => {
+                <ScrollView testID="reader-scroll" ref={(node: ScrollView | null) => {
                   const scroller = node as unknown as HTMLElement | null;
                   if (scroller) scroller.scrollTop = readerOffset.current;
                 }} contentOffset={{ x: 0, y: readerOffset.current }} onScroll={rememberReaderOffset} scrollEventThrottle={16} style={{ flex: 1, overscrollBehavior: "contain" } as any}>
