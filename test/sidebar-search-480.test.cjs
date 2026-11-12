@@ -51,6 +51,7 @@ function harness(locale = 'en', missingKeyReturnsKey = false) {
     },
   };
   const hooks = {
+    useComposers: () => [],
     useProjects: () => [],
     usePaseo: () => paseo,
     useHosts: () => hosts,
