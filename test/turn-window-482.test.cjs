@@ -175,7 +175,8 @@ test("the after hook appends one snapshot keyed by the reply turn id", async () 
   const appends = [];
   const context = { paseo: { agents: { ref: () => ({ timeline: { append: async item => { appends.push(item); return { seq: 1, epoch: "e" }; } } }) } } };
   const hooks = {};
-  const capture = async () => state([["x.txt", "changed"]]);
+  const captures = [state([]), state([["x.txt", "changed"]])];
+  const capture = async () => captures.shift();
   const registered = registerTurnWindows({ addHook(name, handler) { hooks[name] = handler; return () => {}; } }, capture);
   const agent = id => ({ id, workspaceId: "workspace", cwd: "/sample", metadata: {} });
   await hooks["agent.turn.before"]({ agent: agent("a"), turnId: "t1" });
@@ -183,10 +184,21 @@ test("the after hook appends one snapshot keyed by the reply turn id", async () 
   assert.equal(appends.length, 1);
   assert.equal(appends[0].id, "turn-window:t1");
   assert.equal(appends[0].kind, "turn-window");
-  assert.deepEqual(appends[0].data.files, []);
+  assert.deepEqual(appends[0].data.files, ["x.txt"]);
   await hooks["agent.turn.before"]({ agent: agent("a"), turnId: "t2" });
   await hooks["agent.turn.after"]({ agent: agent("a"), turnId: "t2", outcome: { kind: "completed" } }, context);
   assert.deepEqual(appends.map(item => item.id), ["turn-window:t1", "turn-window:t2"]);
   assert.ok(!appends.some(item => item.id === "turn-window:other"));
+  registered.dispose();
+});
+
+
+test("a failing append never rejects the turn", async () => {
+  const hooks = {};
+  const context = { paseo: { agents: { ref: () => ({ timeline: { append: async () => { throw new Error("append down"); } } }) } } };
+  const registered = registerTurnWindows({ addHook(name, handler) { hooks[name] = handler; return () => {}; } }, async () => state([]));
+  const agent = { id: "a", workspaceId: "workspace", cwd: "/sample", metadata: {} };
+  await hooks["agent.turn.before"]({ agent, turnId: "t1" });
+  await assert.doesNotReject(hooks["agent.turn.after"]({ agent, turnId: "t1", outcome: { kind: "completed" } }, context));
   registered.dispose();
 });
