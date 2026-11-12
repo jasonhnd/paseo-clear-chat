@@ -169,3 +169,24 @@ test("incomplete window without files stays visible without an extra action", as
   const visible = await displayed({ files: [], message: null, warning: null, incomplete: true });
   assert.match(visible, /incomplete/i);
 });
+
+
+test("the after hook appends one snapshot keyed by the reply turn id", async () => {
+  const appends = [];
+  const context = { paseo: { agents: { ref: () => ({ timeline: { append: async item => { appends.push(item); return { seq: 1, epoch: "e" }; } } }) } } };
+  const hooks = {};
+  const capture = async () => state([["x.txt", "changed"]]);
+  const registered = registerTurnWindows({ addHook(name, handler) { hooks[name] = handler; return () => {}; } }, capture);
+  const agent = id => ({ id, workspaceId: "workspace", cwd: "/sample", metadata: {} });
+  await hooks["agent.turn.before"]({ agent: agent("a"), turnId: "t1" });
+  await hooks["agent.turn.after"]({ agent: agent("a"), turnId: "t1", outcome: { kind: "completed" } }, context);
+  assert.equal(appends.length, 1);
+  assert.equal(appends[0].id, "turn-window:t1");
+  assert.equal(appends[0].kind, "turn-window");
+  assert.deepEqual(appends[0].data.files, []);
+  await hooks["agent.turn.before"]({ agent: agent("a"), turnId: "t2" });
+  await hooks["agent.turn.after"]({ agent: agent("a"), turnId: "t2", outcome: { kind: "completed" } }, context);
+  assert.deepEqual(appends.map(item => item.id), ["turn-window:t1", "turn-window:t2"]);
+  assert.ok(!appends.some(item => item.id === "turn-window:other"));
+  registered.dispose();
+});
