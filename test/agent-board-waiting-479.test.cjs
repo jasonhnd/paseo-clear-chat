@@ -11,8 +11,8 @@ const workspace = ref('workspace', 'work');
 const agent = (id, metadata = {}, hostId = 'srv_1') => ({ id, ref: ref('agent', id, hostId), workspace, title: id, metadata, status: 'idle', updatedAt: '', lastActivityAt: '' });
 const marker = (pending = 2, total = 5) => ({ clearChat: { pending, total, updatedAt: '2026-01-01T00:00:00Z' } });
 
-function harness(agents, { live = false, hosts = [{ serverId: 'srv_1', status: 'online' }], refresh = async () => null } = {}) {
-  const h = require('./helpers/tool-harness.cjs').createToolHarness('ios', { locale: 'en' });
+function harness(agents, { live = false, locale = 'en', hosts = [{ serverId: 'srv_1', status: 'online' }], refresh = async () => null } = {}) {
+  const h = require('./helpers/tool-harness.cjs').createToolHarness('ios', { locale });
   const messages = h.load('client/messages.ts').messages;
   const opened = [], calls = [], states = new Map(), effects = new Map();
   let current, index, pending = [], nodes = [];
@@ -182,4 +182,12 @@ test('missing Japanese error keys render English instead of the key name', () =>
   assert.equal(h.translations.runtime.t(messages, 'sidebar.errors'), 'Errors');
   assert.equal(h.translations.runtime.t(messages, 'sidebar.errorsEmpty'), 'No conversations stopped with an error.');
   assert.equal(h.translations.runtime.t(messages, 'sidebar.errors').includes('sidebar.errors'), false);
+});
+
+test('Japanese error title and empty state render English on screen', () => {
+  const h = harness([], { locale: 'ja' });
+  const text = h.start();
+  assert.ok(text.includes('Errors'));
+  assert.ok(text.includes('No conversations stopped with an error.'));
+  assert.equal(text.some(value => String(value).includes('sidebar.errors')), false);
 });
