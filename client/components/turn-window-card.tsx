@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Pressable, Text, View } from "react-native";
+import * as pluginClient from "@getpaseo/plugin/client";
 import type { ExtendedThemeTokens } from "./theme-tokens";
 
 export type TurnWindowSnapshot = { files: string[]; message: string | null; warning: string | null; incomplete: boolean };
@@ -28,4 +29,13 @@ export function TurnWindowCard({ snapshot, tokens }: { snapshot?: TurnWindowSnap
       {files.map(file => <Text selectable key={file} style={{ color: tokens.foreground }}>{file}</Text>)}
     </View> : null}
   </View>;
+}
+
+/** Reads a snapshot the plugin already stored on the agent; never fetches a timeline. */
+export function useTurnWindowSnapshot(agentId: string, key: string): TurnWindowSnapshot | null {
+  const stored = pluginClient.useAgent(agentId, snapshot => {
+    const all = (snapshot?.metadata as { turnWindows?: Record<string, TurnWindowSnapshot> } | undefined)?.turnWindows;
+    return all?.[key] ?? null;
+  });
+  return stored ?? null;
 }

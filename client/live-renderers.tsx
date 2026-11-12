@@ -25,6 +25,7 @@ import { buildJumpChips, jumpHeadingLines } from "./jump-chips";
 import { OptionCard } from "./components/option-card";
 import { TimelineTailHub } from "./components/hub-live";
 import { AssistantFooter } from "./components/turn-footer";
+import { TurnWindowCard, useTurnWindowSnapshot } from "./components/turn-window-card";
 import { SystemCard } from "./components/system-card";
 import { parseSystemEnvelope } from "./system-envelope";
 import { toolErrorLine } from "./tool-error";
@@ -226,6 +227,7 @@ export function LiveToolCallRenderer({
             expansionIdentity={{ hostId: host.id, agentId, callId: data.callId, name: `final-tool:${data.name}`, timestamp: timestamp.getTime() }} />
           {toolErrorLine(calloutData, "never") ? <Text testID="tool-error-line" selectable style={{ color: tokens.danger }}>{calloutData.error}</Text> : null}
           <AssistantFooter text={finalToolReplyMarkdown(calloutData.finalReply)} at={timestamp} tokens={tokens} durationMs={durationMs} agentId={agentId} />
+          <AttachedTurnWindow agentId={agentId} keySuffix={`${timestamp.getTime()}:${data.callId ?? data.name}`} tokens={tokens} />
         </View>
       ) : (
         <ToolCallout
@@ -436,6 +438,7 @@ export function LiveAssistantRenderer({
       {!envelope ? (
         <AssistantFooter text={item.data.text} at={timestamp} tokens={tokens} durationMs={durationMs} agentId={agentId} />
       ) : null}
+      {!envelope && item.data.phase === "complete" ? <AttachedTurnWindow agentId={agentId} keySuffix={`${timestamp.getTime()}:${item.data.messageId ?? ""}`} tokens={tokens} /> : null}
       {!envelope && preferences.showAnswerCard ? <OptionCard key={`${agentId}:${replyAt}`} agentId={agentId} at={replyAt} tokens={tokens} /> : null}
       <TimelineTailHub
         agentId={agentId}
@@ -583,4 +586,9 @@ export function LiveUserMessageRenderer({
       )}
     </View>
   );
+}
+
+function AttachedTurnWindow({ agentId, keySuffix, tokens }: { agentId: string; keySuffix: string; tokens: any }) {
+  const snapshot = useTurnWindowSnapshot(agentId, keySuffix);
+  return <TurnWindowCard snapshot={snapshot} tokens={tokens} />;
 }

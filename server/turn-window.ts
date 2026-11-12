@@ -122,6 +122,13 @@ export function registerTurnWindows(server: PluginServerContext, capture?: (cwd:
   const windows = createTurnWindows(capture);
   if (typeof server.addHook !== "function") return { windows, dispose: () => {} };
   const before = server.addHook("agent.turn.before", async event => { await windows.before(event.agent.id, event.turnId, event.agent.workspaceId, event.agent.cwd); });
-  const after = server.addHook("agent.turn.after", async event => { await windows.after(event.agent.id, event.turnId, event.agent.cwd); });
+  const after = server.addHook("agent.turn.after", async (event, context) => {
+    await windows.after(event.agent.id, event.turnId, event.agent.cwd);
+    const result = await windows.get(event.agent.id, event.turnId ?? "");
+    if (!result || !event.turnId) return;
+    if (!context?.paseo) return;
+    const existing = (event.agent.metadata as { turnWindows?: Record<string, import("@getpaseo/protocol/agent-types").JsonValue> } | undefined)?.turnWindows ?? {};
+    try { await context.paseo.agents.ref(event.agent.id).setMetadata({ turnWindows: { ...existing, [event.turnId]: result } }); } catch { /* never break a turn */ }
+  });
   return { windows, dispose: () => { before(); after(); } };
 }
