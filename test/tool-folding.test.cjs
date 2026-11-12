@@ -151,7 +151,7 @@ test("ordinary assistant replies remain fully expanded regardless of fold prefer
   const { tree } = h.mount({ type: "assistant_message", text: lines(40) }, false);
   assert.ok(h.text(tree).includes("ROW 40"));
   assert.equal(find(h, tree, "tool-summary-row"), undefined);
-  assert.equal(h.nodes(tree, node => node.type === "Pressable" && node.props.testID !== "turn-window-toggle").length, 0);
+  assert.equal(h.nodes(tree, node => node.type === "Pressable").length, 0);
 });
 
 for (const scale of [0.85, 1, 1.3, 1.35]) {

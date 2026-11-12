@@ -124,7 +124,7 @@ for (const [name, input] of cases) {
     assert.ok(h.text(tree).includes(reply));
     assert.equal(h.nodes(tree, node => node.props.testID === "tool-final-reply").length, 1);
     assert.equal(h.nodes(tree, node => node.props.testID === "tool-summary-row" || node.props.testID === "tool-output").length, 0);
-    assert.equal(h.nodes(tree, node => node.type === "Pressable" && node.props.testID !== "turn-window-toggle").length, 0);
+    assert.equal(h.nodes(tree, node => node.type === "Pressable").length, 0);
   });
 }
 

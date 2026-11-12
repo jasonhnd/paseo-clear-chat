@@ -109,10 +109,11 @@ export function createTurnWindows(capture: (cwd: string) => Promise<Snapshot> = 
       })();
       return window.finishing;
     },
-    async get(agentId: string, turnId: string): Promise<Result> {
+    async get(agentId: string, turnId: string): Promise<Result | null> {
       const window = windows.get(key(agentId, turnId));
-      await window?.finishing;
-      return window?.result ?? unavailable();
+      if (!window) return null;
+      await window.finishing;
+      return window.result ?? unavailable();
     },
   };
 }
