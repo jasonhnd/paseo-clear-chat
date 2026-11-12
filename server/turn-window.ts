@@ -97,10 +97,15 @@ function patchChunks(patch: string): { header: string; text: string }[] {
 /** Read `added`/`deleted` and the rename source out of one --numstat line's path field. */
 export function parseNumstatPath(raw: string): { path: string; renamedFrom: string | null } {
   const brace = raw.match(/^(.*)\{(.*) => (.*)\}(.*)$/);
-  if (brace) return { path: `${brace[1] ?? ""}${brace[3] ?? ""}${brace[4] ?? ""}`, renamedFrom: `${brace[1] ?? ""}${brace[2] ?? ""}${brace[4] ?? ""}` };
+  if (brace) {
+    return {
+      path: unquoteGitPath(`${brace[1] ?? ""}${brace[3] ?? ""}${brace[4] ?? ""}`),
+      renamedFrom: unquoteGitPath(`${brace[1] ?? ""}${brace[2] ?? ""}${brace[4] ?? ""}`),
+    };
+  }
   const arrow = raw.match(/^(.*) => (.*)$/);
-  if (arrow) return { path: arrow[2] ?? "", renamedFrom: arrow[1] ?? null };
-  return { path: raw, renamedFrom: null };
+  if (arrow) return { path: unquoteGitPath(arrow[2] ?? ""), renamedFrom: arrow[1] === undefined ? null : unquoteGitPath(arrow[1]) };
+  return { path: unquoteGitPath(raw), renamedFrom: null };
 }
 
 /** Decode one path token from a `diff --git` header (quoted when it has spaces or control bytes). */
@@ -233,7 +238,9 @@ export async function collectFileDetails(cwd: string, paths: string[], execute: 
   for (const path of included) {
     const item = stats.get(path) ?? emptyStats();
     if (item.added === null && item.deleted === null && !item.binary && !item.renamedFrom && !item.note) item.note = NO_TEXT_DIFF;
-    if (!item.diff && !item.note && !item.binary && (item.added !== null || item.deleted !== null)) item.note = "no diff available from Git";
+    if (!item.diff && !item.note && !item.binary && !item.renamedFrom) {
+      item.note = item.added === 0 && item.deleted === 0 ? "no textual diff in Git" : "no diff available from Git";
+    }
     details[path] = item;
   }
   return details;

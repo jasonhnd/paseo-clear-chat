@@ -404,6 +404,28 @@ test("a quoted C-escaped Chinese path is decoded and attributed", async () => {
   assert.ok(expanded.text.includes("+中文新增"), expanded.text);
 });
 
+test("a quoted numstat path with an escaped quote is decoded", async () => {
+  const name = 'we"ird.txt';
+  const captures = [state([[name, "1"]]), state([[name, "2"]])];
+  const patch = [
+    'diff --git "a/we\\"ird.txt" "b/we\\"ird.txt"',
+    "index 1111111..2222222 100644",
+    '--- "a/we\\"ird.txt"',
+    '+++ "b/we\\"ird.txt"',
+    "@@ -1 +1,2 @@",
+    " keep",
+    "+odd line",
+  ].join("\n");
+  const windows = createTurnWindows(async () => captures.shift(), diffExecute({ numstat: '1\t0\t"we\\"ird.txt"', patch }));
+  windows.before("a", "t1", "workspace", "/repo");
+  await windows.after("a", "t1", "/repo");
+  const result = await windows.get("a", "t1");
+  assert.deepEqual(result.files, [name]);
+  assert.equal(result.details[name].added, 1);
+  assert.equal(result.details[name].deleted, 0);
+  assert.match(result.details[name].diff, /\+odd line/);
+});
+
 test("a simple rename is attributed to the new path and labelled once", async () => {
   const captures = [state([["old-name.txt", "1"]]), state([["new-name.txt", "2"]])];
   const patch = [
@@ -424,6 +446,8 @@ test("a simple rename is attributed to the new path and labelled once", async ()
   assert.equal(fileRowCount(result), 1);
   const visible = openedText(result);
   assert.equal((visible.match(/renamed from old-name\.txt/g) || []).length, 1, visible);
+  assert.ok(!visible.includes("no diff available from Git"), visible);
+  assert.ok(!visible.includes("no textual diff"), visible);
   const index = result.files.indexOf("new-name.txt");
   assert.equal(expandedCard(result, index).hasDiff, true);
 });
