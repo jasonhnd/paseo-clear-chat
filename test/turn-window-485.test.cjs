@@ -90,7 +90,7 @@ test("per-file stats come from git diff --numstat and label binary, rename and d
   windows.before("a", "t1", "workspace", "/repo");
   await windows.after("a", "t1", "/repo");
   const result = await windows.get("a", "t1");
-  assert.deepEqual(result.files, ["gone.txt", "img/logo.png", "src/a.ts", "src/new.ts", "src/old.ts"]);
+  assert.deepEqual(result.files, ["gone.txt", "img/logo.png", "src/a.ts", "src/new.ts"]);
   assert.deepEqual(
     { added: result.details["src/a.ts"].added, deleted: result.details["src/a.ts"].deleted },
     { added: 3, deleted: 1 },
@@ -105,7 +105,8 @@ test("per-file stats come from git diff --numstat and label binary, rename and d
     { added: 2, deleted: 0 },
   );
   assert.match(result.details["src/new.ts"].diff, /rename from src\/old\.ts/);
-  assert.match(result.details["src/old.ts"].note, /renamed to src\/new\.ts/);
+  assert.equal(result.details["src/old.ts"], undefined);
+  assert.ok(!result.files.includes("src/old.ts"));
   assert.deepEqual(
     { added: result.details["gone.txt"].added, deleted: result.details["gone.txt"].deleted },
     { added: 0, deleted: 9 },
@@ -305,6 +306,17 @@ function expandedCard(snapshot, index) {
   return { hasDiff, text };
 }
 
+function fileRowCount(snapshot) {
+  const { h, element } = card(snapshot);
+  let tree = h.draw(element);
+  h.nodes(tree, node => node.props?.testID === "turn-window-toggle")[0].props.onPress();
+  tree = h.draw(element);
+  const count = h.nodes(tree, node => typeof node.props?.testID === "string" && node.props.testID.startsWith("turn-window-file-")).length;
+  h.unmount();
+  h.dispose();
+  return count;
+}
+
 test("a path with spaces keeps its diff and its expand action", async () => {
   const captures = [state([["my file.txt", "1"]]), state([["my file.txt", "2"]])];
   const patch = [
@@ -366,6 +378,32 @@ test("Chinese file names (with and without a space) keep their diff and expand",
   assert.ok(spaced.text.includes("+带空格新增"), spaced.text);
 });
 
+test("a quoted C-escaped Chinese path is decoded and attributed", async () => {
+  const name = "中文 文件.txt";
+  const quoted = "\"b/\\344\\270\\255\\346\\226\\207 \\346\\226\\207\\344\\273\\266.txt\"";
+  const quotedSource = "\"a/\\344\\270\\255\\346\\226\\207 \\346\\226\\207\\344\\273\\266.txt\"";
+  const patch = [
+    `diff --git ${quotedSource} ${quoted}`,
+    "index 1111111..2222222 100644",
+    `--- ${quotedSource}`,
+    `+++ ${quoted}`,
+    "@@ -1 +1,2 @@",
+    " keep",
+    "+中文新增",
+  ].join("\n");
+  const captures = [state([[name, "1"]]), state([[name, "2"]])];
+  const windows = createTurnWindows(async () => captures.shift(), diffExecute({ numstat: `1\t0\t${name}`, patch }));
+  windows.before("a", "t1", "workspace", "/repo");
+  await windows.after("a", "t1", "/repo");
+  const result = await windows.get("a", "t1");
+  assert.deepEqual(result.files, [name]);
+  assert.equal(result.details[name].added, 1);
+  assert.match(result.details[name].diff, /\+中文新增/);
+  const expanded = expandedCard(result, 0);
+  assert.equal(expanded.hasDiff, true);
+  assert.ok(expanded.text.includes("+中文新增"), expanded.text);
+});
+
 test("a simple rename is attributed to the new path and labelled once", async () => {
   const captures = [state([["old-name.txt", "1"]]), state([["new-name.txt", "2"]])];
   const patch = [
@@ -381,6 +419,9 @@ test("a simple rename is attributed to the new path and labelled once", async ()
   assert.equal(result.details["new-name.txt"].renamedFrom, "old-name.txt");
   assert.match(result.details["new-name.txt"].diff, /rename to new-name\.txt/);
   assert.equal(result.details["new-name.txt"].added, 0);
+  assert.deepEqual(result.files, ["new-name.txt"]);
+  assert.ok(!result.files.includes("old-name.txt"));
+  assert.equal(fileRowCount(result), 1);
   const visible = openedText(result);
   assert.equal((visible.match(/renamed from old-name\.txt/g) || []).length, 1, visible);
   const index = result.files.indexOf("new-name.txt");

@@ -106,25 +106,30 @@ export function parseNumstatPath(raw: string): { path: string; renamedFrom: stri
 /** Decode one path token from a `diff --git` header (quoted when it has spaces or control bytes). */
 function unquoteGitPath(token: string): string {
   if (!token.startsWith("\"")) return token;
-  let out = "";
+  const bytes: number[] = [];
+  const pushText = (text: string) => { for (const byte of Buffer.from(text, "utf8")) bytes.push(byte); };
   for (let index = 1; index < token.length; index += 1) {
     const char = token[index];
     if (char === "\"") break;
-    if (char !== "\\") { out += char; continue; }
+    if (char !== "\\") { pushText(char ?? ""); continue; }
     const next = token[index + 1];
     index += 1;
-    if (next === "n") out += "\n";
-    else if (next === "t") out += "\t";
-    else if (next === "r") out += "\r";
-    else if (next === "\"") out += "\"";
-    else if (next === "\\") out += "\\";
+    if (next === "n") bytes.push(0x0a);
+    else if (next === "t") bytes.push(0x09);
+    else if (next === "r") bytes.push(0x0d);
+    else if (next === "a") bytes.push(0x07);
+    else if (next === "b") bytes.push(0x08);
+    else if (next === "f") bytes.push(0x0c);
+    else if (next === "v") bytes.push(0x0b);
+    else if (next === "\"") bytes.push(0x22);
+    else if (next === "\\") bytes.push(0x5c);
     else if (next && /[0-7]/.test(next)) {
       let octal = next;
       while (octal.length < 3 && index + 1 < token.length && /[0-7]/.test(token[index + 1] ?? "")) { octal += token[index + 1]; index += 1; }
-      out += String.fromCharCode(parseInt(octal, 8));
-    } else if (next !== undefined) out += next;
+      bytes.push(parseInt(octal, 8) & 0xff);
+    } else if (next !== undefined) pushText(next);
   }
-  return out;
+  return Buffer.from(bytes).toString("utf8");
 }
 
 /** Parse the `+++ b/<path>` / `--- a/<path>` lines above the first hunk. Never splits `diff --git` by spaces. */
@@ -270,9 +275,14 @@ export function createTurnWindows(capture: (cwd: string) => Promise<Snapshot> = 
           else if (before.kind !== "ok" || after.kind !== "ok" || cwd !== window.cwd || window.invalid) result = { ...unavailable(), warning: window.overlap ? OVERLAP_WARNING : null };
           else {
             const paths = new Set([...before.files.keys(), ...after.files.keys()]);
-            const files = [...paths].filter(path => before.files.get(path) !== after.files.get(path)).sort();
+            const changed = [...paths].filter(path => before.files.get(path) !== after.files.get(path)).sort();
             const message = before.head !== after.head ? "Git HEAD changed during this period; the status difference may be incomplete." : null;
-            const details = await collectFileDetails(before.root ?? cwd, files, execute);
+            const details = await collectFileDetails(before.root ?? cwd, changed, execute);
+            const renameSources = new Set(Object.values(details)
+              .map(item => item.renamedFrom)
+              .filter((value): value is string => Boolean(value)));
+            const files = changed.filter(path => !renameSources.has(path));
+            for (const source of renameSources) delete details[source];
             result = { files, details, message, warning: window.overlap ? OVERLAP_WARNING : null, incomplete: true };
           }
           window.result = result;
