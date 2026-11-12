@@ -127,37 +127,27 @@ function unquoteGitPath(token: string): string {
   return out;
 }
 
-/** Parse `diff --git a/<old> b/<new>` into the two paths, exactly. Never reads patch content. */
-export function parseDiffHeader(header: string): { oldPath: string; newPath: string } | null {
-  if (!header.startsWith("diff --git ")) return null;
-  const rest = header.slice("diff --git ".length);
-  const tokens: string[] = [];
-  let index = 0;
-  while (index < rest.length && tokens.length < 2) {
-    while (rest[index] === " ") index += 1;
-    if (index >= rest.length) break;
-    if (rest[index] === "\"") {
-      let end = index + 1;
-      while (end < rest.length) {
-        if (rest[end] === "\\") { end += 2; continue; }
-        if (rest[end] === "\"") { end += 1; break; }
-        end += 1;
-      }
-      tokens.push(rest.slice(index, end));
-      index = end;
-    } else {
-      const end = rest.indexOf(" ", index);
-      const stop = end < 0 ? rest.length : end;
-      tokens.push(rest.slice(index, stop));
-      index = stop;
-    }
+/** Parse the `+++ b/<path>` / `--- a/<path>` lines above the first hunk. Never splits `diff --git` by spaces. */
+export function diffChunkPaths(patchText: string): { destination: string | null; source: string | null } {
+  let destination: string | null = null;
+  let source: string | null = null;
+  for (const line of patchText.split("\n")) {
+    if (line.startsWith("@@")) break;
+    if (line.startsWith("+++ ")) destination = cleanDiffPath(line.slice(4), "b/");
+    else if (line.startsWith("--- ")) source = cleanDiffPath(line.slice(4), "a/");
   }
-  if (tokens.length < 2) return null;
-  const strip = (token: string, prefix: string) => {
-    const value = unquoteGitPath(token);
-    return value.startsWith(prefix) ? value.slice(prefix.length) : value;
-  };
-  return { oldPath: strip(tokens[0] ?? "", "a/"), newPath: strip(tokens[1] ?? "", "b/") };
+  return { destination, source };
+}
+
+function cleanDiffPath(token: string, prefix: string): string | null {
+  let value = token;
+  const tab = value.indexOf("\t");
+  if (tab >= 0 && !value.startsWith("\"")) value = value.slice(0, tab);
+  if (value.startsWith("\"")) value = unquoteGitPath(value);
+  const cut = value.indexOf("\t");
+  if (cut >= 0) value = value.slice(0, cut);
+  if (!value || value === "/dev/null") return null;
+  return value.startsWith(prefix) ? value.slice(prefix.length) : value;
 }
 
 function truncateUtf8(text: string, maxBytes: number): string {
@@ -209,9 +199,8 @@ export async function collectFileDetails(cwd: string, paths: string[], execute: 
   let total = 0;
   const known = new Set(included);
   for (const chunk of patchChunks(patch)) {
-    const header = parseDiffHeader(chunk.header);
-    if (!header) continue;
-    const path = known.has(header.newPath) ? header.newPath : known.has(header.oldPath) ? header.oldPath : null;
+    const { destination, source } = diffChunkPaths(chunk.text);
+    const path = destination && known.has(destination) ? destination : source && known.has(source) ? source : null;
     if (!path) continue;
     const target = stats.get(path);
     if (!target) continue;
@@ -237,6 +226,7 @@ export async function collectFileDetails(cwd: string, paths: string[], execute: 
   for (const path of included) {
     const item = stats.get(path) ?? emptyStats();
     if (item.added === null && item.deleted === null && !item.binary && !item.renamedFrom && !item.note) item.note = NO_TEXT_DIFF;
+    if (!item.diff && !item.note && !item.binary && (item.added !== null || item.deleted !== null)) item.note = "no diff available from Git";
     details[path] = item;
   }
   return details;

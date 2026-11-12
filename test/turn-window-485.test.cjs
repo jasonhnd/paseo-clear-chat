@@ -289,3 +289,44 @@ test("a file without a diff gets no expand arrow and no open action", () => {
   assert.equal(h.nodes(tree, node => node.props?.testID === "turn-window-diff-0").length, 0);
   h.unmount(); h.dispose();
 });
+
+test("a path with spaces keeps its diff and its expand action", async () => {
+  const captures = [state([["my file.txt", "1"]]), state([["my file.txt", "2"]])];
+  const patch = [
+    "diff --git a/my file.txt b/my file.txt",
+    "index 1111111..2222222 100644",
+    "--- a/my file.txt\t",
+    "+++ b/my file.txt\t",
+    "@@ -1 +1,2 @@",
+    " keep",
+    "+added line",
+  ].join("\n");
+  const windows = createTurnWindows(async () => captures.shift(), diffExecute({ numstat: "1\t0\tmy file.txt", patch }));
+  windows.before("a", "t1", "workspace", "/repo");
+  await windows.after("a", "t1", "/repo");
+  const result = await windows.get("a", "t1");
+  assert.deepEqual(result.files, ["my file.txt"]);
+  assert.equal(result.details["my file.txt"].added, 1);
+  assert.match(result.details["my file.txt"].diff, /\+added line/);
+  const visible = openedText(result);
+  assert.ok(visible.includes("my file.txt  +1 / -0"), visible);
+  assert.ok(visible.includes("▾"), visible);
+});
+
+test("a deletion is attributed through the --- a/<path> line", async () => {
+  const captures = [state([["gone file.txt", "1"]]), state([])];
+  const patch = [
+    "diff --git a/gone file.txt b/gone file.txt",
+    "deleted file mode 100644",
+    "--- a/gone file.txt\t",
+    "+++ /dev/null",
+    "@@ -1 +0,0 @@",
+    "-removed line",
+  ].join("\n");
+  const windows = createTurnWindows(async () => captures.shift(), diffExecute({ numstat: "0\t1\tgone file.txt", patch }));
+  windows.before("a", "t1", "workspace", "/repo");
+  await windows.after("a", "t1", "/repo");
+  const result = await windows.get("a", "t1");
+  assert.equal(result.details["gone file.txt"].deleted, 1);
+  assert.match(result.details["gone file.txt"].diff, /-removed line/);
+});
