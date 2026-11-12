@@ -173,3 +173,13 @@ test('an empty error group shows its empty state without displaying the missing 
   assert.ok(text.includes('No conversations stopped with an error.'));
   assert.ok(!text.includes('sidebar.errorsEmpty'));
 });
+
+test('missing Japanese error keys render English instead of the key name', () => {
+  const h = require('./helpers/tool-harness.cjs').createToolHarness('ios', { locale: 'ja' });
+  const messages = h.load('client/messages.ts').messages;
+  assert.equal(messages.resources.ja.sidebar.errors, undefined);
+  assert.equal(messages.resources.ja.sidebar.errorsEmpty, undefined);
+  assert.equal(h.translations.runtime.t(messages, 'sidebar.errors'), 'Errors');
+  assert.equal(h.translations.runtime.t(messages, 'sidebar.errorsEmpty'), 'No conversations stopped with an error.');
+  assert.equal(h.translations.runtime.t(messages, 'sidebar.errors').includes('sidebar.errors'), false);
+});
