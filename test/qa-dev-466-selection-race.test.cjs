@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { createToolHarness } = require('/data/home/w/test/helpers/tool-harness.cjs');
+const { createToolHarness } = require('./helpers/tool-harness.cjs');
 const byId = (h,tree,id) => h.nodes(tree,n=>n.props.testID===id)[0];
 const tick = () => new Promise(resolve=>setTimeout(resolve,0));
 
