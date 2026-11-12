@@ -4,6 +4,7 @@ import type { PluginClientContext, PluginTimelineTransformerContribution } from 
 import { z } from "zod";
 import { requireHostMethods, STARTUP_MESSAGES } from "./shared/startup-diagnostics";
 import { ClearChatSidebar, type SidebarViewRegistration } from "./client/components/agent-board";
+import { TurnWindowItem } from "./client/live-renderers";
 import { SidebarHintItem } from "./client/components/sidebar-hint-item";
 import { ClearChatSettingsPage } from "./client/settings-page";
 import { embedFonts } from "./client/components/embed-fonts";
@@ -72,6 +73,9 @@ export default function contribute(client: PluginClientContext) {
 function registerClient(client: PluginClientContext) {
   // Sidebar views were introduced in Paseo 0.16.
   const sidebarClient = client as PluginClientContext & SidebarViewRegistration;
+  const removeTurnWindow = typeof (client as { addTimelineRenderer?: unknown }).addTimelineRenderer === "function"
+    ? (client as unknown as { addTimelineRenderer(c: unknown): () => void }).addTimelineRenderer({ kind: "turn-window", version: 1, Component: TurnWindowItem })
+    : undefined;
   const removeSidebar = typeof sidebarClient.addSidebarView === "function"
     ? sidebarClient.addSidebarView({ id: "clear-chat", title: messages.message("sidebar.title"),
       description: messages.message("sidebar.description"), Component: ClearChatSidebar })
@@ -385,6 +389,7 @@ function registerClient(client: PluginClientContext) {
 
   return () => {
     removeSidebar?.();
+    removeTurnWindow?.();
     removeSidebarHint?.();
     setOptionSender(null);
     removeFonts();

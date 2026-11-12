@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { registerTurnWindows } from "./server/turn-window";
+import { turnWindowRpc } from "./shared/turn-window-rpc";
 import { open, realpath, stat, type FileHandle } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
@@ -477,6 +479,8 @@ function contributeWithHistoryFactory(server: PluginServerContext, historyStore:
 }
 
 function registerServer(server: PluginServerContext, historyStore: (home: string) => HermesCcHistoryStore) {
+  const turnWindows = registerTurnWindows(server);
+  server.handle(turnWindowRpc, async ({ agentId, turnId }) => turnWindows.windows.get(agentId, turnId));
   migrateHostSettings();
   server.registerSettings(presentationSettings);
   server.registerSettings(toolExpansionSettings);
@@ -619,5 +623,5 @@ function registerServer(server: PluginServerContext, historyStore: (home: string
 
   // The highlighter and the cache sit at module scope on purpose, shared by
   // every contribution, so a single teardown must not dispose them.
-  return () => {};
+  return () => { turnWindows.dispose(); };
 }
