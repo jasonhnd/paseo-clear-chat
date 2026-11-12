@@ -21,10 +21,12 @@ const FALLBACK: Record<string, string> = {
 export function TurnWindowCard({ snapshot, tokens }: { snapshot?: TurnWindowSnapshot | null; tokens: ExtendedThemeTokens }) {
   const [open, setOpen] = useState(false);
   const { t } = pluginClient.useTranslation(messages);
+  // The typed t() only accepts literal keys, so call it through a widened signature.
+  const translate = t as unknown as (value: string) => string;
   const say = (code?: string | null, text?: string | null): string | null => {
     if (!code) return text ?? null;
     const key = `sidebar.${code}`;
-    const translated = t(key);
+    const translated = translate(key);
     if (translated && translated !== key) return translated;
     return text ?? FALLBACK[code] ?? null;
   };
