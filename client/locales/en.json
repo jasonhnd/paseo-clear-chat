@@ -165,6 +165,7 @@
     "copiedInstead": "Copied instead"
   },
   "toast": {
+    "sidebarViewHint": "Open Settings → Sidebar and select Clear Chat to use it in the sidebar.",
     "copied": "Copied to clipboard",
     "copyFailed": "Could not copy. Select all the text in the dialog and use Copy.",
     "pathCopied": "Path copied. Open it on the host computer.",
