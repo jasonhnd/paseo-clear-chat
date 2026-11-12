@@ -56,6 +56,7 @@ function harness(agents, { live = false, hosts = [{ serverId: 'srv_1', status: '
     if (id === '@getpaseo/plugin/client') return hooks;
     if (id === '../messages') return { messages };
     if (id === '../agent-board-model') return require('../client/agent-board-model.ts');
+    if (id === '../outline-model') return require('../client/outline-model.ts');
     throw Error(`unexpected import ${id}`);
   };
   vm.runInThisContext(`(function(require,module,exports){${js}\n})`, { filename })(req, mod, mod.exports);
