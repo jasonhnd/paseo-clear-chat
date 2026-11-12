@@ -2,7 +2,7 @@ import { useTranslation } from "@getpaseo/plugin/client";
 import { messages } from "./messages";
 import { translatedDiagnostic } from "./translation";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, Text, Pressable, ScrollView, Platform, useWindowDimensions } from "react-native";
+import { View, Text, Pressable, ScrollView, Modal, Platform, useWindowDimensions } from "react-native";
 import { useAgent, usePaseo, useRpc, useWorkspace } from "@getpaseo/plugin/client";
 import type { PluginTimelineItemProps } from "@getpaseo/plugin/client";
 import { buildThemeTokens } from "./components/theme-tokens";
@@ -398,6 +398,15 @@ export function LiveAssistantRenderer({
   // the model's words, so they are drawn as a card, not as prose.
   const envelope = useMemo(() => parseSystemEnvelope(item.data.text), [item.data.text, t]);
   const replyRoot = useRef<HTMLElement | null>(null);
+  const readerRoot = useRef<HTMLElement | null>(null);
+  const savedScroll = useRef<{ node: Element; top: number; left: number }[]>([]);
+  const readerOffset = useRef(0);
+  const rememberReaderOffset = (event: { nativeEvent?: { contentOffset?: { y?: number } } }) => {
+    const y = event?.nativeEvent?.contentOffset?.y;
+    if (typeof y === "number") readerOffset.current = y;
+  };
+  const [reader, setReader] = useState<{ text: string; images?: GeneratedImage[] } | null>(null);
+  const readerChips = useMemo(() => item.data.phase === "complete" ? buildJumpChips(item.data.text) : [], [item.data.phase, item.data.text]);
   const chips = useMemo(() => preferences.showJumpChips && item.data.phase === "complete"
     ? buildJumpChips(item.data.text) : [], [preferences.showJumpChips, item.data.phase, item.data.text]);
   const headingLabels = useMemo(() => chips.length ? new Map(jumpHeadingLines(item.data.text)
@@ -405,6 +414,31 @@ export function LiveAssistantRenderer({
   const scrollToHeading = (index: number) => {
     const heading = replyRoot.current?.querySelector<HTMLElement>(`[data-jump-heading="${index}"]`);
     if (typeof heading?.scrollIntoView === "function") heading.scrollIntoView({ block: "start" });
+  };
+  const openReader = () => {
+    const scrolls: { node: Element; top: number; left: number }[] = [];
+    for (let node = replyRoot.current?.parentElement; node; node = node.parentElement) {
+      if (node.scrollHeight > node.clientHeight || node.scrollWidth > node.clientWidth) {
+        scrolls.push({ node, top: node.scrollTop, left: node.scrollLeft });
+      }
+    }
+    const page = document.scrollingElement;
+    if (page && !scrolls.some(({ node }) => node === page)) scrolls.push({ node: page, top: page.scrollTop, left: page.scrollLeft });
+    savedScroll.current = scrolls;
+    setReader({ text: item.data.text, images: item.data.images });
+  };
+  const closeReader = () => {
+    const scroller = readerRoot.current?.querySelector<HTMLElement>('[data-testid="reader-scroll"]');
+    if (scroller) readerOffset.current = scroller.scrollTop;
+    setReader(null);
+    const restore = () => savedScroll.current.forEach(({ node, top, left }) => { node.scrollTop = top; node.scrollLeft = left; });
+    restore();
+    requestAnimationFrame(restore);
+  };
+  const scrollReaderToHeading = (index: number) => {
+    const scroller = readerRoot.current?.querySelector<HTMLElement>('[data-testid="reader-scroll"]');
+    const heading = scroller?.querySelector<HTMLElement>(`[data-jump-heading="${index}"]`);
+    if (scroller && heading) scroller.scrollTop += heading.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
   };
   const replyText = item.data.text;
   const replyAt = timestamp.getTime();
@@ -429,6 +463,33 @@ export function LiveAssistantRenderer({
               <Text style={{ color: tokens.foreground, fontSize: tokens.fs(12) }}>{chip.label}</Text>
             </Pressable>)}
           </ScrollView> : null}
+          {Platform.OS === "web" && readerChips.length ? <Pressable testID="reader-open" accessibilityRole="button" onPress={openReader}
+            style={{ alignSelf: "flex-start", padding: 10, marginBottom: 8, borderWidth: 1, borderColor: tokens.border, borderRadius: 8 }}>
+            <Text style={{ color: tokens.foreground, fontSize: tokens.fs(12) }}>Read reply</Text>
+          </Pressable> : null}
+          {reader ? <Modal transparent visible animationType="none" onRequestClose={closeReader}>
+            <View ref={(node: View | null) => { readerRoot.current = node as unknown as HTMLElement | null; }}
+              accessibilityViewIsModal style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 16 }}>
+              <View style={{ width: "100%", maxWidth: 800, height: "90%", backgroundColor: tokens.surface1, borderRadius: 12, padding: 16 }}>
+                <Pressable testID="reader-close" accessibilityRole="button" onPress={closeReader} style={{ alignSelf: "flex-end", padding: 10 }}>
+                  <Text style={{ color: tokens.foreground }}>Close</Text>
+                </Pressable>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, marginBottom: 8 }} contentContainerStyle={{ gap: 8 }}>
+                  {jumpHeadingLines(reader.text).filter(({ heading }) => heading).map(({ index, heading }) =>
+                    <Pressable key={index} testID={`reader-toc-${index}`} accessibilityRole="button" onPress={() => scrollReaderToHeading(index)}
+                      style={{ padding: 10, borderWidth: 1, borderColor: tokens.border, borderRadius: 8 }}>
+                      <Text style={{ color: tokens.foreground }}>{heading}</Text>
+                    </Pressable>)}
+                </ScrollView>
+                <ScrollView testID="reader-scroll" ref={(node: ScrollView | null) => {
+                  const scroller = node as unknown as HTMLElement | null;
+                  if (scroller) scroller.scrollTop = readerOffset.current;
+                }} contentOffset={{ x: 0, y: readerOffset.current }} onScroll={rememberReaderOffset} scrollEventThrottle={16} style={{ flex: 1, overscrollBehavior: "contain" } as any}>
+                  <MarkdownView text={reader.text} images={reader.images} cwd={cwd} tokens={tokens} variant={preferences.markdownVariant} unfoldCode />
+                </ScrollView>
+              </View>
+            </View>
+          </Modal> : null}
           <MarkdownView text={item.data.text} images={item.data.images} cwd={cwd} tokens={tokens} variant={preferences.markdownVariant}
             expansionIdentity={{ hostId: host.id, agentId, callId: item.data.messageId, name: "assistant-message", timestamp: timestamp.getTime() }} />
         </>
