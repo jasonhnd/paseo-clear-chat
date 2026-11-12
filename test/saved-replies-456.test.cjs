@@ -4,10 +4,11 @@ const { createToolHarness } = require('./helpers/tool-harness.cjs');
 
 const byId = (h, tree, id) => h.nodes(tree, node => node.props.testID === id)[0];
 
-async function fixture(t, savedReplies, platform = 'ios') {
-  let prompt = '', cursor = 0, sent = 0, setCalls = 0, focusCalls = 0;
+async function fixture(t, savedReplies, platform = 'ios', exposeSelection = true) {
+  let prompt = '', cursor = 0, sent = 0, setCalls = 0, focusCalls = 0, selectionAvailable = exposeSelection;
   const composer = {
     get prompt() { return prompt; },
+    get selection() { return selectionAvailable ? { start: cursor, end: cursor } : undefined; },
     setPrompt(text) { setCalls++; prompt = text; },
     insertText(text) { prompt = prompt.slice(0, cursor) + text + prompt.slice(cursor); cursor += text.length; },
     async focus() { focusCalls++; },
@@ -28,7 +29,7 @@ async function fixture(t, savedReplies, platform = 'ios') {
   const draw = () => h.draw({ type: Card, props: { agentId: 'a', at: 1, tokens: h.tokens } });
   const get = id => byId(h, draw(), id);
   const press = id => { const node = get(id); assert.ok(node, `missing ${id}`); node.props.onPress(); };
-  return { h, session, draw, get, press, setPrompt(text, at = text.length) { prompt = text; cursor = at; },
+  return { h, session, draw, get, press, loseSelection() { selectionAvailable = false; }, setPrompt(text, at = text.length) { prompt = text; cursor = at; },
     get prompt() { return prompt; }, get sent() { return sent; }, get setCalls() { return setCalls; }, get focusCalls() { return focusCalls; } };
 }
 
@@ -45,17 +46,75 @@ test('default saved replies render in order with accessible labels', async t => 
 
 test('a saved reply inserts into an empty composer without sending', async t => {
   const f = await fixture(t);
-  f.press('saved-reply-1');
-  assert.equal(f.prompt, 'Leave it for now');
+  f.press('saved-reply-2');
+  assert.equal(f.prompt, 'Continue');
   assert.equal(f.sent, 0); assert.equal(f.setCalls, 0); assert.equal(f.focusCalls, 0);
 });
 
-test('a saved reply inserts at the cursor without replacing existing text', async t => {
+test('a saved reply separates from existing text at the end', async t => {
   const f = await fixture(t);
   f.setPrompt('my own words'); f.press('saved-reply-2');
-  assert.equal(f.prompt, 'my own wordsContinue');
-  f.setPrompt('before after', 6); f.press('saved-reply-2');
-  assert.equal(f.prompt, 'beforeContinue after');
+  assert.equal(f.prompt, 'my own words Continue');
+  assert.equal(f.sent, 0); assert.equal(f.setCalls, 0); assert.equal(f.focusCalls, 0);
+});
+
+test('a saved reply inserts after whitespace in the middle without an extra space', async t => {
+  const f = await fixture(t);
+  f.setPrompt('my own words', 7); f.press('saved-reply-2');
+  assert.equal(f.prompt, 'my own Continuewords');
+  assert.equal(f.sent, 0); assert.equal(f.setCalls, 0); assert.equal(f.focusCalls, 0);
+});
+
+test('a saved reply separates from a non-space in the middle', async t => {
+  const f = await fixture(t);
+  f.setPrompt('my own words', 6); f.press('saved-reply-2');
+  assert.equal(f.prompt, 'my own Continue words');
+  assert.equal(f.sent, 0); assert.equal(f.setCalls, 0); assert.equal(f.focusCalls, 0);
+});
+
+test('a saved reply respects whitespace and the start of the prompt', async t => {
+  const f = await fixture(t);
+  for (const [prompt, cursor, expected] of [
+    [' words', 1, ' Continuewords'],
+    ['\nwords', 1, '\nContinuewords'],
+    ['\twords', 1, '\tContinuewords'],
+    ['words', 0, 'Continuewords'],
+  ]) {
+    f.setPrompt(prompt, cursor); f.press('saved-reply-2');
+    assert.equal(f.prompt, expected);
+  }
+  assert.equal(f.sent, 0); assert.equal(f.setCalls, 0); assert.equal(f.focusCalls, 0);
+});
+
+for (const [name, prompt, cursor, exposeSelection, expected] of [
+  ['at the start with a selection', 'hello world', 0, true, 'Continuehello world'],
+  ['at the start after selection is unavailable', 'hello world', 0, false, ' Continuehello world'],
+  ['after an existing space', 'hello world', 6, true, 'hello Continueworld'],
+  ['after an existing space without a selection', 'hello world', 6, false, 'hello  Continueworld'],
+  ['after a non-space', 'hello world', 5, true, 'hello Continue world'],
+  ['in an empty prompt', '', 0, true, 'Continue'],
+  ['at the end of a prompt', 'my own words', 12, true, 'my own words Continue'],
+  ['at the end without a selection', 'my own words', 12, false, 'my own words Continue'],
+  ['in an empty prompt without a selection', '', 0, false, 'Continue'],
+  ['at the end of a space without a selection', 'my own words ', 13, false, 'my own words Continue'],
+  ['at the end of a newline without a selection', 'my own words\n', 13, false, 'my own words\nContinue'],
+  ['at the end of a tab without a selection', 'my own words\t', 13, false, 'my own words\tContinue'],
+]) {
+  test(`saved reply ${name}`, async t => {
+    const f = await fixture(t, undefined, 'ios', exposeSelection);
+    f.setPrompt(prompt, cursor); f.press('saved-reply-2');
+    assert.equal(f.prompt, expected);
+    assert.equal(f.sent, 0); assert.equal(f.setCalls, 0); assert.equal(f.focusCalls, 0);
+  });
+}
+
+test('a saved reply at the start after blur loses selection assumes the end', async t => {
+  const f = await fixture(t);
+  f.setPrompt('hello world', 0);
+  f.draw();
+  f.loseSelection();
+  f.press('saved-reply-2');
+  assert.equal(f.prompt, ' Continuehello world');
   assert.equal(f.sent, 0); assert.equal(f.setCalls, 0); assert.equal(f.focusCalls, 0);
 });
 
