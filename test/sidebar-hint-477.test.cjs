@@ -40,3 +40,24 @@ test("unavailable storage does not crash or repeat the hint during the session",
   h.unmount();
   h.dispose();
 });
+
+test("registers the sidebar hint header item and shows the toast once", () => {
+  const values = new Map();
+  const localStorage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+  const h = createToolHarness("web", { globals: { localStorage } });
+  const item = h.sidebarHeaderItems.get("clear-chat-hint");
+  assert.ok(item, "header item is registered");
+  // The host resolves PluginText; the exact "Clear Chat" copy is asserted in test/translations.test.cjs.
+  assert.deepEqual(item.title, h.load("client/messages.ts").messages.message("sidebar.title"));
+  const Item = h.load("client/components/sidebar-hint-item.tsx").SidebarHintItem;
+  assert.equal(item.Component, Item);
+  const panelOpensBefore = h.panelOpens.length;
+  h.draw({ type: item.Component, props: {} });
+  assert.deepEqual(h.toasts, [expected.en]);
+  assert.equal(values.get("clear-chat.sidebar-view-hint-shown"), "1");
+  assert.equal(h.panelOpens.length, panelOpensBefore);
+  h.unmount();
+  h.draw({ type: item.Component, props: {} });
+  assert.deepEqual(h.toasts, [expected.en]);
+  h.dispose();
+});

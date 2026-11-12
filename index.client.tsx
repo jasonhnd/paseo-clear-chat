@@ -4,6 +4,7 @@ import type { PluginClientContext, PluginTimelineTransformerContribution } from 
 import { z } from "zod";
 import { requireHostMethods, STARTUP_MESSAGES } from "./shared/startup-diagnostics";
 import { ClearChatSidebar, type SidebarViewRegistration } from "./client/components/agent-board";
+import { SidebarHintItem } from "./client/components/sidebar-hint-item";
 import { ClearChatSettingsPage } from "./client/settings-page";
 import { embedFonts } from "./client/components/embed-fonts";
 import { installFrostedGlass } from "./client/components/frosted";
@@ -74,6 +75,11 @@ function registerClient(client: PluginClientContext) {
   const removeSidebar = typeof sidebarClient.addSidebarView === "function"
     ? sidebarClient.addSidebarView({ id: "clear-chat", title: messages.message("sidebar.title"),
       description: messages.message("sidebar.description"), Component: ClearChatSidebar })
+    : undefined;
+  // A header item is the only surface that mounts without the user selecting the view.
+  const removeSidebarHint = typeof (sidebarClient as { addSidebarHeaderItem?: unknown }).addSidebarHeaderItem === "function"
+    ? (sidebarClient as unknown as { addSidebarHeaderItem(c: { id: string; title: unknown; Component: unknown }): () => void })
+        .addSidebarHeaderItem({ id: "clear-chat-hint", title: messages.message("sidebar.title"), Component: SidebarHintItem })
     : undefined;
   setOptionSender((agentId, text) => client.paseo.agents.ref(agentId).send(text));
   void initializeEnhancerPreferences((contract, input) => client.rpc(contract, input));
@@ -379,6 +385,7 @@ function registerClient(client: PluginClientContext) {
 
   return () => {
     removeSidebar?.();
+    removeSidebarHint?.();
     setOptionSender(null);
     removeFonts();
     removeFrost();
