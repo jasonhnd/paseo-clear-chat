@@ -2,10 +2,11 @@ import * as pluginClient from "@getpaseo/plugin/client";
 import type { PluginTheme, PluginText, PluginAgentSnapshot } from "@getpaseo/plugin";
 import type { AgentRef, ProjectRef } from "@getpaseo/plugin/client";
 import React, { useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { messages } from "../messages";
 import { isBackgroundAgent, boardSection, compareBoardAgents, lastActivityTime, localDayBounds, runningMinutes, answerMarker, compareWaitingAgents } from "../agent-board-model";
 import { parseOutline, syncOutline } from "../outline-model";
+import { useEnhancerPreferences } from "../preferences";
 
 type BoardProps = { theme: PluginTheme; navigation: { openAgent(ref: AgentRef): void }; active?: { agent: AgentRef | null; workspace?: { hostId: string } | null } };
 export type SidebarViewRegistration = {
@@ -258,6 +259,10 @@ function SearchBoard(props: BoardProps) {
 export function ClearChatSidebar(props: BoardProps) {
   const [tab, setTab] = useState<"today" | "waiting" | "directory" | "search">("today");
   const { t } = pluginClient.useTranslation(messages);
+  const agentId = props.active?.agent?.id ?? "";
+  const composers = pluginClient.useComposers({ agentId: agentId || "no-agent" });
+  const composer = composers[0];
+  const { savedReplies } = useEnhancerPreferences();
   return (
     <View style={styles.shell}>
       <View accessibilityRole="tablist" style={[styles.tabs, { borderColor: props.theme.colors.border }]}>
@@ -268,6 +273,15 @@ export function ClearChatSidebar(props: BoardProps) {
           </Pressable>
         ))}
       </View>
+      {savedReplies.length > 0 ? <ScrollView horizontal accessibilityLabel={t("answerStyle.savedRepliesLabel")} style={styles.savedRepliesScroll} contentContainerStyle={styles.savedReplies}>
+        {savedReplies.map((phrase, index) => <Pressable key={index} testID={`sidebar-saved-reply-${index}`}
+          accessibilityRole="button" accessibilityLabel={phrase} disabled={!agentId || !composer || !phrase}
+          {...(Platform.OS === "web" && agentId && composer && phrase ? { onMouseDown: (event: React.MouseEvent) => event.preventDefault() } : {})}
+          onPress={() => { if (agentId && composer && phrase) composer.insertText(phrase); }}
+          style={[styles.savedReply, { borderColor: props.theme.colors.border }]}>
+          <Text style={{ color: props.theme.colors.foreground }}>{phrase}</Text>
+        </Pressable>)}
+      </ScrollView> : null}
       {tab === "today" ? <TodayBoard {...props} /> : tab === "waiting" ? <WaitingBoard {...props} /> :
         tab === "directory" ? <OutlineBoard {...props} /> : <SearchBoard {...props} />}
     </View>
@@ -278,6 +292,9 @@ const styles = StyleSheet.create({
   shell: { flex: 1 },
   tabs: { flexDirection: "row", borderBottomWidth: StyleSheet.hairlineWidth },
   tab: { flex: 1, alignItems: "center", paddingVertical: 10 },
+  savedRepliesScroll: { flexGrow: 0, maxHeight: 64 },
+  savedReplies: { flexDirection: "row", gap: 8, paddingHorizontal: 14, paddingVertical: 10 },
+  savedReply: { minHeight: 44, justifyContent: "center", paddingHorizontal: 12, borderWidth: 1, borderRadius: 18 },
   placeholder: { padding: 14, fontSize: 12, lineHeight: 18 },
   board: { paddingHorizontal: 14, paddingVertical: 16 },
   project: { marginBottom: 20 },

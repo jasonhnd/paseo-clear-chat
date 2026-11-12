@@ -19,7 +19,7 @@ function render(agents = [], { locale = 'en', projectCount = 1, workspaceName = 
   const translations = h.translations;
   const messages = h.load('client/messages.ts').messages;
   const opened = [];
-  const hooks = {
+  const hooks = { useComposers: () => [],
     useTranslation: () => ({ locale, t: (key, options) => translations.runtime.t(messages, key, options) }),
     useProjects: () => projectCount ? [ref('project', 'p')] : [],
     useAgents: q => {
@@ -46,6 +46,7 @@ function render(agents = [], { locale = 'en', projectCount = 1, workspaceName = 
     if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'Fragment' };
     if (id === 'react-native') return native;
     if (id === '@getpaseo/plugin/client') return hooks;
+    if (id === '../preferences') return { useEnhancerPreferences: () => ({ savedReplies: [] }) };
     if (id === '../messages') return { messages };
     if (id === '../agent-board-model') return require('../client/agent-board-model.ts');
     if (id === '../outline-model') return require('../client/outline-model.ts');
