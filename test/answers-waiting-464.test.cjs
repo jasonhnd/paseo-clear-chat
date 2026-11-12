@@ -105,10 +105,11 @@ test('approved strings exist in all effective locale resources with complete par
   const { messages, translations, h } = render();
   const expected = { en: '{{answered}}/{{total}} answered', 'zh-CN': '已答 {{answered}}/{{total}}', ja: '{{answered}}/{{total}} 回答済み' };
   const keys = value => Object.entries(value).flatMap(([key, child]) => typeof child === 'string' ? [key] : keys(child).map(k => `${key}.${k}`)).sort();
-  const searchKeys = ['sidebar.search', 'sidebar.searchEmpty', 'sidebar.searchLimit', 'sidebar.searchPlaceholder'];
+  const searchKeys = ['sidebar.search', 'sidebar.searchEmpty', 'sidebar.searchLimit', 'sidebar.searchLimitOlder', 'sidebar.searchPlaceholder'];
   for (const locale of Object.keys(expected)) {
     assert.equal(messages.resources[locale].sidebar.answeredOf, expected[locale]);
-    assert.deepEqual(keys(messages.resources[locale]).filter(key => locale !== 'ja' || !searchKeys.includes(key)), keys(messages.resources.en).filter(key => locale !== 'ja' || !searchKeys.includes(key)));
+    const optionalJa = locale === 'ja' ? new Set([...searchKeys, 'sidebar.errors', 'sidebar.errorsEmpty']) : new Set();
+    assert.deepEqual(keys(messages.resources[locale]).filter(key => !optionalJa.has(key)), keys(messages.resources.en).filter(key => !optionalJa.has(key)));
     h.setLocale(locale);
     for (const key of searchKeys) assert.equal(translations.runtime.t(messages, key), messages.resources[locale].sidebar[key.slice(8)] ?? messages.resources.en.sidebar[key.slice(8)]);
     assert.equal(translations.runtime.t(messages, 'sidebar.answeredOf', { answered: 3, total: 5 }), expected[locale].replace('{{answered}}', '3').replace('{{total}}', '5'));

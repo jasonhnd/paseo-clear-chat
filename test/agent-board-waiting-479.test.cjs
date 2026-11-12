@@ -11,8 +11,8 @@ const workspace = ref('workspace', 'work');
 const agent = (id, metadata = {}, hostId = 'srv_1') => ({ id, ref: ref('agent', id, hostId), workspace, title: id, metadata, status: 'idle', updatedAt: '', lastActivityAt: '' });
 const marker = (pending = 2, total = 5) => ({ clearChat: { pending, total, updatedAt: '2026-01-01T00:00:00Z' } });
 
-function harness(agents, { live = false, hosts = [{ serverId: 'srv_1', status: 'online' }], refresh = async () => null } = {}) {
-  const h = require('./helpers/tool-harness.cjs').createToolHarness('ios', { locale: 'en' });
+function harness(agents, { live = false, locale = 'en', hosts = [{ serverId: 'srv_1', status: 'online' }], refresh = async () => null } = {}) {
+  const h = require('./helpers/tool-harness.cjs').createToolHarness('ios', { locale });
   const messages = h.load('client/messages.ts').messages;
   const opened = [], calls = [], states = new Map(), effects = new Map();
   let current, index, pending = [], nodes = [];
@@ -35,7 +35,7 @@ function harness(agents, { live = false, hosts = [{ serverId: 'srv_1', status: '
   const hooks = { useComposers: () => [],
     useProjects: () => [],
     useTranslation: () => ({ t: (key, options) => h.translations.runtime.t(messages, key, options) }),
-    useAgents: q => [{ key: 'waiting', items: agents.filter(q.where).sort(q.orderBy).map(a => a.ref) }],
+    useAgents: q => [{ key: typeof q.groupBy === 'function' ? q.groupBy({}) : 'waiting', items: agents.filter(q.where).sort(q.orderBy).map(a => a.ref) }],
     useAgent: (id, selector) => { const a = agents.find(a => a.id === (typeof id === 'string' ? id : id.id)); return a && selector ? selector(a) : a || null; },
     useWorkspace: () => 'Worktree Alpha',
   };
@@ -131,4 +131,64 @@ test('a pending refresh does not delay a different live row', async () => {
   h.start(); const text = await h.flush();
   assert.ok(text.includes('fast'));
   assert.ok(!text.includes('slow'));
+});
+
+test('unanswered cards remain in the first group and errors appear in a separate group', () => {
+  const unanswered = agent('needs-answer', marker());
+  const failed = { ...agent('failed'), status: 'error' };
+  const both = { ...agent('failed-with-answer', marker()), status: 'error' };
+  const h = harness([unanswered, failed, both]);
+  const text = h.start();
+  const firstGroup = text.lastIndexOf('Answers waiting');
+  const errorGroup = text.indexOf('Errors');
+  assert.ok(firstGroup >= 0 && errorGroup > firstGroup);
+  const ids = values => values.filter(value => ['needs-answer', 'failed', 'failed-with-answer'].includes(value));
+  assert.deepEqual(ids(text.slice(firstGroup, errorGroup)).sort(), ['failed-with-answer', 'needs-answer']);
+  assert.deepEqual(ids(text.slice(errorGroup)).sort(), ['failed', 'failed-with-answer']);
+  h.nodes().find(n => n.type === 'Pressable' && n.props.accessibilityRole === 'button' && n.props.children.some(child => child?.props?.children === 'failed')).props.onPress();
+  assert.deepEqual(h.opened, [failed.ref]);
+});
+
+test('idle, running and unknown status are neither unread nor errors', () => {
+  const timestamp = '2026-11-12T12:00:00Z';
+  const agents = ['idle', 'running', 'unknown'].map(status => ({
+    ...agent(`${status}-agent`, { clearChat: { pending: 0, total: 1, updatedAt: timestamp } }),
+    status, updatedAt: timestamp, lastActivityAt: timestamp, attentionReason: 'finished',
+  }));
+  const h = harness(agents);
+  let text = h.start();
+  for (const a of agents) assert.ok(!text.includes(a.id));
+  assert.ok(!text.some(value => /unread/i.test(value)));
+  assert.ok(text.includes('Nothing waiting for your answer.'));
+  agents[0].status = 'error';
+  text = h.render();
+  assert.ok(text.slice(text.indexOf('Errors')).includes('idle-agent'));
+  agents[0].status = 'idle';
+  text = h.render();
+  assert.ok(!text.includes('idle-agent'));
+});
+
+test('an empty error group shows its empty state without displaying the missing key', () => {
+  const h = harness([agent('needs-answer', marker())]);
+  const text = h.start();
+  assert.ok(text.includes('No conversations stopped with an error.'));
+  assert.ok(!text.includes('sidebar.errorsEmpty'));
+});
+
+test('missing Japanese error keys render English instead of the key name', () => {
+  const h = require('./helpers/tool-harness.cjs').createToolHarness('ios', { locale: 'ja' });
+  const messages = h.load('client/messages.ts').messages;
+  assert.equal(messages.resources.ja.sidebar.errors, undefined);
+  assert.equal(messages.resources.ja.sidebar.errorsEmpty, undefined);
+  assert.equal(h.translations.runtime.t(messages, 'sidebar.errors'), 'Errors');
+  assert.equal(h.translations.runtime.t(messages, 'sidebar.errorsEmpty'), 'No conversations stopped with an error.');
+  assert.equal(h.translations.runtime.t(messages, 'sidebar.errors').includes('sidebar.errors'), false);
+});
+
+test('Japanese error title and empty state render English on screen', () => {
+  const h = harness([], { locale: 'ja' });
+  const text = h.start();
+  assert.ok(text.includes('Errors'));
+  assert.ok(text.includes('No conversations stopped with an error.'));
+  assert.equal(text.some(value => String(value).includes('sidebar.errors')), false);
 });
