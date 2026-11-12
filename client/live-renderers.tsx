@@ -25,6 +25,7 @@ import { buildJumpChips, jumpHeadingLines } from "./jump-chips";
 import { OptionCard } from "./components/option-card";
 import { TimelineTailHub } from "./components/hub-live";
 import { AssistantFooter } from "./components/turn-footer";
+import { TurnWindowCard } from "./components/turn-window-card";
 import { SystemCard } from "./components/system-card";
 import { parseSystemEnvelope } from "./system-envelope";
 import { toolErrorLine } from "./tool-error";
@@ -226,6 +227,7 @@ export function LiveToolCallRenderer({
             expansionIdentity={{ hostId: host.id, agentId, callId: data.callId, name: `final-tool:${data.name}`, timestamp: timestamp.getTime() }} />
           {toolErrorLine(calloutData, "never") ? <Text testID="tool-error-line" selectable style={{ color: tokens.danger }}>{calloutData.error}</Text> : null}
           <AssistantFooter text={finalToolReplyMarkdown(calloutData.finalReply)} at={timestamp} tokens={tokens} durationMs={durationMs} agentId={agentId} />
+          {data.phase === "complete" ? <TurnWindowCard key={`${agentId}:${timestamp.getTime()}:${data.callId ?? data.name}`} agentId={agentId} at={timestamp} reply={{ type: "tool", name: data.name, callId: data.callId }} tokens={tokens} /> : null}
         </View>
       ) : (
         <ToolCallout
@@ -436,6 +438,7 @@ export function LiveAssistantRenderer({
       {!envelope ? (
         <AssistantFooter text={item.data.text} at={timestamp} tokens={tokens} durationMs={durationMs} agentId={agentId} />
       ) : null}
+      {!envelope && item.data.phase === "complete" ? <TurnWindowCard key={`${agentId}:${timestamp.getTime()}`} agentId={agentId} at={timestamp} reply={{ type: "assistant", text: item.data.text, messageId: item.data.messageId }} tokens={tokens} /> : null}
       {!envelope && preferences.showAnswerCard ? <OptionCard key={`${agentId}:${replyAt}`} agentId={agentId} at={replyAt} tokens={tokens} /> : null}
       <TimelineTailHub
         agentId={agentId}

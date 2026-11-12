@@ -40,7 +40,7 @@ for (const platform of ["web", "ios", "android"]) {
       assert.equal(byId(h, tree, id).length, 0, `${id} cannot replace or fold the reply`);
     }
     assert.doesNotMatch(h.text(tree), /"recap"\s*:|"blocked"\s*:|\*\*|##/);
-    assert.equal(h.nodes(tree, node => node.type === "Pressable" || node.props.numberOfLines !== undefined).length, 0);
+    assert.equal(h.nodes(tree, node => (node.type === "Pressable" && node.props.testID !== "turn-window-toggle") || node.props.numberOfLines !== undefined).length, 0);
     assert.deepEqual(source, fixture, "the projected input stays unchanged");
   });
 }

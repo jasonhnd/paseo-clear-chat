@@ -2,7 +2,7 @@
 const assert = require("node:assert/strict");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
-const { join, resolve, isAbsolute, relative } = require("node:path");
+const { join, resolve, isAbsolute, relative, sep } = require("node:path");
 const readline = require("node:readline");
 const test = require("node:test");
 
@@ -12,7 +12,9 @@ function temporary() {
   const base = process.env.TMPDIR;
   assert.ok(base && isAbsolute(base), "An explicit absolute TMPDIR is required");
   const outside = relative(repository, fs.realpathSync(base));
-  assert.ok(outside.startsWith("../"), "TMPDIR must be outside the repository");
+  const localScratch = relative(join(repository, ".tmp"), fs.realpathSync(base));
+  const inScratch = localScratch !== "" && localScratch !== ".." && !localScratch.startsWith(`..${sep}`) && !isAbsolute(localScratch);
+  assert.ok(outside.startsWith(`..${sep}`) || inScratch, "TMPDIR must be outside the repository or inside its ignored .tmp directory");
   assert.ok(!/^\/tmp(?:\/|$)/.test(fs.realpathSync(base)), "Do not use system /tmp");
   return fs.mkdtempSync(join(base, "hermes-journal-"));
 }
