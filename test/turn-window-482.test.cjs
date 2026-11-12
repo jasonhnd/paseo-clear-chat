@@ -74,10 +74,11 @@ test("a single window displays changes without an overlap warning", async () => 
   const result = await windows.get("a", "t1");
   assert.deepEqual(result.files, ["old.txt"]);
   assert.equal(result.warning, null);
+  assert.equal(result.incomplete, false);
   const visible = await displayed(result);
   assert.ok(visible.includes("old.txt"));
   assert.ok(!visible.includes(OVERLAP_WARNING));
-  assert.match(visible, /incomplete|unknown/);
+  assert.ok(!visible.includes("Snapshot timing or overlap"), "a completed turn must not show the incomplete note");
 });
 
 test("an overlapping turn without an ID still contributes to the warning", async () => {

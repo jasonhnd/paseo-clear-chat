@@ -101,7 +101,7 @@ export function createTurnWindows(capture: (cwd: string) => Promise<Snapshot> = 
           else {
             const paths = new Set([...before.files.keys(), ...after.files.keys()]);
             const message = before.head !== after.head ? "Git HEAD changed during this period; the status difference may be incomplete." : null;
-            result = { files: [...paths].filter(path => before.files.get(path) !== after.files.get(path)).sort(), message, warning: window.overlap ? OVERLAP_WARNING : null, incomplete: true };
+            result = { files: [...paths].filter(path => before.files.get(path) !== after.files.get(path)).sort(), message, warning: window.overlap ? OVERLAP_WARNING : null, incomplete: message !== null };
           }
           window.result = result;
         } catch { window.result = { ...unavailable(), warning: window.overlap ? OVERLAP_WARNING : null }; }
