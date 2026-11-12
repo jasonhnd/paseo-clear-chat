@@ -23,18 +23,36 @@ const agents = [
 function harness() {
   const h = require('./helpers/tool-harness.cjs').createToolHarness('ios', { locale: 'en' });
   const messages = h.load('client/messages.ts').messages;
-  const states = new Map(), opened = [];
+  const states = new Map(), effects = new Map(), opened = [], requests = [];
+  const pages = {
+    a: { entries: [{ item: { type: 'user_message', text: 'Loaded Needle Text' } }], hasOlder: true },
+    b: { entries: [{ item: { type: 'assistant_message', text: 'Current page' } }], hasOlder: true },
+    c: { entries: [{ item: { type: 'assistant_message', text: 'Loaded Needle Text' } }], hasOlder: false },
+  };
+  const olderPage = { entries: [{ item: { type: 'user_message', text: 'Unloaded older text' } }], hasOlder: false };
+  const paseo = { agents: { ref: ref => ({ timeline: { refetch: async options => {
+    requests.push({ ref, options }); return options.direction === 'before' ? olderPage : pages[ref.id];
+  } } }) } };
   let current, index, nodes = [], active = { agent: agents[0].ref }, hosts = [{ serverId: 'host-one' }, { serverId: 'host-two' }];
   const react = {
     useState(initial) {
       const key = `${current}:${index++}`;
       if (!states.has(key)) states.set(key, typeof initial === 'function' ? initial() : initial);
-      return [states.get(key), value => states.set(key, value)];
+      return [states.get(key), value => states.set(key, typeof value === 'function' ? value(states.get(key)) : value)];
     },
-    useEffect() {},
+    useEffect(effect, deps) {
+      if (!current.endsWith(':SearchBoard')) return;
+      const key = `${current}:${index++}`;
+      const previous = effects.get(key);
+      if (!previous || deps.some((dep, i) => dep !== previous.deps[i])) {
+        previous?.cleanup?.();
+        effects.set(key, { deps, cleanup: effect() });
+      }
+    },
   };
   const hooks = {
     useProjects: () => [],
+    usePaseo: () => paseo,
     useHosts: () => hosts,
     useAgents: query => agents.filter(query.where).map(agent => agent.ref),
     useAgent: agentRef => agents.find(agent => agent.ref.key === agentRef.key) ?? null,
@@ -69,26 +87,35 @@ function harness() {
     return nodes.filter(node => node.type === 'literal').map(node => node.text);
   }
   function search(query) { nodes.find(node => node.type === 'TextInput').props.onChangeText(query); return render(); }
-  return { render, search, opened, nodes: () => nodes, setActive: value => { active = value; }, setHosts: value => { hosts = value; } };
+  return { render, search, opened, requests, nodes: () => nodes, setActive: value => { active = value; }, setHosts: value => { hosts = value; } };
 }
 
-test('searches loaded titles on the active host and opens a matching agent', () => {
+test('searches titles and fetched timeline text on the active host and opens a hit', async () => {
   const h = harness();
   h.render();
   h.nodes().filter(node => node.type === 'Pressable' && node.props.accessibilityRole === 'tab')[3].props.onPress();
   let text = h.render();
+  await new Promise(resolve => setImmediate(resolve));
+  text = h.render();
   assert.ok(!text.includes('Summer Planning'));
   assert.ok(!text.includes('No matching conversations.'));
-  assert.ok(text.includes('Only loaded titles on the current host are searched. Archived conversations and other providers are not included.'));
+  assert.ok(text.includes('Only loaded titles and timeline text on the current host are searched. Unloaded history, archived conversations, and other providers are not included.'));
   text = h.search('sUMMer');
   assert.ok(text.includes('Summer Planning'));
   assert.ok(!text.includes('Winter Notes'));
   h.nodes().find(node => node.type === 'Pressable' && node.props.accessibilityRole === 'button').props.onPress();
   assert.deepEqual(h.opened, [agents[0].ref]);
   text = h.search('sNaPsHoT');
-  assert.ok(text.includes('Winter Notes'));
+  assert.ok(text.includes('No matching conversations.'));
+  text = h.search('nEeDlE');
+  assert.ok(text.includes('Summer Planning'));
   assert.ok(!text.includes('Other host'));
-  assert.ok(!text.includes('Summer Planning'));
+  h.nodes().find(node => node.type === 'Pressable' && node.props.accessibilityRole === 'button').props.onPress();
+  assert.deepEqual(h.opened, [agents[0].ref, agents[0].ref]);
+  text = h.search('unloaded older text');
+  assert.ok(text.includes('No matching conversations.'));
+  assert.deepEqual(h.requests.map(request => request.ref.id).sort(), ['a', 'b']);
+  assert.ok(h.requests.every(request => JSON.stringify(request.options) === JSON.stringify({ direction: 'tail', limit: 100, projection: 'canonical' })));
   text = h.search('missing');
   assert.ok(text.includes('No matching conversations.'));
   h.search('summer');

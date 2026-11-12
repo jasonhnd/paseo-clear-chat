@@ -70,5 +70,11 @@ test('outline labels and translation parity cover en, zh-CN and ja', () => {
   const h = require('./helpers/tool-harness.cjs').createToolHarness('ios');
   const messages = h.load('client/messages.ts').messages;
   const keys = value => Object.entries(value).flatMap(([k, v]) => typeof v === 'string' ? [k] : keys(v).map(child => `${k}.${child}`)).sort();
-  for (const locale of ['en', 'zh-CN', 'ja']) { assert.ok(messages.resources[locale].sidebar.directory); assert.ok(messages.resources[locale].sidebar.directoryEmpty); assert.deepEqual(keys(messages.resources[locale]), keys(messages.resources.en)); }
+  const searchKeys = ['sidebar.search', 'sidebar.searchEmpty', 'sidebar.searchLimit', 'sidebar.searchPlaceholder'];
+  for (const locale of ['en', 'zh-CN', 'ja']) {
+    assert.ok(messages.resources[locale].sidebar.directory); assert.ok(messages.resources[locale].sidebar.directoryEmpty);
+    assert.deepEqual(keys(messages.resources[locale]).filter(key => locale !== 'ja' || !searchKeys.includes(key)), keys(messages.resources.en).filter(key => locale !== 'ja' || !searchKeys.includes(key)));
+    h.setLocale(locale);
+    for (const key of searchKeys) assert.equal(h.translations.runtime.t(messages, key), messages.resources[locale].sidebar[key.slice(8)] ?? messages.resources.en.sidebar[key.slice(8)]);
+  }
 });

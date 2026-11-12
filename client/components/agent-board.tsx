@@ -215,10 +215,28 @@ function SearchBoard(props: BoardProps) {
   const hosts = pluginClient.useHosts();
   const hostId = props.active?.agent?.hostId ?? props.active?.workspace?.hostId ?? (hosts.length === 1 ? hosts[0]?.serverId : undefined);
   const needle = query.trim().toLocaleLowerCase();
+  const paseo = pluginClient.usePaseo();
+  const candidates = pluginClient.useAgents({ where: agent => !!hostId && agent.ref.hostId === hostId });
+  const candidateKey = JSON.stringify(candidates.map(ref => [ref.id, ref.hostId, ref.key]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))));
+  const [loaded, setLoaded] = useState<{ hostId: string; texts: Record<string, string[]> } | null>(null);
+  useEffect(() => {
+    if (!hostId) return;
+    let current = true;
+    setLoaded({ hostId, texts: {} });
+    for (const ref of candidates) {
+      void paseo.agents.ref(ref).timeline.refetch({ direction: "tail", limit: 100, projection: "canonical" }).then(page => {
+        if (!current || page.error) return;
+        const texts = page.entries.flatMap(({ item }) => "text" in item && typeof item.text === "string" ? [item.text] : []);
+        setLoaded(previous => previous?.hostId === hostId
+          ? { hostId, texts: { ...previous.texts, [ref.key]: texts } } : previous);
+      }).catch(() => {});
+    }
+    return () => { current = false; };
+  }, [paseo, hostId, candidateKey]);
   const agents = pluginClient.useAgents({
     where: agent => !!hostId && agent.ref.hostId === hostId && !!needle && (
       (agent.title ?? "").toLocaleLowerCase().includes(needle) ||
-      (parseOutline(agent.metadata?.clearChatOutline)?.headings ?? []).some(heading => heading.text.toLocaleLowerCase().includes(needle))
+      (loaded?.hostId === hostId && (loaded.texts[agent.ref.key] ?? []).some(text => text.toLocaleLowerCase().includes(needle)))
     ),
   });
   return (
