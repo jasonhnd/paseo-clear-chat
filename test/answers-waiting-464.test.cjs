@@ -31,7 +31,7 @@ function render(agents = [], { locale = 'en', projectCount = 1, workspaceName = 
       }
       return [...groups].map(([key, items]) => ({ key, title: null, color: null, items }));
     },
-    useAgent: (id, selector) => { const found = typeof id === "string" ? (agents.find(a => a.id === id) ?? null) : null; return found && selector ? selector(found) : found; },
+    useAgent: (ref, selector) => { const found = typeof ref === "object" && ref && typeof ref.key === "string" ? (agents.find(a => a.ref.key === ref.key) ?? null) : null; return found && selector ? selector(found) : found; },
     useWorkspace: (id, selector) => { const found = typeof id === "string" ? (id === workspace.id ? { ref: workspace, id, name: workspaceName } : null) : null; return found && selector ? selector(found) : found; },
     useProject: () => null, useWorkspaces: () => [],
   };
