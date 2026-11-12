@@ -113,3 +113,27 @@ test("web: closing and reopening restores the reader position", t => {
   assert.ok(reopened, "reader-scroll is missing");
   assert.equal(reopened.props.contentOffset?.y, 240);
 });
+
+test("web: reopening restores actual DOM scroll when the last scroll event was not delivered", t => {
+  const { h, draw } = fixture(t);
+  const { conversation } = webScroll();
+  let tree = draw();
+  bindReply(h, tree, conversation);
+  requireButton(h, tree, "reader-open").props.onPress();
+  tree = draw();
+  const oldScroller = { scrollTop: 0 };
+  const readerRoot = h.nodes(tree, n => typeof n.props?.ref === "function")[1];
+  assert.ok(readerRoot, "reader root exists");
+  readerRoot.props.ref({ querySelector: selector => selector === '[data-testid="reader-scroll"]' ? oldScroller : null });
+  oldScroller.scrollTop = 300;
+  requireButton(h, tree, "reader-close").props.onPress();
+  tree = draw();
+  requireButton(h, tree, "reader-open").props.onPress();
+  tree = draw();
+  const newScroller = { scrollTop: 0 };
+  const newRoot = h.nodes(tree, n => typeof n.props?.ref === "function")[1];
+  assert.ok(newRoot, "reopened reader root exists");
+  newRoot.props.ref({ querySelector: selector => selector === '[data-testid="reader-scroll"]' ? newScroller : null });
+  assert.equal(newScroller.scrollTop, 300, "DOM scroll position must be restored after remount");
+  assert.equal(conversation.scrollTop, 400);
+});
