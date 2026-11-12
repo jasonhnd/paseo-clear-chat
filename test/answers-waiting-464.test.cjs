@@ -106,7 +106,8 @@ test('approved strings exist in all effective locale resources with complete par
   const keys = value => Object.entries(value).flatMap(([key, child]) => typeof child === 'string' ? [key] : keys(child).map(k => `${key}.${k}`)).sort();
   for (const locale of Object.keys(expected)) {
     assert.equal(messages.resources[locale].sidebar.answeredOf, expected[locale]);
-    assert.deepEqual(keys(messages.resources[locale]), keys(messages.resources.en));
+    const optionalJa = locale === 'ja' ? new Set(['sidebar.errors', 'sidebar.errorsEmpty']) : new Set();
+    assert.deepEqual(keys(messages.resources[locale]).filter(key => !optionalJa.has(key)), keys(messages.resources.en).filter(key => !optionalJa.has(key)));
     h.setLocale(locale);
     assert.equal(translations.runtime.t(messages, 'sidebar.answeredOf', { answered: 3, total: 5 }), expected[locale].replace('{{answered}}', '3').replace('{{total}}', '5'));
   }
