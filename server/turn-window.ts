@@ -103,6 +103,63 @@ export function parseNumstatPath(raw: string): { path: string; renamedFrom: stri
   return { path: raw, renamedFrom: null };
 }
 
+/** Decode one path token from a `diff --git` header (quoted when it has spaces or control bytes). */
+function unquoteGitPath(token: string): string {
+  if (!token.startsWith("\"")) return token;
+  let out = "";
+  for (let index = 1; index < token.length; index += 1) {
+    const char = token[index];
+    if (char === "\"") break;
+    if (char !== "\\") { out += char; continue; }
+    const next = token[index + 1];
+    index += 1;
+    if (next === "n") out += "\n";
+    else if (next === "t") out += "\t";
+    else if (next === "r") out += "\r";
+    else if (next === "\"") out += "\"";
+    else if (next === "\\") out += "\\";
+    else if (next && /[0-7]/.test(next)) {
+      let octal = next;
+      while (octal.length < 3 && index + 1 < token.length && /[0-7]/.test(token[index + 1] ?? "")) { octal += token[index + 1]; index += 1; }
+      out += String.fromCharCode(parseInt(octal, 8));
+    } else if (next !== undefined) out += next;
+  }
+  return out;
+}
+
+/** Parse `diff --git a/<old> b/<new>` into the two paths, exactly. Never reads patch content. */
+export function parseDiffHeader(header: string): { oldPath: string; newPath: string } | null {
+  if (!header.startsWith("diff --git ")) return null;
+  const rest = header.slice("diff --git ".length);
+  const tokens: string[] = [];
+  let index = 0;
+  while (index < rest.length && tokens.length < 2) {
+    while (rest[index] === " ") index += 1;
+    if (index >= rest.length) break;
+    if (rest[index] === "\"") {
+      let end = index + 1;
+      while (end < rest.length) {
+        if (rest[end] === "\\") { end += 2; continue; }
+        if (rest[end] === "\"") { end += 1; break; }
+        end += 1;
+      }
+      tokens.push(rest.slice(index, end));
+      index = end;
+    } else {
+      const end = rest.indexOf(" ", index);
+      const stop = end < 0 ? rest.length : end;
+      tokens.push(rest.slice(index, stop));
+      index = stop;
+    }
+  }
+  if (tokens.length < 2) return null;
+  const strip = (token: string, prefix: string) => {
+    const value = unquoteGitPath(token);
+    return value.startsWith(prefix) ? value.slice(prefix.length) : value;
+  };
+  return { oldPath: strip(tokens[0] ?? "", "a/"), newPath: strip(tokens[1] ?? "", "b/") };
+}
+
 function truncateUtf8(text: string, maxBytes: number): string {
   if (Buffer.byteLength(text, "utf8") <= maxBytes) return text;
   let end = Math.min(text.length, maxBytes);
@@ -150,13 +207,11 @@ export async function collectFileDetails(cwd: string, paths: string[], execute: 
     }
   }
   let total = 0;
+  const known = new Set(included);
   for (const chunk of patchChunks(patch)) {
-    const destination = included
-      .filter(candidate => chunk.header.includes(`b/${candidate}`) || chunk.text.includes(`+++ b/${candidate}`))
-      .sort((a, b) => b.length - a.length)[0];
-    const path = destination ?? included
-      .filter(candidate => chunk.header.includes(`a/${candidate}`))
-      .sort((a, b) => b.length - a.length)[0];
+    const header = parseDiffHeader(chunk.header);
+    if (!header) continue;
+    const path = known.has(header.newPath) ? header.newPath : known.has(header.oldPath) ? header.oldPath : null;
     if (!path) continue;
     const target = stats.get(path);
     if (!target) continue;
@@ -170,7 +225,7 @@ export async function collectFileDetails(cwd: string, paths: string[], execute: 
       const budget = Math.max(0, Math.min(MAX_DIFF_BYTES, MAX_TOTAL_DIFF_BYTES - total));
       target.diff = `${truncateUtf8(chunk.text, budget)}\n${DIFF_TRUNCATED_MARKER}`;
       target.truncated = true;
-      target.note = target.note ? `${target.note}; diff truncated` : "diff truncated";
+      target.note = target.note ? `${target.note}; output cut at the size limit` : "output cut at the size limit";
     } else {
       target.diff = chunk.text;
     }

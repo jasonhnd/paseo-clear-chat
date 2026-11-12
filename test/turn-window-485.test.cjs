@@ -229,3 +229,63 @@ test("the client registers the turn-window renderer with the shared schema", () 
   assert.ok(source.includes("schema: turnWindowItemSchema"));
   assert.equal((source.match(/turnWindowItemSchema/g) || []).length >= 2, true);
 });
+
+test("a content line that looks like a diff header never steals another file's chunk", async () => {
+  const captures = [state([["fixture.ts", "1"], ["some/long/path.ts", "1"]]), state([["fixture.ts", "2"], ["some/long/path.ts", "2"]])];
+  const numstat = ["1\t0\tfixture.ts", "1\t0\tsome/long/path.ts"].join("\n");
+  const patch = [
+    "diff --git a/fixture.ts b/fixture.ts",
+    "--- a/fixture.ts",
+    "+++ b/fixture.ts",
+    "@@ -1,1 +1,2 @@",
+    " keep",
+    "+++ b/some/long/path.ts",
+    "diff --git a/some/long/path.ts b/some/long/path.ts",
+    "--- a/some/long/path.ts",
+    "+++ b/some/long/path.ts",
+    "@@ -1,1 +1,2 @@",
+    " keep",
+    "+real change",
+  ].join("\n");
+  const windows = createTurnWindows(async () => captures.shift(), diffExecute({ numstat, patch }));
+  windows.before("a", "t1", "workspace", "/repo");
+  await windows.after("a", "t1", "/repo");
+  const result = await windows.get("a", "t1");
+  assert.match(result.details["fixture.ts"].diff, /diff --git a\/fixture\.ts b\/fixture\.ts/);
+  assert.match(result.details["fixture.ts"].diff, /\+{3} b\/some\/long\/path\.ts/);
+  assert.match(result.details["some/long/path.ts"].diff, /\+real change/);
+  assert.ok(!result.details["some/long/path.ts"].diff.includes("diff --git a/fixture.ts"), "fixture chunk must not attach to the longer path");
+});
+
+test("binary and truncated labels are shown once, not repeated", () => {
+  const snapshot = {
+    files: ["img.bin", "big.ts"],
+    details: {
+      "img.bin": { added: null, deleted: null, binary: true, renamedFrom: null, diff: null, truncated: false, note: "binary file" },
+      "big.ts": { added: 1, deleted: 0, binary: false, renamedFrom: null, diff: "+x\n... [diff truncated]", truncated: true, note: "output cut at the size limit" },
+    },
+    message: null, warning: null, incomplete: true,
+  };
+  const visible = openedText(snapshot);
+  assert.equal((visible.match(/binary file/g) || []).length, 1, visible);
+  assert.equal((visible.match(/output cut at the size limit/g) || []).length, 1, visible);
+  assert.equal((visible.match(/diff truncated/g) || []).length, 0, visible);
+});
+
+test("a file without a diff gets no expand arrow and no open action", () => {
+  const snapshot = {
+    files: ["img.bin"],
+    details: { "img.bin": { added: null, deleted: null, binary: true, renamedFrom: null, diff: null, truncated: false, note: "binary file" } },
+    message: null, warning: null, incomplete: true,
+  };
+  const { h, element } = card(snapshot);
+  let tree = h.draw(element);
+  h.nodes(tree, node => node.props?.testID === "turn-window-toggle")[0].props.onPress();
+  tree = h.draw(element);
+  const row = h.nodes(tree, node => node.props?.testID === "turn-window-file-0")[0];
+  assert.equal(row.props.disabled, true);
+  assert.equal(typeof row.props.onPress, "undefined");
+  assert.ok(!h.text(tree).includes("▾"));
+  assert.equal(h.nodes(tree, node => node.props?.testID === "turn-window-diff-0").length, 0);
+  h.unmount(); h.dispose();
+});
