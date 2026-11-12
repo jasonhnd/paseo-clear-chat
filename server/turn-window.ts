@@ -10,7 +10,7 @@ export const NOT_GIT = "This workspace is not a Git repository; changes cannot b
 export const INCOMPLETE = "Snapshot timing or overlap with other conversations may be incomplete.";
 
 type Snapshot = { kind: "ok"; files: Map<string, string>; head?: string | null } | { kind: "not-git" | "error" };
-type Result = { files: string[]; message: string | null; warning: string | null; incomplete: boolean };
+type Result = { files: string[]; message: string | null; warning: string | null; incomplete: boolean; messageCode?: string | null; warningCode?: string | null };
 type Window = { agentId: string; workspace: string | null; cwd: string; before: Promise<Snapshot>; overlap: boolean; ended: boolean; invalid?: boolean; finishing?: Promise<void>; result?: Result };
 async function git(cwd: string, args: string[]): Promise<Buffer> {
   const { stdout } = await promisify(execFile)("git", ["--no-optional-locks", "-c", "core.fsmonitor=false", ...args], {
@@ -67,7 +67,7 @@ export async function snapshot(cwd: string, execute: typeof git = git): Promise<
 export function createTurnWindows(capture: (cwd: string) => Promise<Snapshot> = snapshot) {
   const windows = new Map<string, Window>();
   const key = (agentId: string, turnId: string | null) => JSON.stringify([agentId, turnId]);
-  const unavailable = (): Result => ({ files: [], message: INCOMPLETE, warning: null, incomplete: true });
+  const unavailable = (): Result => ({ files: [], message: INCOMPLETE, warning: null, incomplete: true, messageCode: "turnIncomplete" });
   return {
     before(agentId: string, turnId: string | null, workspace: string | null, cwd: string) {
       const id = key(agentId, turnId);
@@ -96,18 +96,18 @@ export function createTurnWindows(capture: (cwd: string) => Promise<Snapshot> = 
           const before = await window.before;
           const after = await capture(cwd);
           let result: Result;
-          if (before.kind === "not-git" || after.kind === "not-git") result = { files: [], message: NOT_GIT, warning: window.overlap ? OVERLAP_WARNING : null, incomplete: true };
-          else if (before.kind !== "ok" || after.kind !== "ok" || cwd !== window.cwd || window.invalid) result = { ...unavailable(), warning: window.overlap ? OVERLAP_WARNING : null };
+          if (before.kind === "not-git" || after.kind === "not-git") result = { files: [], message: NOT_GIT, warning: window.overlap ? OVERLAP_WARNING : null, incomplete: true, messageCode: "turnNotGit", warningCode: window.overlap ? "turnOverlap" : null };
+          else if (before.kind !== "ok" || after.kind !== "ok" || cwd !== window.cwd || window.invalid) result = { ...unavailable(), warning: window.overlap ? OVERLAP_WARNING : null, warningCode: window.overlap ? "turnOverlap" : null };
           else {
             const paths = new Set([...before.files.keys(), ...after.files.keys()]);
             const headChanged = before.head !== after.head;
             const interrupted = outcomeKind === "failed" || outcomeKind === "canceled";
             const message = headChanged ? "Git HEAD changed during this period; the status difference may be incomplete."
               : interrupted ? "The turn ended before it completed; the observed change set may be incomplete." : null;
-            result = { files: [...paths].filter(path => before.files.get(path) !== after.files.get(path)).sort(), message, warning: window.overlap ? OVERLAP_WARNING : null, incomplete: headChanged || interrupted };
+            result = { files: [...paths].filter(path => before.files.get(path) !== after.files.get(path)).sort(), message, warning: window.overlap ? OVERLAP_WARNING : null, incomplete: headChanged || interrupted, messageCode: headChanged ? "turnHeadChanged" : interrupted ? "turnInterrupted" : null, warningCode: window.overlap ? "turnOverlap" : null };
           }
           window.result = result;
-        } catch { window.result = { ...unavailable(), warning: window.overlap ? OVERLAP_WARNING : null }; }
+        } catch { window.result = { ...unavailable(), warning: window.overlap ? OVERLAP_WARNING : null, warningCode: window.overlap ? "turnOverlap" : null }; }
         finally { window.ended = true; }
       })();
       return window.finishing;
