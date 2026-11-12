@@ -317,7 +317,7 @@ const approvedAnswerCardHashes = {
   "zh-CN": "bd487920e1ba4b63008ed85228907ad51aa0828cfcd53e3146d4136347aa69c3",
   "ja": "d45fce67f549e1250f538b9eeb5c8997346e1caa322575572a58bbd98cc0f095",
 };
-const addedAnswerCardKeys = ["other", "otherHint", "otherEmpty", "readOnlyStatus", "sendAction", "hintCustom", "progress"];
+const addedAnswerCardKeys = ["other", "otherHint", "otherEmpty", "readOnlyStatus", "sendAction", "hintCustom", "progress", "replaceFirstLine", "keepEdited", "limitEdited"];
 const signedAnswerCardCopy = {
   en: ["Send", "Enter to confirm · Shift+Enter for a new line"],
   "zh-CN": ["发送", "Enter 确认 · Shift+Enter 换行"],

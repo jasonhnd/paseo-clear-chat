@@ -646,6 +646,9 @@
     "sendAction": "发送",
     "hintCustom": "Enter 确认 · Shift+Enter 换行",
     "progress": "已答 {{chosen}} / {{total}} · 还差 {{remaining}} 题",
+    "replaceFirstLine": "用 {{answer}} 替换第一行",
+    "keepEdited": "保留我改的",
+    "limitEdited": "你改过答案后再点「替换第一行」，只换第一行；多行答案的其余部分会留着，请自己删。",
     "hintEnter": "Enter"
   },
   "answerStyle": {
