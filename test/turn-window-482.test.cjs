@@ -190,6 +190,20 @@ test("incomplete window without files stays visible without an extra action", as
 });
 
 
+test("the interrupted note is Chinese in the Chinese UI", async () => {
+  const h = createToolHarness("web", {});
+  const Card = h.load("client/components/turn-window-card.tsx").TurnWindowCard;
+  const snapshot = { files: [], message: null, warning: null, incomplete: true, messageCode: "turnInterrupted" };
+  h.setLocale("zh-CN");
+  const zh = h.text(h.draw({ type: Card, props: { snapshot, tokens: h.tokens } }));
+  assert.ok(zh.some(value => String(value).includes("没有跑完")), "Chinese UI must show the Chinese interrupted note");
+  assert.ok(!zh.some(value => String(value).includes("ended before it completed")), "Chinese UI must not show the English note");
+  h.setLocale("en");
+  const en = h.text(h.draw({ type: Card, props: { snapshot, tokens: h.tokens } }));
+  assert.ok(en.some(value => String(value).includes("ended before it completed")), "English UI keeps the English note");
+  h.unmount(); h.dispose();
+});
+
 test("the after hook appends one snapshot keyed by the reply turn id", async () => {
   const appends = [];
   const context = { paseo: { agents: { ref: () => ({ timeline: { append: async item => { appends.push(item); return { seq: 1, epoch: "e" }; } } }) } } };
