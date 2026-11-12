@@ -20,8 +20,8 @@ const agents = [
   } } },
 ];
 
-function harness() {
-  const h = require('./helpers/tool-harness.cjs').createToolHarness('ios', { locale: 'en' });
+function harness(locale = 'en', missingKeyReturnsKey = false) {
+  const h = require('./helpers/tool-harness.cjs').createToolHarness('ios', { locale });
   const messages = h.load('client/messages.ts').messages;
   const states = new Map(), effects = new Map(), opened = [], requests = [];
   const pages = {
@@ -56,7 +56,7 @@ function harness() {
     useHosts: () => hosts,
     useAgents: query => agents.filter(query.where).map(agent => agent.ref),
     useAgent: agentRef => agents.find(agent => agent.ref.key === agentRef.key) ?? null,
-    useTranslation: () => ({ t: key => h.translations.runtime.t(messages, key) }),
+    useTranslation: () => ({ t: key => missingKeyReturnsKey && key === 'sidebar.searchLimitOlder' ? key : h.translations.runtime.t(messages, key) }),
   };
   const jsx = (type, props) => ({ type, props: props ?? {} });
   const native = { Pressable: 'Pressable', ScrollView: 'ScrollView', Text: 'Text', TextInput: 'TextInput', View: 'View', StyleSheet: { create: x => x, hairlineWidth: 1 } };
@@ -87,7 +87,7 @@ function harness() {
     return nodes.filter(node => node.type === 'literal').map(node => node.text);
   }
   function search(query) { nodes.find(node => node.type === 'TextInput').props.onChangeText(query); return render(); }
-  return { render, search, opened, requests, nodes: () => nodes, setActive: value => { active = value; }, setHosts: value => { hosts = value; } };
+  return { render, search, opened, requests, messages, nodes: () => nodes, setActive: value => { active = value; }, setHosts: value => { hosts = value; } };
 }
 
 test('searches titles and fetched timeline text on the active host and opens a hit', async () => {
@@ -135,6 +135,20 @@ test('shows the shorter limitation when the fetched page has no older pages', as
   const text = h.render();
   assert.ok(text.includes('Only loaded titles and timeline text on the current host are searched. Unloaded history, archived conversations, and other providers are not included.'));
   assert.deepEqual(h.requests.map(request => request.ref.id), ['c']);
+});
+
+for (const missingKeyReturnsKey of [false, true]) test(`renders the English older-page limitation in Japanese (missing key returned: ${missingKeyReturnsKey})`, async () => {
+  const h = harness('ja', missingKeyReturnsKey);
+  assert.equal(Object.hasOwn(h.messages.resources.ja.sidebar, 'searchLimitOlder'), false);
+  h.render();
+  h.nodes().filter(node => node.type === 'Pressable' && node.props.accessibilityRole === 'tab')[3].props.onPress();
+  h.render();
+  await new Promise(resolve => setImmediate(resolve));
+  const text = h.render().join(' ');
+  assert.ok(text.includes('Older pages were not fetched, so their text was not searched.'));
+  assert.ok(!text.includes('sidebar.searchLimitOlder'));
+  assert.deepEqual(h.requests.map(request => request.ref.id).sort(), ['a', 'b']);
+  assert.ok(h.requests.every(request => request.options.direction === 'tail'));
 });
 
 test('uses a single host as fallback and handles no hosts', () => {

@@ -239,12 +239,16 @@ function SearchBoard(props: BoardProps) {
       (loaded?.hostId === hostId && (loaded.texts[agent.ref.key] ?? []).some(text => text.toLocaleLowerCase().includes(needle)))
     ),
   });
+  const limitKey = loaded && loaded.hostId === hostId && loaded.hasOlder ? "sidebar.searchLimitOlder" : "sidebar.searchLimit";
+  const translatedLimit = t(limitKey);
+  const searchLimit = limitKey === "sidebar.searchLimitOlder" && translatedLimit === limitKey
+    ? messages.resources.en.sidebar.searchLimitOlder : translatedLimit;
   return (
     <ScrollView contentContainerStyle={styles.board} keyboardShouldPersistTaps="handled">
       <TextInput value={query} onChangeText={setQuery} placeholder={t("sidebar.searchPlaceholder")}
         placeholderTextColor={props.theme.colors.foregroundMuted} accessibilityLabel={t("sidebar.search")}
         style={[styles.searchInput, { borderColor: props.theme.colors.border, color: props.theme.colors.foreground }]} />
-      <Text style={[styles.searchLimit, { color: props.theme.colors.foregroundMuted }]}>{t(loaded && loaded.hostId === hostId && loaded.hasOlder ? "sidebar.searchLimitOlder" : "sidebar.searchLimit")}</Text>
+      <Text style={[styles.searchLimit, { color: props.theme.colors.foregroundMuted }]}>{searchLimit}</Text>
       {needle && (agents.length ? agents.map(ref => <SearchRow key={ref.key} agentRef={ref} {...props} />)
         : <Text style={[styles.empty, { color: props.theme.colors.foregroundMuted }]}>{t("sidebar.searchEmpty")}</Text>)}
     </ScrollView>
