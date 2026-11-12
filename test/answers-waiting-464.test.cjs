@@ -32,7 +32,7 @@ function render(agents = [], { locale = 'en', projectCount = 1, workspaceName = 
       return [...groups].map(([key, items]) => ({ key, title: null, color: null, items }));
     },
     useAgent: (ref, selector) => { const found = typeof ref === "object" && ref && typeof ref.key === "string" ? (agents.find(a => a.ref.key === ref.key) ?? null) : null; return found && selector ? selector(found) : found; },
-    useWorkspace: (id, selector) => { const found = typeof id === "string" ? (id === workspace.id ? { ref: workspace, id, name: workspaceName } : null) : null; return found && selector ? selector(found) : found; },
+    useWorkspace: (ref, selector) => { const found = typeof ref === "object" && ref && ref.kind === "workspace" && ref.key === workspace.key ? { ref: workspace, id: workspace.id, name: workspaceName } : null; return found && selector ? selector(found) : found; },
     useProject: () => null, useWorkspaces: () => [],
   };
   const react = { useState: () => ['waiting', () => {}], useEffect: () => {} };
