@@ -165,6 +165,7 @@
     "copiedInstead": "已改为复制"
   },
   "toast": {
+    "sidebarViewHint": "打开 Settings → Sidebar，选 Clear Chat，就能在侧栏使用它。",
     "copied": "已复制到剪贴板",
     "copyFailed": "无法复制。请在弹窗里全选文字，再用“复制”。",
     "pathCopied": "路径已复制。请到主机电脑上打开。",

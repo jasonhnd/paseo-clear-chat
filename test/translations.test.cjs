@@ -361,12 +361,19 @@ const signedAnswerStyleCopy = {
     "autoFillDescription": "選んだ回答を入力欄に入れ、送信前に確認できます。"
   }
 };
+const signedSidebarViewHint = {
+  en: "Open Settings → Sidebar and select Clear Chat to use it in the sidebar.",
+  "zh-CN": "打开 Settings → Sidebar，选 Clear Chat，就能在侧栏使用它。",
+  ja: "Settings → Sidebar で Clear Chat を選ぶと、サイドバーで使えます。",
+};
 const rootAnswerStyle = /,\n  "answerStyle": \{\n(?:    .*\n)*  \}/gm;
 const rootAnswerCard = /^  "answerCard": \{\n(?:    .*\n)*  \}/gm;
 
 function verifyResourceBaseline(locale, text) {
   assert.equal([...text.matchAll(rootAnswerCard)].length, 1, "one root answerCard object");
   const parsed = JSON.parse(text);
+  assert.equal(parsed.toast.sidebarViewHint, signedSidebarViewHint[locale]);
+  assert.equal([...text.matchAll(/"sidebarViewHint"\s*:/g)].length, 1, "one sidebarViewHint key in the resource");
   const styleBlocks = [...text.matchAll(rootAnswerStyle)];
   assert.equal(styleBlocks.length, 1, "one root answerStyle object");
   assert.equal([...text.matchAll(/"answerStyle"\s*:/g)].length, 1, "one answerStyle key in the resource");
@@ -389,6 +396,7 @@ function verifyResourceBaseline(locale, text) {
     assert.equal(keys.filter(value => value === key).length, 1, `one ${key} key in the resource`);
   }
   const original = text
+    .replace(/^    "sidebarViewHint": ".*",\n/m, "")
     .replace(rootAnswerStyle, "")
     .replace(/    "keepItemLineBreaks": \{\n(?:      ".*\n){2}    \},\n/, "")
     .replace(/    "jumpChips": \{\n(?:      ".*\n){2}    \},\n/, "")
@@ -443,6 +451,9 @@ for (const locale of ["en", "zh-CN", "ja"]) {
     const statusLine = root.match(/^    "readOnlyStatus": .*\n/m)[0];
     const cases = {
       "old answerCard label": text.replace('"pillTitle": "', '"pillTitle": "changed '),
+      "changed sidebar hint": text.replace(signedSidebarViewHint[locale], "changed"),
+      "missing sidebar hint": text.replace(/^    "sidebarViewHint": ".*",\n/m, ""),
+      "duplicate sidebar hint": text.replace(/^(    "sidebarViewHint": ".*",\n)/m, "$1$1"),
       "old translation": text.replace('"startupFailed": "', '"startupFailed": "changed '),
       "missing read-only status": text.replace(statusLine, ""),
       "duplicate read-only status": text.replace(statusLine, statusLine + statusLine),

@@ -10,7 +10,7 @@ const { createExpansionHost } = require("./expansion-host.cjs");
 function createToolHarness(platform = "ios", options = {}) {
   const root = resolve(__dirname, "../..");
   const cache = new Map(), frames = new Map(), transformers = options.timelineHost?.transformers ?? new Map(), renderers = options.timelineHost?.renderers ?? new Map(), panels = new Map();
-  const panelOpens = [], settingsScreens = new Map();
+  const panelOpens = [], settingsScreens = new Map(), sidebarHeaderItems = new Map();
   const dimensions = { width: options.width ?? 1440, height: options.height ?? 900, scale: 1, fontScale: 1, ...options.dimensions };
   let activePanel;
   let panelMounted = true;
@@ -275,6 +275,7 @@ function createToolHarness(platform = "ios", options = {}) {
     paseo,
     rpc: options.presentationHost?.rpc ?? noop,
     addSettingsScreen(value) { settingsScreens.set(value.id, value); return noop; },
+    addSidebarHeaderItem(value) { sidebarHeaderItems.set(value.id, value); return noop; },
     addAgentPanel(value) { panels.set(value.id, value); return noop; },
     openPanel(id, input) {
       if (options.panelError) throw new Error("Panel unavailable");
@@ -338,7 +339,7 @@ function createToolHarness(platform = "ios", options = {}) {
   }
   const unmount = () => unmountRoot();
   return {
-    settingsScreens, translations, setLocale: translations.setLocale, load, nodes, text, reveals, links, copies, toasts, imageReads, transformers, renderers, panels, panelOpens, dimensions, get preferences() { return getPreferences(); }, tokens, draw, expansionHost, unmount, dispose, flushEffects,
+    settingsScreens, sidebarHeaderItems, translations, setLocale: translations.setLocale, load, nodes, text, reveals, links, copies, toasts, imageReads, transformers, renderers, panels, panelOpens, dimensions, get preferences() { return getPreferences(); }, tokens, draw, expansionHost, unmount, dispose, flushEffects,
     notifyPreferences() { for (const listener of preferenceListeners) listener(); },
     setPanelMounted(value) { panelMounted = value; },
     mount(item, expand = true, identity = {}) {

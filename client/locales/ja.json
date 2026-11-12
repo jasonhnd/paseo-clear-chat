@@ -165,6 +165,7 @@
     "copiedInstead": "コピーしました"
   },
   "toast": {
+    "sidebarViewHint": "Settings → Sidebar で Clear Chat を選ぶと、サイドバーで使えます。",
     "copied": "クリップボードにコピーしました",
     "copyFailed": "コピーできませんでした。画面の文字をすべて選んで「コピー」を使ってください。",
     "pathCopied": "パスをコピーしました。ホストのコンピューターで開いてください。",
