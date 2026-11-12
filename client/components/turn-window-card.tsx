@@ -29,10 +29,11 @@ function fileLabel(file: string, stats: TurnWindowFileStats | undefined): string
 function fileNote(file: string, stats: TurnWindowFileStats | undefined): string | null {
   if (!stats) return null;
   const parts: string[] = [];
+  const noteText = stats.note ?? "";
   if (stats.renamedFrom) parts.push(`renamed from ${stats.renamedFrom}`);
-  if (stats.binary) parts.push("binary file");
-  if (stats.note) parts.push(stats.note);
-  if (stats.added === null && stats.deleted === null && !stats.binary && !stats.note) parts.push("no textual diff");
+  if (stats.binary && !noteText.toLowerCase().includes("binary")) parts.push("binary file");
+  if (noteText && !parts.includes(noteText)) parts.push(noteText);
+  if (stats.added === null && stats.deleted === null && !stats.binary && !noteText) parts.push("no textual diff");
   return parts.length ? parts.join(" · ") : null;
 }
 
@@ -61,15 +62,15 @@ export function TurnWindowCard({ snapshot, tokens }: { snapshot?: TurnWindowSnap
       {files.map((file, index) => {
         const stats = snapshot.details?.[file];
         const note = fileNote(file, stats);
-        const expanded = openFile === file;
+        const hasDiff = Boolean(stats?.diff);
+        const expanded = hasDiff && openFile === file;
         return <View key={file} style={{ gap: 2 }}>
-          <Pressable testID={`turn-window-file-${index}`} accessibilityRole="button" accessibilityState={{ expanded }} onPress={() => setOpenFile(value => value === file ? null : file)}>
-            <Text selectable style={{ color: tokens.foreground }}>{fileLabel(file, stats)}{stats?.diff || stats?.binary ? (expanded ? "  ▴" : "  ▾") : ""}</Text>
+          <Pressable testID={`turn-window-file-${index}`} accessibilityRole="button" disabled={!hasDiff} accessibilityState={{ expanded }} onPress={hasDiff ? () => setOpenFile(value => value === file ? null : file) : undefined}>
+            <Text selectable style={{ color: tokens.foreground }}>{fileLabel(file, stats)}{hasDiff ? (expanded ? "  ▴" : "  ▾") : ""}</Text>
             {note ? <Text selectable style={{ color: tokens.foregroundMuted, fontSize: tokens.fs(11) }}>{note}</Text> : null}
           </Pressable>
           {expanded && stats?.diff ? <View testID={`turn-window-diff-${index}`} style={{ padding: 8, borderWidth: 1, borderColor: tokens.border, borderRadius: 6, backgroundColor: tokens.surface1 }}>
             <Text selectable style={{ color: tokens.foreground, fontSize: tokens.fs(11), fontFamily: "monospace" }}>{stats.diff}</Text>
-            {stats.truncated ? <Text selectable style={{ color: tokens.foregroundMuted, fontSize: tokens.fs(11) }}>{stats.note ?? "diff truncated"}</Text> : null}
           </View> : null}
         </View>;
       })}
