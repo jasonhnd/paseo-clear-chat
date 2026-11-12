@@ -2,12 +2,12 @@ import * as pluginClient from "@getpaseo/plugin/client";
 import type { PluginTheme, PluginText, PluginAgentSnapshot } from "@getpaseo/plugin";
 import type { AgentRef, ProjectRef } from "@getpaseo/plugin/client";
 import React, { useEffect, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { messages } from "../messages";
 import { isBackgroundAgent, boardSection, compareBoardAgents, lastActivityTime, localDayBounds, runningMinutes, answerMarker, compareWaitingAgents } from "../agent-board-model";
 import { parseOutline, syncOutline } from "../outline-model";
 
-type BoardProps = { theme: PluginTheme; navigation: { openAgent(ref: AgentRef): void }; active?: { agent: AgentRef | null } };
+type BoardProps = { theme: PluginTheme; navigation: { openAgent(ref: AgentRef): void }; active?: { agent: AgentRef | null; workspace?: { hostId: string } | null } };
 export type SidebarViewRegistration = {
   addSidebarView?: (contribution: { id: string; title: PluginText; description: PluginText; Component: React.ComponentType<BoardProps> }) => () => void | Promise<void>;
 };
@@ -199,13 +199,44 @@ function OutlineBoard(props: BoardProps) {
     <Text style={[styles.placeholder, { color: props.theme.colors.foregroundMuted }]}>{t("sidebar.directoryEmpty")}</Text>;
 }
 
+function SearchRow({ agentRef, ...props }: BoardProps & { agentRef: AgentRef }) {
+  const agent = pluginClient.useAgent(agentRef);
+  if (!agent) return null;
+  return (
+    <Pressable accessibilityRole="button" onPress={() => props.navigation.openAgent(agent.ref)} style={[styles.row, { borderColor: props.theme.colors.border }]}>
+      <Text numberOfLines={1} style={[styles.rowTitle, { color: props.theme.colors.foreground }]}>{agent.title?.trim() || agent.id.slice(0, 8)}</Text>
+    </Pressable>
+  );
+}
+
+function SearchBoard(props: BoardProps) {
+  const [query, setQuery] = useState("");
+  const { t } = pluginClient.useTranslation(messages);
+  const hosts = pluginClient.useHosts();
+  const hostId = props.active?.agent?.hostId ?? props.active?.workspace?.hostId ?? (hosts.length === 1 ? hosts[0].serverId : undefined);
+  const needle = query.trim().toLocaleLowerCase();
+  const agents = pluginClient.useAgents({
+    where: agent => !!hostId && agent.ref.hostId === hostId && !!needle && (agent.title ?? "").toLocaleLowerCase().includes(needle),
+  });
+  return (
+    <ScrollView contentContainerStyle={styles.board} keyboardShouldPersistTaps="handled">
+      <TextInput value={query} onChangeText={setQuery} placeholder={t("sidebar.searchPlaceholder")}
+        placeholderTextColor={props.theme.colors.foregroundMuted} accessibilityLabel={t("sidebar.search")}
+        style={[styles.searchInput, { borderColor: props.theme.colors.border, color: props.theme.colors.foreground }]} />
+      <Text style={[styles.searchLimit, { color: props.theme.colors.foregroundMuted }]}>{t("sidebar.searchLimit")}</Text>
+      {needle && (agents.length ? agents.map(ref => <SearchRow key={ref.key} agentRef={ref} {...props} />)
+        : <Text style={[styles.empty, { color: props.theme.colors.foregroundMuted }]}>{t("sidebar.searchEmpty")}</Text>)}
+    </ScrollView>
+  );
+}
+
 export function ClearChatSidebar(props: BoardProps) {
-  const [tab, setTab] = useState<"today" | "waiting" | "directory">("today");
+  const [tab, setTab] = useState<"today" | "waiting" | "directory" | "search">("today");
   const { t } = pluginClient.useTranslation(messages);
   return (
     <View style={styles.shell}>
       <View accessibilityRole="tablist" style={[styles.tabs, { borderColor: props.theme.colors.border }]}>
-        {(["today", "waiting", "directory"] as const).map(name => (
+        {(["today", "waiting", "directory", "search"] as const).map(name => (
           <Pressable key={name} accessibilityRole="tab" accessibilityState={{ selected: tab === name }}
             onPress={() => setTab(name)} style={[styles.tab, tab === name && { borderBottomColor: props.theme.colors.accent, borderBottomWidth: 2 }]}>
             <Text style={{ color: tab === name ? props.theme.colors.foreground : props.theme.colors.foregroundMuted }}>{t(`sidebar.${name}`)}</Text>
@@ -213,7 +244,7 @@ export function ClearChatSidebar(props: BoardProps) {
         ))}
       </View>
       {tab === "today" ? <TodayBoard {...props} /> : tab === "waiting" ? <WaitingBoard {...props} /> :
-        <OutlineBoard {...props} />}
+        tab === "directory" ? <OutlineBoard {...props} /> : <SearchBoard {...props} />}
     </View>
   );
 }
@@ -235,4 +266,6 @@ const styles = StyleSheet.create({
   pillText: { fontSize: 11, fontWeight: "600" },
   meta: { fontSize: 11, marginTop: 3 },
   empty: { fontSize: 12, lineHeight: 18 },
+  searchInput: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, fontSize: 13 },
+  searchLimit: { fontSize: 11, lineHeight: 16, marginTop: 6, marginBottom: 12 },
 });
