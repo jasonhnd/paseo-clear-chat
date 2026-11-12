@@ -400,6 +400,11 @@ export function LiveAssistantRenderer({
   const replyRoot = useRef<HTMLElement | null>(null);
   const readerRoot = useRef<HTMLElement | null>(null);
   const savedScroll = useRef<{ node: Element; top: number; left: number }[]>([]);
+  const readerOffset = useRef(0);
+  const rememberReaderOffset = (event: { nativeEvent?: { contentOffset?: { y?: number } } }) => {
+    const y = event?.nativeEvent?.contentOffset?.y;
+    if (typeof y === "number") readerOffset.current = y;
+  };
   const [reader, setReader] = useState<{ text: string; images?: GeneratedImage[] } | null>(null);
   const readerChips = useMemo(() => item.data.phase === "complete" ? buildJumpChips(item.data.text) : [], [item.data.phase, item.data.text]);
   const chips = useMemo(() => preferences.showJumpChips && item.data.phase === "complete"
@@ -474,7 +479,7 @@ export function LiveAssistantRenderer({
                       <Text style={{ color: tokens.foreground }}>{heading}</Text>
                     </Pressable>)}
                 </ScrollView>
-                <ScrollView testID="reader-scroll" style={{ flex: 1, overscrollBehavior: "contain" } as any}>
+                <ScrollView testID="reader-scroll" contentOffset={{ x: 0, y: readerOffset.current }} onScroll={rememberReaderOffset} scrollEventThrottle={16} style={{ flex: 1, overscrollBehavior: "contain" } as any}>
                   <MarkdownView text={reader.text} images={reader.images} cwd={cwd} tokens={tokens} variant={preferences.markdownVariant} unfoldCode />
                 </ScrollView>
               </View>
