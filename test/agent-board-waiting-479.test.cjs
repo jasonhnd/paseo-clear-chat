@@ -35,7 +35,7 @@ function harness(agents, { live = false, hosts = [{ serverId: 'srv_1', status: '
   const hooks = {
     useProjects: () => [],
     useTranslation: () => ({ t: (key, options) => h.translations.runtime.t(messages, key, options) }),
-    useAgents: q => [{ key: 'waiting', items: agents.filter(q.where).sort(q.orderBy).map(a => a.ref) }],
+    useAgents: q => [{ key: typeof q.groupBy === 'function' ? q.groupBy({}) : 'waiting', items: agents.filter(q.where).sort(q.orderBy).map(a => a.ref) }],
     useAgent: (id, selector) => { const a = agents.find(a => a.id === (typeof id === 'string' ? id : id.id)); return a && selector ? selector(a) : a || null; },
     useWorkspace: () => 'Worktree Alpha',
   };
@@ -141,11 +141,9 @@ test('unanswered cards remain in the first group and errors appear in a separate
   const firstGroup = text.lastIndexOf('Answers waiting');
   const errorGroup = text.indexOf('Errors');
   assert.ok(firstGroup >= 0 && errorGroup > firstGroup);
-  assert.ok(text.slice(firstGroup, errorGroup).includes('needs-answer'));
-  assert.ok(text.slice(firstGroup, errorGroup).includes('failed-with-answer'));
-  assert.ok(!text.slice(firstGroup, errorGroup).includes('failed'));
-  assert.ok(text.slice(errorGroup).includes('failed'));
-  assert.ok(text.slice(errorGroup).includes('failed-with-answer'));
+  const ids = values => values.filter(value => ['needs-answer', 'failed', 'failed-with-answer'].includes(value));
+  assert.deepEqual(ids(text.slice(firstGroup, errorGroup)).sort(), ['failed-with-answer', 'needs-answer']);
+  assert.deepEqual(ids(text.slice(errorGroup)).sort(), ['failed', 'failed-with-answer']);
   h.nodes().find(n => n.type === 'Pressable' && n.props.accessibilityRole === 'button' && n.props.children.some(child => child?.props?.children === 'failed')).props.onPress();
   assert.deepEqual(h.opened, [failed.ref]);
 });
@@ -167,4 +165,11 @@ test('idle, running and unknown status are neither unread nor errors', () => {
   agents[0].status = 'idle';
   text = h.render();
   assert.ok(!text.includes('idle-agent'));
+});
+
+test('an empty error group shows its empty state without displaying the missing key', () => {
+  const h = harness([agent('needs-answer', marker())]);
+  const text = h.start();
+  assert.ok(text.includes('No conversations stopped with an error.'));
+  assert.ok(!text.includes('sidebar.errorsEmpty'));
 });

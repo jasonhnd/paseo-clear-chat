@@ -199,7 +199,8 @@ function WaitingBoard(props: BoardProps) {
       </View>
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: props.theme.colors.foregroundMuted }]}>{t("sidebar.errors")}</Text>
-        {errors.map(ref => <ErrorRow key={ref.key} agentRef={ref} {...props} />)}
+        {errors.length ? errors.map(ref => <ErrorRow key={ref.key} agentRef={ref} {...props} />)
+          : <Text style={[styles.empty, { color: props.theme.colors.foregroundMuted }]}>{t("sidebar.errorsEmpty")}</Text>}
       </View>
     </ScrollView>
   );
