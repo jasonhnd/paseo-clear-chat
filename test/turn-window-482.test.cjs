@@ -81,6 +81,22 @@ test("a single window displays changes without an overlap warning", async () => 
   assert.ok(!visible.includes("Snapshot timing or overlap"), "a completed turn must not show the incomplete note");
 });
 
+test("a canceled turn is visibly incomplete and a completed one is not", async () => {
+  const make = () => createTurnWindows(async () => ({ ...state([["a.txt", "x"]]), head: "same" }));
+  const canceled = make();
+  await canceled.before("a", "t1", "workspace", "/sample");
+  await canceled.after("a", "t1", "/sample", "canceled");
+  const canceledResult = await canceled.get("a", "t1");
+  assert.equal(canceledResult.incomplete, true);
+  assert.match(await displayed(canceledResult), /ended before it completed/i);
+  const done = make();
+  await done.before("a", "t2", "workspace", "/sample");
+  await done.after("a", "t2", "/sample", "completed");
+  const doneResult = await done.get("a", "t2");
+  assert.equal(doneResult.incomplete, false);
+  assert.ok(!(await displayed(doneResult)).includes("ended before it completed"));
+});
+
 test("an overlapping turn without an ID still contributes to the warning", async () => {
   const windows = createTurnWindows(async () => state([]));
   windows.before("a", "t1", "workspace", "/sample");

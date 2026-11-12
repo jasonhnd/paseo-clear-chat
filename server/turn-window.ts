@@ -82,7 +82,7 @@ export function createTurnWindows(capture: (cwd: string) => Promise<Snapshot> = 
       windows.set(id, window);
       return window.before.then(() => {});
     },
-    after(agentId: string, turnId: string | null, cwd: string): Promise<void> {
+    after(agentId: string, turnId: string | null, cwd: string, outcomeKind?: "completed" | "failed" | "canceled"): Promise<void> {
       const id = key(agentId, turnId);
       const window = windows.get(id);
       if (!window) {
@@ -100,8 +100,11 @@ export function createTurnWindows(capture: (cwd: string) => Promise<Snapshot> = 
           else if (before.kind !== "ok" || after.kind !== "ok" || cwd !== window.cwd || window.invalid) result = { ...unavailable(), warning: window.overlap ? OVERLAP_WARNING : null };
           else {
             const paths = new Set([...before.files.keys(), ...after.files.keys()]);
-            const message = before.head !== after.head ? "Git HEAD changed during this period; the status difference may be incomplete." : null;
-            result = { files: [...paths].filter(path => before.files.get(path) !== after.files.get(path)).sort(), message, warning: window.overlap ? OVERLAP_WARNING : null, incomplete: message !== null };
+            const headChanged = before.head !== after.head;
+            const interrupted = outcomeKind === "failed" || outcomeKind === "canceled";
+            const message = headChanged ? "Git HEAD changed during this period; the status difference may be incomplete."
+              : interrupted ? "The turn ended before it completed; the observed change set may be incomplete." : null;
+            result = { files: [...paths].filter(path => before.files.get(path) !== after.files.get(path)).sort(), message, warning: window.overlap ? OVERLAP_WARNING : null, incomplete: headChanged || interrupted };
           }
           window.result = result;
         } catch { window.result = { ...unavailable(), warning: window.overlap ? OVERLAP_WARNING : null }; }
@@ -123,7 +126,7 @@ export function registerTurnWindows(server: PluginServerContext, capture?: (cwd:
   if (typeof server.addHook !== "function") return { windows, dispose: () => {} };
   const before = server.addHook("agent.turn.before", async event => { await windows.before(event.agent.id, event.turnId, event.agent.workspaceId, event.agent.cwd); });
   const after = server.addHook("agent.turn.after", async (event, context) => {
-    await windows.after(event.agent.id, event.turnId, event.agent.cwd);
+    await windows.after(event.agent.id, event.turnId, event.agent.cwd, event.outcome?.kind);
     const result = await windows.get(event.agent.id, event.turnId ?? "");
     if (!result || !event.turnId) return;
     if (!context?.paseo) return;
