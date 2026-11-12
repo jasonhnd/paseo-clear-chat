@@ -128,12 +128,42 @@ test("web: reopening restores actual DOM scroll when the last scroll event was n
   oldScroller.scrollTop = 300;
   requireButton(h, tree, "reader-close").props.onPress();
   tree = draw();
+  assert.equal(conversation.scrollTop, 400);
   requireButton(h, tree, "reader-open").props.onPress();
   tree = draw();
+  const reopened = byId(h, tree, "reader-scroll");
+  assert.equal(typeof reopened?.props.ref, "function", "reader-scroll ref is missing");
   const newScroller = { scrollTop: 0 };
-  const newRoot = h.nodes(tree, n => typeof n.props?.ref === "function")[1];
-  assert.ok(newRoot, "reopened reader root exists");
-  newRoot.props.ref({ querySelector: selector => selector === '[data-testid="reader-scroll"]' ? newScroller : null });
+  reopened.props.ref(newScroller);
   assert.equal(newScroller.scrollTop, 300, "DOM scroll position must be restored after remount");
-  assert.equal(conversation.scrollTop, 400);
+});
+
+test("web: restoring waits until the reader node exists", t => {
+  const { h, draw } = fixture(t);
+  const { conversation } = webScroll();
+  let tree = draw();
+  bindReply(h, tree, conversation);
+  requireButton(h, tree, "reader-open").props.onPress();
+  tree = draw();
+  const firstRoot = h.nodes(tree, n => typeof n.props?.ref === "function")[1];
+  const oldScroller = { scrollTop: 300 };
+  firstRoot.props.ref({ querySelector: selector => selector === '[data-testid="reader-scroll"]' ? oldScroller : null });
+  requireButton(h, tree, "reader-close").props.onPress();
+  tree = draw();
+  requireButton(h, tree, "reader-open").props.onPress();
+  tree = draw();
+  const reopenedRoot = h.nodes(tree, n => typeof n.props?.ref === "function")[1];
+  const lateScroller = { scrollTop: 0 };
+  let attached = false;
+  reopenedRoot.props.ref({
+    querySelector(selector) {
+      if (selector !== '[data-testid="reader-scroll"]' || !attached) return null;
+      return lateScroller;
+    },
+  });
+  attached = true;
+  const scrollNode = byId(h, tree, "reader-scroll");
+  assert.ok(scrollNode, "reader-scroll exists");
+  if (typeof scrollNode.props.ref === "function") scrollNode.props.ref(lateScroller);
+  assert.equal(lateScroller.scrollTop, 300);
 });

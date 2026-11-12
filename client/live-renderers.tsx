@@ -468,11 +468,7 @@ export function LiveAssistantRenderer({
             <Text style={{ color: tokens.foreground, fontSize: tokens.fs(12) }}>Read reply</Text>
           </Pressable> : null}
           {reader ? <Modal transparent visible animationType="none" onRequestClose={closeReader}>
-            <View ref={(node: View | null) => {
-              readerRoot.current = node as unknown as HTMLElement | null;
-              const scroller = readerRoot.current?.querySelector<HTMLElement>('[data-testid="reader-scroll"]');
-              if (scroller) scroller.scrollTop = readerOffset.current;
-            }}
+            <View ref={(node: View | null) => { readerRoot.current = node as unknown as HTMLElement | null; }}
               accessibilityViewIsModal style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 16 }}>
               <View style={{ width: "100%", maxWidth: 800, height: "90%", backgroundColor: tokens.surface1, borderRadius: 12, padding: 16 }}>
                 <Pressable testID="reader-close" accessibilityRole="button" onPress={closeReader} style={{ alignSelf: "flex-end", padding: 10 }}>
@@ -485,7 +481,10 @@ export function LiveAssistantRenderer({
                       <Text style={{ color: tokens.foreground }}>{heading}</Text>
                     </Pressable>)}
                 </ScrollView>
-                <ScrollView testID="reader-scroll" contentOffset={{ x: 0, y: readerOffset.current }} onScroll={rememberReaderOffset} scrollEventThrottle={16} style={{ flex: 1, overscrollBehavior: "contain" } as any}>
+                <ScrollView testID="reader-scroll" ref={(node: View | null) => {
+                  const scroller = node as unknown as HTMLElement | null;
+                  if (scroller) scroller.scrollTop = readerOffset.current;
+                }} contentOffset={{ x: 0, y: readerOffset.current }} onScroll={rememberReaderOffset} scrollEventThrottle={16} style={{ flex: 1, overscrollBehavior: "contain" } as any}>
                   <MarkdownView text={reader.text} images={reader.images} cwd={cwd} tokens={tokens} variant={preferences.markdownVariant} unfoldCode />
                 </ScrollView>
               </View>
