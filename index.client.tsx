@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireHostMethods, STARTUP_MESSAGES } from "./shared/startup-diagnostics";
 import { ClearChatSidebar, type SidebarViewRegistration } from "./client/components/agent-board";
 import { TurnWindowItem } from "./client/live-renderers";
+import { turnWindowItemSchema } from "./client/components/turn-window-schema";
 import { SidebarHintItem } from "./client/components/sidebar-hint-item";
 import { ClearChatSettingsPage } from "./client/settings-page";
 import { embedFonts } from "./client/components/embed-fonts";
@@ -76,12 +77,7 @@ function registerClient(client: PluginClientContext) {
   const removeTurnWindow = typeof (client as { addTimelineRenderer?: unknown }).addTimelineRenderer === "function"
     ? (client as unknown as { addTimelineRenderer(c: unknown): () => void }).addTimelineRenderer({
       kind: "turn-window", version: 1,
-      schema: z.object({
-        files: z.array(z.string()),
-        message: z.string().nullable(),
-        warning: z.string().nullable(),
-        incomplete: z.boolean(),
-      }),
+      schema: turnWindowItemSchema,
       Component: TurnWindowItem,
     })
     : undefined;
