@@ -1,11 +1,21 @@
 type Activity = { status: string; lastActivityAt: string; attentionReason?: string | null };
 
+// Node's native TypeScript loader requires the extension; the plugin bundler also accepts it.
+// @ts-expect-error TypeScript restricts explicit .ts extensions without allowImportingTsExtensions.
+export { observeAgentTime, getObservedAgentTimes, type ObservedAgentTimeState } from "./observed-agent-times.ts";
+
 // Calendar boundaries use the user's local timezone, including DST transitions.
 export function localDayBounds(now: number) {
   const day = new Date(now);
   const start = new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
   const end = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1).getTime();
   return { start, end };
+}
+
+export function finishedClock(finishedAt: number | undefined, bounds: { start: number; end: number }): string | null {
+  if (finishedAt === undefined || !Number.isFinite(finishedAt) || !(finishedAt >= bounds.start && finishedAt < bounds.end)) return null;
+  const time = new Date(finishedAt);
+  return `${String(time.getHours()).padStart(2, "0")}:${String(time.getMinutes()).padStart(2, "0")}`;
 }
 
 /** PluginAgentSnapshot has no reliable agent start field in 0.13.0; callers pass undefined until the host exposes one. */

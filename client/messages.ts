@@ -32,6 +32,7 @@ const sidebarEn = {
   turnDiffOmittedFileLimit: "diff omitted (file limit)",
   turnDiffOmittedTotalLimit: "diff omitted (total size limit)",
   running: "Running now", runningPill: "Running", runningFor: "Running for {n} min", finished: "Finished today", noProjects: "No projects yet.",
+  finishedAt: "Finished {time}", finishedAtNote: "Observed locally; may be slightly late",
   noTodayActivity: "No activity today in this project.", unknownTime: "Time unknown",
   status: { initializing: "Initializing", idle: "Idle", running: "Running", error: "Error", closed: "Closed" },
 };
@@ -61,6 +62,7 @@ const sidebarZhCN = {
   turnDiffOmittedFileLimit: "差异已省略（文件数量上限）",
   turnDiffOmittedTotalLimit: "差异已省略（总大小上限）",
   running: "正在运行", runningPill: "跑着", runningFor: "已跑 {n} 分钟", finished: "今天完成", noProjects: "暂无项目。",
+  finishedAt: "{time} 完成", finishedAtNote: "时间为本机观察，可能略晚",
   noTodayActivity: "此项目今天没有活动。", unknownTime: "时间未知",
   status: { initializing: "启动中", idle: "空闲", running: "运行中", error: "出错", closed: "已关闭" },
 };
