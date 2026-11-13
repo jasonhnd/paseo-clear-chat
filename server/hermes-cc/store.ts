@@ -374,6 +374,9 @@ export function createHermesCcImageStore(rootDir: string, options: { maxBytes?: 
       finally { if (timer) clearTimeout(timer); }
     },
     async save(key, images) {
+      // Empty prompts must not publish an empty directory: a published dir is
+      // the hasStored signal used by timeout metadata.
+      if (images.length === 0) return "saved";
       // Capture inputs before waiting for another operation; never retain mutable caller buffers.
       const name = keyHash(key), savedKey = { ...key };
       const accepted = images.filter(image => MIMES.has(image.mime)).map(image => ({ mime: image.mime, bytes: Buffer.from(image.data) }));
@@ -428,7 +431,15 @@ export function createHermesCcImageStore(rootDir: string, options: { maxBytes?: 
             await evict(rootDirectory);
             return conflict ? "conflict" : "saved";
           });
-        } catch { throw new Error("image_store_failed"); }
+        } catch (error) {
+          if (error instanceof Error && error.message === "image_lock_timeout") throw error;
+          const code = error && typeof error === "object" && "code" in error
+            ? String((error as { code?: unknown }).code ?? "") : "";
+          if (code === "EAGAIN" || code === "EMFILE" || code === "EBUSY") throw error;
+          const failure = new Error("image_store_failed") as Error & { reason?: string };
+          if (code) failure.reason = code;
+          throw failure;
+        }
         finally { await rootDirectory.handle.close(); }
       });
     },

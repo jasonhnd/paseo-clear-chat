@@ -22,7 +22,9 @@ export const hermesCcPromptImageResolver: PromptImageResolver = {
     ))];
     let hasStored = false, saveFailed = false;
     for (const messageId of ids) {
-      if (context.saveFailures?.get(`${sessionKey}\0${messageId}`)) saveFailed = true;
+      // Durable state first: it survives reloads and is the post-#491 contract.
+      const status = await context.saveStatus?.read({ sessionKey, messageId });
+      if (status?.state === "saveFailed") saveFailed = true;
       if (!hasStored && context.hermesCcImageStore?.hasStoredImages) {
         hasStored = await context.hermesCcImageStore.hasStoredImages({ sessionKey, messageId });
       }
@@ -46,7 +48,14 @@ export const hermesCcPromptImageResolver: PromptImageResolver = {
       if (selected && !sameImages(selected, images)) return { matchedMessages: 2, images: [] };
       selected = images;
     }
-    if (!selected) return empty();
+    if (!selected) {
+      for (const messageId of ids) {
+        const status = await context.saveStatus?.read({ sessionKey, messageId });
+        if (status?.state === "saveFailed") return { matchedMessages: 1, images: [], saveFailed: true };
+        if (status?.state === "pending") return { matchedMessages: 1, images: [], saving: true };
+      }
+      return empty();
+    }
     // No prompt text, time, order, workspace path or Hermes files participate in lookup.
     // The registry applies its existing thumbnail, byte, pixel and MIME/header guards.
     return { matchedMessages: 1, images: selected.map((image, index) => ({

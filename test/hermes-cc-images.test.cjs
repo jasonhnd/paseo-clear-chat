@@ -117,13 +117,25 @@ test("Hermes CC store misses without creating directories and isolates sessions 
   assert.equal(await h.store.load(key("empty")), null);
 });
 
+test("Hermes CC store never publishes or poisons a key for an empty image list", async t => {
+  const h = harness(t);
+  const keep = key("kept");
+  await h.store.save(keep, [png()]);
+  const saved = await h.store.load(keep);
+  assert.ok(saved && saved.length === 1);
+  await h.store.save(keep, []);
+  assert.deepEqual(await h.store.load(keep), saved, "an existing message keeps its stored image");
+  const empty = key("empty");
+  assert.equal(await h.store.save(empty, []), "saved");
+  assert.equal(await h.store.load(empty), null);
+  assert.equal(fs.existsSync(join(h.storeRoot, createHash("sha256").update(`${empty.sessionKey}\0${empty.messageId}`).digest("hex"))), false);
+});
+
 test("Hermes CC store conflicts permanently on changed images, order, or an empty retry", async t => {
   const h = harness(t);
   for (const [id, first, second] of [
     ["changed", [png()], [png(3)]],
     ["order", [png(), png(3)], [png(3), png()]],
-    ["removed", [png()], []],
-    ["added", [], [png()]],
   ]) {
     const k = key(id);
     await h.store.save(k, first);

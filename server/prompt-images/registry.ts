@@ -20,6 +20,11 @@ export interface FoundImage {
   readBytes(): Promise<Buffer>;
 }
 
+/** Durable per-message save state shared by the capture hook and lookups. */
+export interface HermesCcSaveStatusReader {
+  read(key: { sessionKey: string; messageId: string }): Promise<{ state: "pending" | "saveFailed"; at: number; reason?: string; attempts?: number } | null>;
+}
+
 export interface ResolverContext extends LookupInput {
   provider: string;
   cwd: string;
@@ -31,8 +36,8 @@ export interface ResolverContext extends LookupInput {
   providerEnv?: Readonly<Record<string, string>>;
   /** Only Clear Chat's own exact-ID image store, bound at server registration. */
   hermesCcImageStore?: HermesCcImageStore;
-  /** Exact session/message keys whose image save failed, with reason and attempts. */
-  saveFailures?: ReadonlyMap<string, { reason: string; attempts: number }>;
+  /** Durable per-message save state, shared with the capture hook. */
+  saveStatus?: HermesCcSaveStatusReader;
   /** Resolvers should stop streaming/scanning when the lookup expires. */
   signal: AbortSignal;
 }
@@ -41,6 +46,10 @@ export interface ResolverContext extends LookupInput {
 export interface FoundImages {
   matchedMessages: number;
   images: FoundImage[];
+  /** The message matched, but its images were not stored. */
+  saveFailed?: boolean;
+  /** The message matched; its image save is still running. */
+  saving?: boolean;
 }
 
 /** Local adapters must read through the validated descriptor, never a saved path. */
@@ -132,7 +141,7 @@ export function createPromptImageHandlers(options: {
   timeoutMs?: number;
   hermesCcImageStore?: HermesCcImageStore;
   hermesCcProviderIds?: ReadonlySet<string>;
-  saveFailures?: ReadonlyMap<string, { reason: string; attempts: number }>;
+  saveStatus?: HermesCcSaveStatusReader;
 } = {}) {
   const resolvers = options.resolvers ?? promptImageResolvers;
   const timeoutMs = options.timeoutMs ?? 3000;
@@ -191,7 +200,6 @@ export function createPromptImageHandlers(options: {
       requestSessionId,
       signal: new AbortController().signal,
       ...(options.hermesCcImageStore ? { hermesCcImageStore: options.hermesCcImageStore } : {}),
-      ...(options.saveFailures ? { saveFailures: options.saveFailures } : {}),
     });
   }
 
@@ -268,11 +276,12 @@ export function createPromptImageHandlers(options: {
       nativeHandle: persistence?.nativeHandle ?? null, signal,
       ...(config ? { providerEnv } : {}),
       ...(options.hermesCcImageStore ? { hermesCcImageStore: options.hermesCcImageStore } : {}),
+      ...(options.saveStatus ? { saveStatus: options.saveStatus } : {}),
     });
     check();
     if (found.matchedMessages === 0) throw new LookupError("no_match");
     if (found.matchedMessages !== 1) throw new LookupError("ambiguous");
-    return found.images;
+    return found;
   }
 
   return {
@@ -282,7 +291,7 @@ export function createPromptImageHandlers(options: {
         const found = await find(input, context, signal, check, agent => { observed = agent; });
         const images: ImagesResult["images"] = [];
         let reason: Reason | null = null;
-        for (const candidate of found) {
+        for (const candidate of found.images) {
           if (images.length === MAX_THUMBNAILS) break;
           check();
           const bytes = await candidate.readBytes();
@@ -306,7 +315,11 @@ export function createPromptImageHandlers(options: {
             reason = error instanceof LookupError ? error.reason : "invalid_image";
           }
         }
-        return { images, total: found.length, reason };
+        return {
+          images, total: found.images.length, reason,
+          ...(found.saveFailed ? { saveFailed: true } : {}),
+          ...(found.saving ? { saving: true } : {}),
+        };
       }, reason => ({ images: [], total: 0, reason }), result => result.reason)
         .then(async (result) => result.reason === "timeout"
           ? { ...result, ...await timeoutInfo(input, context, observed) }
@@ -315,7 +328,7 @@ export function createPromptImageHandlers(options: {
     image(input: RpcInput<typeof promptImageRpc>, context: PluginHandlerContext): Promise<ImageResult> {
       return guarded<ImageResult>("prompt.image", async (signal, check) => {
         const found = await find(input, context, signal, check);
-        const candidate = found.find(image => image.id === input.id);
+        const candidate = found.images.find(image => image.id === input.id);
         if (!candidate) throw new LookupError("not_found");
         const bytes = await candidate.readBytes();
         check();

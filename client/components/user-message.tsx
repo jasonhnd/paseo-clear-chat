@@ -82,7 +82,7 @@ interface PastedList {
   total: number;
 }
 
-type PastedCache = PastedList | { failed: true } | { timedOut: true; hasStored?: boolean } | { saveFailed: true };
+type PastedCache = PastedList | { failed: true } | { timedOut: true; hasStored?: boolean } | { saveFailed: true } | { saving: true };
 
 /** A timeout is not a result: retry once after this delay, then show the row. */
 const PASTED_RETRY_DELAY_MS = 1000;
@@ -127,8 +127,10 @@ function readPastedList(result: {
   saveFailure?: { reason?: string; attempts?: number } | null;
   saveFailed?: boolean;
   hasStored?: boolean;
+  saving?: boolean;
 } | null | undefined): PastedCache {
   if (result?.saveFailure || result?.saveFailed) return { saveFailed: true };
+  if (result?.saving) return { saving: true };
   if (result?.reason === "timeout") return { timedOut: true, hasStored: result.hasStored === true };
   if (!result || !Array.isArray(result.images)) return { failed: true };
   const images: PastedThumb[] = [];
@@ -235,6 +237,8 @@ export function UserMessage({
     return cached ? { key: cacheKey, value: cached } : null;
   });
   const [retryNonce, setRetryNonce] = useState(0);
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  const [savingPolls, setSavingPolls] = useState(0);
   const [viewerId, setViewerId] = useState<string | null>(null);
   const [viewerKey, setViewerKey] = useState(cacheKey);
   const [fullUri, setFullUri] = useState<string | null>(null);
@@ -298,7 +302,8 @@ export function UserMessage({
           return lookup();
         })
         .then((value) => {
-          if ("timedOut" in value) {
+          // Saving and timeouts are transient: caching them would pin the row and stop polling.
+          if ("saving" in value || "timedOut" in value) {
             pastedInflight.delete(flightKey);
             return value;
           }
@@ -315,13 +320,22 @@ export function UserMessage({
     return () => {
       cancelled = true;
     };
-  }, [agentId, cacheKey, clientMessageId, loadImages, messageId, text, matchesPrefix, retryNonce]);
+  }, [agentId, cacheKey, clientMessageId, loadImages, messageId, text, matchesPrefix, retryNonce, refreshNonce]);
 
   const pastedNow = pasted?.key === cacheKey ? pasted.value : null;
   const timedOutState = pastedNow !== null && !isPastedList(pastedNow) && "timedOut" in pastedNow ? pastedNow : null;
-  const timedOut = timedOutState !== null;
   const retryVisible = timedOutState !== null && (attachmentCount > 0 || timedOutState.hasStored === true);
   const saveFailed = pastedNow !== null && !isPastedList(pastedNow) && "saveFailed" in pastedNow;
+  const saving = pastedNow !== null && !isPastedList(pastedNow) && "saving" in pastedNow;
+  useEffect(() => {
+    if (!saving || savingPolls >= 60) return;
+    const timer = setTimeout(() => {
+      setSavingPolls((value) => value + 1);
+      setRefreshNonce((value) => value + 1);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [saving, savingPolls]);
+  if (!saving && savingPolls !== 0) setSavingPolls(0);
   const retryImages = () => {
     setPasted(null);
     setRetryNonce((value) => value + 1);
@@ -503,9 +517,8 @@ export function UserMessage({
         },
         pastedBrokenText: {
           fontFamily: tokens.fontUi,
-          fontSize: tokens.fs(11),
+          fontSize: tokens.fs(12),
           color: tokens.userTextMuted,
-          textAlign: "center",
         },
         pastedRetryRow: {
           marginTop: 8,
@@ -677,6 +690,11 @@ export function UserMessage({
                 <Text style={styles.moreText}>{t("prompt.moreImages", { count: extra })}</Text>
               </View>
             ) : null}
+          </View>
+        ) : null}
+        {saving ? (
+          <View testID="prompt-pasted-saving" style={styles.pastedRow}>
+            <Text selectable style={styles.pastedBrokenText}>{t("prompt.imageSaving")}</Text>
           </View>
         ) : null}
         {retryVisible ? (
