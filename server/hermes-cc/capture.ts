@@ -23,6 +23,8 @@ export interface HermesCcCaptureOptions {
  */
 export function createHermesCcImageCapture(options: HermesCcCaptureOptions) {
   return async (key: HermesCcSaveStatusKey, images: readonly HermesCcImageInput[]): Promise<void> => {
+    // Empty-image and command prompts also call the capture hook with [].
+    if (images.length === 0) return;
     await options.status.begin(key);
     void options.save(key, images).then(async (outcome) => {
       if (outcome.failure) {

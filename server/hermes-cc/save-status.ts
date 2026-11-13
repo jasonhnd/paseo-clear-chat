@@ -47,13 +47,16 @@ export function createHermesCcSaveStatusStore(dir: string): HermesCcSaveStatusSt
     await writeFile(temporary, JSON.stringify(value), { mode: 0o600 });
     await rename(temporary, join(dir, name));
   }
-  async function readName(name: string): Promise<HermesCcSaveStatus | null> {
+  async function readName(name: string, messageId?: string): Promise<HermesCcSaveStatus | null> {
     try {
       const value: unknown = JSON.parse(await readFile(join(dir, name), "utf8"));
       if (!valid(value)) return null;
       if (value.state === "pending" && Date.now() - value.at > PENDING_TIMEOUT_MS) {
         const failed: HermesCcSaveStatus = { state: "saveFailed", at: value.at, reason: "pending_timeout", attempts: 0 };
         await write(name, failed);
+        if (messageId !== undefined) {
+          (console.warn ?? console.debug)?.(`[clear-chat] hermes_cc: save_failed pending_timeout message=${messageId} attempts=0`);
+        }
         return failed;
       }
       return value;
@@ -69,7 +72,7 @@ export function createHermesCcSaveStatusStore(dir: string): HermesCcSaveStatusSt
         if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) throw error;
       }
     },
-    async read(key) { return await readName(`${hashKey(key)}.json`); },
+    async read(key) { return await readName(`${hashKey(key)}.json`, key.messageId); },
     async sweep() {
       let names: string[];
       try { names = (await readdir(dir)).filter(name => FILE.test(name)); }

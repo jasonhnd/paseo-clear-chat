@@ -210,6 +210,26 @@ test("a timed-out resolver cannot start a later image read or produce another lo
   assert.equal(h.logs.length, 1);
 });
 
+test("prompt.images returns the durable save state from the hermes-cc resolver", async () => {
+  const h = harness();
+  const resolver = h.load("server/prompt-images/hermes-cc.ts").hermesCcPromptImageResolver;
+  const persistence = `plugin:${JSON.stringify({ version: 1, data: { sessionId: "native" } })}`;
+  const make = (state) => h.createPromptImageHandlers({
+    resolvers: [resolver],
+    hermesCcProviderIds: new Set(["hermes-cc"]),
+    hermesCcImageStore: { async load() { return null; } },
+    saveStatus: { async read() { return state; } },
+  });
+  const ctx = { paseo: { agents: { ref: () => ({
+    async refresh() { return { agent: { provider: "hermes-cc", cwd: ".", persistence: { provider: "hermes-cc", sessionId: persistence } } }; },
+    current() { return null; },
+  }) } } };
+  const saving = await make({ state: "pending", at: Date.now() }).images(input, ctx);
+  assert.equal(saving.saving, true);
+  const failed = await make({ state: "saveFailed", at: Date.now(), reason: "image_lock_timeout", attempts: 4 }).images(input, ctx);
+  assert.equal(failed.saveFailed, true);
+});
+
 test("full-image lookups also time out with nullable fields and one debug line", async () => {
   const h = harness();
   const handlers = h.createPromptImageHandlers({ timeoutMs: 20, resolvers: [resolver(async () => [{

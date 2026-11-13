@@ -346,6 +346,9 @@ export function createHermesCcImageStore(rootDir: string, options: { maxBytes?: 
   }
   return {
     async save(key, images) {
+      // Empty prompts must not publish an empty directory: a published dir is
+      // the hasStored signal used by timeout metadata.
+      if (images.length === 0) return "saved";
       // Capture inputs before waiting for another operation; never retain mutable caller buffers.
       const name = keyHash(key), savedKey = { ...key };
       const accepted = images.filter(image => MIMES.has(image.mime)).map(image => ({ mime: image.mime, bytes: Buffer.from(image.data) }));
