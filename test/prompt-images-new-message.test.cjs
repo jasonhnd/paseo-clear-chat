@@ -106,3 +106,62 @@ test("a new text-only message stops after the bounded retries without a saving r
   assert.equal(h.nodes(tree, (node) => node.props.testID === "prompt-pasted-saving").length, 0);
   assert.doesNotMatch(h.text(tree), /Saving image/);
 });
+
+test("a recent message retries when pending is false (15s window)", async () => {
+  const calls = [];
+  const h = createToolHarness("web", {
+    width: 820,
+    height: 900,
+    userMessage: true,
+    promptImagesRpc: async () => { calls.push(1); return { images: [], total: 0, reason: null }; },
+  });
+  const { UserMessage } = h.load("client/components/user-message.tsx");
+  const props = {
+    text: "Just text",
+    messageId: "recent-msg",
+    clientMessageId: "recent-msg-client",
+    agentId: "demo-agent",
+    hostId: "demo-host",
+    pending: false,
+    tokens: h.tokens,
+    timestamp: new Date(),
+    now: new Date(),
+  };
+  const draw = () => h.draw({ type: UserMessage, props });
+  draw();
+  await settle();
+  await wait(4500);
+  await settle();
+  const tree = draw();
+  assert.equal(calls.length, 6, "a message inside the 15s window gets one lookup plus five retries");
+  assert.doesNotMatch(h.text(tree), /Saving image/);
+});
+
+test("an old message does not retry when pending is false", async () => {
+  const calls = [];
+  const h = createToolHarness("web", {
+    width: 820,
+    height: 900,
+    userMessage: true,
+    promptImagesRpc: async () => { calls.push(1); return { images: [], total: 0, reason: null }; },
+  });
+  const { UserMessage } = h.load("client/components/user-message.tsx");
+  const props = {
+    text: "Old message",
+    messageId: "old-msg-window",
+    clientMessageId: "old-msg-window-client",
+    agentId: "demo-agent",
+    hostId: "demo-host",
+    pending: false,
+    tokens: h.tokens,
+    timestamp: new Date("2020-01-01T00:00:00Z"),
+    now: new Date("2026-01-01T12:00:00Z"),
+  };
+  const draw = () => h.draw({ type: UserMessage, props });
+  draw();
+  await settle();
+  await wait(4500);
+  await settle();
+  draw();
+  assert.equal(calls.length, 1, "a message older than the 15s window keeps its empty result");
+});
