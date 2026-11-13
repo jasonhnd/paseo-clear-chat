@@ -517,11 +517,12 @@ test("a deletion is attributed through the --- a/<path> line", async () => {
 
 test("the diff card is localised in Chinese", async () => {
   const snapshot = {
-    files: ["blob.bin", "new-name.txt", "plain.txt"],
+    files: ["blob.bin", "new-name.txt", "plain.txt", "trunc.ts"],
     details: {
       "blob.bin": { added: null, deleted: null, binary: true, renamedFrom: null, diff: null, truncated: false, note: "binary file" },
       "new-name.txt": { added: 0, deleted: 0, binary: false, renamedFrom: "old-name.txt", diff: "diff --git a/old-name.txt b/new-name.txt\nsimilarity index 100%\nrename from old-name.txt\nrename to new-name.txt", truncated: false, note: null },
       "plain.txt": { added: null, deleted: null, binary: false, renamedFrom: null, diff: null, truncated: false, note: "no textual diff in Git" },
+      "trunc.ts": { added: 1, deleted: 0, binary: false, renamedFrom: null, diff: "+x\n... [diff truncated]", truncated: true, note: "output cut at the size limit" },
     },
     message: null,
     warning: null,
@@ -539,7 +540,8 @@ test("the diff card is localised in Chinese", async () => {
   assert.ok(String(text).includes("二进制文件"), String(text));
   assert.ok(String(text).includes("改名自 old-name.txt"), String(text));
   assert.ok(String(text).includes("Git 中没有文本差异"), String(text));
-  for (const english of ["Workspace changes during this turn", "binary file", "renamed from", "no textual diff"]) {
+  assert.ok(String(text).includes("输出已按大小上限截断"), String(text));
+  for (const english of ["Workspace changes during this turn", "binary file", "renamed from", "no textual diff", "output cut at the size limit", "diff truncated"]) {
     assert.ok(!String(text).includes(english), `${english} must not appear in the Chinese UI: ${text}`);
   }
   h.unmount();

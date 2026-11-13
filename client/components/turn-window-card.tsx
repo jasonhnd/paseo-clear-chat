@@ -46,6 +46,7 @@ function localizeNote(note: string, tr: (key: string, fallback: string) => strin
     if (part === "no textual diff in Git") return tr("turnNoTextDiff", part);
     if (part === "no diff available from Git") return tr("turnNoDiffAvailable", part);
     if (part === "diff truncated") return tr("turnDiffTruncated", part);
+    if (part === "output cut at the size limit") return tr("turnOutputCutAtSizeLimit", part);
     if (part === "diff omitted (file limit)") return tr("turnDiffOmittedFileLimit", part);
     if (part === "diff omitted (total size limit)") return tr("turnDiffOmittedTotalLimit", part);
     if (part.startsWith("renamed to ")) return `${tr("turnRenamedTo", "renamed to")} ${part.slice("renamed to ".length)}`;
