@@ -245,7 +245,9 @@ async function withDiskLock<T>(root: Directory, run: () => Promise<T>): Promise<
 /** Descriptor-relative recursion never follows symlinks, even for orphan cleanup. */
 async function removeFiles(directory: Directory): Promise<void> {
   for (const name of await readdir(child(directory, "."))) {
-    const entry = await lstat(child(directory, name));
+    let entry;
+    try { entry = await lstat(child(directory, name)); }
+    catch (error) { if (hasCode(error, "ENOENT")) continue; throw error; }
     if (entry.isDirectory() && !entry.isSymbolicLink()) {
       const nested = await openDirectory(child(directory, name));
       try { await removeFiles(nested); } finally { await nested.handle.close(); }
@@ -258,7 +260,9 @@ async function removeFiles(directory: Directory): Promise<void> {
 async function directoryBytes(directory: Directory): Promise<number> {
   let size = 0;
   for (const name of await readdir(child(directory, "."))) {
-    const entry = await lstat(child(directory, name));
+    let entry;
+    try { entry = await lstat(child(directory, name)); }
+    catch (error) { if (hasCode(error, "ENOENT")) continue; throw error; }
     if (entry.isDirectory() && !entry.isSymbolicLink()) {
       try {
         const nested = await openDirectory(child(directory, name));
@@ -276,6 +280,15 @@ async function directoryBytes(directory: Directory): Promise<number> {
  * lock, so even a writer that times out cannot leave an old image selectable.
  * All operations serialize across workers under the on-disk root lock.
  */
+function storeFailure(error: unknown): Error {
+  const code = error !== null && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
+  const message = error instanceof Error ? error.message : String(error);
+  const wrapped = new Error(`image_store_failed: ${code ? code + ": " : ""}${message}`);
+  (wrapped as Error & { code?: string; cause?: unknown }).code = code || undefined;
+  (wrapped as Error & { cause?: unknown }).cause = error;
+  return wrapped;
+}
+
 export function createHermesCcImageStore(rootDir: string, options: { maxBytes?: number; trustedRoot?: string } = {}): HermesCcImageStore {
   const root = resolve(rootDir), maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) throw new Error("invalid_image_cap");
@@ -290,7 +303,9 @@ export function createHermesCcImageStore(rootDir: string, options: { maxBytes?: 
     let total = 0;
     for (const name of await readdir(child(root, "."))) {
       if (name === LOCK_NAME) continue;
-      const stat = await lstat(child(root, name));
+      let stat;
+      try { stat = await lstat(child(root, name)); }
+      catch (error) { if (hasCode(error, "ENOENT")) continue; throw error; }
       const marker = /^\.(?:conflict|reaped)-[a-f0-9]{64}$/.test(name) || /^\.seen-[a-f0-9]{64}-[a-f0-9]{64}$/.test(name);
       if (marker && stat.isFile() && !stat.isSymbolicLink() && stat.nlink === 1 && stat.size === 0) continue;
       const damagedIdentity = /^\.seen-([a-f0-9]{64})-/.exec(name)?.[1];
@@ -385,7 +400,7 @@ export function createHermesCcImageStore(rootDir: string, options: { maxBytes?: 
         return { mime: image.mime, sha256, size: image.bytes.length, file: `${index}-${sha256}.bin` };
       });
       return serialized(async () => {
-        const rootDirectory = await directory(root, true, options.trustedRoot).catch(() => { throw new Error("image_store_failed"); });
+        const rootDirectory = await directory(root, true, options.trustedRoot).catch((e) => { throw storeFailure(e); });
         try {
           const payload = payloadHash(entries);
           await rememberPayload(rootDirectory, name, payload);
@@ -396,6 +411,7 @@ export function createHermesCcImageStore(rootDir: string, options: { maxBytes?: 
             try { existing = await openDirectory(child(rootDirectory, name)); }
             catch (error) { if (!hasCode(error, "ENOENT")) throw error; }
             if (existing) {
+              let damaged = false;
               try {
                 const meta = await metadata(existing, savedKey);
                 conflict = conflict || !!meta.conflict || meta.images.length !== entries.length || meta.images.some((image, i) => image.sha256 !== entries[i]!.sha256 || image.mime !== entries[i]!.mime);
@@ -407,8 +423,21 @@ export function createHermesCcImageStore(rootDir: string, options: { maxBytes?: 
                   await atomicWrite(rootDirectory, `.conflict-${name}`, Buffer.alloc(0));
                   await writeMeta(existing, { ...meta, conflict: true });
                 }
-              } finally { await existing.handle.close(); }
-            } else if (!conflict && entries.length > 0) {
+              } catch (error) {
+                // A half-written key directory can only be left by a killed writer or
+                // eviction; we hold the disk lock, so no other writer is publishing now.
+                if (hasCode(error, "ENOENT") || (error instanceof Error && error.message === "invalid_image_metadata")) damaged = true;
+                else throw error;
+              } finally {
+                if (!damaged) await existing.handle.close();
+              }
+              if (damaged) {
+                try { await removeFiles(existing); } finally { await existing.handle.close(); }
+                await rmdir(child(rootDirectory, name));
+                existing = undefined;
+              }
+            }
+            if (!existing && !conflict && entries.length > 0) {
               const temporaryName = `.${name}.${randomUUID()}.tmp`;
               await mkdir(child(rootDirectory, temporaryName), { mode: 0o700 });
               const temporary = await openDirectory(child(rootDirectory, temporaryName));
@@ -416,8 +445,14 @@ export function createHermesCcImageStore(rootDir: string, options: { maxBytes?: 
               try {
                 for (const [index, image] of accepted.entries()) await atomicWrite(temporary, entries[index]!.file, image.bytes);
                 await writeMeta(temporary, { ...savedKey, createdAt: Date.now(), images: entries });
-                await rename(child(rootDirectory, temporaryName), child(rootDirectory, name));
-                published = true;
+                try {
+                  await rename(child(rootDirectory, temporaryName), child(rootDirectory, name));
+                  published = true;
+                } catch (error) {
+                  if (!hasCode(error, "EEXIST") && !hasCode(error, "ENOTEMPTY")) throw error;
+                  conflict = true;
+                  await atomicWrite(rootDirectory, `.conflict-${name}`, Buffer.alloc(0));
+                }
               } finally {
                 try { if (!published) await removeFiles(temporary); }
                 finally { await temporary.handle.close(); }
@@ -432,13 +467,14 @@ export function createHermesCcImageStore(rootDir: string, options: { maxBytes?: 
             return conflict ? "conflict" : "saved";
           });
         } catch (error) {
+          // Lock timeouts and transient fd/busy errors stay unwrapped so #491's
+          // retry classifier sees the original code; everything else keeps the code
+          // and the cause on the wrapped error.
           if (error instanceof Error && error.message === "image_lock_timeout") throw error;
           const code = error && typeof error === "object" && "code" in error
             ? String((error as { code?: unknown }).code ?? "") : "";
           if (code === "EAGAIN" || code === "EMFILE" || code === "EBUSY") throw error;
-          const failure = new Error("image_store_failed") as Error & { reason?: string };
-          if (code) failure.reason = code;
-          throw failure;
+          throw storeFailure(error);
         }
         finally { await rootDirectory.handle.close(); }
       });
