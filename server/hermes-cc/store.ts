@@ -11,6 +11,12 @@ export interface HermesCcStoredImage { mime: string; bytes: Buffer; sha256: stri
 export interface HermesCcImageStore {
   save(key: HermesCcImageKey, images: readonly HermesCcImageInput[]): Promise<"saved" | "conflict">;
   load(key: HermesCcImageKey): Promise<HermesCcStoredImage[] | null>;
+  /**
+   * Fast check whether the published directory exists. Never takes the save
+   * lock and never reads contents; bounded to 50 ms and false on any error.
+   * `.seen-*` is only an intent written before the lock, so it is not evidence.
+   */
+  hasStoredImages?(key: HermesCcImageKey): Promise<boolean>;
 }
 
 /**
@@ -345,6 +351,20 @@ export function createHermesCcImageStore(rootDir: string, options: { maxBytes?: 
     }
   }
   return {
+    async hasStoredImages(key) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const target = join(root, keyHash(key));
+        const stat = await Promise.race([
+          lstat(target),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new Error("has_stored_timeout")), 50);
+          }),
+        ]);
+        return stat.isDirectory() && !stat.isSymbolicLink();
+      } catch { return false; }
+      finally { if (timer) clearTimeout(timer); }
+    },
     async save(key, images) {
       // Capture inputs before waiting for another operation; never retain mutable caller buffers.
       const name = keyHash(key), savedKey = { ...key };

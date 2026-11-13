@@ -28,6 +28,8 @@ export interface ResolverContext extends LookupInput {
   providerEnv?: Readonly<Record<string, string>>;
   /** Only Clear Chat's own exact-ID image store, bound at server registration. */
   hermesCcImageStore?: HermesCcImageStore;
+  /** Exact session/message keys whose image save failed, with reason and attempts. */
+  saveFailures?: ReadonlyMap<string, { reason: string; attempts: number }>;
   /** Resolvers should stop streaming/scanning when the lookup expires. */
   signal: AbortSignal;
 }
@@ -51,6 +53,8 @@ export interface PromptImageResolver {
   matches(provider: string, command?: readonly string[]): boolean;
   /** Select a unique message; only adapters that support text fallback may use it. */
   find(context: ResolverContext): Promise<FoundImages>;
+  /** Best-effort metadata for a timeout; must stay fast and never throw out. */
+  timeoutInfo?(context: ResolverContext): Promise<{ hasStored?: boolean; saveFailed?: boolean }>;
 }
 
 export const promptImageResolvers: readonly PromptImageResolver[] = [
@@ -104,6 +108,7 @@ export function createPromptImageHandlers(options: {
   timeoutMs?: number;
   hermesCcImageStore?: HermesCcImageStore;
   hermesCcProviderIds?: ReadonlySet<string>;
+  saveFailures?: ReadonlyMap<string, { reason: string; attempts: number }>;
 } = {}) {
   const resolvers = options.resolvers ?? promptImageResolvers;
   const timeoutMs = options.timeoutMs ?? 3000;
@@ -141,6 +146,29 @@ export function createPromptImageHandlers(options: {
     // Only fixed codes reach the daemon log: no snapshots, inputs or exceptions.
     if (reason) console.debug(`[clear-chat] ${name}: ${reason}`);
     return result;
+  }
+
+  async function timeoutInfo(input: LookupInput, context: PluginHandlerContext) {
+    try {
+      const ref = context.paseo.agents.ref(input.agentId);
+      const agent = typeof ref.current === "function" ? ref.current() : null;
+      if (!agent) return {};
+      const provider = agent.provider;
+      const resolver = resolvers.find(candidate => candidate === hermesCcPromptImageResolver && options.hermesCcProviderIds
+        ? options.hermesCcProviderIds.has(provider) : candidate.matches(provider));
+      if (!resolver?.timeoutInfo) return {};
+      const persistence = agent.persistence;
+      return await Promise.race([
+        resolver.timeoutInfo({
+          ...input, provider, cwd: agent.cwd,
+          sessionId: persistence?.sessionId ?? null, nativeHandle: persistence?.nativeHandle ?? null,
+          signal: new AbortController().signal,
+          ...(options.hermesCcImageStore ? { hermesCcImageStore: options.hermesCcImageStore } : {}),
+          ...(options.saveFailures ? { saveFailures: options.saveFailures } : {}),
+        }),
+        new Promise<{}>((resolve) => { const timer = setTimeout(() => resolve({}), 150); (timer as { unref?: () => void }).unref?.(); }),
+      ]);
+    } catch { return {}; }
   }
 
   async function find(input: LookupInput, context: PluginHandlerContext, signal: AbortSignal, check: () => void) {
@@ -215,7 +243,10 @@ export function createPromptImageHandlers(options: {
           }
         }
         return { images, total: found.length, reason };
-      }, reason => ({ images: [], total: 0, reason }), result => result.reason);
+      }, reason => ({ images: [], total: 0, reason }), result => result.reason)
+        .then(async (result) => result.reason === "timeout"
+          ? { ...result, ...await timeoutInfo(input, context) }
+          : result);
     },
     image(input: RpcInput<typeof promptImageRpc>, context: PluginHandlerContext): Promise<ImageResult> {
       return guarded<ImageResult>("prompt.image", async (signal, check) => {

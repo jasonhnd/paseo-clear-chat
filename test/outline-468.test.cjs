@@ -73,7 +73,7 @@ test('outline labels and translation parity cover en, zh-CN and ja', () => {
   for (const locale of ['en', 'zh-CN', 'ja']) {
     assert.ok(messages.resources[locale].sidebar.directory); assert.ok(messages.resources[locale].sidebar.directoryEmpty);
     // English fallback copy that intentionally has no Japanese translation yet.
-    const optionalJa = new Set(locale === 'ja' ? ['prompt.imagesDidNotLoad', 'prompt.retryImages', 'prompt.imageUnavailable'] : []);
+    const optionalJa = new Set(locale === 'ja' ? ['prompt.imagesDidNotLoad', 'prompt.retryImages', 'prompt.imageUnavailable', 'prompt.imageNotSaved'] : []);
     assert.deepEqual(keys(messages.resources[locale]).filter(key => !optionalJa.has(key)), keys(messages.resources.en).filter(key => !optionalJa.has(key)));
   }
 });

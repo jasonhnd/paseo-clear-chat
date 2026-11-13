@@ -207,6 +207,7 @@
     "imagesDidNotLoad": "Images didn't load",
     "retryImages": "Retry",
     "imageUnavailable": "This image can't be displayed",
+    "imageNotSaved": "Image wasn't saved",
     "usageIn": "in",
     "usageCached": "cached",
     "usageOut": "out",

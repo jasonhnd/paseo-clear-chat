@@ -82,7 +82,7 @@ interface PastedList {
   total: number;
 }
 
-type PastedCache = PastedList | { failed: true } | { timedOut: true };
+type PastedCache = PastedList | { failed: true } | { timedOut: true; hasStored?: boolean } | { saveFailed: true };
 
 /** A timeout is not a result: retry once after this delay, then show the row. */
 const PASTED_RETRY_DELAY_MS = 1000;
@@ -124,8 +124,12 @@ function readPastedList(result: {
   images?: { id?: string; thumbDataUri?: string; mime?: string; width?: number | null; height?: number | null }[];
   total?: number;
   reason?: string | null;
+  saveFailure?: { reason?: string; attempts?: number } | null;
+  saveFailed?: boolean;
+  hasStored?: boolean;
 } | null | undefined): PastedCache {
-  if (result?.reason === "timeout") return { timedOut: true };
+  if (result?.saveFailure || result?.saveFailed) return { saveFailed: true };
+  if (result?.reason === "timeout") return { timedOut: true, hasStored: result.hasStored === true };
   if (!result || !Array.isArray(result.images)) return { failed: true };
   const images: PastedThumb[] = [];
   for (const image of result.images) {
@@ -257,8 +261,6 @@ export function UserMessage({
 
   useEffect(() => {
     if (!agentId || !cacheKey) return;
-    // A message known to have no images cannot show a thumbnail row.
-    if (imageCount === 0 && (images?.length ?? 0) === 0) return;
     const share = pastedKeyShares(messageId, clientMessageId);
     if (share) {
       const cached = pastedCache.get(cacheKey);
@@ -313,10 +315,13 @@ export function UserMessage({
     return () => {
       cancelled = true;
     };
-  }, [agentId, cacheKey, clientMessageId, loadImages, messageId, text, matchesPrefix, retryNonce, imageCount, images?.length]);
+  }, [agentId, cacheKey, clientMessageId, loadImages, messageId, text, matchesPrefix, retryNonce]);
 
   const pastedNow = pasted?.key === cacheKey ? pasted.value : null;
-  const timedOut = pastedNow !== null && !isPastedList(pastedNow) && "timedOut" in pastedNow;
+  const timedOutState = pastedNow !== null && !isPastedList(pastedNow) && "timedOut" in pastedNow ? pastedNow : null;
+  const timedOut = timedOutState !== null;
+  const retryVisible = timedOutState !== null && (attachmentCount > 0 || timedOutState.hasStored === true);
+  const saveFailed = pastedNow !== null && !isPastedList(pastedNow) && "saveFailed" in pastedNow;
   const retryImages = () => {
     setPasted(null);
     setRetryNonce((value) => value + 1);
@@ -674,7 +679,7 @@ export function UserMessage({
             ) : null}
           </View>
         ) : null}
-        {timedOut && attachmentCount > 0 ? (
+        {retryVisible ? (
           <View testID="prompt-pasted-retry" style={styles.pastedRetryRow}>
             <Text selectable style={styles.pastedRetryText}>
               {t("prompt.imagesDidNotLoad")}
@@ -688,6 +693,11 @@ export function UserMessage({
             >
               <Text style={styles.pastedRetryButtonText}>{t("prompt.retryImages")}</Text>
             </Pressable>
+          </View>
+        ) : null}
+        {saveFailed ? (
+          <View testID="prompt-pasted-save-failed" style={styles.pastedRow}>
+            <Text selectable style={styles.pastedBrokenText}>{t("prompt.imageNotSaved")}</Text>
           </View>
         ) : null}
         {activeViewerId && openImage ? (

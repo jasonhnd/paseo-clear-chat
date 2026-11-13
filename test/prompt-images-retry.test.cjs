@@ -85,25 +85,6 @@ test("pasted prompt images: a pure text message shows nothing when its lookup ti
   assert.match(h.text(tree), /Just text/);
 });
 
-test("pasted prompt images: a message known to have no images does not look them up", async () => {
-  const { h, calls } = harness(() => timedOut());
-  // The mount transformer drops imageCount 0, so draw the renderer directly to
-  // reproduce the host payload that carries "no images" explicitly.
-  const Component = h.renderers.get("omp-user-message").Component;
-  const row = {
-    agentId: "demo-agent",
-    host: { id: "demo-host" },
-    theme: { colors: {} },
-    timestamp: new Date("2026-01-01T12:00:00Z"),
-    item: { kind: "omp-user-message", data: { text: "No images", messageId: "retry-none", clientMessageId: "retry-none-client", imageCount: 0 } },
-  };
-  h.draw({ type: Component, props: row });
-  await settle();
-  const tree = h.draw({ type: Component, props: row });
-  assert.equal(calls.length, 0, "imageCount 0 with no images skips prompt.images");
-  assert.equal(byId(h, tree, "prompt-pasted-retry"), undefined);
-});
-
 test("pasted prompt images: a broken thumbnail shows the inline hint and keeps good thumbnails", async () => {
   const { h } = harness(() => ({ images: [pasted("img-good"), pasted("img-bad")], total: 2, reason: null }));
   const mounted = h.mount(prompt({ messageId: "retry-broken", clientMessageId: "retry-broken-client", imageCount: 2 }));
@@ -117,6 +98,25 @@ test("pasted prompt images: a broken thumbnail shows the inline hint and keeps g
   assert.equal(byId(h, tree, "prompt-pasted-broken") !== undefined, true, "the broken image is replaced in place");
   assert.match(h.text(tree), /This image can't be displayed/);
   assert.equal(byId(h, tree, "prompt-pasted-retry"), undefined, "a broken image has no retry button");
+});
+
+test("pasted prompt images: a host count of 0 still queries and shows store images", async () => {
+  const { h, calls } = harness(() => ({ images: [pasted("img-zero")], total: 1, reason: null }));
+  const mounted = h.mount(prompt({ messageId: "count-zero", clientMessageId: "count-zero-client", imageCount: 0 }));
+  await settle();
+  const tree = mounted.render();
+  assert.equal(calls.length, 1, "every message is still looked up");
+  assert.equal(thumbs(h, tree).length, 1, "the stored image is shown even when the host count is 0");
+});
+
+test("pasted prompt images: attachmentCount 0 with hasStored true shows the retry row", async () => {
+  const { h, calls } = harness(() => ({ images: [], total: 0, reason: "timeout", hasStored: true }));
+  const mounted = h.mount(prompt({ messageId: "stored-timeout", clientMessageId: "stored-timeout-client", text: "Pasted with no count" }));
+  await settle();
+  await wait(1200);
+  const tree = mounted.render();
+  assert.equal(calls.length, 2, "initial lookup plus one automatic retry");
+  assert.ok(byId(h, tree, "prompt-pasted-retry"), "the stored image is worth another attempt");
 });
 
 test("pasted prompt images: a genuine empty result keeps today's count row and has no button", async () => {
