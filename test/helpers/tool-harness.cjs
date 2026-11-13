@@ -1,4 +1,4 @@
-const { readFileSync, existsSync } = require("node:fs");
+const { readFileSync, existsSync, statSync } = require("node:fs");
 const { createRequire } = require("node:module");
 const { resolve, dirname, relative } = require("node:path");
 const { runInThisContext } = require("node:vm");
@@ -11,12 +11,16 @@ const { createExpansionHost } = require("./expansion-host.cjs");
 // stays isolated exactly as before.
 const transpiledSources = new Map();
 function transpileFile(filename) {
-  let source = transpiledSources.get(filename);
+  // Key on name + mtime + size: a file rewritten inside the same process must
+  // not silently reuse an older transpilation of its previous contents.
+  const info = statSync(filename);
+  const key = `${filename}:${info.mtimeMs}:${info.size}`;
+  let source = transpiledSources.get(key);
   if (source === undefined) {
     source = ts.transpileModule(readFileSync(filename, "utf8"), {
       compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX },
     }).outputText;
-    transpiledSources.set(filename, source);
+    transpiledSources.set(key, source);
   }
   return source;
 }
