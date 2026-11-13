@@ -292,18 +292,31 @@ export function UserMessage({
         }))
         .then((result) => readPastedList(result))
         .catch(() => ({ failed: true }) satisfies PastedCache);
-      // One timeout is retried once; only a real result may be cached, so a
-      // later row asks again instead of reusing a transient timeout.
+      // A timeout is retried once; a message still being sent may also be
+      // looked up before the daemon records the prompt, so retry that empty
+      // result a few times while `pending` instead of caching it.
       pendingLookup = lookup()
         .then(async (value) => {
-          if (!("timedOut" in value)) return value;
-          await new Promise((resolve) => setTimeout(resolve, PASTED_RETRY_DELAY_MS));
-          if (cancelled) return value;
-          return lookup();
+          if ("timedOut" in value) {
+            await new Promise((resolve) => setTimeout(resolve, PASTED_RETRY_DELAY_MS));
+            if (cancelled) return value;
+            return lookup();
+          }
+          for (let attempt = 0; attempt < 5 && pending && isPastedList(value)
+            && value.images.length === 0 && value.total === 0; attempt += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 800));
+            // Keep the bounded retry alive across a re-render: a row that is
+            // still pending must not pin its first empty result.
+            value = await lookup();
+          }
+          return value;
         })
         .then((value) => {
           // Saving and timeouts are transient: caching them would pin the row and stop polling.
-          if ("saving" in value || "timedOut" in value) {
+          const empty = isPastedList(value) && value.images.length === 0 && value.total === 0;
+          // A message still being sent may be looked up before the daemon records
+          // its prompt; never pin that transient empty result.
+          if ("saving" in value || "timedOut" in value || (empty && pending)) {
             pastedInflight.delete(flightKey);
             return value;
           }
@@ -320,7 +333,7 @@ export function UserMessage({
     return () => {
       cancelled = true;
     };
-  }, [agentId, cacheKey, clientMessageId, loadImages, messageId, text, matchesPrefix, retryNonce, refreshNonce]);
+  }, [agentId, cacheKey, clientMessageId, loadImages, messageId, text, matchesPrefix, retryNonce, refreshNonce, pending]);
 
   const pastedNow = pasted?.key === cacheKey ? pasted.value : null;
   const timedOutState = pastedNow !== null && !isPastedList(pastedNow) && "timedOut" in pastedNow ? pastedNow : null;
