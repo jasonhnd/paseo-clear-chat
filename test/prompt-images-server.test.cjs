@@ -283,6 +283,36 @@ test("a failed save reports saveFailed while the store lock still blocks the loo
   assert.equal(loads, 0);
 });
 
+test("a status read that never settles falls through to the stored images", async () => {
+  const h = harness();
+  const resolver = h.load("server/prompt-images/hermes-cc.ts").hermesCcPromptImageResolver;
+  const bytes = await png();
+  const handlers = h.createPromptImageHandlers({
+    resolvers: [resolver],
+    hermesCcProviderIds: new Set(["hermes-cc"]),
+    hermesCcImageStore: { async load() { return [{ mime: "image/png", sha256: "sha", bytes }]; } },
+    saveStatus: { read() { return new Promise(() => {}); } },
+  });
+  const result = await handlers.images(input, hermesCtx());
+  assert.equal(result.total, 1, "a stalled status read counts as no status");
+  assert.equal(result.saving, undefined);
+});
+
+test("a status read that throws falls through to the stored images", async () => {
+  const h = harness();
+  const resolver = h.load("server/prompt-images/hermes-cc.ts").hermesCcPromptImageResolver;
+  const bytes = await png();
+  const handlers = h.createPromptImageHandlers({
+    resolvers: [resolver],
+    hermesCcProviderIds: new Set(["hermes-cc"]),
+    hermesCcImageStore: { async load() { return [{ mime: "image/png", sha256: "sha", bytes }]; } },
+    saveStatus: { async read() { throw new Error("status_unreadable"); } },
+  });
+  const result = await handlers.images(input, hermesCtx());
+  assert.equal(result.total, 1, "a failed status read counts as no status");
+  assert.equal(result.saveFailed, undefined);
+});
+
 test("saveFailed wins over pending when the two ids disagree", async () => {
   const h = harness();
   const resolver = h.load("server/prompt-images/hermes-cc.ts").hermesCcPromptImageResolver;

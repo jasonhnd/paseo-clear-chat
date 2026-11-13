@@ -3,6 +3,21 @@ import type { HermesCcStoredImage } from "../hermes-cc/store";
 import type { FoundImages, PromptImageResolver } from "./registry";
 
 const empty = (): FoundImages => ({ matchedMessages: 0, images: [] });
+
+/** A status read that stalls is not a status: the lookup must still run. */
+const STATUS_READ_BUDGET_MS = 50;
+
+async function readStatus(context: Parameters<PromptImageResolver["find"]>[0], sessionKey: string, messageId: string) {
+  const reader = context.saveStatus?.read;
+  if (!reader) return null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      reader({ sessionKey, messageId }).catch(() => null),
+      new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), STATUS_READ_BUDGET_MS); }),
+    ]);
+  } finally { if (timer) clearTimeout(timer); }
+}
 function sameImages(left: HermesCcStoredImage[], right: HermesCcStoredImage[]): boolean {
   return left.length === right.length && left.every((image, index) => {
     const other = right[index]!;
@@ -23,7 +38,7 @@ export const hermesCcPromptImageResolver: PromptImageResolver = {
     let hasStored = false, saveFailed = false;
     for (const messageId of ids) {
       // Durable state first: it survives reloads and is the post-#491 contract.
-      const status = await context.saveStatus?.read({ sessionKey, messageId });
+      const status = await readStatus(context, sessionKey, messageId);
       if (status?.state === "saveFailed") saveFailed = true;
       if (!hasStored && context.hermesCcImageStore?.hasStoredImages) {
         hasStored = await context.hermesCcImageStore.hasStoredImages({ sessionKey, messageId });
@@ -45,7 +60,7 @@ export const hermesCcPromptImageResolver: PromptImageResolver = {
     // budget expires and the row would surface as `timeout`, never as `saving`.
     let saving = false;
     for (const messageId of ids) {
-      const status = await context.saveStatus?.read({ sessionKey, messageId });
+      const status = await readStatus(context, sessionKey, messageId);
       if (context.signal.aborted) return empty();
       // Both markers can be present across the two ids; saveFailed wins because
       // the client paints the failure before the in-flight spinner.
