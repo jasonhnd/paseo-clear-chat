@@ -92,11 +92,19 @@ export const NEW_MESSAGE_RETRY_WINDOW_MS = 15_000;
 export const NEW_MESSAGE_RETRY_DELAY_MS = 800;
 export const NEW_MESSAGE_RETRY_LIMIT = 5;
 
+/** Epoch digits arrive as a string as well; Date.parse would make it NaN. */
+function parseMessageTime(timestamp: unknown): number {
+  if (timestamp instanceof Date) return timestamp.getTime();
+  if (typeof timestamp === "number") return timestamp;
+  if (typeof timestamp === "string") return /^\d+$/.test(timestamp) ? Number(timestamp) : Date.parse(timestamp);
+  return NaN;
+}
+
 function isRecentMessage(timestamp: unknown): boolean {
-  const value = timestamp instanceof Date ? timestamp.getTime()
-    : typeof timestamp === "number" ? timestamp
-      : typeof timestamp === "string" ? Date.parse(timestamp) : NaN;
-  return Number.isFinite(value) && Date.now() - value < NEW_MESSAGE_RETRY_WINDOW_MS;
+  // Both sides of the window: a clock that runs ahead of the host must not
+  // keep every mount retrying for as long as the row sits in the future.
+  const age = Date.now() - parseMessageTime(timestamp);
+  return Number.isFinite(age) && age < NEW_MESSAGE_RETRY_WINDOW_MS && age > -NEW_MESSAGE_RETRY_WINDOW_MS;
 }
 
 const pastedCache = new Map<string, PastedCache>();
@@ -320,6 +328,9 @@ export function UserMessage({
             await new Promise((resolve) => setTimeout(resolve, NEW_MESSAGE_RETRY_DELAY_MS));
             // Keep the bounded retry alive across a re-render: a row that is
             // still pending must not pin its first empty result.
+            // An unmounted row is not a row any more: `pending` is in the deps,
+            // so a state change starts a second chain and the old one has to end.
+            if (cancelled) return value;
             value = await lookup();
           }
           return value;
