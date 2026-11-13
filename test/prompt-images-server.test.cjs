@@ -1016,3 +1016,18 @@ test("timeout metadata only uses the agent's own native session id", async () =>
   assert.equal(seen[2].requestSessionId, "own");
   assert.equal(seen[2].sessionId, own);
 });
+
+test("prompt.images keeps hasStored and saveFailed in its output schema", async () => {
+  const h = harness();
+  // The client reads hasStored from the response, so the output schema must keep it.
+  const parsed = h.promptImagesRpc.output.parse({ ...empty("timeout"), hasStored: true, saveFailed: true });
+  assert.equal(parsed.hasStored, true);
+  assert.equal(parsed.saveFailed, true);
+  const probe = { matches: () => true, async find() { return new Promise(() => {}); },
+    async timeoutInfo() { return { hasStored: true }; } };
+  const handlers = h.createPromptImageHandlers({ timeoutMs: 20, resolvers: [probe] });
+  const result = await handlers.images(input, context());
+  assert.equal(result.reason, "timeout");
+  assert.equal(result.hasStored, true);
+  assert.equal(h.promptImagesRpc.output.parse(result).hasStored, true);
+});
