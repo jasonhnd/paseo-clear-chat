@@ -5,6 +5,22 @@ const { runInThisContext } = require("node:vm");
 const ts = require("typescript");
 const { createExpansionHost } = require("./expansion-host.cjs");
 
+// TypeScript transpilation is pure per file and dominates harness creation
+// (measured ~644 ms per createToolHarness). Cache the compiled text at module
+// scope; module instances are still re-evaluated per harness, so test state
+// stays isolated exactly as before.
+const transpiledSources = new Map();
+function transpileFile(filename) {
+  let source = transpiledSources.get(filename);
+  if (source === undefined) {
+    source = ts.transpileModule(readFileSync(filename, "utf8"), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX },
+    }).outputText;
+    transpiledSources.set(filename, source);
+  }
+  return source;
+}
+
 // Exercise the registered transformer, schema, live renderer and card bodies.
 // Only the host runtime, animation, syntax painting and unrelated UI are shims.
 function createToolHarness(platform = "ios", options = {}) {
@@ -201,9 +217,7 @@ function createToolHarness(platform = "ios", options = {}) {
     if (key in stubs) return stubs[key];
     if (cache.has(filename)) return cache.get(filename).exports;
     const mod = { exports: {} }; cache.set(filename, mod);
-    const source = ts.transpileModule(readFileSync(filename, "utf8"), {
-      compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX },
-    }).outputText;
+    const source = transpileFile(filename);
     const localRequire = id => {
       if (id === "react") return react;
       if (id === "react/jsx-runtime") return { jsx, jsxs: jsx, Fragment: "Fragment" };
