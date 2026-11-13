@@ -468,7 +468,7 @@ test("Hermes CC cross-process saves always poison different payloads for the sam
           { sessionKey: "shared-native", messageId: process.argv[4] },
           [{ mime: "image/png", data: Buffer.from(process.argv[5]) }]);
         process.send({ result }); process.disconnect();
-      } catch { process.send({ error: true }); process.exitCode = 1; process.disconnect(); }
+      } catch (e) { process.send({ error: { code: e && e.code, message: String(e && e.message || e), stack: String(e && e.stack || "").split("\\n").slice(0, 3) } }); process.exitCode = 1; process.disconnect(); }
     });
   `);
   fs.mkdirSync(h.storeRoot);
@@ -481,7 +481,14 @@ test("Hermes CC cross-process saves always poison different payloads for the sam
       t.after(() => { if (child.connected) child.kill(); });
       const ready = new Promise((resolve, reject) => { child.once("message", message => message.ready ? resolve() : reject(new Error("writer not ready"))); child.once("error", reject); });
       const result = new Promise((resolve, reject) => {
-        child.on("message", message => { if (message.result) resolve(message.result); if (message.error) reject(new Error("writer failed")); });
+        child.on("message", message => {
+          if (message.result) resolve(message.result);
+          if (message.error) {
+            const detail = typeof message.error === "object" && message.error ? message.error : { message: String(message.error) };
+            const stack = Array.isArray(detail.stack) ? detail.stack.join("\n") : "";
+            reject(new Error(`writer failed: ${detail.code ? detail.code + ": " : ""}${detail.message}${stack ? "\n" + stack : ""}`));
+          }
+        });
         child.once("error", reject);
         child.once("exit", code => { if (code !== 0) reject(new Error("writer exited")); });
       });
