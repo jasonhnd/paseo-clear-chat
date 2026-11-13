@@ -4,7 +4,8 @@ import type { AgentRef, ProjectRef } from "@getpaseo/plugin/client";
 import React, { useEffect, useState } from "react";
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { messages } from "../messages";
-import { isBackgroundAgent, boardSection, compareBoardAgents, lastActivityTime, localDayBounds, runningMinutes, answerMarker, compareWaitingAgents } from "../agent-board-model";
+import { isBackgroundAgent, boardSection, compareBoardAgents, lastActivityTime, localDayBounds, runningMinutes, answerMarker, compareWaitingAgents, finishedClock, observeAgentTime, getObservedAgentTimes } from "../agent-board-model";
+import type { ObservedAgentTimeState } from "../agent-board-model";
 import { parseOutline, syncOutline } from "../outline-model";
 import { useEnhancerPreferences } from "../preferences";
 
@@ -23,15 +24,25 @@ function useToday() {
   return localDayBounds(now);
 }
 
-function AgentRow({ agentRef, section, theme, navigation }: BoardProps & { agentRef: AgentRef; section: "running" | "finished" }) {
+type ObservationProps = { observed: ObservedAgentTimeState; setObserved: React.Dispatch<React.SetStateAction<ObservedAgentTimeState>>; bounds: { start: number; end: number } };
+
+function AgentRow({ agentRef, section, theme, navigation, observed, setObserved, bounds }: BoardProps & ObservationProps & { agentRef: AgentRef; section: "running" | "finished" }) {
   const agent = pluginClient.useAgent(agentRef);
   const { t } = pluginClient.useTranslation(messages);
+  useEffect(() => {
+    if (!agent) return;
+    setObserved(previous => observeAgentTime(previous, agentRef.key, { status: agent.status, attentionReason: agent.attentionReason }, Date.now()));
+  }, [agentRef.key, agent?.status, agent?.attentionReason]);
   if (!agent) return null;
   const startedAt: string | undefined = undefined; // createdAt is agent creation, not this run start (PM ruling 2026-11-12; see #470)
   const minutes = runningMinutes(startedAt, Date.now());
+  const clock = section === "finished" ? finishedClock(getObservedAgentTimes(observed, agentRef.key)?.finishedAt, bounds) : null;
   return (
     <Pressable accessibilityRole="button" onPress={() => navigation.openAgent(agent.ref)} style={[styles.row, { borderColor: theme.colors.border }]}>
-      <Text numberOfLines={1} style={[styles.rowTitle, { color: theme.colors.foreground }]}>{agent.title?.trim() || agent.id.slice(0, 8)}</Text>
+      <View style={styles.rowHeading}>
+        <Text numberOfLines={1} style={[styles.rowTitle, styles.rowHeadingTitle, { color: theme.colors.foreground }]}>{agent.title?.trim() || agent.id.slice(0, 8)}</Text>
+        {clock === null ? null : <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>{t("sidebar.finishedAt").replace("{time}", clock)}</Text>}
+      </View>
       {section === "finished" ? (
         agent.status === "error" ? (
           <Text style={[styles.meta, { color: theme.colors.statusDanger }]}>{[t("sidebar.status.error")]}</Text>
@@ -52,7 +63,7 @@ function AgentRow({ agentRef, section, theme, navigation }: BoardProps & { agent
   );
 }
 
-function ProjectGroup({ projectRef, bounds, ...props }: BoardProps & { projectRef: ProjectRef; bounds: { start: number; end: number } }) {
+function ProjectGroup({ projectRef, bounds, observed, setObserved, ...props }: BoardProps & ObservationProps & { projectRef: ProjectRef }) {
   const { t } = pluginClient.useTranslation(messages);
   const project = pluginClient.useProject(projectRef);
   const workspaces = pluginClient.useWorkspaces({ where: workspace => workspace.project.key === projectRef.key });
@@ -71,8 +82,11 @@ function ProjectGroup({ projectRef, bounds, ...props }: BoardProps & { projectRe
       {!running.length && !finished.length && <Text style={[styles.empty, { color: props.theme.colors.foregroundMuted }]}>{t("sidebar.noTodayActivity")}</Text>}
       {([ ["running", running], ["finished", finished] ] as const).map(([section, rows]) => (
         <View key={section} style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: props.theme.colors.foregroundMuted }]}>{t(section === "running" ? "sidebar.running" : "sidebar.finished")}</Text>
-          {rows.map(ref => <AgentRow key={ref.key} agentRef={ref} section={section} {...props} />)}
+          <View style={styles.sectionHeading}>
+            <Text style={[styles.sectionTitle, { color: props.theme.colors.foregroundMuted }]}>{t(section === "running" ? "sidebar.running" : "sidebar.finished")}</Text>
+            {section === "finished" ? <Text style={[styles.sectionNote, { color: props.theme.colors.foregroundMuted }]}>{t("sidebar.finishedAtNote")}</Text> : null}
+          </View>
+          {rows.map(ref => <AgentRow key={ref.key} agentRef={ref} section={section} bounds={bounds} observed={observed} setObserved={setObserved} {...props} />)}
         </View>
       ))}
     </View>
@@ -82,11 +96,12 @@ function ProjectGroup({ projectRef, bounds, ...props }: BoardProps & { projectRe
 function TodayBoard(props: BoardProps) {
   const projects = pluginClient.useProjects();
   const bounds = useToday();
+  const [observed, setObserved] = useState<ObservedAgentTimeState>(() => new Map());
   const { t } = pluginClient.useTranslation(messages);
   return (
     <ScrollView contentContainerStyle={styles.board}>
       {projects.length === 0 ? <Text style={[styles.empty, { color: props.theme.colors.foregroundMuted }]}>{t("sidebar.noProjects")}</Text>
-        : projects.map(ref => <ProjectGroup key={ref.key} projectRef={ref} bounds={bounds} {...props} />)}
+        : projects.map(ref => <ProjectGroup key={ref.key} projectRef={ref} bounds={bounds} observed={observed} setObserved={setObserved} {...props} />)}
     </ScrollView>
   );
 }
@@ -331,9 +346,13 @@ const styles = StyleSheet.create({
   project: { marginBottom: 20 },
   projectTitle: { fontSize: 15, fontWeight: "600", marginBottom: 8 },
   section: { marginTop: 8 },
+  sectionHeading: { flexDirection: "row", alignItems: "baseline", flexWrap: "wrap", columnGap: 8 },
   sectionTitle: { fontSize: 12, fontWeight: "600", marginBottom: 5 },
+  sectionNote: { fontSize: 11, marginBottom: 5, flexShrink: 1 },
   row: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, marginBottom: 5 },
   rowTitle: { fontSize: 13, fontWeight: "500" },
+  rowHeading: { flexDirection: "row", alignItems: "center", gap: 8 },
+  rowHeadingTitle: { flex: 1 },
   runningMeta: { flexDirection: "row", alignItems: "center", gap: 6 },
   pill: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
   pillText: { fontSize: 11, fontWeight: "600" },

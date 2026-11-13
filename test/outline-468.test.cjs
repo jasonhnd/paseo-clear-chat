@@ -71,7 +71,7 @@ test('outline labels and translation parity cover en, zh-CN and ja', () => {
   const messages = h.load('client/messages.ts').messages;
   const keys = value => Object.entries(value).flatMap(([k, v]) => typeof v === 'string' ? [k] : keys(v).map(child => `${k}.${child}`)).sort();
   const searchKeys = ['sidebar.search', 'sidebar.searchEmpty', 'sidebar.searchLimit', 'sidebar.searchLimitOlder', 'sidebar.searchPlaceholder'];
-  const optionalJa = new Set([...searchKeys, 'sidebar.errors', 'sidebar.errorsEmpty']);
+  const optionalJa = new Set([...searchKeys, 'sidebar.errors', 'sidebar.errorsEmpty', 'sidebar.finishedAt', 'sidebar.finishedAtNote']);
   for (const locale of ['en', 'zh-CN', 'ja']) {
     assert.ok(messages.resources[locale].sidebar.directory); assert.ok(messages.resources[locale].sidebar.directoryEmpty);
     const skip = locale === 'ja' ? optionalJa : new Set();
