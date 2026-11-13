@@ -467,13 +467,10 @@ export function createHermesCcImageStore(rootDir: string, options: { maxBytes?: 
             return conflict ? "conflict" : "saved";
           });
         } catch (error) {
-          // Lock timeouts and transient fd/busy errors stay unwrapped so #491's
-          // retry classifier sees the original code; everything else keeps the code
-          // and the cause on the wrapped error.
+          // A lock timeout stays unwrapped so retry classification matches on its
+          // exact message; every other failure keeps the errno on the wrapper (and
+          // on cause), which is what #491's retry classifier reads.
           if (error instanceof Error && error.message === "image_lock_timeout") throw error;
-          const code = error && typeof error === "object" && "code" in error
-            ? String((error as { code?: unknown }).code ?? "") : "";
-          if (code === "EAGAIN" || code === "EMFILE" || code === "EBUSY") throw error;
           throw storeFailure(error);
         }
         finally { await rootDirectory.handle.close(); }
