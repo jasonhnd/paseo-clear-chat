@@ -81,7 +81,15 @@ function waitEvent(connection, predicate) {
 
 function fixture(t, store = new FakeHistoryStore()) {
   const root = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "cc-history-"));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const connections = [];
+  // Node runs t.after hooks in registration order. This one is registered
+  // before any connect(), so every runtime - including the `hermes` child that
+  // appends to requests.jsonl - is stopped before the root is removed. Removing
+  // the root first let that child recreate an entry mid-delete: ENOTEMPTY.
+  t.after(async () => {
+    for (const connection of connections) await connection.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  });
   const command = join(root, "hermes"), log = join(root, "requests.jsonl");
   fs.writeFileSync(command, `#!/usr/bin/env node
     const fs = require("node:fs"), readline = require("node:readline");
@@ -131,7 +139,7 @@ function fixture(t, store = new FakeHistoryStore()) {
       if (info.clientMessageId) await images.save({ sessionKey: info.sessionKey, messageId: info.clientMessageId }, info.images);
     }, store);
     const connection = await provider.connect({ versions: [1], capabilities: ["prompt.message", "prompt.command", "prompt.image", "session.persistence"] });
-    t.after(() => connection.close());
+    connections.push(connection);
     const events = [];
     connection.onEvent(event => events.push(structuredClone(event)));
     return { connection, events };
