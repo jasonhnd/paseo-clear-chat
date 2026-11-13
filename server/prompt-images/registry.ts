@@ -7,6 +7,7 @@ import { readImageHeader } from "./image-header";
 import { claudePromptImageResolver } from "./claude";
 import { hermesCcPromptImageResolver } from "./hermes-cc";
 import type { HermesCcImageStore } from "../hermes-cc/store";
+import { nativeSessionKeyFromPersistence } from "../hermes-cc/session-key";
 
 type LookupInput = RpcInput<typeof promptImagesRpc>;
 type ImagesResult = RpcOutput<typeof promptImagesRpc>;
@@ -179,7 +180,11 @@ export function createPromptImageHandlers(options: {
       ? options.hermesCcProviderIds.has(provider) : candidate.matches(provider));
     if (!resolver?.timeoutInfo) return {};
     const persistence = agent.persistence;
-    const requestSessionId = preferRequest ? input.sessionId ?? null : null;
+    // Only the agent's own native session may be queried: a client-supplied id
+    // from another session would otherwise answer "stored / save failed" for it.
+    const ownKey = nativeSessionKeyFromPersistence(persistence?.sessionId ?? null, persistence?.nativeHandle ?? null);
+    const requestedKey = preferRequest ? nativeSessionKeyFromPersistence(input.sessionId ?? null) : null;
+    const requestSessionId = requestedKey !== null && ownKey !== null && requestedKey === ownKey ? requestedKey : null;
     return await resolver.timeoutInfo({
       ...input, provider, cwd: agent.cwd,
       sessionId: persistence?.sessionId ?? null, nativeHandle: persistence?.nativeHandle ?? null,
@@ -209,15 +214,21 @@ export function createPromptImageHandlers(options: {
         persistence: { sessionId: stored.sessionId, nativeHandle: stored.nativeHandle },
       }, false);
       // A: last resort, bounded so a busy daemon cannot hold the response.
-      return await Promise.race([
-        (async () => {
-          const refreshed = await ref.refresh();
-          const agent = refreshed?.agent ?? (typeof ref.current === "function" ? ref.current() : null);
-          if (!agent) return {};
-          return await resolverTimeoutInfo(input, agent, false);
-        })(),
-        new Promise<{}>((resolve) => { setTimeout(() => resolve({}), 150); }),
-      ]);
+      let deadline: ReturnType<typeof setTimeout> | undefined;
+      try {
+        return await Promise.race([
+          (async () => {
+            const refreshed = await ref.refresh();
+            const agent = refreshed?.agent ?? (typeof ref.current === "function" ? ref.current() : null);
+            if (!agent) return {};
+            return await resolverTimeoutInfo(input, agent, false);
+          })(),
+          new Promise<{}>((resolve) => { deadline = setTimeout(() => resolve({}), 150); }),
+        ]);
+      } finally {
+        // Clear the fallback on the success path too: no timer outlives the race.
+        if (deadline !== undefined) clearTimeout(deadline);
+      }
     } catch { return {}; }
   }
 

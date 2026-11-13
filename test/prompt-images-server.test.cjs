@@ -957,3 +957,31 @@ test("timeout metadata falls back to the bounded session table", async () => {
   assert.equal(result.hasStored, true);
   assert.equal(seen.sessionId, fresh);
 });
+
+test("timeout metadata only uses the agent's own native session id", async () => {
+  const h = harness();
+  const own = "plugin:" + JSON.stringify({ version: 1, data: { sessionId: "own" } });
+  const other = "plugin:" + JSON.stringify({ version: 1, data: { sessionId: "other" } });
+  const seen = [];
+  const probe = { matches: () => true, async find() { return new Promise(() => {}); },
+    async timeoutInfo(ctx) { seen.push(ctx); return { hasStored: true }; } };
+  const handlers = h.createPromptImageHandlers({ timeoutMs: 20, resolvers: [probe] });
+  // refresh never settles, so the request id (B) is the only session source offered.
+  const ctx = { paseo: { agents: { ref: () => ({
+    current: () => ({ provider: "sample", cwd: ".", persistence: { provider: "sample", sessionId: own, nativeHandle: null } }),
+    refresh: () => new Promise(() => {}),
+  }) } } };
+  for (const sessionId of [other, "other-plain", own]) {
+    const result = await handlers.images({ agentId: `agent-b-${seen.length}`, messageId: "m-b", text: "t", sessionId }, ctx);
+    assert.equal(result.reason, "timeout");
+    assert.equal(result.hasStored, true);
+  }
+  // A foreign or unusable id never becomes the queried session: C/D use the agent's own one.
+  assert.equal(seen[0].requestSessionId, null);
+  assert.equal(seen[0].sessionId, own);
+  assert.equal(seen[1].requestSessionId, null);
+  assert.equal(seen[1].sessionId, own);
+  // The agent's own id is accepted, normalized to its native key.
+  assert.equal(seen[2].requestSessionId, "own");
+  assert.equal(seen[2].sessionId, own);
+});
