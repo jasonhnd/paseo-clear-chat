@@ -87,6 +87,18 @@ type PastedCache = PastedList | { failed: true } | { timedOut: true; hasStored?:
 /** A timeout is not a result: retry once after this delay, then show the row. */
 const PASTED_RETRY_DELAY_MS = 1000;
 
+/** A just-sent message may be looked up before the daemon records the prompt. */
+export const NEW_MESSAGE_RETRY_WINDOW_MS = 15_000;
+export const NEW_MESSAGE_RETRY_DELAY_MS = 800;
+export const NEW_MESSAGE_RETRY_LIMIT = 5;
+
+function isRecentMessage(timestamp: unknown): boolean {
+  const value = timestamp instanceof Date ? timestamp.getTime()
+    : typeof timestamp === "number" ? timestamp
+      : typeof timestamp === "string" ? Date.parse(timestamp) : NaN;
+  return Number.isFinite(value) && Date.now() - value < NEW_MESSAGE_RETRY_WINDOW_MS;
+}
+
 const pastedCache = new Map<string, PastedCache>();
 const pastedInflight = new Map<string, Promise<PastedCache>>();
 /**
@@ -292,9 +304,10 @@ export function UserMessage({
         }))
         .then((result) => readPastedList(result))
         .catch(() => ({ failed: true }) satisfies PastedCache);
-      // A timeout is retried once; a message still being sent may also be
-      // looked up before the daemon records the prompt, so retry that empty
-      // result a few times while `pending` instead of caching it.
+      // A timeout is retried once. A just-sent message may also be looked up
+      // before the daemon records the prompt, so retry that empty result a few
+      // times instead of pinning it; historical rows keep the old behaviour.
+      const retryNewMessage = pending || isRecentMessage(timestamp);
       pendingLookup = lookup()
         .then(async (value) => {
           if ("timedOut" in value) {
@@ -302,9 +315,9 @@ export function UserMessage({
             if (cancelled) return value;
             return lookup();
           }
-          for (let attempt = 0; attempt < 5 && pending && isPastedList(value)
+          for (let attempt = 0; attempt < NEW_MESSAGE_RETRY_LIMIT && retryNewMessage && isPastedList(value)
             && value.images.length === 0 && value.total === 0; attempt += 1) {
-            await new Promise((resolve) => setTimeout(resolve, 800));
+            await new Promise((resolve) => setTimeout(resolve, NEW_MESSAGE_RETRY_DELAY_MS));
             // Keep the bounded retry alive across a re-render: a row that is
             // still pending must not pin its first empty result.
             value = await lookup();
@@ -314,9 +327,9 @@ export function UserMessage({
         .then((value) => {
           // Saving and timeouts are transient: caching them would pin the row and stop polling.
           const empty = isPastedList(value) && value.images.length === 0 && value.total === 0;
-          // A message still being sent may be looked up before the daemon records
-          // its prompt; never pin that transient empty result.
-          if ("saving" in value || "timedOut" in value || (empty && pending)) {
+          // A just-sent message may be looked up before the daemon records its
+          // prompt; never pin that transient empty result.
+          if ("saving" in value || "timedOut" in value || (empty && retryNewMessage)) {
             pastedInflight.delete(flightKey);
             return value;
           }
