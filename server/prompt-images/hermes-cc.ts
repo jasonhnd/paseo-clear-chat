@@ -29,7 +29,13 @@ export const hermesCcPromptImageResolver: PromptImageResolver = {
       if (selected && !sameImages(selected, images)) return { matchedMessages: 2, images: [] };
       selected = images;
     }
-    if (!selected) return empty();
+    if (!selected) {
+      for (const messageId of ids) {
+        const failure = context.saveFailures?.get(`${sessionKey}\0${messageId}`);
+        if (failure) return { matchedMessages: 1, images: [], saveFailure: failure };
+      }
+      return empty();
+    }
     // No prompt text, time, order, workspace path or Hermes files participate in lookup.
     // The registry applies its existing thumbnail, byte, pixel and MIME/header guards.
     return { matchedMessages: 1, images: selected.map((image, index) => ({

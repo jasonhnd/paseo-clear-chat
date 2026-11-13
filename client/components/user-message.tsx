@@ -82,7 +82,7 @@ interface PastedList {
   total: number;
 }
 
-type PastedCache = PastedList | { failed: true };
+type PastedCache = PastedList | { failed: true } | { saveFailed: true };
 
 const pastedCache = new Map<string, PastedCache>();
 const pastedInflight = new Map<string, Promise<PastedCache>>();
@@ -121,7 +121,9 @@ function readPastedList(result: {
   images?: { id?: string; thumbDataUri?: string; mime?: string; width?: number | null; height?: number | null }[];
   total?: number;
   reason?: string | null;
+  saveFailure?: { reason?: string; attempts?: number } | null;
 } | null | undefined): PastedCache {
+  if (result?.saveFailure) return { saveFailed: true };
   if (!result || !Array.isArray(result.images)) return { failed: true };
   const images: PastedThumb[] = [];
   for (const image of result.images) {
@@ -296,6 +298,7 @@ export function UserMessage({
   }, [agentId, cacheKey, clientMessageId, loadImages, messageId, text, matchesPrefix]);
 
   const pastedNow = pasted?.key === cacheKey ? pasted.value : null;
+  const saveFailed = pastedNow !== null && !isPastedList(pastedNow) && "saveFailed" in pastedNow;
   const list = isPastedList(pastedNow) ? pastedNow : null;
   const foundImages = list !== null && (list.total > 0 || list.images.length > 0);
   // Remember an image result even if the lookup key later changes for this message.
@@ -465,6 +468,11 @@ export function UserMessage({
           fontWeight: "600",
           color: tokens.userText,
         },
+        pastedBrokenText: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(12),
+          color: tokens.userTextMuted,
+        },
         viewerBackdrop: {
           flex: 1,
           alignItems: "center",
@@ -601,6 +609,11 @@ export function UserMessage({
                 <Text style={styles.moreText}>{t("prompt.moreImages", { count: extra })}</Text>
               </View>
             ) : null}
+          </View>
+        ) : null}
+        {saveFailed ? (
+          <View testID="prompt-pasted-save-failed" style={styles.pastedRow}>
+            <Text selectable style={styles.pastedBrokenText}>{t("prompt.imageNotSaved")}</Text>
           </View>
         ) : null}
         {activeViewerId && openImage ? (

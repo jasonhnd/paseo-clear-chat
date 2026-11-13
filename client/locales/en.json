@@ -204,6 +204,7 @@
     "imageThumbA11y": "Pasted image",
     "moreImages": "+{{count}}",
     "closeImage": "Close image",
+    "imageNotSaved": "Image wasn't saved",
     "usageIn": "in",
     "usageCached": "cached",
     "usageOut": "out",

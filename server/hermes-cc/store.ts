@@ -400,7 +400,15 @@ export function createHermesCcImageStore(rootDir: string, options: { maxBytes?: 
             await evict(rootDirectory);
             return conflict ? "conflict" : "saved";
           });
-        } catch { throw new Error("image_store_failed"); }
+        } catch (error) {
+          if (error instanceof Error && error.message === "image_lock_timeout") throw error;
+          const code = error && typeof error === "object" && "code" in error
+            ? String((error as { code?: unknown }).code ?? "") : "";
+          if (code === "EAGAIN" || code === "EMFILE" || code === "EBUSY") throw error;
+          const failure = new Error("image_store_failed") as Error & { reason?: string };
+          if (code) failure.reason = code;
+          throw failure;
+        }
         finally { await rootDirectory.handle.close(); }
       });
     },

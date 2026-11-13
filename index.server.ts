@@ -9,6 +9,7 @@ import { imageRpc } from "./shared/image-rpc";
 import { promptImageRpc, promptImagesRpc } from "./shared/prompt-images-rpc";
 import { createPromptImageHandlers } from "./server/prompt-images/registry";
 import { createHermesCcImageStore, hermesCcImageRoot, hermesCcPaseoHome, type HermesCcImageStore } from "./server/hermes-cc/store";
+import { saveWithRetry } from "./server/hermes-cc/save-retry";
 import { createHermesCcCatalogStore } from "./server/hermes-cc/catalog";
 import { hermesCcProvidersFromConfig } from "./server/hermes-cc/provider";
 import type { HermesCcHistoryStore } from "./server/hermes-cc/history-store";
@@ -559,6 +560,7 @@ function registerServer(server: PluginServerContext, historyStore: (home: string
   });
 
   let hermesCcImageStore: HermesCcImageStore | undefined;
+  const imageSaveFailures = new Map<string, { reason: string; attempts: number }>();
   let home: string | undefined;
   let startup: ReturnType<typeof hermesCcStartupConfig> = { providers: {}, enabled: false };
   try {
@@ -573,15 +575,22 @@ function registerServer(server: PluginServerContext, historyStore: (home: string
     }
     // Async capture is awaited by ProviderConnection.send(), whose SDK contract
     // permits Promise<void> (server/provider.ts:77-83). Contribution stays sync.
-    try {
-      const result = await hermesCcImageStore?.save({ sessionKey, messageId: clientMessageId }, images);
-      if (result === "conflict") console.debug("[clear-chat] hermes_cc: save_conflict");
-    } catch { console.debug("[clear-chat] hermes_cc: save_failed"); }
+    if (!hermesCcImageStore) return;
+    const key = `${sessionKey}\0${clientMessageId}`;
+    const outcome = await saveWithRetry(hermesCcImageStore, { sessionKey, messageId: clientMessageId }, images);
+    if (outcome.failure) {
+      imageSaveFailures.set(key, outcome.failure);
+      (console.warn ?? console.debug)?.(`[clear-chat] hermes_cc: save_failed ${outcome.failure.reason} message=${clientMessageId} attempts=${outcome.failure.attempts}`);
+    } else {
+      imageSaveFailures.delete(key);
+      if (outcome.result === "conflict") console.debug("[clear-chat] hermes_cc: save_conflict");
+    }
   }, historyStore(home), createHermesCcCatalogStore(join(home, "plugin-data", "clear-chat", "hermes-cc-catalog"))) : [];
   for (const provider of providers) server.registerProvider(provider);
   const promptImages = createPromptImageHandlers({
     hermesCcImageStore,
     hermesCcProviderIds: new Set(providers.map(provider => provider.id)),
+    saveFailures: imageSaveFailures,
   });
   server.handle(promptImagesRpc, promptImages.images);
   server.handle(promptImageRpc, promptImages.image);
