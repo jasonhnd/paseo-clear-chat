@@ -355,13 +355,21 @@ export function createHermesCcImageStore(rootDir: string, options: { maxBytes?: 
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         const target = join(root, keyHash(key));
-        const stat = await Promise.race([
-          lstat(target),
-          new Promise<never>((_, reject) => {
-            timer = setTimeout(() => reject(new Error("has_stored_timeout")), 50);
-          }),
+        // An empty published directory proves nothing: older builds saved text-only
+        // prompts too. Require at least one image entry, without taking the lock.
+        const inspect = (async () => {
+          const directory = await openDirectory(target);
+          try {
+            const meta = await metadata(directory);
+            if (meta.images.length > 0) return true;
+            const entries = await readdir(child(directory, "."));
+            return entries.some(entry => /^\d+-[a-f0-9]{64}\.bin$/.test(entry));
+          } finally { await directory.handle.close(); }
+        })().catch(() => false);
+        return await Promise.race([
+          inspect,
+          new Promise<boolean>((resolve) => { timer = setTimeout(() => resolve(false), 50); }),
         ]);
-        return stat.isDirectory() && !stat.isSymbolicLink();
       } catch { return false; }
       finally { if (timer) clearTimeout(timer); }
     },
@@ -397,7 +405,7 @@ export function createHermesCcImageStore(rootDir: string, options: { maxBytes?: 
                   await writeMeta(existing, { ...meta, conflict: true });
                 }
               } finally { await existing.handle.close(); }
-            } else if (!conflict) {
+            } else if (!conflict && entries.length > 0) {
               const temporaryName = `.${name}.${randomUUID()}.tmp`;
               await mkdir(child(rootDirectory, temporaryName), { mode: 0o700 });
               const temporary = await openDirectory(child(rootDirectory, temporaryName));

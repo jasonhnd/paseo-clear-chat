@@ -127,8 +127,10 @@ test("Hermes CC store conflicts permanently on changed images, order, or an empt
   ]) {
     const k = key(id);
     await h.store.save(k, first);
+    if (id === "added") assert.equal(fs.existsSync(keyDirectory(h, k)), false, "an empty save publishes nothing");
     await h.store.save(k, second);
-    assert.equal(readMeta(h, k).conflict, true);
+    if (id === "added") assert.equal(fs.existsSync(join(h.storeRoot, `.conflict-${hash(`${k.sessionKey}\0${k.messageId}`)}`)), true);
+    else assert.equal(readMeta(h, k).conflict, true);
     assert.equal(await h.store.load(k), null);
     await h.store.save(k, first);
     assert.equal(await h.createHermesCcImageStore(h.storeRoot).load(k), null);
@@ -596,4 +598,20 @@ test("Hermes CC supports default symlinked ~/.paseo and expands an explicit ~/ h
   assert.deepEqual((await h.createHermesCcImageStore(root, { trustedRoot: real }).load(key()))[0].bytes, png().data);
   process.env.PASEO_HOME = "~/.paseo";
   assert.equal(h.hermesCcPaseoHome(), real);
+});
+
+test("Hermes CC hasStoredImages ignores an empty published directory", async t => {
+  const h = harness(t);
+  const k = key("empty-published");
+  fs.mkdirSync(h.storeRoot, { recursive: true });
+  fs.mkdirSync(keyDirectory(h, k));
+  fs.writeFileSync(join(keyDirectory(h, k), "meta.json"), JSON.stringify({ ...k, createdAt: Date.now(), images: [] }));
+  assert.equal(await h.store.hasStoredImages(k), false);
+});
+
+test("Hermes CC saving an empty image list does not create a key directory", async t => {
+  const h = harness(t);
+  const k = key("empty-save");
+  assert.equal(await h.store.save(k, []), "saved");
+  assert.equal(fs.existsSync(keyDirectory(h, k)), false);
 });
