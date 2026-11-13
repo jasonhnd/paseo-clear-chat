@@ -205,6 +205,7 @@
     "moreImages": "+{{count}}",
     "closeImage": "关闭图片",
     "imageNotSaved": "图片没保存下来",
+    "imageSaving": "图片保存中…",
     "usageIn": "输入",
     "usageCached": "缓存",
     "usageOut": "输出",

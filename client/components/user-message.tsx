@@ -82,7 +82,7 @@ interface PastedList {
   total: number;
 }
 
-type PastedCache = PastedList | { failed: true } | { saveFailed: true };
+type PastedCache = PastedList | { failed: true } | { saveFailed: true } | { saving: true };
 
 const pastedCache = new Map<string, PastedCache>();
 const pastedInflight = new Map<string, Promise<PastedCache>>();
@@ -121,9 +121,11 @@ function readPastedList(result: {
   images?: { id?: string; thumbDataUri?: string; mime?: string; width?: number | null; height?: number | null }[];
   total?: number;
   reason?: string | null;
-  saveFailure?: { reason?: string; attempts?: number } | null;
+  saveFailed?: boolean;
+  saving?: boolean;
 } | null | undefined): PastedCache {
-  if (result?.saveFailure) return { saveFailed: true };
+  if (result?.saveFailed) return { saveFailed: true };
+  if (result?.saving) return { saving: true };
   if (!result || !Array.isArray(result.images)) return { failed: true };
   const images: PastedThumb[] = [];
   for (const image of result.images) {
@@ -228,6 +230,8 @@ export function UserMessage({
     const cached = pastedCache.get(cacheKey);
     return cached ? { key: cacheKey, value: cached } : null;
   });
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  const [savingPolls, setSavingPolls] = useState(0);
   const [viewerId, setViewerId] = useState<string | null>(null);
   const [viewerKey, setViewerKey] = useState(cacheKey);
   const [fullUri, setFullUri] = useState<string | null>(null);
@@ -282,6 +286,11 @@ export function UserMessage({
         .then((result) => readPastedList(result))
         .catch(() => ({ failed: true }) satisfies PastedCache)
         .then((value) => {
+          // Saving is transient: caching it would pin the row and stop polling.
+          if ("saving" in value) {
+            pastedInflight.delete(flightKey);
+            return value;
+          }
           if (share) pastedCache.set(cacheKey, value);
           else pastedAsked.add(cacheKey);
           pastedInflight.delete(flightKey);
@@ -295,10 +304,20 @@ export function UserMessage({
     return () => {
       cancelled = true;
     };
-  }, [agentId, cacheKey, clientMessageId, loadImages, messageId, text, matchesPrefix]);
+  }, [agentId, cacheKey, clientMessageId, loadImages, messageId, text, matchesPrefix, refreshNonce]);
 
   const pastedNow = pasted?.key === cacheKey ? pasted.value : null;
   const saveFailed = pastedNow !== null && !isPastedList(pastedNow) && "saveFailed" in pastedNow;
+  const saving = pastedNow !== null && !isPastedList(pastedNow) && "saving" in pastedNow;
+  useEffect(() => {
+    if (!saving || savingPolls >= 60) return;
+    const timer = setTimeout(() => {
+      setSavingPolls((value) => value + 1);
+      setRefreshNonce((value) => value + 1);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [saving, savingPolls]);
+  if (!saving && savingPolls !== 0) setSavingPolls(0);
   const list = isPastedList(pastedNow) ? pastedNow : null;
   const foundImages = list !== null && (list.total > 0 || list.images.length > 0);
   // Remember an image result even if the lookup key later changes for this message.
@@ -609,6 +628,11 @@ export function UserMessage({
                 <Text style={styles.moreText}>{t("prompt.moreImages", { count: extra })}</Text>
               </View>
             ) : null}
+          </View>
+        ) : null}
+        {saving ? (
+          <View testID="prompt-pasted-saving" style={styles.pastedRow}>
+            <Text selectable style={styles.pastedBrokenText}>{t("prompt.imageSaving")}</Text>
           </View>
         ) : null}
         {saveFailed ? (

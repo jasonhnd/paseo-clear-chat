@@ -31,8 +31,9 @@ export const hermesCcPromptImageResolver: PromptImageResolver = {
     }
     if (!selected) {
       for (const messageId of ids) {
-        const failure = context.saveFailures?.get(`${sessionKey}\0${messageId}`);
-        if (failure) return { matchedMessages: 1, images: [], saveFailure: failure };
+        const status = await context.saveStatus?.read({ sessionKey, messageId });
+        if (status?.state === "saveFailed") return { matchedMessages: 1, images: [], saveFailed: true };
+        if (status?.state === "pending") return { matchedMessages: 1, images: [], saving: true };
       }
       return empty();
     }

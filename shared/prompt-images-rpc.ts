@@ -15,8 +15,10 @@ export const promptImagesRpc = defineRpc({
     images: z.array(z.object({ id: z.string(), thumbDataUri: z.string(), mime: z.string(), width: z.number().nullable(), height: z.number().nullable() })),
     total: z.number(),
     reason: z.string().nullable(),
-    /** Present when the provider could not store the images for this message. */
-    saveFailure: z.object({ reason: z.string(), attempts: z.number() }).nullable().optional(),
+    /** The provider is still storing this message's images. */
+    saving: z.boolean().optional(),
+    /** The provider gave up storing this message's images. */
+    saveFailed: z.boolean().optional(),
   }),
 });
 export const promptImageRpc = defineRpc({

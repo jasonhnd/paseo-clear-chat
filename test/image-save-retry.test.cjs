@@ -19,7 +19,7 @@ function load(relative) {
   return mod.exports;
 }
 
-const { saveWithRetry } = load("server/hermes-cc/save-retry.ts");
+const { saveWithRetry, retryableSaveReason } = load("server/hermes-cc/save-retry.ts");
 const key = { sessionKey: "session", messageId: "message" };
 const images = [{ mime: "image/png", data: Buffer.from([1]) }];
 const coded = (code) => Object.assign(new Error("boom"), { code });
@@ -47,4 +47,10 @@ test("save retry: a non-retryable failure is marked immediately", async () => {
   const outcome = await saveWithRetry(store, key, images, fast);
   assert.deepEqual(outcome.failure, { reason: "ENOSPC", attempts: 1 });
   assert.equal(calls, 1);
+});
+
+test("save retry: EAGAIN, EMFILE and EBUSY are retryable, ENOSPC is not", () => {
+  for (const code of ["EAGAIN", "EMFILE", "EBUSY"]) assert.equal(retryableSaveReason(coded(code)), code);
+  assert.equal(retryableSaveReason(new Error("image_lock_timeout")), "image_lock_timeout");
+  assert.equal(retryableSaveReason(coded("ENOSPC")), null);
 });

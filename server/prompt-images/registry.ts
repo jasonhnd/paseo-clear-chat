@@ -19,6 +19,11 @@ export interface FoundImage {
   readBytes(): Promise<Buffer>;
 }
 
+/** Durable per-message save state shared by the capture hook and lookups. */
+export interface HermesCcSaveStatusReader {
+  read(key: { sessionKey: string; messageId: string }): Promise<{ state: "pending" | "saveFailed"; at: number; reason?: string; attempts?: number } | null>;
+}
+
 export interface ResolverContext extends LookupInput {
   provider: string;
   cwd: string;
@@ -28,8 +33,8 @@ export interface ResolverContext extends LookupInput {
   providerEnv?: Readonly<Record<string, string>>;
   /** Only Clear Chat's own exact-ID image store, bound at server registration. */
   hermesCcImageStore?: HermesCcImageStore;
-  /** Exact session/message keys whose image save failed, with reason and attempts. */
-  saveFailures?: ReadonlyMap<string, { reason: string; attempts: number }>;
+  /** Durable per-message save state, shared with the capture hook. */
+  saveStatus?: HermesCcSaveStatusReader;
   /** Resolvers should stop streaming/scanning when the lookup expires. */
   signal: AbortSignal;
 }
@@ -38,8 +43,10 @@ export interface ResolverContext extends LookupInput {
 export interface FoundImages {
   matchedMessages: number;
   images: FoundImage[];
-  /** The message matched, but its images never reached the store. */
-  saveFailure?: { reason: string; attempts: number };
+  /** The message matched, but its images were not stored. */
+  saveFailed?: boolean;
+  /** The message matched; its image save is still running. */
+  saving?: boolean;
 }
 
 /** Local adapters must read through the validated descriptor, never a saved path. */
@@ -108,7 +115,7 @@ export function createPromptImageHandlers(options: {
   timeoutMs?: number;
   hermesCcImageStore?: HermesCcImageStore;
   hermesCcProviderIds?: ReadonlySet<string>;
-  saveFailures?: ReadonlyMap<string, { reason: string; attempts: number }>;
+  saveStatus?: HermesCcSaveStatusReader;
 } = {}) {
   const resolvers = options.resolvers ?? promptImageResolvers;
   const timeoutMs = options.timeoutMs ?? 3000;
@@ -182,7 +189,7 @@ export function createPromptImageHandlers(options: {
       nativeHandle: persistence?.nativeHandle ?? null, signal,
       ...(config ? { providerEnv } : {}),
       ...(options.hermesCcImageStore ? { hermesCcImageStore: options.hermesCcImageStore } : {}),
-      ...(options.saveFailures ? { saveFailures: options.saveFailures } : {}),
+      ...(options.saveStatus ? { saveStatus: options.saveStatus } : {}),
     });
     check();
     if (found.matchedMessages === 0) throw new LookupError("no_match");
@@ -220,7 +227,11 @@ export function createPromptImageHandlers(options: {
             reason = error instanceof LookupError ? error.reason : "invalid_image";
           }
         }
-        return { images, total: found.images.length, reason, ...(found.saveFailure ? { saveFailure: found.saveFailure } : {}) };
+        return {
+          images, total: found.images.length, reason,
+          ...(found.saveFailed ? { saveFailed: true } : {}),
+          ...(found.saving ? { saving: true } : {}),
+        };
       }, reason => ({ images: [], total: 0, reason }), result => result.reason);
     },
     image(input: RpcInput<typeof promptImageRpc>, context: PluginHandlerContext): Promise<ImageResult> {

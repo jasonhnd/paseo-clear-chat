@@ -205,6 +205,7 @@
     "moreImages": "+{{count}}",
     "closeImage": "Close image",
     "imageNotSaved": "Image wasn't saved",
+    "imageSaving": "Saving image…",
     "usageIn": "in",
     "usageCached": "cached",
     "usageOut": "out",
