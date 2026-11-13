@@ -636,7 +636,20 @@ test("Hermes CC keeps the original code when the disk is full", async t => {
   const h = harness(t, { "node:fs/promises": wrapped });
   await assert.rejects(h.store.save(key("enospc"), [png()]), (error) => {
     assert.match(error.message, /image_store_failed: ENOSPC: no space left/);
+    assert.equal(error.code, "ENOSPC");
     assert.equal(error.cause && error.cause.code, "ENOSPC");
+    return true;
+  });
+});
+
+test("Hermes CC keeps EMFILE on the wrapped error for retry classification", async t => {
+  const fsp = require("node:fs/promises");
+  const wrapped = { ...fsp, async rename() { throw Object.assign(new Error("too many open files"), { code: "EMFILE" }); } };
+  const h = harness(t, { "node:fs/promises": wrapped });
+  await assert.rejects(h.store.save(key("emfile"), [png()]), (error) => {
+    assert.match(error.message, /image_store_failed: EMFILE: too many open files/);
+    assert.equal(error.code, "EMFILE");
+    assert.equal(error.cause && error.cause.code, "EMFILE");
     return true;
   });
 });

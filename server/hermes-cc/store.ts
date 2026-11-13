@@ -278,6 +278,7 @@ function storeFailure(error: unknown): Error {
   const code = error !== null && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
   const message = error instanceof Error ? error.message : String(error);
   const wrapped = new Error(`image_store_failed: ${code ? code + ": " : ""}${message}`);
+  (wrapped as Error & { code?: string; cause?: unknown }).code = code || undefined;
   (wrapped as Error & { cause?: unknown }).cause = error;
   return wrapped;
 }
@@ -400,8 +401,7 @@ export function createHermesCcImageStore(rootDir: string, options: { maxBytes?: 
                 if (!damaged) await existing.handle.close();
               }
               if (damaged) {
-                await removeFiles(existing);
-                await existing.handle.close();
+                try { await removeFiles(existing); } finally { await existing.handle.close(); }
                 await rmdir(child(rootDirectory, name));
                 existing = undefined;
               }
@@ -435,7 +435,7 @@ export function createHermesCcImageStore(rootDir: string, options: { maxBytes?: 
             await evict(rootDirectory);
             return conflict ? "conflict" : "saved";
           });
-        } catch (e) { throw storeFailure(e); }
+        } catch (e) { if (e instanceof Error && e.message === "image_lock_timeout") throw e; throw storeFailure(e); }
         finally { await rootDirectory.handle.close(); }
       });
     },
