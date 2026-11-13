@@ -63,6 +63,16 @@ test("pasted prompt images: two timeouts show the retry row and the button asks 
   assert.equal(byId(h, tree, "prompt-pasted-retry"), undefined);
 });
 
+test("pasted prompt images: unmounting during the retry wait does not send a second lookup", async () => {
+  const { h, calls } = harness(() => timedOut());
+  h.mount(prompt({ messageId: "retry-unmount", clientMessageId: "retry-unmount-client" }));
+  await settle();
+  assert.equal(calls.length, 1);
+  h.unmount();
+  await wait(1200);
+  assert.equal(calls.length, 1, "an unmounted row does not run the delayed retry");
+});
+
 test("pasted prompt images: a genuine empty result keeps today's count row and has no button", async () => {
   const { h, calls } = harness(() => empty());
   const mounted = h.mount(prompt({ messageId: "retry-empty", clientMessageId: "retry-empty-client", imageCount: 2 }));

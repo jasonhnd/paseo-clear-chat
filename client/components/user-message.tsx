@@ -290,6 +290,7 @@ export function UserMessage({
         .then(async (value) => {
           if (!("timedOut" in value)) return value;
           await new Promise((resolve) => setTimeout(resolve, PASTED_RETRY_DELAY_MS));
+          if (cancelled) return value;
           return lookup();
         })
         .then((value) => {
