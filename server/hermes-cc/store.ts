@@ -404,7 +404,6 @@ export function createHermesCcImageStore(rootDir: string, options: { maxBytes?: 
                 await existing.handle.close();
                 await rmdir(child(rootDirectory, name));
                 existing = undefined;
-                conflict = false;
               }
             }
             if (!existing && !conflict) {
