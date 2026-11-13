@@ -38,7 +38,8 @@ test("a newly sent image message retries the transient empty lookup until saving
   await wait(900);
   await settle();
   const savingTree = draw();
-  assert.ok(calls.length >= 2, "an empty result on a pending message is not cached");
+  assert.ok(calls.length === 2 || calls.length === 3,
+    `an empty result on a pending message is not cached (calls=${calls.length})`);
   assert.match(h.text(savingTree), /Saving image/);
   await wait(2400);
   draw();
@@ -135,6 +136,62 @@ test("a recent message retries when pending is false (15s window)", async () => 
   const tree = draw();
   assert.equal(calls.length, 6, "a message inside the 15s window gets one lookup plus five retries");
   assert.doesNotMatch(h.text(tree), /Saving image/);
+});
+
+test("an unmounted message stops the bounded retries", async () => {
+  const calls = [];
+  const h = createToolHarness("web", {
+    width: 820,
+    height: 900,
+    userMessage: true,
+    promptImagesRpc: async () => { calls.push(1); return { images: [], total: 0, reason: null }; },
+  });
+  const { UserMessage } = h.load("client/components/user-message.tsx");
+  const props = {
+    text: "Unmounted text",
+    messageId: "unmount-msg",
+    clientMessageId: "unmount-msg-client",
+    agentId: "demo-agent",
+    hostId: "demo-host",
+    pending: true,
+    tokens: h.tokens,
+    timestamp: new Date(),
+    now: new Date(),
+  };
+  h.draw({ type: UserMessage, props });
+  await settle();
+  assert.equal(calls.length, 1, "the first lookup has run before the row unmounts");
+  h.unmount();
+  await wait(2600);
+  assert.equal(calls.length, 1, "an unmounted row does not keep querying");
+});
+
+test("a message whose timestamp is in the future does not retry", async () => {
+  const calls = [];
+  const h = createToolHarness("web", {
+    width: 820,
+    height: 900,
+    userMessage: true,
+    promptImagesRpc: async () => { calls.push(1); return { images: [], total: 0, reason: null }; },
+  });
+  const { UserMessage } = h.load("client/components/user-message.tsx");
+  const props = {
+    text: "Future text",
+    messageId: "future-msg",
+    clientMessageId: "future-msg-client",
+    agentId: "demo-agent",
+    hostId: "demo-host",
+    pending: false,
+    tokens: h.tokens,
+    timestamp: new Date(Date.now() + 60_000),
+    now: new Date(),
+  };
+  h.draw({ type: UserMessage, props });
+  await settle();
+  await wait(1200);
+  h.draw({ type: UserMessage, props });
+  await settle();
+  assert.equal(calls.length, 1, "a future timestamp is outside the retry window");
 });
 
 test("an old message does not retry when pending is false", async () => {
