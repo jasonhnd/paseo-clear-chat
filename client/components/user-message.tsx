@@ -318,19 +318,16 @@ export function UserMessage({
       const retryNewMessage = pending || isRecentMessage(timestamp);
       pendingLookup = lookup()
         .then(async (value) => {
-          if ("timedOut" in value) {
+          if (!retryNewMessage && "timedOut" in value) {
             await new Promise((resolve) => setTimeout(resolve, PASTED_RETRY_DELAY_MS));
             if (cancelled) return value;
             return lookup();
           }
-          for (let attempt = 0; attempt < NEW_MESSAGE_RETRY_LIMIT && retryNewMessage && isPastedList(value)
-            && value.images.length === 0 && value.total === 0; attempt += 1) {
+          for (let attempt = 0; attempt < NEW_MESSAGE_RETRY_LIMIT && retryNewMessage
+            && ("timedOut" in value || (isPastedList(value) && value.images.length === 0 && value.total === 0)); attempt += 1) {
+            if (!pending && !isRecentMessage(timestamp)) break;
             await new Promise((resolve) => setTimeout(resolve, NEW_MESSAGE_RETRY_DELAY_MS));
-            // Keep the bounded retry alive across a re-render: a row that is
-            // still pending must not pin its first empty result.
-            // An unmounted row is not a row any more: `pending` is in the deps,
-            // so a state change starts a second chain and the old one has to end.
-            if (cancelled) return value;
+            if (cancelled || (!pending && !isRecentMessage(timestamp))) return value;
             value = await lookup();
           }
           return value;

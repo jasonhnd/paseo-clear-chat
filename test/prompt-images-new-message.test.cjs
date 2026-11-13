@@ -222,3 +222,49 @@ test("an old message does not retry when pending is false", async () => {
   draw();
   assert.equal(calls.length, 1, "a message older than the 15s window keeps its empty result");
 });
+
+
+test("new timeout retries into saving then image without retry row", async () => {
+  const calls = [];
+  const h = createToolHarness("web", { width: 820, height: 900, userMessage: true,
+    promptImagesRpc: async () => { calls.push(1); return calls.length === 1
+      ? { images: [], total: 0, reason: "timeout", hasStored: true }
+      : calls.length === 2 ? { images: [], total: 0, reason: null, saving: true }
+      : { images: [image("new-timeout")], total: 1, reason: null }; } });
+  const { UserMessage } = h.load("client/components/user-message.tsx");
+  const props = { text: "new timeout", messageId: "nt-1", clientMessageId: "nt-c1", agentId: "demo-agent", hostId: "demo-host", pending: true, tokens: h.tokens, timestamp: new Date(), now: new Date() };
+  const draw = () => h.draw({ type: UserMessage, props });
+  draw(); await settle();
+  assert.equal(h.nodes(draw(), n => n.props.testID === "prompt-pasted-retry").length, 0);
+  await wait(950); await settle(); let tree = draw();
+  assert.equal(calls.length, 2);
+  assert.equal(h.nodes(tree, n => n.props.testID === "prompt-pasted-retry").length, 0);
+  assert.match(h.text(tree), /Saving image/);
+  await wait(2200); draw(); await settle(); tree = draw();
+  assert.equal(calls.length, 3);
+  assert.equal(h.nodes(tree, n => n.props.testID === "prompt-pasted-thumb").length, 1);
+  assert.equal(h.nodes(tree, n => n.props.testID === "prompt-pasted-retry").length, 0);
+  h.unmount();
+});
+
+test("new timeout stops after five retries and displays retry", async () => {
+  const calls = [];
+  const h = createToolHarness("web", { width: 820, height: 900, userMessage: true,
+    promptImagesRpc: async () => { calls.push(1); return { images: [], total: 0, reason: "timeout", hasStored: true }; } });
+  const { UserMessage } = h.load("client/components/user-message.tsx");
+  const props = { text: "timeout cap", messageId: "nt-cap", clientMessageId: "nt-cap-c", agentId: "demo-agent", hostId: "demo-host", pending: true, tokens: h.tokens, timestamp: new Date(), now: new Date() };
+  const draw = () => h.draw({ type: UserMessage, props });
+  draw(); await settle(); await wait(4500); await settle(); const tree = draw();
+  assert.equal(calls.length, 6);
+  assert.equal(h.nodes(tree, n => n.props.testID === "prompt-pasted-retry").length, 1);
+  h.unmount(); await wait(900); assert.equal(calls.length, 6);
+});
+
+test("unmount during new timeout retry stops queries", async () => {
+  const calls = [];
+  const h = createToolHarness("web", { width: 820, height: 900, userMessage: true,
+    promptImagesRpc: async () => { calls.push(1); return { images: [], total: 0, reason: "timeout", hasStored: true }; } });
+  const { UserMessage } = h.load("client/components/user-message.tsx");
+  h.draw({ type: UserMessage, props: { text: "unmount timeout", messageId: "nt-unmount", agentId: "demo-agent", hostId: "demo-host", pending: true, tokens: h.tokens, timestamp: new Date(), now: new Date() } });
+  await settle(); assert.equal(calls.length, 1); h.unmount(); await wait(1000); assert.equal(calls.length, 1);
+});
