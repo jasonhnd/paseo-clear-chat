@@ -920,3 +920,40 @@ test("timeout metadata refreshes when current() is empty", async () => {
   assert.equal(result.reason, "timeout");
   assert.equal(result.hasStored, true);
 });
+
+test("timeout metadata reuses the snapshot that find already refreshed", async () => {
+  const h = harness();
+  let calls = 0, seen;
+  const probe = { matches: () => true, async find() { return new Promise(() => {}); },
+    async timeoutInfo(ctx) { seen = ctx; return { hasStored: true }; } };
+  const handlers = h.createPromptImageHandlers({ timeoutMs: 20, resolvers: [probe] });
+  const fresh = "plugin:" + JSON.stringify({ version: 1, data: { sessionId: "fresh" } });
+  const ctx = { paseo: { agents: { ref: () => ({
+    current: () => null,
+    refresh: async () => { calls++; return { agent: { provider: "sample", cwd: ".", persistence: { provider: "sample", sessionId: fresh, nativeHandle: null } } }; },
+  }) } } };
+  const result = await handlers.images({ agentId: input.agentId, messageId: "m-c", text: "t" }, ctx);
+  assert.equal(result.reason, "timeout");
+  assert.equal(result.hasStored, true);
+  assert.equal(calls, 1, "find refreshed once; timeout metadata does not refresh again");
+  assert.equal(seen.sessionId, fresh);
+});
+
+test("timeout metadata falls back to the bounded session table", async () => {
+  const h = harness();
+  const fresh = "plugin:" + JSON.stringify({ version: 1, data: { sessionId: "tabled" } });
+  const ok = { matches: () => true, async find() { return { matchedMessages: 0, images: [] }; } };
+  const handlersOk = h.createPromptImageHandlers({ timeoutMs: 100, resolvers: [ok] });
+  const primeCtx = { paseo: { agents: { ref: () => ({ current: () => null,
+    refresh: async () => ({ agent: { provider: "sample", cwd: ".", persistence: { provider: "sample", sessionId: fresh, nativeHandle: null } } }) }) } } };
+  await handlersOk.images({ agentId: "agent-table", messageId: "m-d1", text: "t" }, primeCtx);
+  let seen;
+  const probe = { matches: () => true, async find() { return new Promise(() => {}); },
+    async timeoutInfo(ctx) { seen = ctx; return { hasStored: true }; } };
+  const handlers = h.createPromptImageHandlers({ timeoutMs: 20, resolvers: [probe] });
+  const timeoutCtx = { paseo: { agents: { ref: () => ({ current: () => null, refresh: () => new Promise(() => {}) }) } } };
+  const result = await handlers.images({ agentId: "agent-table", messageId: "m-d2", text: "t" }, timeoutCtx);
+  assert.equal(result.reason, "timeout");
+  assert.equal(result.hasStored, true);
+  assert.equal(seen.sessionId, fresh);
+});

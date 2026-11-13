@@ -13,7 +13,9 @@ function sameImages(left: HermesCcStoredImage[], right: HermesCcStoredImage[]): 
 export const hermesCcPromptImageResolver: PromptImageResolver = {
   matches: provider => provider.startsWith("hermes") && provider.endsWith("-cc"),
   async timeoutInfo(context) {
-    const sessionKey = nativeSessionKeyFromPersistence(context.sessionId, context.nativeHandle);
+    // Request-time id first (C/D pass the refreshed snapshot; B may pass the client id).
+    const sessionKey = nativeSessionKeyFromPersistence(context.requestSessionId ?? null)
+      ?? nativeSessionKeyFromPersistence(context.sessionId, context.nativeHandle);
     if (!sessionKey) return {};
     const ids = [...new Set([context.messageId, context.clientMessageId].filter(
       (id): id is string => typeof id === "string" && !!id.trim() && id.length <= 512 && !id.includes("\0"),

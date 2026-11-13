@@ -10,7 +10,7 @@ import { z } from "zod";
  */
 export const promptImagesRpc = defineRpc({
   name: "prompt.images",
-  input: z.object({ agentId: z.string(), messageId: z.string().nullable().optional(), clientMessageId: z.string().nullable().optional(), text: z.string() }),
+  input: z.object({ agentId: z.string(), messageId: z.string().nullable().optional(), clientMessageId: z.string().nullable().optional(), text: z.string(), sessionId: z.string().nullable().optional() }),
   output: z.object({
     images: z.array(z.object({ id: z.string(), thumbDataUri: z.string(), mime: z.string(), width: z.number().nullable(), height: z.number().nullable() })),
     total: z.number(),

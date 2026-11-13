@@ -23,6 +23,8 @@ export interface ResolverContext extends LookupInput {
   provider: string;
   cwd: string;
   sessionId: string | null;
+  /** Request-time session id for timeout metadata only. */
+  requestSessionId?: string | null;
   nativeHandle: string | null;
   /** Only resolver-specific storage variables, never the full provider env. */
   providerEnv?: Readonly<Record<string, string>>;
@@ -103,6 +105,27 @@ function headerImage(bytes: Buffer, mime: string) {
  * failures use only fixed reason/error codes; no local paths or provider errors
  * cross the RPC.
  */
+const OBSERVED_TTL_MS = 30 * 60_000;
+const OBSERVED_MAX = 1024;
+interface ObservedAgent { provider: string; cwd: string; sessionId: string | null; nativeHandle: string | null; at: number }
+const observedAgents = new Map<string, ObservedAgent>();
+function rememberAgent(agentId: string, provider: string, cwd: string, sessionId: string | null, nativeHandle: string | null): void {
+  if (!sessionId && !nativeHandle) return;
+  observedAgents.delete(agentId);
+  observedAgents.set(agentId, { provider, cwd, sessionId, nativeHandle, at: Date.now() });
+  while (observedAgents.size > OBSERVED_MAX) {
+    const oldest = observedAgents.keys().next().value;
+    if (typeof oldest !== "string") break;
+    observedAgents.delete(oldest);
+  }
+}
+function observedAgent(agentId: string): ObservedAgent | null {
+  const value = observedAgents.get(agentId);
+  if (!value) return null;
+  if (Date.now() - value.at > OBSERVED_TTL_MS) { observedAgents.delete(agentId); return null; }
+  return value;
+}
+
 export function createPromptImageHandlers(options: {
   resolvers?: readonly PromptImageResolver[];
   timeoutMs?: number;
@@ -148,35 +171,57 @@ export function createPromptImageHandlers(options: {
     return result;
   }
 
-  async function timeoutInfo(input: LookupInput, context: PluginHandlerContext) {
+  type AgentSnapshot = { provider: string; cwd: string; persistence?: { sessionId?: string | null; nativeHandle?: string | null } | null };
+
+  async function resolverTimeoutInfo(input: LookupInput, agent: AgentSnapshot, preferRequest: boolean) {
+    const provider = agent.provider;
+    const resolver = resolvers.find(candidate => candidate === hermesCcPromptImageResolver && options.hermesCcProviderIds
+      ? options.hermesCcProviderIds.has(provider) : candidate.matches(provider));
+    if (!resolver?.timeoutInfo) return {};
+    const persistence = agent.persistence;
+    const requestSessionId = preferRequest ? input.sessionId ?? null : null;
+    return await resolver.timeoutInfo({
+      ...input, provider, cwd: agent.cwd,
+      sessionId: persistence?.sessionId ?? null, nativeHandle: persistence?.nativeHandle ?? null,
+      requestSessionId,
+      signal: new AbortController().signal,
+      ...(options.hermesCcImageStore ? { hermesCcImageStore: options.hermesCcImageStore } : {}),
+      ...(options.saveFailures ? { saveFailures: options.saveFailures } : {}),
+    });
+  }
+
+  async function timeoutInfo(input: LookupInput, context: PluginHandlerContext, observed?: AgentSnapshot | null) {
     try {
       const ref = context.paseo.agents.ref(input.agentId);
-      // current() can be empty on a real page; refresh() is inside the same
-      // bounded race so the metadata still arrives without unbounded waiting.
+      const stored = observedAgent(input.agentId);
+      // C: the snapshot find() already refreshed, no second refresh at all.
+      if (observed) return await resolverTimeoutInfo(input, observed, false);
+      // B: the client-supplied session id (server-validated in the resolver).
+      if (typeof input.sessionId === "string" && input.sessionId) {
+        const current = typeof ref.current === "function" ? ref.current() : null;
+        const fromTable = stored ? { provider: stored.provider, cwd: stored.cwd, persistence: { sessionId: stored.sessionId, nativeHandle: stored.nativeHandle } } : null;
+        const agent = current ?? fromTable;
+        if (agent) return await resolverTimeoutInfo(input, agent, true);
+      }
+      // D: the bounded agent -> session table.
+      if (stored) return await resolverTimeoutInfo(input, {
+        provider: stored.provider, cwd: stored.cwd,
+        persistence: { sessionId: stored.sessionId, nativeHandle: stored.nativeHandle },
+      }, false);
+      // A: last resort, bounded so a busy daemon cannot hold the response.
       return await Promise.race([
         (async () => {
           const refreshed = await ref.refresh();
           const agent = refreshed?.agent ?? (typeof ref.current === "function" ? ref.current() : null);
           if (!agent) return {};
-          const provider = agent.provider;
-          const resolver = resolvers.find(candidate => candidate === hermesCcPromptImageResolver && options.hermesCcProviderIds
-            ? options.hermesCcProviderIds.has(provider) : candidate.matches(provider));
-          if (!resolver?.timeoutInfo) return {};
-          const persistence = agent.persistence;
-          return await resolver.timeoutInfo({
-            ...input, provider, cwd: agent.cwd,
-            sessionId: persistence?.sessionId ?? null, nativeHandle: persistence?.nativeHandle ?? null,
-            signal: new AbortController().signal,
-            ...(options.hermesCcImageStore ? { hermesCcImageStore: options.hermesCcImageStore } : {}),
-            ...(options.saveFailures ? { saveFailures: options.saveFailures } : {}),
-          });
+          return await resolverTimeoutInfo(input, agent, false);
         })(),
         new Promise<{}>((resolve) => { setTimeout(() => resolve({}), 150); }),
       ]);
     } catch { return {}; }
   }
 
-  async function find(input: LookupInput, context: PluginHandlerContext, signal: AbortSignal, check: () => void) {
+  async function find(input: LookupInput, context: PluginHandlerContext, signal: AbortSignal, check: () => void, observe?: (agent: AgentSnapshot) => void) {
     const ref = context.paseo.agents.ref(input.agentId);
     const refreshed = await ref.refresh();
     check();
@@ -203,6 +248,8 @@ export function createPromptImageHandlers(options: {
     if (!resolver) throw new LookupError("unknown_provider");
     const persistence = agent.persistence;
     if (persistence && persistence.provider !== provider) throw new LookupError("provider_mismatch");
+    rememberAgent(input.agentId, provider, agent.cwd, persistence?.sessionId ?? null, persistence?.nativeHandle ?? null);
+    observe?.(agent);
     // Copy only fields needed for local lookup; never pass config or metadata.
     const found = await resolver.find({
       agentId: input.agentId, messageId: input.messageId, clientMessageId: input.clientMessageId, text: input.text,
@@ -219,8 +266,9 @@ export function createPromptImageHandlers(options: {
 
   return {
     images(input: LookupInput, context: PluginHandlerContext): Promise<ImagesResult> {
+      let observed: AgentSnapshot | null = null;
       return guarded<ImagesResult>("prompt.images", async (signal, check) => {
-        const found = await find(input, context, signal, check);
+        const found = await find(input, context, signal, check, agent => { observed = agent; });
         const images: ImagesResult["images"] = [];
         let reason: Reason | null = null;
         for (const candidate of found) {
@@ -250,7 +298,7 @@ export function createPromptImageHandlers(options: {
         return { images, total: found.length, reason };
       }, reason => ({ images: [], total: 0, reason }), result => result.reason)
         .then(async (result) => result.reason === "timeout"
-          ? { ...result, ...await timeoutInfo(input, context) }
+          ? { ...result, ...await timeoutInfo(input, context, observed) }
           : result);
     },
     image(input: RpcInput<typeof promptImageRpc>, context: PluginHandlerContext): Promise<ImageResult> {
