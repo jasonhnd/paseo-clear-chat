@@ -23,6 +23,8 @@ export interface ResolverContext extends LookupInput {
   provider: string;
   cwd: string;
   sessionId: string | null;
+  /** Request-time session id for timeout metadata only; never used to read bytes. */
+  requestSessionId?: string | null;
   nativeHandle: string | null;
   /** Only resolver-specific storage variables, never the full provider env. */
   providerEnv?: Readonly<Record<string, string>>;
@@ -151,7 +153,14 @@ export function createPromptImageHandlers(options: {
   async function timeoutInfo(input: LookupInput, context: PluginHandlerContext) {
     try {
       const ref = context.paseo.agents.ref(input.agentId);
-      const agent = typeof ref.current === "function" ? ref.current() : null;
+      let agent = typeof ref.current === "function" ? ref.current() : null;
+      const hasRequestSession = typeof input.sessionId === "string" && input.sessionId.length > 0;
+      if (!hasRequestSession && !agent?.persistence && typeof ref.refresh === "function") {
+        agent = (await Promise.race([
+          ref.refresh().then(result => result?.agent ?? null).catch(() => null),
+          new Promise<null>(resolve => setTimeout(() => resolve(null), 100)),
+        ])) ?? agent;
+      }
       if (!agent) return {};
       const provider = agent.provider;
       const resolver = resolvers.find(candidate => candidate === hermesCcPromptImageResolver && options.hermesCcProviderIds
@@ -162,6 +171,7 @@ export function createPromptImageHandlers(options: {
         resolver.timeoutInfo({
           ...input, provider, cwd: agent.cwd,
           sessionId: persistence?.sessionId ?? null, nativeHandle: persistence?.nativeHandle ?? null,
+          requestSessionId: input.sessionId ?? null,
           signal: new AbortController().signal,
           ...(options.hermesCcImageStore ? { hermesCcImageStore: options.hermesCcImageStore } : {}),
           ...(options.saveFailures ? { saveFailures: options.saveFailures } : {}),

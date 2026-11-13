@@ -904,3 +904,74 @@ test("JSONL skips oversized valid lines, resumes at the next record and handles 
   assert.deepEqual(records.slice(0, 2), [{ before: 1 }, { after: "🎉" }]);
   assert.equal(records[2].length, h.MAX_JSONL_LINE_BYTES - 2);
 });
+
+test("timeout metadata carries the request session id to the resolver", async () => {
+  const h = harness();
+  let seen;
+  const probe = { matches: () => true, async find() { return new Promise(() => {}); },
+    async timeoutInfo(ctx) { seen = ctx; return { hasStored: true }; } };
+  const handlers = h.createPromptImageHandlers({ timeoutMs: 20, resolvers: [probe] });
+  const sessionId = "plugin:" + JSON.stringify({ version: 1, data: { sessionId: "request-session" } });
+  const result = await handlers.images({ agentId: input.agentId, messageId: "m-1", text: "t", sessionId }, context());
+  assert.equal(result.reason, "timeout");
+  assert.equal(result.hasStored, true);
+  assert.equal(seen.requestSessionId, sessionId);
+});
+
+test("timeout metadata falls back to the snapshot session when the request has none", async () => {
+  const h = harness();
+  let seen;
+  const probe = { matches: () => true, async find() { return new Promise(() => {}); },
+    async timeoutInfo(ctx) { seen = ctx; return {}; } };
+  const handlers = h.createPromptImageHandlers({ timeoutMs: 20, resolvers: [probe] });
+  const result = await handlers.images({ agentId: input.agentId, messageId: "m-2", text: "t" }, context());
+  assert.equal(result.reason, "timeout");
+  assert.equal(seen.requestSessionId, null);
+  assert.equal(seen.sessionId, "session-1");
+});
+
+test("hermes-cc timeout metadata prefers the request session id over the snapshot", async () => {
+  const h = harness();
+  const { hermesCcPromptImageResolver } = h.load("server/prompt-images/hermes-cc.ts");
+  const calls = [];
+  const plugin = (sessionId) => "plugin:" + JSON.stringify({ version: 1, data: { sessionId } });
+  const info = await hermesCcPromptImageResolver.timeoutInfo({
+    agentId: "a", messageId: "message-1", clientMessageId: null, text: "t",
+    provider: "hermes-claude-cc", cwd: ".", sessionId: plugin("stale-session"), nativeHandle: null,
+    requestSessionId: plugin("request-session"), signal: new AbortController().signal,
+    hermesCcImageStore: { async hasStoredImages(key) { calls.push(key); return true; } },
+  });
+  assert.deepEqual(info, { hasStored: true });
+  assert.deepEqual(calls, [{ sessionKey: "request-session", messageId: "message-1" }]);
+});
+
+test("hermes-cc timeout metadata falls back to the snapshot session", async () => {
+  const h = harness();
+  const { hermesCcPromptImageResolver } = h.load("server/prompt-images/hermes-cc.ts");
+  const calls = [];
+  const plugin = (sessionId) => "plugin:" + JSON.stringify({ version: 1, data: { sessionId } });
+  const info = await hermesCcPromptImageResolver.timeoutInfo({
+    agentId: "a", messageId: "message-1", clientMessageId: null, text: "t",
+    provider: "hermes-claude-cc", cwd: ".", sessionId: plugin("snapshot-session"), nativeHandle: null,
+    requestSessionId: null, signal: new AbortController().signal,
+    hermesCcImageStore: { async hasStoredImages(key) { calls.push(key); return true; } },
+  });
+  assert.deepEqual(info, { hasStored: true });
+  assert.deepEqual(calls, [{ sessionKey: "snapshot-session", messageId: "message-1" }]);
+});
+
+test("timeout metadata refreshes a snapshot without persistence", async () => {
+  const h = harness();
+  let seen;
+  const probe = { matches: () => true, async find() { return new Promise(() => {}); },
+    async timeoutInfo(ctx) { seen = ctx; return { hasStored: true }; } };
+  const handlers = h.createPromptImageHandlers({ timeoutMs: 20, resolvers: [probe] });
+  const fresh = "plugin:" + JSON.stringify({ version: 1, data: { sessionId: "session-fresh" } });
+  const ctx = { paseo: { agents: { ref: () => ({
+    current: () => ({ provider: "sample", cwd: ".", persistence: null }),
+    refresh: async () => ({ agent: { provider: "sample", cwd: ".", persistence: { provider: "sample", sessionId: fresh, nativeHandle: null } } }),
+  }) } } };
+  const result = await handlers.images({ agentId: input.agentId, messageId: "m-3", text: "t" }, ctx);
+  assert.equal(result.reason, "timeout");
+  assert.equal(seen.sessionId, fresh);
+});
