@@ -200,11 +200,22 @@ for (const phase of ["snapshot", "resolver", "bytes"]) {
   });
 }
 
-test("a timed-out resolver cannot start a later image read or produce another log", async () => {
+test("a timed-out resolver cannot start a later image read or produce another log", async t => {
+  // Drive the deadline with a fake clock: the resolver must be entered before expiry,
+  // and expiry must not depend on wall-clock luck under parallel load.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const h = harness();
   let finish;
-  const handlers = h.createPromptImageHandlers({ timeoutMs: 20, resolvers: [resolver(() => new Promise(resolve => { finish = resolve; }))] });
-  assert.deepEqual(await handlers.images(input, context()), empty("timeout"));
+  let entered = false;
+  const handlers = h.createPromptImageHandlers({ timeoutMs: 500, resolvers: [resolver(() => {
+    entered = true;
+    return new Promise(resolve => { finish = resolve; });
+  })] });
+  const pending = handlers.images(input, context());
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(entered, true, "resolver must start before its deadline");
+  t.mock.timers.tick(500);
+  assert.deepEqual(await pending, empty("timeout"));
   finish([{ id: "late", mime: "image/png", readBytes: () => assert.fail("read after timeout") }]);
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(h.logs.length, 1);
