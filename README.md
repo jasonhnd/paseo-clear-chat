@@ -95,7 +95,7 @@ paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.4.2
 
 Open Paseo’s plugins page and look for the version at the start of the Clear Chat description. Paseo 0.14.0 displays the default English description there even when the app language is changed.
 
-Clear Chat 0.15.4.2 needs Paseo 0.14.0 or later. Open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
+Clear Chat 0.16.0 needs Paseo 0.16.0 or later. Open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
 
 To update later:
 
@@ -495,14 +495,14 @@ Numbers are issues, pull requests and discussions in Paseo's official repository
 
 **Why do I not see the answer card?** Turn on its setting and **Assistant markdown**. The latest reply must ask numbered questions with at least two lettered options each, and either request a short-form answer or mark a recommendation. Letters need not start at A or be consecutive. Questions inside code blocks or quotations are ignored. The operable frame is hidden while the agent runs; answered frames stay read-only after you reply. **Not options** hides a false detection for that reply, including after reload.
 
-**Which Paseo versions work?** 0.14.0 or later; 0.15.4.2 was checked on isolated Paseo 0.15.4 hosts with a synthetic provider, not real models. The minimum remains Paseo 0.14.0. Paseo 0.13 has an older, untested path described under [Install](#install).
+**Which Paseo versions work?** 0.16.0 or later. This version was checked on the Paseo 0.16.0-beta.2 desktop app with a synthetic provider, not real models. Paseo 0.15.x is not supported: the host refuses to install or update this version, so stay on Clear Chat 0.15.4.2. Paseo 0.13 has an older, untested path described under [Install](#install) for Clear Chat 0.15.4.2 and older.
 
 ## Troubleshooting
 
 | Problem | What to do |
 |---|---|
 | Installing through the Cafe plugin fails, or Paseo reports a missing Shiki dependency such as `@shikijs/core`. | Retry with the Paseo CLI command in [Install](#install), using the same repository and release ref. Clear Chat installs its dependencies with `npm ci --include=dev`, so Node.js and npm must be available on the daemon host, and its network must reach the npm registry. If you manage the checkout yourself, run `npm ci --include=dev` there before retrying. |
-| Installation stops because the plugin needs a newer Paseo version. | For Clear Chat 0.15.4.2, update Paseo on the daemon host and all connected apps to 0.14.0 or later. For older hosts, see the [Install](#install) section for the Paseo 0.13 commands and their untested-status warning, and the separate Paseo 0.12 instructions. |
+| Installation stops because the plugin needs a newer Paseo version. | For Clear Chat 0.16.0, update Paseo on the daemon host and all connected apps to 0.16.0 or later. On Paseo 0.15.x the host refuses to install or update this version; stay on Clear Chat 0.15.4.2. For Clear Chat 0.15.4.2 and older on older hosts, see the [Install](#install) section for the Paseo 0.13 commands and their untested-status warning, and the separate Paseo 0.12 instructions. |
 | Paseo rejects the plugin version, or Clear Chat says plugin settings or timeline support is missing. | Update Paseo on the daemon host and in every connected app, then reload Clear Chat. The Paseo version Clear Chat needs is declared in `paseo-plugin.json`. |
 | Clear Chat cannot start because plugin registration failed. | Update Paseo and reload Clear Chat. If it still fails, back up the plugin settings before you reinstall from the CLI. |
 | Clear Chat cannot read its settings from the host. | Reconnect to the host and choose **Retry** in **Settings → Plugins → Clear Chat**. If it still fails, check that the daemon can access the plugin settings folder. |

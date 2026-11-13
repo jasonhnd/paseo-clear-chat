@@ -1,3 +1,26 @@
+## [0.16.0] - unreleased
+
+### Upgrade notes
+
+- Clear Chat 0.16.0 needs Paseo 0.16.0 or newer. On Paseo 0.15.x the host refuses to install or update this version; if you are on Paseo 0.15, stay on Clear Chat 0.15.4.2.
+
+### Added
+
+- **Sidebar search.** A search field in the Clear Chat sidebar matches conversation titles and text from conversations you have already opened; choosing a result opens that conversation ([#480](https://github.com/jasonhnd/paseo-clear-chat/issues/480)).
+- **Saved short phrases in the composer.** Choosing a saved phrase inserts it at the cursor, keeps the existing draft, and does not send; choosing it again inserts it again ([#481](https://github.com/jasonhnd/paseo-clear-chat/issues/481)).
+- **Errors group in the sidebar.** Conversations that stopped because of an error are listed in their own group with an `Error` label and an empty state ([#483](https://github.com/jasonhnd/paseo-clear-chat/issues/483)).
+
+### Test stability
+
+- Improved the stability of several tests; no user-visible change.
+
+### Known limitations
+
+- Search covers conversations already loaded on this computer. Conversations not yet opened, archived conversations, conversations from other providers, and older pages that have not been loaded do not appear in the results.
+- A saved short phrase is inserted exactly as written, with no space added.
+- The errors group does not include conversations that finished but have not been viewed, and those are not counted as unread.
+- Not yet verified on iOS or Android devices; tablet and foldable screen sizes were only simulated in the desktop app.
+
 ## [0.15.4.2] - 2026-11-11
 
 ### Changed

@@ -477,7 +477,7 @@ until a user performs them; the replay does not certify native gesture handling.
 ## Plugin SDK limitations found while building this
 
 The development SDK is `@getpaseo/plugin` 0.13.0; the current manifest requires
-Paseo >=0.14.0. See the [SDK 0.13 migration notes](SDK-0.13.md) for historical
+Paseo >=0.16.0. See the [SDK 0.13 migration notes](SDK-0.13.md) for historical
 migration evidence, including interfaces and older-host compatibility. The
 [0.8.0 to 0.12.0 API audit](SDK-0.12.md) is also historical.
 

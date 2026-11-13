@@ -95,7 +95,7 @@ paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.15.4.2
 
 打开 Paseo 的插件页面，在 Clear Chat 的说明开头查看版本号。Paseo 0.14.0 在这里显示默认英文说明，即使切换应用语言也是如此。
 
-Clear Chat 0.15.4.2 需要 Paseo 0.14.0 或更新的版本。打开 **Settings → Plugins → Clear Chat**，可以选颜色、字体和折叠方式。
+Clear Chat 0.16.0 需要 Paseo 0.16.0 或更新的版本。打开 **Settings → Plugins → Clear Chat**，可以选颜色、字体和折叠方式。
 
 以后要更新：
 
@@ -495,14 +495,14 @@ Clear Chat 只改变 Paseo 显示对话的方式。下面每一条都是插件�
 
 **为什么看不到回答卡片？** 要打开答题卡设置和 **助手回复 Markdown**（Assistant markdown）。最新回复要有带编号的问题，每题至少两个字母选项，并要求简短作答或标了推荐项；字母不必从 A 开始，也不必连续。代码块和引用里的问题不认。Agent 运行时可操作框隐藏，答过的框在你回复后保留为只读。误认时点 **不是选项**（Not options），这条回复重新加载后也不再出框。
 
-**支持哪些 Paseo 版本？** 0.14.0 或更新；0.15.4.2 在隔离的 Paseo 0.15.4 主机上用合成 provider 检查过，没有真模型验收。最低仍是 Paseo 0.14.0。Paseo 0.13 的旧路径尚未实测，见[安装](#安装)。
+**支持哪些 Paseo 版本？** 0.16.0 或更新。本版在 Paseo 0.16.0-beta.2 桌面应用上用合成 provider 检查过，没有真模型验收。不支持 Paseo 0.15.x：宿主会拒绝安装或更新这一版，请留在 Clear Chat 0.15.4.2。Paseo 0.13 的旧路径尚未实测，仅适用于 Clear Chat 0.15.4.2 及更早版本，见[安装](#安装)。
 
 ## 常见问题
 
 | 问题 | 怎么办 |
 |---|---|
 | 用 Cafe 插件安装失败，或 Paseo 提示缺少 `@shikijs/core` 等 Shiki 依赖。 | 用[安装](#安装)里的 Paseo CLI 命令重试，仓库和版本标签保持不变。Clear Chat 用 `npm ci --include=dev` 安装依赖，所以运行 daemon 的主机上要有 Node.js 和 npm，网络也要能连到 npm 仓库。如果代码目录是你自己管理的，请先在那里运行 `npm ci --include=dev` 再重试。 |
-| 安装停止，提示插件需要更新的 Paseo 版本。 | 使用 Clear Chat 0.15.4.2 时，请把 daemon 主机和所有连接的应用升级到 Paseo 0.14.0 或更新。旧宿主请看[安装](#安装)中的 Paseo 0.13 命令及其未实测提示，以及单独的 Paseo 0.12 说明。 |
+| 安装停止，提示插件需要更新的 Paseo 版本。 | 使用 Clear Chat 0.16.0 时，请把 daemon 主机和所有连接的应用升级到 Paseo 0.16.0 或更新。Paseo 0.15.x 上宿主会拒绝安装或更新这一版，请留在 Clear Chat 0.15.4.2。Clear Chat 0.15.4.2 及更早版本在旧宿主上，请看[安装](#安装)中的 Paseo 0.13 命令及其未实测提示，以及单独的 Paseo 0.12 说明。 |
 | Paseo 拒绝这个插件版本，或 Clear Chat 提示缺少插件设置或时间线支持。 | 把运行 daemon 的主机和所有连着的应用都更新到新版 Paseo，再重新加载 Clear Chat。Clear Chat 需要的 Paseo 版本写在 `paseo-plugin.json` 里。 |
 | 插件注册失败，Clear Chat 启动不了。 | 更新 Paseo，再重新加载 Clear Chat。还不行的话，先备份插件设置，再用 CLI 重新安装。 |
 | Clear Chat 读不到主机上的设置。 | 重新连接主机，在 **Settings → Plugins → Clear Chat** 里点 **重试**（Retry）。还不行的话，检查 daemon 能不能访问插件设置文件夹。 |
