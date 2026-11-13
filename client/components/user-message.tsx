@@ -82,7 +82,10 @@ interface PastedList {
   total: number;
 }
 
-type PastedCache = PastedList | { failed: true };
+type PastedCache = PastedList | { failed: true } | { timedOut: true };
+
+/** A timeout is not a result: retry once after this delay, then show the row. */
+const PASTED_RETRY_DELAY_MS = 1000;
 
 const pastedCache = new Map<string, PastedCache>();
 const pastedInflight = new Map<string, Promise<PastedCache>>();
@@ -122,6 +125,7 @@ function readPastedList(result: {
   total?: number;
   reason?: string | null;
 } | null | undefined): PastedCache {
+  if (result?.reason === "timeout") return { timedOut: true };
   if (!result || !Array.isArray(result.images)) return { failed: true };
   const images: PastedThumb[] = [];
   for (const image of result.images) {
@@ -226,6 +230,7 @@ export function UserMessage({
     const cached = pastedCache.get(cacheKey);
     return cached ? { key: cacheKey, value: cached } : null;
   });
+  const [retryNonce, setRetryNonce] = useState(0);
   const [viewerId, setViewerId] = useState<string | null>(null);
   const [viewerKey, setViewerKey] = useState(cacheKey);
   const [fullUri, setFullUri] = useState<string | null>(null);
@@ -270,7 +275,7 @@ export function UserMessage({
     let cancelled = false;
     let pendingLookup = pastedInflight.get(flightKey);
     if (!pendingLookup) {
-      pendingLookup = Promise.resolve()
+      const lookup = () => Promise.resolve()
         .then(() => loadImages({
           agentId,
           messageId: messageId ?? null,
@@ -278,8 +283,20 @@ export function UserMessage({
           text,
         }))
         .then((result) => readPastedList(result))
-        .catch(() => ({ failed: true }) satisfies PastedCache)
+        .catch(() => ({ failed: true }) satisfies PastedCache);
+      // One timeout is retried once; only a real result may be cached, so a
+      // later row asks again instead of reusing a transient timeout.
+      pendingLookup = lookup()
+        .then(async (value) => {
+          if (!("timedOut" in value)) return value;
+          await new Promise((resolve) => setTimeout(resolve, PASTED_RETRY_DELAY_MS));
+          return lookup();
+        })
         .then((value) => {
+          if ("timedOut" in value) {
+            pastedInflight.delete(flightKey);
+            return value;
+          }
           if (share) pastedCache.set(cacheKey, value);
           else pastedAsked.add(cacheKey);
           pastedInflight.delete(flightKey);
@@ -293,9 +310,14 @@ export function UserMessage({
     return () => {
       cancelled = true;
     };
-  }, [agentId, cacheKey, clientMessageId, loadImages, messageId, text, matchesPrefix]);
+  }, [agentId, cacheKey, clientMessageId, loadImages, messageId, text, matchesPrefix, retryNonce]);
 
   const pastedNow = pasted?.key === cacheKey ? pasted.value : null;
+  const timedOut = pastedNow !== null && !isPastedList(pastedNow) && "timedOut" in pastedNow;
+  const retryImages = () => {
+    setPasted(null);
+    setRetryNonce((value) => value + 1);
+  };
   const list = isPastedList(pastedNow) ? pastedNow : null;
   const foundImages = list !== null && (list.total > 0 || list.images.length > 0);
   // Remember an image result even if the lookup key later changes for this message.
@@ -465,6 +487,31 @@ export function UserMessage({
           fontWeight: "600",
           color: tokens.userText,
         },
+        pastedRetryRow: {
+          marginTop: 8,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+        },
+        pastedRetryText: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(12),
+          color: tokens.userTextMuted,
+        },
+        pastedRetryButton: {
+          minHeight: 28,
+          paddingHorizontal: 10,
+          borderRadius: radius.chip,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: tokens.userBorder,
+        },
+        pastedRetryButtonText: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(12),
+          fontWeight: "600",
+          color: tokens.userText,
+        },
         viewerBackdrop: {
           flex: 1,
           alignItems: "center",
@@ -601,6 +648,22 @@ export function UserMessage({
                 <Text style={styles.moreText}>{t("prompt.moreImages", { count: extra })}</Text>
               </View>
             ) : null}
+          </View>
+        ) : null}
+        {timedOut ? (
+          <View testID="prompt-pasted-retry" style={styles.pastedRetryRow}>
+            <Text selectable style={styles.pastedRetryText}>
+              {t("prompt.imagesDidNotLoad")}
+            </Text>
+            <Pressable
+              testID="prompt-pasted-retry-button"
+              accessibilityRole="button"
+              accessibilityLabel={t("prompt.retryImages")}
+              onPress={retryImages}
+              style={styles.pastedRetryButton}
+            >
+              <Text style={styles.pastedRetryButtonText}>{t("prompt.retryImages")}</Text>
+            </Pressable>
           </View>
         ) : null}
         {activeViewerId && openImage ? (

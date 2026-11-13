@@ -204,6 +204,8 @@
     "imageThumbA11y": "粘贴的图片",
     "moreImages": "+{{count}}",
     "closeImage": "关闭图片",
+    "imagesDidNotLoad": "图片没加载出来",
+    "retryImages": "重试",
     "usageIn": "输入",
     "usageCached": "缓存",
     "usageOut": "输出",
