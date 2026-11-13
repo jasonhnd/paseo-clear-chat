@@ -14,7 +14,7 @@ const {
   createTurnWindows, parseNumstatPath, collectFileDetails,
   MAX_DIFF_BYTES, DIFF_TRUNCATED_MARKER, NO_TEXT_DIFF, DIFF_OMITTED_FILE_LIMIT, MAX_DIFF_FILES,
 } = mod.exports;
-const schemaFilename = resolve(__dirname, "../client/components/turn-window-schema.ts");
+const schemaFilename = resolve(__dirname, "../client/turn-window-schema.ts");
 const schemaMod = { exports: {} };
 new Function("require", "module", "exports", ts.transpileModule(fs.readFileSync(schemaFilename, "utf8"), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
@@ -226,7 +226,7 @@ test("legacy timeline items without details still parse", () => {
 
 test("the client registers the turn-window renderer with the shared schema", () => {
   const source = fs.readFileSync(resolve(__dirname, "../index.client.tsx"), "utf8");
-  assert.ok(source.includes('from "./client/components/turn-window-schema"'));
+  assert.ok(source.includes('from "./client/turn-window-schema"'));
   assert.ok(source.includes("schema: turnWindowItemSchema"));
   assert.equal((source.match(/turnWindowItemSchema/g) || []).length >= 2, true);
 });
@@ -513,4 +513,34 @@ test("a deletion is attributed through the --- a/<path> line", async () => {
   assert.match(result.details["gone file.txt"].diff, /-removed line/);
   const expanded = expandedCard(result, 0);
   assert.equal(expanded.hasDiff, true);
+});
+
+test("the diff card is localised in Chinese", async () => {
+  const snapshot = {
+    files: ["blob.bin", "new-name.txt", "plain.txt"],
+    details: {
+      "blob.bin": { added: null, deleted: null, binary: true, renamedFrom: null, diff: null, truncated: false, note: "binary file" },
+      "new-name.txt": { added: 0, deleted: 0, binary: false, renamedFrom: "old-name.txt", diff: "diff --git a/old-name.txt b/new-name.txt\nsimilarity index 100%\nrename from old-name.txt\nrename to new-name.txt", truncated: false, note: null },
+      "plain.txt": { added: null, deleted: null, binary: false, renamedFrom: null, diff: null, truncated: false, note: "no textual diff in Git" },
+    },
+    message: null,
+    warning: null,
+    incomplete: false,
+  };
+  const h = createToolHarness("web", {});
+  const Card = h.load("client/components/turn-window-card.tsx").TurnWindowCard;
+  h.setLocale("zh-CN");
+  const element = { type: Card, props: { snapshot, tokens: h.tokens } };
+  const first = h.draw(element);
+  const toggle = h.nodes(first, node => node.props?.testID === "turn-window-toggle")[0];
+  toggle.props.onPress();
+  const text = h.text(h.draw(element));
+  assert.ok(String(text).includes("这一轮的改动"), String(text));
+  assert.ok(String(text).includes("二进制文件"), String(text));
+  assert.ok(String(text).includes("改名自 old-name.txt"), String(text));
+  assert.ok(String(text).includes("Git 中没有文本差异"), String(text));
+  for (const english of ["Workspace changes during this turn", "binary file", "renamed from", "no textual diff"]) {
+    assert.ok(!String(text).includes(english), `${english} must not appear in the Chinese UI: ${text}`);
+  }
+  h.unmount();
 });

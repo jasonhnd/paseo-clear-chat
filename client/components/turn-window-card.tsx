@@ -38,14 +38,30 @@ function fileLabel(file: string, stats: TurnWindowFileStats | undefined): string
   return file;
 }
 
-function fileNote(file: string, stats: TurnWindowFileStats | undefined): string | null {
+/** Translate a server-side English note into the reader's language. */
+function localizeNote(note: string, tr: (key: string, fallback: string) => string): string {
+  return note.split("; ").map(part => {
+    if (part === "binary file") return tr("turnBinaryFile", part);
+    if (part === "untracked or no textual diff in Git") return tr("turnUntrackedNoTextDiff", part);
+    if (part === "no textual diff in Git") return tr("turnNoTextDiff", part);
+    if (part === "no diff available from Git") return tr("turnNoDiffAvailable", part);
+    if (part === "diff truncated") return tr("turnDiffTruncated", part);
+    if (part === "diff omitted (file limit)") return tr("turnDiffOmittedFileLimit", part);
+    if (part === "diff omitted (total size limit)") return tr("turnDiffOmittedTotalLimit", part);
+    if (part.startsWith("renamed to ")) return `${tr("turnRenamedTo", "renamed to")} ${part.slice("renamed to ".length)}`;
+    if (part.startsWith("renamed from ")) return `${tr("turnRenamedFrom", "renamed from")} ${part.slice("renamed from ".length)}`;
+    return part;
+  }).join(" · ");
+}
+
+function fileNote(file: string, stats: TurnWindowFileStats | undefined, tr: (key: string, fallback: string) => string): string | null {
   if (!stats) return null;
   const parts: string[] = [];
   const noteText = stats.note ?? "";
-  if (stats.renamedFrom) parts.push(`renamed from ${stats.renamedFrom}`);
-  if (stats.binary && !noteText.toLowerCase().includes("binary")) parts.push("binary file");
-  if (noteText && !parts.includes(noteText)) parts.push(noteText);
-  if (stats.added === null && stats.deleted === null && !stats.binary && !noteText) parts.push("no textual diff");
+  if (stats.renamedFrom) parts.push(`${tr("turnRenamedFrom", "renamed from")} ${stats.renamedFrom}`);
+  if (stats.binary && !noteText.toLowerCase().includes("binary")) parts.push(tr("turnBinaryFile", "binary file"));
+  if (noteText && !parts.includes(noteText)) parts.push(localizeNote(noteText, tr));
+  if (stats.added === null && stats.deleted === null && !stats.binary && !noteText) parts.push(tr("turnNoTextualDiffShort", "no textual diff"));
   return parts.length ? parts.join(" · ") : null;
 }
 
@@ -63,6 +79,11 @@ export function TurnWindowCard({ snapshot, tokens }: { snapshot?: TurnWindowSnap
     if (translated && translated !== key) return translated;
     return text ?? FALLBACK[code] ?? null;
   };
+  const tr = (key: string, fallback: string): string => {
+    const full = `sidebar.${key}`;
+    const translated = translate(full);
+    return translated && translated !== full ? translated : fallback;
+  };
   if (!snapshot) return null;
   const files = snapshot.files ?? [];
   const message = say(snapshot.messageCode, snapshot.message);
@@ -78,7 +99,7 @@ export function TurnWindowCard({ snapshot, tokens }: { snapshot?: TurnWindowSnap
   }
   return <View testID="turn-window-card" style={{ marginTop: 8, padding: 10, borderWidth: 1, borderColor: tokens.border, borderRadius: 8 }}>
     <Pressable testID="turn-window-toggle" accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={() => setOpen(value => !value)}>
-      <Text style={{ color: tokens.foreground, fontSize: tokens.fs(12) }}>Workspace changes during this turn {open ? "▴" : "▾"}</Text>
+      <Text style={{ color: tokens.foreground, fontSize: tokens.fs(12) }}>{tr("turnWindowTitle", "Workspace changes during this turn")} {open ? "▴" : "▾"}</Text>
     </Pressable>
     {open ? <View style={{ gap: 4, marginTop: 8 }}>
       {message ? <Text selectable style={{ color: tokens.foregroundMuted }}>{message}</Text> : null}
@@ -86,7 +107,7 @@ export function TurnWindowCard({ snapshot, tokens }: { snapshot?: TurnWindowSnap
       {incompleteText ? <Text selectable style={{ color: tokens.foregroundMuted }}>{incompleteText}</Text> : null}
       {files.map((file, index) => {
         const stats = snapshot.details?.[file];
-        const note = fileNote(file, stats);
+        const note = fileNote(file, stats, tr);
         const hasDiff = Boolean(stats?.diff);
         const expanded = hasDiff && openFile === file;
         return <View key={file} style={{ gap: 2 }}>
@@ -95,7 +116,7 @@ export function TurnWindowCard({ snapshot, tokens }: { snapshot?: TurnWindowSnap
             {note ? <Text selectable style={{ color: tokens.foregroundMuted, fontSize: tokens.fs(11) }}>{note}</Text> : null}
           </Pressable>
           {expanded && stats?.diff ? <View testID={`turn-window-diff-${index}`} style={{ padding: 8, borderWidth: 1, borderColor: tokens.border, borderRadius: 6, backgroundColor: tokens.surface1 }}>
-            <Text selectable style={{ color: tokens.foreground, fontSize: tokens.fs(11), fontFamily: "monospace" }}>{stats.diff}</Text>
+            <Text selectable style={{ color: tokens.foreground, fontSize: tokens.fs(11), fontFamily: "monospace" }}>{stats.diff.replace("... [diff truncated]", tr("turnDiffTruncated", "diff truncated"))}</Text>
           </View> : null}
         </View>;
       })}
