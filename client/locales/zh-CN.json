@@ -206,6 +206,7 @@
     "closeImage": "关闭图片",
     "imagesDidNotLoad": "图片没加载出来",
     "retryImages": "重试",
+    "imageUnavailable": "这张图片无法显示",
     "usageIn": "输入",
     "usageCached": "缓存",
     "usageOut": "输出",

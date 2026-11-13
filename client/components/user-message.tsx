@@ -257,6 +257,8 @@ export function UserMessage({
 
   useEffect(() => {
     if (!agentId || !cacheKey) return;
+    // A message known to have no images cannot show a thumbnail row.
+    if (imageCount === 0 && (images?.length ?? 0) === 0) return;
     const share = pastedKeyShares(messageId, clientMessageId);
     if (share) {
       const cached = pastedCache.get(cacheKey);
@@ -311,7 +313,7 @@ export function UserMessage({
     return () => {
       cancelled = true;
     };
-  }, [agentId, cacheKey, clientMessageId, loadImages, messageId, text, matchesPrefix, retryNonce]);
+  }, [agentId, cacheKey, clientMessageId, loadImages, messageId, text, matchesPrefix, retryNonce, imageCount, images?.length]);
 
   const pastedNow = pasted?.key === cacheKey ? pasted.value : null;
   const timedOut = pastedNow !== null && !isPastedList(pastedNow) && "timedOut" in pastedNow;
@@ -329,7 +331,8 @@ export function UserMessage({
   const folded = canFold && !opened && foldKey.text === text && foldKey.messageId === messageId && foldKey.clientMessageId === clientMessageId;
   const firstLine = text.split(/\r\n|\r|\n/, 1)[0] ?? "";
   const summary = Array.from(firstLine).length > 120 ? `${Array.from(firstLine).slice(0, 119).join("")}…` : firstLine;
-  const shown = (list?.images ?? []).filter((image) => !hiddenThumbs.has(image.id)).slice(0, 3);
+  const rawShown = (list?.images ?? []).slice(0, 3);
+  const shown = rawShown.filter((image) => !hiddenThumbs.has(image.id));
   const extra = list ? Math.max(0, list.total - Math.min(3, list.images.length)) : 0;
   const openImage = shown.find((image) => image.id === activeViewerId) ?? list?.images.find((image) => image.id === activeViewerId) ?? null;
 
@@ -488,6 +491,17 @@ export function UserMessage({
           fontWeight: "600",
           color: tokens.userText,
         },
+        pastedBroken: {
+          justifyContent: "center",
+          alignItems: "center",
+          padding: 6,
+        },
+        pastedBrokenText: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(11),
+          color: tokens.userTextMuted,
+          textAlign: "center",
+        },
         pastedRetryRow: {
           marginTop: 8,
           flexDirection: "row",
@@ -614,10 +628,19 @@ export function UserMessage({
             {(shownText) => <Text selectable style={styles.text}>{shownText}</Text>}
           </MessageOutput>
         )}
-        {shown.length > 0 ? (
+        {rawShown.length > 0 ? (
           <View style={styles.pastedRow}>
-            {shown.map((image) => {
+            {rawShown.map((image) => {
               const frame = fitFrame(image, thumbMax, MAX_THUMB_HEIGHT);
+              if (hiddenThumbs.has(image.id)) {
+                return (
+                  <View key={image.id} testID="prompt-pasted-broken" style={[styles.thumb, styles.pastedBroken, frame]}>
+                    <Text selectable style={styles.pastedBrokenText}>
+                      {t("prompt.imageUnavailable")}
+                    </Text>
+                  </View>
+                );
+              }
               return (
                 <Pressable
                   key={image.id}
@@ -651,7 +674,7 @@ export function UserMessage({
             ) : null}
           </View>
         ) : null}
-        {timedOut ? (
+        {timedOut && attachmentCount > 0 ? (
           <View testID="prompt-pasted-retry" style={styles.pastedRetryRow}>
             <Text selectable style={styles.pastedRetryText}>
               {t("prompt.imagesDidNotLoad")}

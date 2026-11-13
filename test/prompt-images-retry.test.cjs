@@ -43,7 +43,7 @@ test("pasted prompt images: a timeout is retried once automatically and a succes
 
 test("pasted prompt images: two timeouts show the retry row and the button asks again", async () => {
   const { h, calls } = harness((n) => n <= 2 ? timedOut() : { images: [pasted("img-click")], total: 1, reason: null });
-  const mounted = h.mount(prompt({ messageId: "retry-two", clientMessageId: "retry-two-client" }));
+  const mounted = h.mount(prompt({ messageId: "retry-two", clientMessageId: "retry-two-client", imageCount: 1 }));
   await settle();
   await wait(1200);
   let tree = mounted.render();
@@ -71,6 +71,52 @@ test("pasted prompt images: unmounting during the retry wait does not send a sec
   h.unmount();
   await wait(1200);
   assert.equal(calls.length, 1, "an unmounted row does not run the delayed retry");
+});
+
+test("pasted prompt images: a pure text message shows nothing when its lookup times out", async () => {
+  const { h, calls } = harness(() => timedOut());
+  const mounted = h.mount(prompt({ messageId: "retry-text", clientMessageId: "retry-text-client", text: "Just text" }));
+  await settle();
+  await wait(1200);
+  const tree = mounted.render();
+  assert.equal(calls.length, 2, "the unknown-count lookup still runs and retries once");
+  assert.equal(byId(h, tree, "prompt-pasted-retry"), undefined);
+  assert.equal(byId(h, tree, "prompt-pasted-retry-button"), undefined);
+  assert.match(h.text(tree), /Just text/);
+});
+
+test("pasted prompt images: a message known to have no images does not look them up", async () => {
+  const { h, calls } = harness(() => timedOut());
+  // The mount transformer drops imageCount 0, so draw the renderer directly to
+  // reproduce the host payload that carries "no images" explicitly.
+  const Component = h.renderers.get("omp-user-message").Component;
+  const row = {
+    agentId: "demo-agent",
+    host: { id: "demo-host" },
+    theme: { colors: {} },
+    timestamp: new Date("2026-01-01T12:00:00Z"),
+    item: { kind: "omp-user-message", data: { text: "No images", messageId: "retry-none", clientMessageId: "retry-none-client", imageCount: 0 } },
+  };
+  h.draw({ type: Component, props: row });
+  await settle();
+  const tree = h.draw({ type: Component, props: row });
+  assert.equal(calls.length, 0, "imageCount 0 with no images skips prompt.images");
+  assert.equal(byId(h, tree, "prompt-pasted-retry"), undefined);
+});
+
+test("pasted prompt images: a broken thumbnail shows the inline hint and keeps good thumbnails", async () => {
+  const { h } = harness(() => ({ images: [pasted("img-good"), pasted("img-bad")], total: 2, reason: null }));
+  const mounted = h.mount(prompt({ messageId: "retry-broken", clientMessageId: "retry-broken-client", imageCount: 2 }));
+  await settle();
+  let tree = mounted.render();
+  assert.equal(thumbs(h, tree).length, 2);
+  const brokenThumb = thumbs(h, tree)[1];
+  h.nodes(brokenThumb, (item) => item.type === "Image")[0].props.onError();
+  tree = mounted.render();
+  assert.equal(thumbs(h, tree).length, 1, "the good image is still a thumbnail");
+  assert.equal(byId(h, tree, "prompt-pasted-broken") !== undefined, true, "the broken image is replaced in place");
+  assert.match(h.text(tree), /This image can't be displayed/);
+  assert.equal(byId(h, tree, "prompt-pasted-retry"), undefined, "a broken image has no retry button");
 });
 
 test("pasted prompt images: a genuine empty result keeps today's count row and has no button", async () => {

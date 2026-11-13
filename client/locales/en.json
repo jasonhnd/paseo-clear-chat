@@ -206,6 +206,7 @@
     "closeImage": "Close image",
     "imagesDidNotLoad": "Images didn't load",
     "retryImages": "Retry",
+    "imageUnavailable": "This image can't be displayed",
     "usageIn": "in",
     "usageCached": "cached",
     "usageOut": "out",
