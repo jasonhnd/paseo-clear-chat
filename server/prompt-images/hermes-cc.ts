@@ -40,6 +40,19 @@ export const hermesCcPromptImageResolver: PromptImageResolver = {
     const ids = [...new Set([context.messageId, context.clientMessageId].filter(
       (id): id is string => typeof id === "string" && !!id.trim() && id.length <= 512 && !id.includes("\0"),
     ))];
+    // Durable state comes first: reading it takes no disk lock, while a save in
+    // flight holds the store's lock — load() would then block until the RPC
+    // budget expires and the row would surface as `timeout`, never as `saving`.
+    let saving = false;
+    for (const messageId of ids) {
+      const status = await context.saveStatus?.read({ sessionKey, messageId });
+      if (context.signal.aborted) return empty();
+      // Both markers can be present across the two ids; saveFailed wins because
+      // the client paints the failure before the in-flight spinner.
+      if (status?.state === "saveFailed") return { matchedMessages: 1, images: [], saveFailed: true };
+      if (status?.state === "pending") saving = true;
+    }
+    if (saving) return { matchedMessages: 1, images: [], saving: true };
     let selected: HermesCcStoredImage[] | null = null;
     for (const messageId of ids) {
       const images = await context.hermesCcImageStore.load({ sessionKey, messageId });
@@ -48,14 +61,7 @@ export const hermesCcPromptImageResolver: PromptImageResolver = {
       if (selected && !sameImages(selected, images)) return { matchedMessages: 2, images: [] };
       selected = images;
     }
-    if (!selected) {
-      for (const messageId of ids) {
-        const status = await context.saveStatus?.read({ sessionKey, messageId });
-        if (status?.state === "saveFailed") return { matchedMessages: 1, images: [], saveFailed: true };
-        if (status?.state === "pending") return { matchedMessages: 1, images: [], saving: true };
-      }
-      return empty();
-    }
+    if (!selected) return empty();
     // No prompt text, time, order, workspace path or Hermes files participate in lookup.
     // The registry applies its existing thumbnail, byte, pixel and MIME/header guards.
     return { matchedMessages: 1, images: selected.map((image, index) => ({

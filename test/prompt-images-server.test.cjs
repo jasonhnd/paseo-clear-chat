@@ -241,6 +241,80 @@ test("prompt.images returns the durable save state from the hermes-cc resolver",
   assert.equal(failed.saveFailed, true);
 });
 
+const hermesCtx = () => {
+  const persistence = `plugin:${JSON.stringify({ version: 1, data: { sessionId: "native" } })}`;
+  return { paseo: { agents: { ref: () => ({
+    async refresh() { return { agent: { provider: "hermes-cc", cwd: ".", persistence: { provider: "hermes-cc", sessionId: persistence } } }; },
+    current() { return null; },
+  }) } } };
+};
+
+test("a save in flight reports saving while the store lock still blocks the lookup", async () => {
+  const h = harness();
+  const resolver = h.load("server/prompt-images/hermes-cc.ts").hermesCcPromptImageResolver;
+  let loads = 0;
+  const handlers = h.createPromptImageHandlers({
+    timeoutMs: 20,
+    resolvers: [resolver],
+    hermesCcProviderIds: new Set(["hermes-cc"]),
+    // The save holds the store lock: load() never settles inside the budget.
+    hermesCcImageStore: { load() { loads += 1; return new Promise(() => {}); } },
+    saveStatus: { async read() { return { state: "pending", at: Date.now() }; } },
+  });
+  const result = await handlers.images(input, hermesCtx());
+  assert.equal(result.saving, true, "a pending save is not a timeout");
+  assert.equal(result.images.length, 0);
+  assert.equal(loads, 0, "the resolver must not wait on the locked store");
+});
+
+test("a failed save reports saveFailed while the store lock still blocks the lookup", async () => {
+  const h = harness();
+  const resolver = h.load("server/prompt-images/hermes-cc.ts").hermesCcPromptImageResolver;
+  let loads = 0;
+  const handlers = h.createPromptImageHandlers({
+    timeoutMs: 20,
+    resolvers: [resolver],
+    hermesCcProviderIds: new Set(["hermes-cc"]),
+    hermesCcImageStore: { load() { loads += 1; return new Promise(() => {}); } },
+    saveStatus: { async read() { return { state: "saveFailed", at: Date.now(), reason: "image_lock_timeout", attempts: 4 }; } },
+  });
+  const result = await handlers.images(input, hermesCtx());
+  assert.equal(result.saveFailed, true);
+  assert.equal(loads, 0);
+});
+
+test("saveFailed wins over pending when the two ids disagree", async () => {
+  const h = harness();
+  const resolver = h.load("server/prompt-images/hermes-cc.ts").hermesCcPromptImageResolver;
+  const handlers = h.createPromptImageHandlers({
+    timeoutMs: 20,
+    resolvers: [resolver],
+    hermesCcProviderIds: new Set(["hermes-cc"]),
+    hermesCcImageStore: { load() { return new Promise(() => {}); } },
+    saveStatus: { async read({ messageId }) { return { state: messageId === input.messageId ? "pending" : "saveFailed", at: Date.now() }; } },
+  });
+  const result = await handlers.images(input, hermesCtx());
+  assert.equal(result.saveFailed, true);
+  assert.notEqual(result.saving, true);
+});
+
+test("no save state keeps the stored images path", async () => {
+  const h = harness();
+  const resolver = h.load("server/prompt-images/hermes-cc.ts").hermesCcPromptImageResolver;
+  const bytes = await png();
+  const handlers = h.createPromptImageHandlers({
+    resolvers: [resolver],
+    hermesCcProviderIds: new Set(["hermes-cc"]),
+    hermesCcImageStore: { async load() { return [{ mime: "image/png", sha256: "sha", bytes }]; } },
+    saveStatus: { async read() { return null; } },
+  });
+  const result = await handlers.images(input, hermesCtx());
+  assert.equal(result.total, 1);
+  assert.equal(result.images.length, 1);
+  assert.equal(result.saving, undefined);
+  assert.equal(result.saveFailed, undefined);
+});
+
 test("full-image lookups also time out with nullable fields and one debug line", async () => {
   const h = harness();
   const handlers = h.createPromptImageHandlers({ timeoutMs: 20, resolvers: [resolver(async () => [{
