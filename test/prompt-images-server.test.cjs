@@ -904,3 +904,19 @@ test("JSONL skips oversized valid lines, resumes at the next record and handles 
   assert.deepEqual(records.slice(0, 2), [{ before: 1 }, { after: "🎉" }]);
   assert.equal(records[2].length, h.MAX_JSONL_LINE_BYTES - 2);
 });
+
+test("timeout metadata refreshes when current() is empty", async () => {
+  const h = harness();
+  const never = () => new Promise(() => {});
+  const handlers = h.createPromptImageHandlers({ timeoutMs: 20, resolvers: [{
+    ...resolver(never),
+    timeoutInfo: async () => ({ hasStored: true }),
+  }] });
+  const ctx = { paseo: { agents: { ref: () => ({
+    async refresh() { return { agent: { provider: "sample", cwd: ".", persistence: { provider: "sample", sessionId: "s" } } }; },
+    current() { return null; },
+  }) } } };
+  const result = await handlers.images(input, ctx);
+  assert.equal(result.reason, "timeout");
+  assert.equal(result.hasStored, true);
+});

@@ -151,22 +151,27 @@ export function createPromptImageHandlers(options: {
   async function timeoutInfo(input: LookupInput, context: PluginHandlerContext) {
     try {
       const ref = context.paseo.agents.ref(input.agentId);
-      const agent = typeof ref.current === "function" ? ref.current() : null;
-      if (!agent) return {};
-      const provider = agent.provider;
-      const resolver = resolvers.find(candidate => candidate === hermesCcPromptImageResolver && options.hermesCcProviderIds
-        ? options.hermesCcProviderIds.has(provider) : candidate.matches(provider));
-      if (!resolver?.timeoutInfo) return {};
-      const persistence = agent.persistence;
+      // current() can be empty on a real page; refresh() is inside the same
+      // bounded race so the metadata still arrives without unbounded waiting.
       return await Promise.race([
-        resolver.timeoutInfo({
-          ...input, provider, cwd: agent.cwd,
-          sessionId: persistence?.sessionId ?? null, nativeHandle: persistence?.nativeHandle ?? null,
-          signal: new AbortController().signal,
-          ...(options.hermesCcImageStore ? { hermesCcImageStore: options.hermesCcImageStore } : {}),
-          ...(options.saveFailures ? { saveFailures: options.saveFailures } : {}),
-        }),
-        new Promise<{}>((resolve) => { const timer = setTimeout(() => resolve({}), 150); (timer as { unref?: () => void }).unref?.(); }),
+        (async () => {
+          const refreshed = await ref.refresh();
+          const agent = refreshed?.agent ?? (typeof ref.current === "function" ? ref.current() : null);
+          if (!agent) return {};
+          const provider = agent.provider;
+          const resolver = resolvers.find(candidate => candidate === hermesCcPromptImageResolver && options.hermesCcProviderIds
+            ? options.hermesCcProviderIds.has(provider) : candidate.matches(provider));
+          if (!resolver?.timeoutInfo) return {};
+          const persistence = agent.persistence;
+          return await resolver.timeoutInfo({
+            ...input, provider, cwd: agent.cwd,
+            sessionId: persistence?.sessionId ?? null, nativeHandle: persistence?.nativeHandle ?? null,
+            signal: new AbortController().signal,
+            ...(options.hermesCcImageStore ? { hermesCcImageStore: options.hermesCcImageStore } : {}),
+            ...(options.saveFailures ? { saveFailures: options.saveFailures } : {}),
+          });
+        })(),
+        new Promise<{}>((resolve) => { setTimeout(() => resolve({}), 150); }),
       ]);
     } catch { return {}; }
   }
