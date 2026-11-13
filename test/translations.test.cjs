@@ -426,6 +426,7 @@ function verifyResourceBaseline(locale, text) {
     .replace(/    "codeBlockOpen": \{\n(?:      ".*\n){2}    \},\n/, "")
     .replace(/    "open": ".*",\n    "openA11y": ".*",\n/, "")
     .replace(/    "imageThumbA11y": ".*",\n    "moreImages": ".*",\n    "closeImage": ".*",\n/, "")
+    .replace(/    "imagesDidNotLoad": ".*",\n    "retryImages": ".*",\n    "imageUnavailable": ".*",\n    "imageNotSaved": ".*",\n/, "")
     .replace(/    "stepsOne": ".*",\n/, "")
     .replace(/    "tokensOne": ".*",\n/, "")
     .replace(/    "sectionInline": \{\n(?:      ".*\n){5}    \},\n/, "");
@@ -487,7 +488,13 @@ test("all locales contain the same translation keys", () => {
       return child && typeof child === "object" ? keys(child, path) : [path];
     }).sort();
   }
-  for (const locale of ["zh-CN", "ja"]) assert.deepEqual(keys(resources[locale]), keys(resources.en));
+  // English copy that intentionally has no Japanese translation yet; the SDK
+  // falls back to English for these keys, as it does for the other optionalJa
+  // entries used by the sidebar tests.
+  const optionalJa = new Set(["prompt.imagesDidNotLoad", "prompt.retryImages", "prompt.imageUnavailable", "prompt.imageNotSaved"]);
+  const en = keys(resources.en);
+  assert.deepEqual(keys(resources["zh-CN"]), en);
+  assert.deepEqual(keys(resources.ja).filter((key) => !optionalJa.has(key)), en.filter((key) => !optionalJa.has(key)));
 });
 
 for (const [locale, quote] of [["en", /"([^"]+)"/], ["zh-CN", /“([^”]+)”/], ["ja", /「([^」]+)」/]]) {
