@@ -29,7 +29,7 @@ Measured 2026-11-04 on a 300-step conversation (150 tool calls), three runs per 
 
 ## Setup
 
-Clear Chat 0.16.0.1 needs Paseo 0.16.0 or later and was tested on Paseo 0.16.0-beta.2. On Paseo 0.15.x the host refuses this version; stay on Clear Chat 0.15.4.x.
+Clear Chat 0.16.0.1 needs Paseo 0.16.0 or later and was tested on Paseo 0.16.0. On Paseo 0.15.x the host refuses this version; stay on Clear Chat 0.15.4.x.
 
 Installation runs `npm ci` on the daemon host, so Node.js and npm must be available there and the host must be able to reach the npm registry.
 

@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=date"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <a href="https://paseo.sh"><img alt="Paseo 0.16.0+，已在 0.16.0-beta.2 上验过" src="https://img.shields.io/badge/Paseo-%3E%3D0.16.0%20%C2%B7%20tested%200.16.0--beta.2-5b5bd6"></a>
+  <a href="https://paseo.sh"><img alt="Paseo 0.16.0+，已在 0.16.0 上验过" src="https://img.shields.io/badge/Paseo-%3E%3D0.16.0%20%C2%B7%20tested%200.16.0-5b5bd6"></a>
 </p>
 
 <p align="center">
@@ -501,7 +501,7 @@ Clear Chat 只改变 Paseo 显示对话的方式。下面每一条都是插件�
 
 **为什么看不到回答卡片？** 要打开答题卡设置和 **助手回复 Markdown**（Assistant markdown）。最新回复要有带编号的问题，每题至少两个字母选项，并要求简短作答或标了推荐项；字母不必从 A 开始，也不必连续。代码块和引用里的问题不认。Agent 运行时可操作框隐藏，答过的框在你回复后保留为只读。误认时点 **不是选项**（Not options），这条回复重新加载后也不再出框。
 
-**支持哪些 Paseo 版本？** 0.16.0 或更新；0.16.0.1 在隔离的 Paseo 0.16.0-beta.2 主机上用合成 provider 检查过，没有真模型验收。在 Paseo 0.15.x 上宿主会拒绝这一版，请留在 Clear Chat 0.15.4.x。Clear Chat 0.15.4.x 及更早版本在 Paseo 0.13／0.12 上的旧路径见[安装](#安装)，尚未实测。
+**支持哪些 Paseo 版本？** 0.16.0 或更新；0.16.0.1 在隔离的 Paseo 0.16.0 主机上用合成 provider 检查过，没有真模型验收。在 Paseo 0.15.x 上宿主会拒绝这一版，请留在 Clear Chat 0.15.4.x。Clear Chat 0.15.4.x 及更早版本在 Paseo 0.13／0.12 上的旧路径见[安装](#安装)，尚未实测。
 
 ## 常见问题
 

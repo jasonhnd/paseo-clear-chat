@@ -29,7 +29,7 @@ Clear Chat 改变 Paseo 里对话的显示方式，让答案更容易找到；�
 
 ## 安装
 
-Clear Chat 0.16.0.1 需要 Paseo 0.16.0 或更新，并在 Paseo 0.16.0-beta.2 上实测。在 Paseo 0.15.x 上宿主会拒绝这一版，请留在 Clear Chat 0.15.4.x。
+Clear Chat 0.16.0.1 需要 Paseo 0.16.0 或更新，并在 Paseo 0.16.0 上实测。在 Paseo 0.15.x 上宿主会拒绝这一版，请留在 Clear Chat 0.15.4.x。
 
 安装会在 daemon 主机上跑 `npm ci`，所以那台机器要有 Node.js 和 npm，并且能连到 npm registry。
 

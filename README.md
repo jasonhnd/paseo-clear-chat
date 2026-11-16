@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=date"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <a href="https://paseo.sh"><img alt="Paseo 0.16.0+, tested on 0.16.0-beta.2" src="https://img.shields.io/badge/Paseo-%3E%3D0.16.0%20%C2%B7%20tested%200.16.0--beta.2-5b5bd6"></a>
+  <a href="https://paseo.sh"><img alt="Paseo 0.16.0+, tested on 0.16.0" src="https://img.shields.io/badge/Paseo-%3E%3D0.16.0%20%C2%B7%20tested%200.16.0-5b5bd6"></a>
 </p>
 
 <p align="center">
@@ -501,7 +501,7 @@ Numbers are issues, pull requests and discussions in Paseo's official repository
 
 **Why do I not see the answer card?** Turn on its setting and **Assistant markdown**. The latest reply must ask numbered questions with at least two lettered options each, and either request a short-form answer or mark a recommendation. Letters need not start at A or be consecutive. Questions inside code blocks or quotations are ignored. The operable frame is hidden while the agent runs; answered frames stay read-only after you reply. **Not options** hides a false detection for that reply, including after reload.
 
-**Which Paseo versions work?** 0.16.0 or later; 0.16.0.1 was checked on isolated Paseo 0.16.0-beta.2 hosts with a synthetic provider, not real models. On Paseo 0.15.x the host refuses this version: stay on Clear Chat 0.15.4.x. Clear Chat 0.15.4.x and older have the Paseo 0.13 and 0.12 paths described under [Install](#install), still untested.
+**Which Paseo versions work?** 0.16.0 or later; 0.16.0.1 was checked on isolated Paseo 0.16.0 hosts with a synthetic provider, not real models. On Paseo 0.15.x the host refuses this version: stay on Clear Chat 0.15.4.x. Clear Chat 0.15.4.x and older have the Paseo 0.13 and 0.12 paths described under [Install](#install), still untested.
 
 ## Troubleshooting
 
