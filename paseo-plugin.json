@@ -3,7 +3,7 @@
   "name": "Clear Chat",
   "description": "v0.15.4.2 · Makes agent conversations easy to read: one-line steps, a card for every tool, and an answer card you can write answers in.",
   "requirements": {
-    "paseo": ">=0.14.0"
+    "paseo": ">=0.16.0"
   },
   "build": [
     [
