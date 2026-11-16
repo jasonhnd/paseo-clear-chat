@@ -1,9 +1,9 @@
-## [0.16.0.1] - unreleased
+## [0.16.0.1] - 2026-11-17
 
 ### Upgrade notes
 
-- Clear Chat 0.16.0.1 needs Paseo 0.16.0 or newer. On Paseo 0.15.x the host refuses to install or update this version; if you are on Paseo 0.15, stay on Clear Chat 0.15.4.2.
-- Paseo 0.16.0 stable had not been released when this version was prepared; it was checked on isolated Paseo 0.16.0-beta.2 hosts with a synthetic provider, not real models.
+- Clear Chat 0.16.0.1 needs Paseo 0.16.0 or newer. On Paseo 0.15.x the host refuses to install or update this version; if you are on Paseo 0.15, stay on Clear Chat 0.15.4.x.
+- Checked on isolated Paseo 0.16.0 hosts with a synthetic provider, not real models.
 
 ### Added
 

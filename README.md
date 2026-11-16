@@ -49,9 +49,9 @@
 
 ### Added in earlier releases
 
-- **Easier to find on the plugin list (0.15.4.2).** The one-line description on the listing page now names the answer card ([#450](https://github.com/jasonhnd/paseo-clear-chat/issues/450)).
-- **The Recommended badge is readable in the dark theme (0.15.4.2).** Its text contrast rose from 2.36:1 to 12.99:1; the light theme stays at 4.63:1 ([#451](https://github.com/jasonhnd/paseo-clear-chat/issues/451)).
-- **Steady under the answer card (0.15.4.2).** The hint line keeps a fixed height, so the card no longer shifts when the hint text changes ([#454](https://github.com/jasonhnd/paseo-clear-chat/issues/454)).
+- **Easier to find on the plugin list.** The one-line description on the listing page now names the answer card ([#450](https://github.com/jasonhnd/paseo-clear-chat/issues/450)).
+- **The Recommended badge is readable in the dark theme.** Its text contrast rose from 2.36:1 to 12.99:1; the light theme stays at 4.63:1 ([#451](https://github.com/jasonhnd/paseo-clear-chat/issues/451)).
+- **Steady under the answer card.** The hint line keeps a fixed height, so the card no longer shifts when the hint text changes ([#454](https://github.com/jasonhnd/paseo-clear-chat/issues/454)).
 
 - **Write an answer for each question.** The answer card adds a write-your-own row after the listed options, with the next letter. Press Enter to confirm and move to the next question, or Shift+Enter for a new line. Input-method character selection does not confirm the answer; an empty answer shows a prompt ([#447](https://github.com/jasonhnd/paseo-clear-chat/issues/447)).
 - **Preview, send and review.** Preview the message before sending; the Send button shows only the letter indexes. After sending, switch questions in the grey read-only frame to review each answer. Reloading the chat keeps your full written answers visible ([#447](https://github.com/jasonhnd/paseo-clear-chat/issues/447)).
@@ -101,7 +101,7 @@ paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.16.0.1
 
 Open Paseo’s plugins page and look for the version at the start of the Clear Chat description. Paseo 0.14.0 displays the default English description there even when the app language is changed.
 
-Clear Chat 0.16.0.1 needs Paseo 0.16.0 or later. On Paseo 0.15.x the host refuses to install or update this version; stay on Clear Chat 0.15.4.2. Open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
+Clear Chat 0.16.0.1 needs Paseo 0.16.0 or later. On Paseo 0.15.x the host refuses to install or update this version; stay on Clear Chat 0.15.4.x. Open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
 
 To update later:
 
@@ -501,14 +501,14 @@ Numbers are issues, pull requests and discussions in Paseo's official repository
 
 **Why do I not see the answer card?** Turn on its setting and **Assistant markdown**. The latest reply must ask numbered questions with at least two lettered options each, and either request a short-form answer or mark a recommendation. Letters need not start at A or be consecutive. Questions inside code blocks or quotations are ignored. The operable frame is hidden while the agent runs; answered frames stay read-only after you reply. **Not options** hides a false detection for that reply, including after reload.
 
-**Which Paseo versions work?** 0.16.0 or later; 0.16.0.1 was checked on isolated Paseo 0.16.0-beta.2 hosts with a synthetic provider, not real models. On Paseo 0.15.x the host refuses this version: stay on Clear Chat 0.15.4.2. Clear Chat 0.15.4.2 and older have the Paseo 0.13 and 0.12 paths described under [Install](#install), still untested.
+**Which Paseo versions work?** 0.16.0 or later; 0.16.0.1 was checked on isolated Paseo 0.16.0-beta.2 hosts with a synthetic provider, not real models. On Paseo 0.15.x the host refuses this version: stay on Clear Chat 0.15.4.x. Clear Chat 0.15.4.x and older have the Paseo 0.13 and 0.12 paths described under [Install](#install), still untested.
 
 ## Troubleshooting
 
 | Problem | What to do |
 |---|---|
 | Installing through the Cafe plugin fails, or Paseo reports a missing Shiki dependency such as `@shikijs/core`. | Retry with the Paseo CLI command in [Install](#install), using the same repository and release ref. Clear Chat installs its dependencies with `npm ci --include=dev`, so Node.js and npm must be available on the daemon host, and its network must reach the npm registry. If you manage the checkout yourself, run `npm ci --include=dev` there before retrying. |
-| Installation stops because the plugin needs a newer Paseo version. | Clear Chat 0.16.0.1 needs Paseo 0.16.0 or newer on the daemon host and on every connected app. On Paseo 0.15.x, stay on Clear Chat 0.15.4.2. For Clear Chat 0.15.4.2 and older on older hosts, see the [Install](#install) section for the Paseo 0.13 commands and their untested-status warning, and the separate Paseo 0.12 instructions. |
+| Installation stops because the plugin needs a newer Paseo version. | Clear Chat 0.16.0.1 needs Paseo 0.16.0 or newer on the daemon host and on every connected app. On Paseo 0.15.x, stay on Clear Chat 0.15.4.x. For Clear Chat 0.15.4.x and older on older hosts, see the [Install](#install) section for the Paseo 0.13 commands and their untested-status warning, and the separate Paseo 0.12 instructions. |
 | Paseo rejects the plugin version, or Clear Chat says plugin settings or timeline support is missing. | Update Paseo on the daemon host and in every connected app, then reload Clear Chat. The Paseo version Clear Chat needs is declared in `paseo-plugin.json`. |
 | Clear Chat cannot start because plugin registration failed. | Update Paseo and reload Clear Chat. If it still fails, back up the plugin settings before you reinstall from the CLI. |
 | Clear Chat cannot read its settings from the host. | Reconnect to the host and choose **Retry** in **Settings → Plugins → Clear Chat**. If it still fails, check that the daemon can access the plugin settings folder. |

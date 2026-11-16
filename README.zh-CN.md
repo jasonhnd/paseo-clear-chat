@@ -49,9 +49,9 @@
 
 ### 之前几版新增的
 
-- **在插件列表里更好认（0.15.4.2）。** 目录页那句一句话描述现在会提到答题卡（[#450](https://github.com/jasonhnd/paseo-clear-chat/issues/450)）。
-- **深色主题下「推荐」徽标看得清（0.15.4.2）。** 文字对比度从 2.36:1 提到 12.99:1，浅色主题仍是 4.63:1（[#451](https://github.com/jasonhnd/paseo-clear-chat/issues/451)）。
-- **答题卡下方不再跳（0.15.4.2）。** 提示行固定高度，提示文字长短变化时卡片不再轻微移动（[#454](https://github.com/jasonhnd/paseo-clear-chat/issues/454)）。
+- **在插件列表里更好认。** 目录页那句一句话描述现在会提到答题卡（[#450](https://github.com/jasonhnd/paseo-clear-chat/issues/450)）。
+- **深色主题下「推荐」徽标看得清。** 文字对比度从 2.36:1 提到 12.99:1，浅色主题仍是 4.63:1（[#451](https://github.com/jasonhnd/paseo-clear-chat/issues/451)）。
+- **答题卡下方不再跳。** 提示行固定高度，提示文字长短变化时卡片不再轻微移动（[#454](https://github.com/jasonhnd/paseo-clear-chat/issues/454)）。
 
 - **每题都能自己写。** 答题框在每题已有选项后自动加一行「自己写」，字母顺延。按 Enter 确认并跳到下一题，Shift+Enter 换行；输入法选字不会误确认，内容为空时会提示（[#447](https://github.com/jasonhnd/paseo-clear-chat/issues/447)）。
 - **预览、发送和回看。** 发送前可以预览消息；发送（Send）按钮只显示字母索引。发出后可在灰色只读框里切换题签查看每题答案，刷新聊天后仍能看到自己写的全文（[#447](https://github.com/jasonhnd/paseo-clear-chat/issues/447)）。
@@ -101,7 +101,7 @@ paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.16.0.1
 
 打开 Paseo 的插件页面，在 Clear Chat 的说明开头查看版本号。Paseo 0.14.0 在这里显示默认英文说明，即使切换应用语言也是如此。
 
-Clear Chat 0.16.0.1 需要 Paseo 0.16.0 或更新的版本。在 Paseo 0.15.x 上，宿主会拒绝安装或更新这一版，请留在 Clear Chat 0.15.4.2。打开 **Settings → Plugins → Clear Chat**，可以选颜色、字体和折叠方式。
+Clear Chat 0.16.0.1 需要 Paseo 0.16.0 或更新的版本。在 Paseo 0.15.x 上，宿主会拒绝安装或更新这一版，请留在 Clear Chat 0.15.4.x。打开 **Settings → Plugins → Clear Chat**，可以选颜色、字体和折叠方式。
 
 以后要更新：
 
@@ -501,14 +501,14 @@ Clear Chat 只改变 Paseo 显示对话的方式。下面每一条都是插件�
 
 **为什么看不到回答卡片？** 要打开答题卡设置和 **助手回复 Markdown**（Assistant markdown）。最新回复要有带编号的问题，每题至少两个字母选项，并要求简短作答或标了推荐项；字母不必从 A 开始，也不必连续。代码块和引用里的问题不认。Agent 运行时可操作框隐藏，答过的框在你回复后保留为只读。误认时点 **不是选项**（Not options），这条回复重新加载后也不再出框。
 
-**支持哪些 Paseo 版本？** 0.16.0 或更新；0.16.0.1 在隔离的 Paseo 0.16.0-beta.2 主机上用合成 provider 检查过，没有真模型验收。在 Paseo 0.15.x 上宿主会拒绝这一版，请留在 Clear Chat 0.15.4.2。Clear Chat 0.15.4.2 及更早版本在 Paseo 0.13／0.12 上的旧路径见[安装](#安装)，尚未实测。
+**支持哪些 Paseo 版本？** 0.16.0 或更新；0.16.0.1 在隔离的 Paseo 0.16.0-beta.2 主机上用合成 provider 检查过，没有真模型验收。在 Paseo 0.15.x 上宿主会拒绝这一版，请留在 Clear Chat 0.15.4.x。Clear Chat 0.15.4.x 及更早版本在 Paseo 0.13／0.12 上的旧路径见[安装](#安装)，尚未实测。
 
 ## 常见问题
 
 | 问题 | 怎么办 |
 |---|---|
 | 用 Cafe 插件安装失败，或 Paseo 提示缺少 `@shikijs/core` 等 Shiki 依赖。 | 用[安装](#安装)里的 Paseo CLI 命令重试，仓库和版本标签保持不变。Clear Chat 用 `npm ci --include=dev` 安装依赖，所以运行 daemon 的主机上要有 Node.js 和 npm，网络也要能连到 npm 仓库。如果代码目录是你自己管理的，请先在那里运行 `npm ci --include=dev` 再重试。 |
-| 安装停止，提示插件需要更新的 Paseo 版本。 | Clear Chat 0.16.0.1 需要 daemon 主机和所有连接的应用都用 Paseo 0.16.0 或更新版本；在 Paseo 0.15.x 上请留在 Clear Chat 0.15.4.2。Clear Chat 0.15.4.2 及更早版本在旧宿主上的做法，请看[安装](#安装)中的 Paseo 0.13 命令及其未实测提示，以及单独的 Paseo 0.12 说明。 |
+| 安装停止，提示插件需要更新的 Paseo 版本。 | Clear Chat 0.16.0.1 需要 daemon 主机和所有连接的应用都用 Paseo 0.16.0 或更新版本；在 Paseo 0.15.x 上请留在 Clear Chat 0.15.4.x。Clear Chat 0.15.4.x 及更早版本在旧宿主上的做法，请看[安装](#安装)中的 Paseo 0.13 命令及其未实测提示，以及单独的 Paseo 0.12 说明。 |
 | Paseo 拒绝这个插件版本，或 Clear Chat 提示缺少插件设置或时间线支持。 | 把运行 daemon 的主机和所有连着的应用都更新到新版 Paseo，再重新加载 Clear Chat。Clear Chat 需要的 Paseo 版本写在 `paseo-plugin.json` 里。 |
 | 插件注册失败，Clear Chat 启动不了。 | 更新 Paseo，再重新加载 Clear Chat。还不行的话，先备份插件设置，再用 CLI 重新安装。 |
 | Clear Chat 读不到主机上的设置。 | 重新连接主机，在 **Settings → Plugins → Clear Chat** 里点 **重试**（Retry）。还不行的话，检查 daemon 能不能访问插件设置文件夹。 |
