@@ -1,3 +1,31 @@
+## [0.16.0.1] - unreleased
+
+### Upgrade notes
+
+- Clear Chat 0.16.0.1 needs Paseo 0.16.0 or newer. On Paseo 0.15.x the host refuses to install or update this version; if you are on Paseo 0.15, stay on Clear Chat 0.15.4.2.
+- Paseo 0.16.0 stable had not been released when this version was prepared; it was checked on isolated Paseo 0.16.0-beta.2 hosts with a synthetic provider, not real models.
+
+### Added
+
+- **Sidebar search.** A Search field in the Clear Chat sidebar matches conversation titles and text from conversations you have already opened; choosing a result opens that conversation ([#480](https://github.com/jasonhnd/paseo-clear-chat/issues/480)).
+- **Saved replies as buttons in the composer.** Choosing a saved reply inserts it at the cursor, keeps the existing draft, and does not send; choosing it again inserts it again ([#481](https://github.com/jasonhnd/paseo-clear-chat/issues/481)).
+- **Workspace changes for each turn.** A read-only card lists the files the workspace changed during a turn, with per-file added and deleted line counts and a read-only diff on expansion; it labels binary files, renamed files and files without a textual diff, and warns when the workspace is not a Git repository or another conversation ran at the same time ([#482](https://github.com/jasonhnd/paseo-clear-chat/issues/482), [#485](https://github.com/jasonhnd/paseo-clear-chat/issues/485)).
+- **Errors group in the sidebar.** Conversations that stopped because of an error are listed in their own group with an `Error` label and an empty state ([#483](https://github.com/jasonhnd/paseo-clear-chat/issues/483)).
+- **Finish time on Today rows.** A finished turn shows `Finished HH:mm` on its Today row, with the note "Observed locally; may be slightly late", in the local time zone ([#470](https://github.com/jasonhnd/paseo-clear-chat/issues/470)).
+
+### Test stability
+
+- Improved the stability of several tests; no user-visible change.
+
+### Known limitations
+
+- Search covers only titles and timeline text already loaded on this computer. Unloaded history, archived conversations, conversations from other providers, and older pages that were not fetched do not appear in the results.
+- A saved reply is inserted exactly as written; no space is added before or after it.
+- The errors group includes only conversations that stopped because of an error. Conversations that finished but have not been viewed are not included, and they are not counted as unread.
+- The changes card is built from snapshots taken before and after the turn. If another conversation ran in the same workspace during the turn, the changes may not all belong to that turn; if the turn was interrupted or the snapshots overlapped, the list may be incomplete. Binary files, renamed files and files with no textual diff are labelled; diffs cut at a size limit say so. A workspace that is not a Git repository shows a message instead of changes.
+- A finish time is recorded only when the app observes the turn go from running to finished. After a reload, older turns have no time and show no placeholder; a time outside the current local day is hidden while its row stays in its section.
+- Not yet verified on iOS or Android devices; tablet and foldable screen sizes were only simulated in the desktop app.
+
 ## [0.15.4.2] - 2026-11-11
 
 ### Changed
@@ -560,6 +588,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.16.0.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.4.2...v0.16.0.1
 [0.15.4.2]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.4.1...v0.15.4.2
 [0.15.4.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.3.6...v0.15.4.1
 [0.15.3.3]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.3.2...v0.15.3.3

@@ -2,11 +2,13 @@ Clear Chat changes how agent conversations look in Paseo, so an answer is easy t
 
 It is a display layer, not a provider. Finished steps fold into one row each, every tool call gets its own card, replies keep their code, links and paths, and the answer card lets you write an answer to each question in the conversation. The interface text follows the app language: English, Simplified Chinese or Japanese.
 
-## What's new in 0.15.4.2
+## What's new in 0.16.0.1
 
-- **Easier to find on the plugin list.** The one-line description on the listing page now names the answer card.
-- **The Recommended badge is readable in the dark theme.** Its text contrast rose from 2.36:1 to 12.99:1; the light theme stays at 4.63:1.
-- **Steady under the answer card.** The hint line keeps a fixed height, so the card no longer shifts when the hint text changes.
+- **Search the sidebar.** Find conversations by title, or by text from a conversation you have already opened, and open a result in one click.
+- **Saved replies as buttons.** Your saved replies appear as buttons in the composer and insert their text at the cursor without sending.
+- **See what a turn changed.** A read-only card lists the files the workspace changed during a turn, with per-file line counts and a read-only diff.
+- **Errors group.** Conversations that stopped because of an error are listed in their own group in the sidebar view.
+- **Finish time on Today rows.** A finished turn shows `Finished HH:mm` on its Today row, in your local time zone.
 
 ## What it does
 
@@ -15,6 +17,9 @@ It is a display layer, not a provider. Finished steps fold into one row each, ev
 - Opening a folded step shows its details: a bottom sheet on phones, a popover on tablets and a side panel on desktop. Details include the full input and output, and the exit code or duration when the agent reports them.
 - Replies get code highlighting with line numbers, clickable links and file paths, and folding for long code and long prompts.
 - Any message that contains text can be quoted and answered.
+- The sidebar finds conversations by title or by text already loaded on this host, and groups conversations that stopped on an error.
+- After a turn, a read-only card lists the files the workspace changed during that turn, with per-file line counts and a read-only diff.
+- Finished turns show their finish time on their Today row.
 - On a browser or the desktop app, steps can be moved between and opened with the keyboard.
 - Code blocks and tool rows can be left to other plugins when you use more than one, and the settings page shows the version of the installed build so a bug report can name it.
 
@@ -24,7 +29,7 @@ Measured 2026-11-04 on a 300-step conversation (150 tool calls), three runs per 
 
 ## Setup
 
-Clear Chat 0.15.4.2 needs Paseo 0.14.0 or later and was tested on Paseo 0.15.4.
+Clear Chat 0.16.0.1 needs Paseo 0.16.0 or later and was tested on Paseo 0.16.0-beta.2. On Paseo 0.15.x the host refuses this version; stay on Clear Chat 0.15.4.2.
 
 Installation runs `npm ci` on the daemon host, so Node.js and npm must be available there and the host must be able to reach the npm registry.
 
