@@ -202,6 +202,10 @@ test("uncorrelated failed/null normalizes only the error and preserves other eve
     assert.strictEqual(runtime.adapt(event), event);
     assert.equal(JSON.stringify(runtime.adapt(event).item.error), JSON.stringify(error));
   }
+  for (const message of ["Tool call failed", "Tool failed"]) {
+    const event = freeze({ ...original, item: { ...original.item, error: { message } } });
+    assertGenericFailure(runtime.adapt(event), event);
+  }
   for (const status of ["completed", "running", "canceled"]) {
     const event = freeze({ ...original, item: { ...original.item, status } });
     assert.strictEqual(runtime.adapt(event), event);
