@@ -117,18 +117,32 @@ test("Hermes CC store misses without creating directories and isolates sessions 
   assert.equal(await h.store.load(key("empty")), null);
 });
 
+test("Hermes CC store never publishes or poisons a key for an empty image list", async t => {
+  const h = harness(t);
+  const keep = key("kept");
+  await h.store.save(keep, [png()]);
+  const saved = await h.store.load(keep);
+  assert.ok(saved && saved.length === 1);
+  await h.store.save(keep, []);
+  assert.deepEqual(await h.store.load(keep), saved, "an existing message keeps its stored image");
+  const empty = key("empty");
+  assert.equal(await h.store.save(empty, []), "saved");
+  assert.equal(await h.store.load(empty), null);
+  assert.equal(fs.existsSync(join(h.storeRoot, createHash("sha256").update(`${empty.sessionKey}\0${empty.messageId}`).digest("hex"))), false);
+});
+
 test("Hermes CC store conflicts permanently on changed images, order, or an empty retry", async t => {
   const h = harness(t);
   for (const [id, first, second] of [
     ["changed", [png()], [png(3)]],
     ["order", [png(), png(3)], [png(3), png()]],
-    ["removed", [png()], []],
-    ["added", [], [png()]],
   ]) {
     const k = key(id);
     await h.store.save(k, first);
+    if (id === "added") assert.equal(fs.existsSync(keyDirectory(h, k)), false, "an empty save publishes nothing");
     await h.store.save(k, second);
-    assert.equal(readMeta(h, k).conflict, true);
+    if (id === "added") assert.equal(fs.existsSync(join(h.storeRoot, `.conflict-${hash(`${k.sessionKey}\0${k.messageId}`)}`)), true);
+    else assert.equal(readMeta(h, k).conflict, true);
     assert.equal(await h.store.load(k), null);
     await h.store.save(k, first);
     assert.equal(await h.createHermesCcImageStore(h.storeRoot).load(k), null);
@@ -286,7 +300,7 @@ test("Hermes CC root canonicalizes a symlinked daemon home and only writes below
   fs.renameSync(join(real, "plugin-data"), join(real, "moved"));
   const outside = join(h.root, "outside"); fs.mkdirSync(outside);
   fs.symlinkSync(outside, join(real, "plugin-data"));
-  await assert.rejects(store.save(key(), [png(3)]), /^Error: image_store_failed$/);
+  await assert.rejects(store.save(key(), [png(3)]), /^Error: image_store_failed/);
   assert.equal(await store.load(key()), null);
   assert.deepEqual(fs.readdirSync(outside), []);
 });
@@ -603,4 +617,76 @@ test("Hermes CC supports default symlinked ~/.paseo and expands an explicit ~/ h
   assert.deepEqual((await h.createHermesCcImageStore(root, { trustedRoot: real }).load(key()))[0].bytes, png().data);
   process.env.PASEO_HOME = "~/.paseo";
   assert.equal(h.hermesCcPaseoHome(), real);
+});
+
+test("Hermes CC hasStoredImages ignores an empty published directory", async t => {
+  const h = harness(t);
+  const k = key("empty-published");
+  fs.mkdirSync(h.storeRoot, { recursive: true });
+  fs.mkdirSync(keyDirectory(h, k));
+  fs.writeFileSync(join(keyDirectory(h, k), "meta.json"), JSON.stringify({ ...k, createdAt: Date.now(), images: [] }));
+  assert.equal(await h.store.hasStoredImages(k), false);
+});
+
+test("Hermes CC saving an empty image list does not create a key directory", async t => {
+  const h = harness(t);
+  const k = key("empty-save");
+  assert.equal(await h.store.save(k, []), "saved");
+  assert.equal(fs.existsSync(keyDirectory(h, k)), false);
+});
+
+test("Hermes CC same key settles as saved then conflict without keeping the second payload", async t => {
+  const h = harness(t);
+  const k = key("conflict-seq");
+  assert.equal(await h.store.save(k, [png()]), "saved");
+  assert.equal(await h.store.save(k, [png(7)]), "conflict");
+  assert.equal(await h.store.load(k), null);
+});
+
+test("Hermes CC repairs a half-written key directory and saves", async t => {
+  const h = harness(t);
+  const k = key("half-written");
+  fs.mkdirSync(h.storeRoot, { recursive: true });
+  fs.mkdirSync(keyDirectory(h, k));
+  fs.writeFileSync(join(keyDirectory(h, k), "junk"), "partial");
+  assert.equal(await h.store.save(k, [png()]), "saved");
+  assert.deepEqual((await h.store.load(k))[0].bytes, png().data);
+});
+
+test("Hermes CC maps a publish race to conflict instead of image_store_failed", async t => {
+  const fsp = require("node:fs/promises");
+  const k = key("rename-race");
+  const name = hash(`${k.sessionKey}\0${k.messageId}`);
+  const wrapped = { ...fsp, async rename(source, target) {
+    if (String(target).endsWith(`/${name}`)) throw Object.assign(new Error("exists"), { code: "EEXIST" });
+    return fsp.rename(source, target);
+  } };
+  const h = harness(t, { "node:fs/promises": wrapped });
+  assert.equal(await h.store.save(k, [png()]), "conflict");
+  assert.equal(fs.existsSync(join(h.storeRoot, `.conflict-${name}`)), true);
+  assert.equal(await h.store.load(k), null);
+});
+
+test("Hermes CC keeps the original code when the disk is full", async t => {
+  const fsp = require("node:fs/promises");
+  const wrapped = { ...fsp, async rename() { throw Object.assign(new Error("no space left"), { code: "ENOSPC" }); } };
+  const h = harness(t, { "node:fs/promises": wrapped });
+  await assert.rejects(h.store.save(key("enospc"), [png()]), (error) => {
+    assert.match(error.message, /image_store_failed: ENOSPC: no space left/);
+    assert.equal(error.code, "ENOSPC");
+    assert.equal(error.cause && error.cause.code, "ENOSPC");
+    return true;
+  });
+});
+
+test("Hermes CC keeps EMFILE on the wrapped error for retry classification", async t => {
+  const fsp = require("node:fs/promises");
+  const wrapped = { ...fsp, async rename() { throw Object.assign(new Error("too many open files"), { code: "EMFILE" }); } };
+  const h = harness(t, { "node:fs/promises": wrapped });
+  await assert.rejects(h.store.save(key("emfile"), [png()]), (error) => {
+    assert.match(error.message, /image_store_failed: EMFILE: too many open files/);
+    assert.equal(error.code, "EMFILE");
+    assert.equal(error.cause && error.cause.code, "EMFILE");
+    return true;
+  });
 });

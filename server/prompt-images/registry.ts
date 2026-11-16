@@ -7,6 +7,7 @@ import { readImageHeader } from "./image-header";
 import { claudePromptImageResolver } from "./claude";
 import { hermesCcPromptImageResolver } from "./hermes-cc";
 import type { HermesCcImageStore } from "../hermes-cc/store";
+import { nativeSessionKeyFromPersistence } from "../hermes-cc/session-key";
 
 type LookupInput = RpcInput<typeof promptImagesRpc>;
 type ImagesResult = RpcOutput<typeof promptImagesRpc>;
@@ -19,15 +20,24 @@ export interface FoundImage {
   readBytes(): Promise<Buffer>;
 }
 
+/** Durable per-message save state shared by the capture hook and lookups. */
+export interface HermesCcSaveStatusReader {
+  read(key: { sessionKey: string; messageId: string }): Promise<{ state: "pending" | "saveFailed"; at: number; reason?: string; attempts?: number } | null>;
+}
+
 export interface ResolverContext extends LookupInput {
   provider: string;
   cwd: string;
   sessionId: string | null;
+  /** Request-time session id for timeout metadata only. */
+  requestSessionId?: string | null;
   nativeHandle: string | null;
   /** Only resolver-specific storage variables, never the full provider env. */
   providerEnv?: Readonly<Record<string, string>>;
   /** Only Clear Chat's own exact-ID image store, bound at server registration. */
   hermesCcImageStore?: HermesCcImageStore;
+  /** Durable per-message save state, shared with the capture hook. */
+  saveStatus?: HermesCcSaveStatusReader;
   /** Resolvers should stop streaming/scanning when the lookup expires. */
   signal: AbortSignal;
 }
@@ -36,6 +46,10 @@ export interface ResolverContext extends LookupInput {
 export interface FoundImages {
   matchedMessages: number;
   images: FoundImage[];
+  /** The message matched, but its images were not stored. */
+  saveFailed?: boolean;
+  /** The message matched; its image save is still running. */
+  saving?: boolean;
 }
 
 /** Local adapters must read through the validated descriptor, never a saved path. */
@@ -51,6 +65,8 @@ export interface PromptImageResolver {
   matches(provider: string, command?: readonly string[]): boolean;
   /** Select a unique message; only adapters that support text fallback may use it. */
   find(context: ResolverContext): Promise<FoundImages>;
+  /** Best-effort metadata for a timeout; must stay fast and never throw out. */
+  timeoutInfo?(context: ResolverContext): Promise<{ hasStored?: boolean; saveFailed?: boolean }>;
 }
 
 export const promptImageResolvers: readonly PromptImageResolver[] = [
@@ -99,11 +115,33 @@ function headerImage(bytes: Buffer, mime: string) {
  * failures use only fixed reason/error codes; no local paths or provider errors
  * cross the RPC.
  */
+const OBSERVED_TTL_MS = 30 * 60_000;
+const OBSERVED_MAX = 1024;
+interface ObservedAgent { provider: string; cwd: string; sessionId: string | null; nativeHandle: string | null; at: number }
+const observedAgents = new Map<string, ObservedAgent>();
+function rememberAgent(agentId: string, provider: string, cwd: string, sessionId: string | null, nativeHandle: string | null): void {
+  if (!sessionId && !nativeHandle) return;
+  observedAgents.delete(agentId);
+  observedAgents.set(agentId, { provider, cwd, sessionId, nativeHandle, at: Date.now() });
+  while (observedAgents.size > OBSERVED_MAX) {
+    const oldest = observedAgents.keys().next().value;
+    if (typeof oldest !== "string") break;
+    observedAgents.delete(oldest);
+  }
+}
+function observedAgent(agentId: string): ObservedAgent | null {
+  const value = observedAgents.get(agentId);
+  if (!value) return null;
+  if (Date.now() - value.at > OBSERVED_TTL_MS) { observedAgents.delete(agentId); return null; }
+  return value;
+}
+
 export function createPromptImageHandlers(options: {
   resolvers?: readonly PromptImageResolver[];
   timeoutMs?: number;
   hermesCcImageStore?: HermesCcImageStore;
   hermesCcProviderIds?: ReadonlySet<string>;
+  saveStatus?: HermesCcSaveStatusReader;
 } = {}) {
   const resolvers = options.resolvers ?? promptImageResolvers;
   const timeoutMs = options.timeoutMs ?? 3000;
@@ -143,7 +181,66 @@ export function createPromptImageHandlers(options: {
     return result;
   }
 
-  async function find(input: LookupInput, context: PluginHandlerContext, signal: AbortSignal, check: () => void) {
+  type AgentSnapshot = { provider: string; cwd: string; persistence?: { sessionId?: string | null; nativeHandle?: string | null } | null };
+
+  async function resolverTimeoutInfo(input: LookupInput, agent: AgentSnapshot, preferRequest: boolean) {
+    const provider = agent.provider;
+    const resolver = resolvers.find(candidate => candidate === hermesCcPromptImageResolver && options.hermesCcProviderIds
+      ? options.hermesCcProviderIds.has(provider) : candidate.matches(provider));
+    if (!resolver?.timeoutInfo) return {};
+    const persistence = agent.persistence;
+    // Only the agent's own native session may be queried: a client-supplied id
+    // from another session would otherwise answer "stored / save failed" for it.
+    const ownKey = nativeSessionKeyFromPersistence(persistence?.sessionId ?? null, persistence?.nativeHandle ?? null);
+    const requestedKey = preferRequest ? nativeSessionKeyFromPersistence(input.sessionId ?? null) : null;
+    const requestSessionId = requestedKey !== null && ownKey !== null && requestedKey === ownKey ? requestedKey : null;
+    return await resolver.timeoutInfo({
+      ...input, provider, cwd: agent.cwd,
+      sessionId: persistence?.sessionId ?? null, nativeHandle: persistence?.nativeHandle ?? null,
+      requestSessionId,
+      signal: new AbortController().signal,
+      ...(options.hermesCcImageStore ? { hermesCcImageStore: options.hermesCcImageStore } : {}),
+    });
+  }
+
+  async function timeoutInfo(input: LookupInput, context: PluginHandlerContext, observed?: AgentSnapshot | null) {
+    try {
+      const ref = context.paseo.agents.ref(input.agentId);
+      const stored = observedAgent(input.agentId);
+      // C: the snapshot find() already refreshed, no second refresh at all.
+      if (observed) return await resolverTimeoutInfo(input, observed, false);
+      // B: the client-supplied session id (server-validated in the resolver).
+      if (typeof input.sessionId === "string" && input.sessionId) {
+        const current = typeof ref.current === "function" ? ref.current() : null;
+        const fromTable = stored ? { provider: stored.provider, cwd: stored.cwd, persistence: { sessionId: stored.sessionId, nativeHandle: stored.nativeHandle } } : null;
+        const agent = current ?? fromTable;
+        if (agent) return await resolverTimeoutInfo(input, agent, true);
+      }
+      // D: the bounded agent -> session table.
+      if (stored) return await resolverTimeoutInfo(input, {
+        provider: stored.provider, cwd: stored.cwd,
+        persistence: { sessionId: stored.sessionId, nativeHandle: stored.nativeHandle },
+      }, false);
+      // A: last resort, bounded so a busy daemon cannot hold the response.
+      let deadline: ReturnType<typeof setTimeout> | undefined;
+      try {
+        return await Promise.race([
+          (async () => {
+            const refreshed = await ref.refresh();
+            const agent = refreshed?.agent ?? (typeof ref.current === "function" ? ref.current() : null);
+            if (!agent) return {};
+            return await resolverTimeoutInfo(input, agent, false);
+          })(),
+          new Promise<{}>((resolve) => { deadline = setTimeout(() => resolve({}), 150); }),
+        ]);
+      } finally {
+        // Clear the fallback on the success path too: no timer outlives the race.
+        if (deadline !== undefined) clearTimeout(deadline);
+      }
+    } catch { return {}; }
+  }
+
+  async function find(input: LookupInput, context: PluginHandlerContext, signal: AbortSignal, check: () => void, observe?: (agent: AgentSnapshot) => void) {
     const ref = context.paseo.agents.ref(input.agentId);
     const refreshed = await ref.refresh();
     check();
@@ -170,6 +267,8 @@ export function createPromptImageHandlers(options: {
     if (!resolver) throw new LookupError("unknown_provider");
     const persistence = agent.persistence;
     if (persistence && persistence.provider !== provider) throw new LookupError("provider_mismatch");
+    rememberAgent(input.agentId, provider, agent.cwd, persistence?.sessionId ?? null, persistence?.nativeHandle ?? null);
+    observe?.(agent);
     // Copy only fields needed for local lookup; never pass config or metadata.
     const found = await resolver.find({
       agentId: input.agentId, messageId: input.messageId, clientMessageId: input.clientMessageId, text: input.text,
@@ -177,20 +276,22 @@ export function createPromptImageHandlers(options: {
       nativeHandle: persistence?.nativeHandle ?? null, signal,
       ...(config ? { providerEnv } : {}),
       ...(options.hermesCcImageStore ? { hermesCcImageStore: options.hermesCcImageStore } : {}),
+      ...(options.saveStatus ? { saveStatus: options.saveStatus } : {}),
     });
     check();
     if (found.matchedMessages === 0) throw new LookupError("no_match");
     if (found.matchedMessages !== 1) throw new LookupError("ambiguous");
-    return found.images;
+    return found;
   }
 
   return {
     images(input: LookupInput, context: PluginHandlerContext): Promise<ImagesResult> {
+      let observed: AgentSnapshot | null = null;
       return guarded<ImagesResult>("prompt.images", async (signal, check) => {
-        const found = await find(input, context, signal, check);
+        const found = await find(input, context, signal, check, agent => { observed = agent; });
         const images: ImagesResult["images"] = [];
         let reason: Reason | null = null;
-        for (const candidate of found) {
+        for (const candidate of found.images) {
           if (images.length === MAX_THUMBNAILS) break;
           check();
           const bytes = await candidate.readBytes();
@@ -214,13 +315,20 @@ export function createPromptImageHandlers(options: {
             reason = error instanceof LookupError ? error.reason : "invalid_image";
           }
         }
-        return { images, total: found.length, reason };
-      }, reason => ({ images: [], total: 0, reason }), result => result.reason);
+        return {
+          images, total: found.images.length, reason,
+          ...(found.saveFailed ? { saveFailed: true } : {}),
+          ...(found.saving ? { saving: true } : {}),
+        };
+      }, reason => ({ images: [], total: 0, reason }), result => result.reason)
+        .then(async (result) => result.reason === "timeout"
+          ? { ...result, ...await timeoutInfo(input, context, observed) }
+          : result);
     },
     image(input: RpcInput<typeof promptImageRpc>, context: PluginHandlerContext): Promise<ImageResult> {
       return guarded<ImageResult>("prompt.image", async (signal, check) => {
         const found = await find(input, context, signal, check);
-        const candidate = found.find(image => image.id === input.id);
+        const candidate = found.images.find(image => image.id === input.id);
         if (!candidate) throw new LookupError("not_found");
         const bytes = await candidate.readBytes();
         check();

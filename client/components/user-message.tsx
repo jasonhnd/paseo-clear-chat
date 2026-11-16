@@ -82,7 +82,30 @@ interface PastedList {
   total: number;
 }
 
-type PastedCache = PastedList | { failed: true };
+type PastedCache = PastedList | { failed: true } | { timedOut: true; hasStored?: boolean } | { saveFailed: true } | { saving: true };
+
+/** A timeout is not a result: retry once after this delay, then show the row. */
+const PASTED_RETRY_DELAY_MS = 1000;
+
+/** A just-sent message may be looked up before the daemon records the prompt. */
+export const NEW_MESSAGE_RETRY_WINDOW_MS = 15_000;
+export const NEW_MESSAGE_RETRY_DELAY_MS = 800;
+export const NEW_MESSAGE_RETRY_LIMIT = 5;
+
+/** Epoch digits arrive as a string as well; Date.parse would make it NaN. */
+function parseMessageTime(timestamp: unknown): number {
+  if (timestamp instanceof Date) return timestamp.getTime();
+  if (typeof timestamp === "number") return timestamp;
+  if (typeof timestamp === "string") return /^\d+$/.test(timestamp) ? Number(timestamp) : Date.parse(timestamp);
+  return NaN;
+}
+
+function isRecentMessage(timestamp: unknown): boolean {
+  // Both sides of the window: a clock that runs ahead of the host must not
+  // keep every mount retrying for as long as the row sits in the future.
+  const age = Date.now() - parseMessageTime(timestamp);
+  return Number.isFinite(age) && age < NEW_MESSAGE_RETRY_WINDOW_MS && age > -NEW_MESSAGE_RETRY_WINDOW_MS;
+}
 
 const pastedCache = new Map<string, PastedCache>();
 const pastedInflight = new Map<string, Promise<PastedCache>>();
@@ -121,7 +144,14 @@ function readPastedList(result: {
   images?: { id?: string; thumbDataUri?: string; mime?: string; width?: number | null; height?: number | null }[];
   total?: number;
   reason?: string | null;
+  saveFailure?: { reason?: string; attempts?: number } | null;
+  saveFailed?: boolean;
+  hasStored?: boolean;
+  saving?: boolean;
 } | null | undefined): PastedCache {
+  if (result?.saveFailure || result?.saveFailed) return { saveFailed: true };
+  if (result?.saving) return { saving: true };
+  if (result?.reason === "timeout") return { timedOut: true, hasStored: result.hasStored === true };
   if (!result || !Array.isArray(result.images)) return { failed: true };
   const images: PastedThumb[] = [];
   for (const image of result.images) {
@@ -226,6 +256,9 @@ export function UserMessage({
     const cached = pastedCache.get(cacheKey);
     return cached ? { key: cacheKey, value: cached } : null;
   });
+  const [retryNonce, setRetryNonce] = useState(0);
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  const [savingPolls, setSavingPolls] = useState(0);
   const [viewerId, setViewerId] = useState<string | null>(null);
   const [viewerKey, setViewerKey] = useState(cacheKey);
   const [fullUri, setFullUri] = useState<string | null>(null);
@@ -270,7 +303,7 @@ export function UserMessage({
     let cancelled = false;
     let pendingLookup = pastedInflight.get(flightKey);
     if (!pendingLookup) {
-      pendingLookup = Promise.resolve()
+      const lookup = () => Promise.resolve()
         .then(() => loadImages({
           agentId,
           messageId: messageId ?? null,
@@ -278,8 +311,36 @@ export function UserMessage({
           text,
         }))
         .then((result) => readPastedList(result))
-        .catch(() => ({ failed: true }) satisfies PastedCache)
+        .catch(() => ({ failed: true }) satisfies PastedCache);
+      // A timeout is retried once. A just-sent message may also be looked up
+      // before the daemon records the prompt, so retry that empty result a few
+      // times instead of pinning it; historical rows keep the old behaviour.
+      const retryNewMessage = pending || isRecentMessage(timestamp);
+      pendingLookup = lookup()
+        .then(async (value) => {
+          if (!retryNewMessage && "timedOut" in value) {
+            await new Promise((resolve) => setTimeout(resolve, PASTED_RETRY_DELAY_MS));
+            if (cancelled) return value;
+            return lookup();
+          }
+          for (let attempt = 0; attempt < NEW_MESSAGE_RETRY_LIMIT && retryNewMessage
+            && ("timedOut" in value || (isPastedList(value) && value.images.length === 0 && value.total === 0)); attempt += 1) {
+            if (!pending && !isRecentMessage(timestamp)) break;
+            await new Promise((resolve) => setTimeout(resolve, NEW_MESSAGE_RETRY_DELAY_MS));
+            if (cancelled || (!pending && !isRecentMessage(timestamp))) return value;
+            value = await lookup();
+          }
+          return value;
+        })
         .then((value) => {
+          // Saving and timeouts are transient: caching them would pin the row and stop polling.
+          const empty = isPastedList(value) && value.images.length === 0 && value.total === 0;
+          // A just-sent message may be looked up before the daemon records its
+          // prompt; never pin that transient empty result.
+          if ("saving" in value || "timedOut" in value || (empty && retryNewMessage)) {
+            pastedInflight.delete(flightKey);
+            return value;
+          }
           if (share) pastedCache.set(cacheKey, value);
           else pastedAsked.add(cacheKey);
           pastedInflight.delete(flightKey);
@@ -293,9 +354,26 @@ export function UserMessage({
     return () => {
       cancelled = true;
     };
-  }, [agentId, cacheKey, clientMessageId, loadImages, messageId, text, matchesPrefix]);
+  }, [agentId, cacheKey, clientMessageId, loadImages, messageId, text, matchesPrefix, retryNonce, refreshNonce, pending]);
 
   const pastedNow = pasted?.key === cacheKey ? pasted.value : null;
+  const timedOutState = pastedNow !== null && !isPastedList(pastedNow) && "timedOut" in pastedNow ? pastedNow : null;
+  const retryVisible = timedOutState !== null && (attachmentCount > 0 || timedOutState.hasStored === true);
+  const saveFailed = pastedNow !== null && !isPastedList(pastedNow) && "saveFailed" in pastedNow;
+  const saving = pastedNow !== null && !isPastedList(pastedNow) && "saving" in pastedNow;
+  useEffect(() => {
+    if (!saving || savingPolls >= 60) return;
+    const timer = setTimeout(() => {
+      setSavingPolls((value) => value + 1);
+      setRefreshNonce((value) => value + 1);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [saving, savingPolls]);
+  if (!saving && savingPolls !== 0) setSavingPolls(0);
+  const retryImages = () => {
+    setPasted(null);
+    setRetryNonce((value) => value + 1);
+  };
   const list = isPastedList(pastedNow) ? pastedNow : null;
   const foundImages = list !== null && (list.total > 0 || list.images.length > 0);
   // Remember an image result even if the lookup key later changes for this message.
@@ -306,7 +384,8 @@ export function UserMessage({
   const folded = canFold && !opened && foldKey.text === text && foldKey.messageId === messageId && foldKey.clientMessageId === clientMessageId;
   const firstLine = text.split(/\r\n|\r|\n/, 1)[0] ?? "";
   const summary = Array.from(firstLine).length > 120 ? `${Array.from(firstLine).slice(0, 119).join("")}…` : firstLine;
-  const shown = (list?.images ?? []).filter((image) => !hiddenThumbs.has(image.id)).slice(0, 3);
+  const rawShown = (list?.images ?? []).slice(0, 3);
+  const shown = rawShown.filter((image) => !hiddenThumbs.has(image.id));
   const extra = list ? Math.max(0, list.total - Math.min(3, list.images.length)) : 0;
   const openImage = shown.find((image) => image.id === activeViewerId) ?? list?.images.find((image) => image.id === activeViewerId) ?? null;
 
@@ -465,6 +544,41 @@ export function UserMessage({
           fontWeight: "600",
           color: tokens.userText,
         },
+        pastedBroken: {
+          justifyContent: "center",
+          alignItems: "center",
+          padding: 6,
+        },
+        pastedBrokenText: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(12),
+          color: tokens.userTextMuted,
+        },
+        pastedRetryRow: {
+          marginTop: 8,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 8,
+        },
+        pastedRetryText: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(12),
+          color: tokens.userTextMuted,
+        },
+        pastedRetryButton: {
+          minHeight: 28,
+          paddingHorizontal: 10,
+          borderRadius: radius.chip,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: tokens.userBorder,
+        },
+        pastedRetryButtonText: {
+          fontFamily: tokens.fontUi,
+          fontSize: tokens.fs(12),
+          fontWeight: "600",
+          color: tokens.userText,
+        },
         viewerBackdrop: {
           flex: 1,
           alignItems: "center",
@@ -566,10 +680,19 @@ export function UserMessage({
             {(shownText) => <Text selectable style={styles.text}>{shownText}</Text>}
           </MessageOutput>
         )}
-        {shown.length > 0 ? (
+        {rawShown.length > 0 ? (
           <View style={styles.pastedRow}>
-            {shown.map((image) => {
+            {rawShown.map((image) => {
               const frame = fitFrame(image, thumbMax, MAX_THUMB_HEIGHT);
+              if (hiddenThumbs.has(image.id)) {
+                return (
+                  <View key={image.id} testID="prompt-pasted-broken" style={[styles.thumb, styles.pastedBroken, frame]}>
+                    <Text selectable style={styles.pastedBrokenText}>
+                      {t("prompt.imageUnavailable")}
+                    </Text>
+                  </View>
+                );
+              }
               return (
                 <Pressable
                   key={image.id}
@@ -601,6 +724,32 @@ export function UserMessage({
                 <Text style={styles.moreText}>{t("prompt.moreImages", { count: extra })}</Text>
               </View>
             ) : null}
+          </View>
+        ) : null}
+        {saving ? (
+          <View testID="prompt-pasted-saving" style={styles.pastedRow}>
+            <Text selectable style={styles.pastedBrokenText}>{t("prompt.imageSaving")}</Text>
+          </View>
+        ) : null}
+        {retryVisible ? (
+          <View testID="prompt-pasted-retry" style={styles.pastedRetryRow}>
+            <Text selectable style={styles.pastedRetryText}>
+              {t("prompt.imagesDidNotLoad")}
+            </Text>
+            <Pressable
+              testID="prompt-pasted-retry-button"
+              accessibilityRole="button"
+              accessibilityLabel={t("prompt.retryImages")}
+              onPress={retryImages}
+              style={styles.pastedRetryButton}
+            >
+              <Text style={styles.pastedRetryButtonText}>{t("prompt.retryImages")}</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        {saveFailed ? (
+          <View testID="prompt-pasted-save-failed" style={styles.pastedRow}>
+            <Text selectable style={styles.pastedBrokenText}>{t("prompt.imageNotSaved")}</Text>
           </View>
         ) : null}
         {activeViewerId && openImage ? (

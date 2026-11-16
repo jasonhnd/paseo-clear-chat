@@ -221,6 +221,130 @@ test("a timed-out resolver cannot start a later image read or produce another lo
   assert.equal(h.logs.length, 1);
 });
 
+test("prompt.images returns the durable save state from the hermes-cc resolver", async () => {
+  const h = harness();
+  const resolver = h.load("server/prompt-images/hermes-cc.ts").hermesCcPromptImageResolver;
+  const persistence = `plugin:${JSON.stringify({ version: 1, data: { sessionId: "native" } })}`;
+  const make = (state) => h.createPromptImageHandlers({
+    resolvers: [resolver],
+    hermesCcProviderIds: new Set(["hermes-cc"]),
+    hermesCcImageStore: { async load() { return null; } },
+    saveStatus: { async read() { return state; } },
+  });
+  const ctx = { paseo: { agents: { ref: () => ({
+    async refresh() { return { agent: { provider: "hermes-cc", cwd: ".", persistence: { provider: "hermes-cc", sessionId: persistence } } }; },
+    current() { return null; },
+  }) } } };
+  const saving = await make({ state: "pending", at: Date.now() }).images(input, ctx);
+  assert.equal(saving.saving, true);
+  const failed = await make({ state: "saveFailed", at: Date.now(), reason: "image_lock_timeout", attempts: 4 }).images(input, ctx);
+  assert.equal(failed.saveFailed, true);
+});
+
+const hermesCtx = () => {
+  const persistence = `plugin:${JSON.stringify({ version: 1, data: { sessionId: "native" } })}`;
+  return { paseo: { agents: { ref: () => ({
+    async refresh() { return { agent: { provider: "hermes-cc", cwd: ".", persistence: { provider: "hermes-cc", sessionId: persistence } } }; },
+    current() { return null; },
+  }) } } };
+};
+
+test("a save in flight reports saving while the store lock still blocks the lookup", async () => {
+  const h = harness();
+  const resolver = h.load("server/prompt-images/hermes-cc.ts").hermesCcPromptImageResolver;
+  let loads = 0;
+  const handlers = h.createPromptImageHandlers({
+    timeoutMs: 20,
+    resolvers: [resolver],
+    hermesCcProviderIds: new Set(["hermes-cc"]),
+    // The save holds the store lock: load() never settles inside the budget.
+    hermesCcImageStore: { load() { loads += 1; return new Promise(() => {}); } },
+    saveStatus: { async read() { return { state: "pending", at: Date.now() }; } },
+  });
+  const result = await handlers.images(input, hermesCtx());
+  assert.equal(result.saving, true, "a pending save is not a timeout");
+  assert.equal(result.images.length, 0);
+  assert.equal(loads, 0, "the resolver must not wait on the locked store");
+});
+
+test("a failed save reports saveFailed while the store lock still blocks the lookup", async () => {
+  const h = harness();
+  const resolver = h.load("server/prompt-images/hermes-cc.ts").hermesCcPromptImageResolver;
+  let loads = 0;
+  const handlers = h.createPromptImageHandlers({
+    timeoutMs: 20,
+    resolvers: [resolver],
+    hermesCcProviderIds: new Set(["hermes-cc"]),
+    hermesCcImageStore: { load() { loads += 1; return new Promise(() => {}); } },
+    saveStatus: { async read() { return { state: "saveFailed", at: Date.now(), reason: "image_lock_timeout", attempts: 4 }; } },
+  });
+  const result = await handlers.images(input, hermesCtx());
+  assert.equal(result.saveFailed, true);
+  assert.equal(loads, 0);
+});
+
+test("a status read that never settles falls through to the stored images", async () => {
+  const h = harness();
+  const resolver = h.load("server/prompt-images/hermes-cc.ts").hermesCcPromptImageResolver;
+  const bytes = await png();
+  const handlers = h.createPromptImageHandlers({
+    resolvers: [resolver],
+    hermesCcProviderIds: new Set(["hermes-cc"]),
+    hermesCcImageStore: { async load() { return [{ mime: "image/png", sha256: "sha", bytes }]; } },
+    saveStatus: { read() { return new Promise(() => {}); } },
+  });
+  const result = await handlers.images(input, hermesCtx());
+  assert.equal(result.total, 1, "a stalled status read counts as no status");
+  assert.equal(result.saving, undefined);
+});
+
+test("a status read that throws falls through to the stored images", async () => {
+  const h = harness();
+  const resolver = h.load("server/prompt-images/hermes-cc.ts").hermesCcPromptImageResolver;
+  const bytes = await png();
+  const handlers = h.createPromptImageHandlers({
+    resolvers: [resolver],
+    hermesCcProviderIds: new Set(["hermes-cc"]),
+    hermesCcImageStore: { async load() { return [{ mime: "image/png", sha256: "sha", bytes }]; } },
+    saveStatus: { async read() { throw new Error("status_unreadable"); } },
+  });
+  const result = await handlers.images(input, hermesCtx());
+  assert.equal(result.total, 1, "a failed status read counts as no status");
+  assert.equal(result.saveFailed, undefined);
+});
+
+test("saveFailed wins over pending when the two ids disagree", async () => {
+  const h = harness();
+  const resolver = h.load("server/prompt-images/hermes-cc.ts").hermesCcPromptImageResolver;
+  const handlers = h.createPromptImageHandlers({
+    timeoutMs: 20,
+    resolvers: [resolver],
+    hermesCcProviderIds: new Set(["hermes-cc"]),
+    hermesCcImageStore: { load() { return new Promise(() => {}); } },
+    saveStatus: { async read({ messageId }) { return { state: messageId === input.messageId ? "pending" : "saveFailed", at: Date.now() }; } },
+  });
+  const result = await handlers.images(input, hermesCtx());
+  assert.equal(result.saveFailed, true);
+  assert.notEqual(result.saving, true);
+});
+
+test("no save state keeps the stored images path", async () => {
+  const h = harness();
+  const resolver = h.load("server/prompt-images/hermes-cc.ts").hermesCcPromptImageResolver;
+  const bytes = await png();
+  const handlers = h.createPromptImageHandlers({
+    resolvers: [resolver],
+    hermesCcProviderIds: new Set(["hermes-cc"]),
+    hermesCcImageStore: { async load() { return [{ mime: "image/png", sha256: "sha", bytes }]; } },
+    saveStatus: { async read() { return null; } },
+  });
+  const result = await handlers.images(input, hermesCtx());
+  assert.equal(result.total, 1);
+  assert.equal(result.images.length, 1);
+  assert.equal(result.saving, undefined);
+  assert.equal(result.saveFailed, undefined);
+});
+
 test("full-image lookups also time out with nullable fields and one debug line", async () => {
   const h = harness();
   const handlers = h.createPromptImageHandlers({ timeoutMs: 20, resolvers: [resolver(async () => [{
@@ -914,4 +1038,100 @@ test("JSONL skips oversized valid lines, resumes at the next record and handles 
   assert.equal(records.length, 3);
   assert.deepEqual(records.slice(0, 2), [{ before: 1 }, { after: "🎉" }]);
   assert.equal(records[2].length, h.MAX_JSONL_LINE_BYTES - 2);
+});
+
+test("timeout metadata refreshes when current() is empty", async () => {
+  const h = harness();
+  const never = () => new Promise(() => {});
+  const handlers = h.createPromptImageHandlers({ timeoutMs: 20, resolvers: [{
+    ...resolver(never),
+    timeoutInfo: async () => ({ hasStored: true }),
+  }] });
+  const ctx = { paseo: { agents: { ref: () => ({
+    async refresh() { return { agent: { provider: "sample", cwd: ".", persistence: { provider: "sample", sessionId: "s" } } }; },
+    current() { return null; },
+  }) } } };
+  const result = await handlers.images(input, ctx);
+  assert.equal(result.reason, "timeout");
+  assert.equal(result.hasStored, true);
+});
+
+test("timeout metadata reuses the snapshot that find already refreshed", async () => {
+  const h = harness();
+  let calls = 0, seen;
+  const probe = { matches: () => true, async find() { return new Promise(() => {}); },
+    async timeoutInfo(ctx) { seen = ctx; return { hasStored: true }; } };
+  const handlers = h.createPromptImageHandlers({ timeoutMs: 20, resolvers: [probe] });
+  const fresh = "plugin:" + JSON.stringify({ version: 1, data: { sessionId: "fresh" } });
+  const ctx = { paseo: { agents: { ref: () => ({
+    current: () => null,
+    refresh: async () => { calls++; return { agent: { provider: "sample", cwd: ".", persistence: { provider: "sample", sessionId: fresh, nativeHandle: null } } }; },
+  }) } } };
+  const result = await handlers.images({ agentId: input.agentId, messageId: "m-c", text: "t" }, ctx);
+  assert.equal(result.reason, "timeout");
+  assert.equal(result.hasStored, true);
+  assert.equal(calls, 1, "find refreshed once; timeout metadata does not refresh again");
+  assert.equal(seen.sessionId, fresh);
+});
+
+test("timeout metadata falls back to the bounded session table", async () => {
+  const h = harness();
+  const fresh = "plugin:" + JSON.stringify({ version: 1, data: { sessionId: "tabled" } });
+  const ok = { matches: () => true, async find() { return { matchedMessages: 0, images: [] }; } };
+  const handlersOk = h.createPromptImageHandlers({ timeoutMs: 100, resolvers: [ok] });
+  const primeCtx = { paseo: { agents: { ref: () => ({ current: () => null,
+    refresh: async () => ({ agent: { provider: "sample", cwd: ".", persistence: { provider: "sample", sessionId: fresh, nativeHandle: null } } }) }) } } };
+  await handlersOk.images({ agentId: "agent-table", messageId: "m-d1", text: "t" }, primeCtx);
+  let seen;
+  const probe = { matches: () => true, async find() { return new Promise(() => {}); },
+    async timeoutInfo(ctx) { seen = ctx; return { hasStored: true }; } };
+  const handlers = h.createPromptImageHandlers({ timeoutMs: 20, resolvers: [probe] });
+  const timeoutCtx = { paseo: { agents: { ref: () => ({ current: () => null, refresh: () => new Promise(() => {}) }) } } };
+  const result = await handlers.images({ agentId: "agent-table", messageId: "m-d2", text: "t" }, timeoutCtx);
+  assert.equal(result.reason, "timeout");
+  assert.equal(result.hasStored, true);
+  assert.equal(seen.sessionId, fresh);
+});
+
+test("timeout metadata only uses the agent's own native session id", async () => {
+  const h = harness();
+  const own = "plugin:" + JSON.stringify({ version: 1, data: { sessionId: "own" } });
+  const other = "plugin:" + JSON.stringify({ version: 1, data: { sessionId: "other" } });
+  const seen = [];
+  const probe = { matches: () => true, async find() { return new Promise(() => {}); },
+    async timeoutInfo(ctx) { seen.push(ctx); return { hasStored: true }; } };
+  const handlers = h.createPromptImageHandlers({ timeoutMs: 20, resolvers: [probe] });
+  // refresh never settles, so the request id (B) is the only session source offered.
+  const ctx = { paseo: { agents: { ref: () => ({
+    current: () => ({ provider: "sample", cwd: ".", persistence: { provider: "sample", sessionId: own, nativeHandle: null } }),
+    refresh: () => new Promise(() => {}),
+  }) } } };
+  for (const sessionId of [other, "other-plain", own]) {
+    const result = await handlers.images({ agentId: `agent-b-${seen.length}`, messageId: "m-b", text: "t", sessionId }, ctx);
+    assert.equal(result.reason, "timeout");
+    assert.equal(result.hasStored, true);
+  }
+  // A foreign or unusable id never becomes the queried session: C/D use the agent's own one.
+  assert.equal(seen[0].requestSessionId, null);
+  assert.equal(seen[0].sessionId, own);
+  assert.equal(seen[1].requestSessionId, null);
+  assert.equal(seen[1].sessionId, own);
+  // The agent's own id is accepted, normalized to its native key.
+  assert.equal(seen[2].requestSessionId, "own");
+  assert.equal(seen[2].sessionId, own);
+});
+
+test("prompt.images keeps hasStored and saveFailed in its output schema", async () => {
+  const h = harness();
+  // The client reads hasStored from the response, so the output schema must keep it.
+  const parsed = h.promptImagesRpc.output.parse({ ...empty("timeout"), hasStored: true, saveFailed: true });
+  assert.equal(parsed.hasStored, true);
+  assert.equal(parsed.saveFailed, true);
+  const probe = { matches: () => true, async find() { return new Promise(() => {}); },
+    async timeoutInfo() { return { hasStored: true }; } };
+  const handlers = h.createPromptImageHandlers({ timeoutMs: 20, resolvers: [probe] });
+  const result = await handlers.images(input, context());
+  assert.equal(result.reason, "timeout");
+  assert.equal(result.hasStored, true);
+  assert.equal(h.promptImagesRpc.output.parse(result).hasStored, true);
 });
