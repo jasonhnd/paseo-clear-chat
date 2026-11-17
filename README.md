@@ -41,9 +41,9 @@
 
 ## What's new in 0.16.1.1
 
-- **Search the sidebar.** A **Search** field in the sidebar finds conversations by title, or by text from a conversation you have already opened; choosing a result opens that conversation. If nothing matches, it shows "No matching conversations." Only titles and timeline text already loaded on this host are searched: unloaded history, archived conversations, other providers and older pages that were not fetched are not included ([#480](https://github.com/jasonhnd/paseo-clear-chat/issues/480)).
+- **Sidebar search.** Search conversation titles and fetched timeline text on the current host. The sidebar fetches up to 100 recent entries per accessible conversation; choosing a result opens that conversation. ([#480](https://github.com/jasonhnd/paseo-clear-chat/issues/480)).
 - **Saved replies as buttons.** In the normal composer, your saved replies appear as buttons. Choosing one inserts its text at the cursor and keeps what you had already typed; choosing it again inserts it again. Nothing is sent until you press Send ([#481](https://github.com/jasonhnd/paseo-clear-chat/issues/481)).
-- **See what a turn changed.** When a turn ends, a **Workspace changes during this turn** card lists the files the workspace changed during that turn, with `+added / -deleted` line counts for each file; expanding a file shows its read-only diff. The card says when the workspace is not a Git repository, and when another conversation was running in the same workspace at the same time, so the changes may not all belong to that turn. Binary files, renamed files and files with no textual diff are labelled, and a diff cut at a size limit says so ([#482](https://github.com/jasonhnd/paseo-clear-chat/issues/482), [#485](https://github.com/jasonhnd/paseo-clear-chat/issues/485)).
+- **Workspace changes.** When snapshots identify workspace changes, a read-only card lists the changed files. Available text files can show line counts and an expandable diff. The file list comes from before/after snapshots; counts and diffs compare the end state with Git HEAD and may include edits made before the turn. Binary or untracked files and files beyond the count or size limits may lack counts or diffs. Concurrent conversations can contribute changes; no card appears when no visible change is found. ([#482](https://github.com/jasonhnd/paseo-clear-chat/issues/482), [#485](https://github.com/jasonhnd/paseo-clear-chat/issues/485)).
 - **An Errors group.** The sidebar view has an **Errors** group listing conversations that stopped because of an error, with an `Error` label; when there are none it shows "No conversations stopped with an error." ([#483](https://github.com/jasonhnd/paseo-clear-chat/issues/483)).
 - **Finish time on Today rows.** Today rows end with `Finished HH:mm`, with the grey note "Observed locally; may be slightly late", in your local time zone. A time is recorded only when the app sees a turn go from running to finished; a turn that ended before the page was open has no time ([#470](https://github.com/jasonhnd/paseo-clear-chat/issues/470)).
 
@@ -101,7 +101,7 @@ paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.16.1.1
 
 Open Paseo’s plugins page and look for the version at the start of the Clear Chat description. Paseo 0.14.0 displays the default English description there even when the app language is changed.
 
-Clear Chat 0.16.1.1 needs Paseo 0.16.0 or later. On Paseo 0.15.x the host refuses to install or update this version; stay on Clear Chat 0.15.4.x. Open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
+Clear Chat 0.16.1.1 needs Paseo 0.16.0 or later. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x. Open **Settings → Plugins → Clear Chat** to choose colours, fonts and folding.
 
 To update later:
 
@@ -423,7 +423,7 @@ What to know:
 
 ## Performance
 
-Measured on 2026-11-04 by the project's acceptance run: one 300-step conversation (150 tool calls and 150 status updates), opened from the sidebar, three runs per state, on a cloud test machine with 4 cores and 8 GB, using Playwright's Chromium, Clear Chat at commit `bcf896b7`.
+Measured on 2026-11-04 by the project's acceptance run: one 300-step conversation (150 tool calls and 150 status updates), opened from the sidebar, three runs per state, on a cloud test machine with 4 cores and 8 GB, using Playwright's Chromium.
 
 | State | First screen (ms, three runs) | What the timeline shows |
 | --- | --- | --- |
@@ -501,7 +501,7 @@ Numbers are issues, pull requests and discussions in Paseo's official repository
 
 **Why do I not see the answer card?** Turn on its setting and **Assistant markdown**. The latest reply must ask numbered questions with at least two lettered options each, and either request a short-form answer or mark a recommendation. Letters need not start at A or be consecutive. Questions inside code blocks or quotations are ignored. The operable frame is hidden while the agent runs; answered frames stay read-only after you reply. **Not options** hides a false detection for that reply, including after reload.
 
-**Which Paseo versions work?** 0.16.0 or later; 0.16.1.1 was checked on isolated Paseo 0.16.1 hosts with a synthetic provider, not real models. On Paseo 0.15.x the host refuses this version: stay on Clear Chat 0.15.4.x. Clear Chat 0.15.4.x and older have the Paseo 0.13 and 0.12 paths described under [Install](#install), still untested.
+**Which Paseo versions work?** 0.16.0 or later; 0.16.1.1 was validated on Paseo 0.16.1. Real-model operation was not part of this validation. On Paseo 0.15.x this version cannot run normally: stay on Clear Chat 0.15.4.x. Clear Chat 0.15.4.x and older have the Paseo 0.13 and 0.12 paths described under [Install](#install), still untested.
 
 ## Troubleshooting
 

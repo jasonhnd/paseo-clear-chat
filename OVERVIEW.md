@@ -4,9 +4,9 @@ It is a display layer, not a provider. Finished steps fold into one row each, ev
 
 ## What's new in 0.16.1.1
 
-- **Search the sidebar.** Find conversations by title, or by text from a conversation you have already opened, and open a result in one click.
+- **Sidebar search.** Search conversation titles and fetched timeline text on the current host. The sidebar fetches up to 100 recent entries per accessible conversation; choosing a result opens that conversation. ([#480](https://github.com/jasonhnd/paseo-clear-chat/issues/480)).
 - **Saved replies as buttons.** Your saved replies appear as buttons in the composer and insert their text at the cursor without sending.
-- **See what a turn changed.** A read-only card lists the files the workspace changed during a turn, with per-file line counts and a read-only diff.
+- **Workspace changes.** When snapshots identify workspace changes, a read-only card lists the changed files. Available text files can show line counts and an expandable diff. The file list comes from before/after snapshots; counts and diffs compare the end state with Git HEAD and may include edits made before the turn. Binary or untracked files and files beyond the count or size limits may lack counts or diffs. Concurrent conversations can contribute changes; no card appears when no visible change is found. ([#482](https://github.com/jasonhnd/paseo-clear-chat/issues/482), [#485](https://github.com/jasonhnd/paseo-clear-chat/issues/485)).
 - **Errors group.** Conversations that stopped because of an error are listed in their own group in the sidebar view.
 - **Finish time on Today rows.** A finished turn shows `Finished HH:mm` on its Today row, in your local time zone.
 
@@ -18,18 +18,18 @@ It is a display layer, not a provider. Finished steps fold into one row each, ev
 - Replies get code highlighting with line numbers, clickable links and file paths, and folding for long code and long prompts.
 - Any message that contains text can be quoted and answered.
 - The sidebar finds conversations by title or by text already loaded on this host, and groups conversations that stopped on an error.
-- After a turn, a read-only card lists the files the workspace changed during that turn, with per-file line counts and a read-only diff.
+- When snapshots identify workspace changes, a read-only card lists the changed files. Available text files can show line counts and an expandable diff. The file list comes from before/after snapshots; counts and diffs compare the end state with Git HEAD and may include edits made before the turn. Binary or untracked files and files beyond the count or size limits may lack counts or diffs. Concurrent conversations can contribute changes; no card appears when no visible change is found.
 - Finished turns show their finish time on their Today row.
 - On a browser or the desktop app, steps can be moved between and opened with the keyboard.
 - Code blocks and tool rows can be left to other plugins when you use more than one, and the settings page shows the version of the installed build so a bug report can name it.
 
 ## Performance
 
-Measured 2026-11-04 on a 300-step conversation (150 tool calls), three runs per state, on a 4-core, 8 GB cloud test machine with Playwright's Chromium, Clear Chat at commit `bcf896b7`: first screen 673–843 ms with Clear Chat on, 387–444 ms with it off. Native Paseo is quicker because it folds the whole turn into one row; Clear Chat shows each step, and that is what it is for. The repository README documents the method and the runner.
+Measured 2026-11-04 on a 300-step conversation (150 tool calls), three runs per state, on a 4-core, 8 GB cloud test machine with Playwright's Chromium: first screen 673–843 ms with Clear Chat on, 387–444 ms with it off. Native Paseo is quicker because it folds the whole turn into one row; Clear Chat shows each step, and that is what it is for. The repository README documents the method and the runner.
 
 ## Setup
 
-Clear Chat 0.16.1.1 needs Paseo 0.16.0 or later and was tested on Paseo 0.16.1. On Paseo 0.15.x the host refuses this version; stay on Clear Chat 0.15.4.x.
+Clear Chat 0.16.1.1 needs Paseo 0.16.0 or later and was tested on Paseo 0.16.1. On Paseo 0.15.x this version cannot run normally; stay on Clear Chat 0.15.4.x.
 
 Installation runs `npm ci` on the daemon host, so Node.js and npm must be available there and the host must be able to reach the npm registry.
 
@@ -62,5 +62,5 @@ Clear Chat changes only how Paseo shows a conversation; the repository README li
 - When a code block is drawn by Paseo, its own **Copy** button is about 22 × 22 px on a phone-width screen and does not include trailing blank lines; the plugin interface offers no way to resize that button.
 - Pasted images in your original Hermes agents need the **·CC** provider copy, because Paseo removes the images before a plugin sees them.
 - At phone width, Enter in Paseo's input box inserts a newline; use its Send button. This is host behaviour and was also seen with the previous release and with Clear Chat disabled.
-- This release was checked on isolated hosts with a synthetic provider, not with real models; real devices and the native phone apps were not verified.
+- Real-model operation, physical devices and the native phone apps were not verified for this release.
 - Removing the plugin deletes its settings; back them up first.

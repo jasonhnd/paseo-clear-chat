@@ -1,15 +1,15 @@
-## [0.16.1.1] - 2026-11-17
+## [0.16.1.1] - 2026-11-18
 
 ### Upgrade notes
 
-- Clear Chat 0.16.1.1 needs Paseo 0.16.0 or newer. On Paseo 0.15.x the host refuses to install or update this version; if you are on Paseo 0.15, stay on Clear Chat 0.15.4.x.
-- Checked on isolated Paseo 0.16.1 hosts with a synthetic provider, not real models.
+- Clear Chat 0.16.1.1 needs Paseo 0.16.0 or newer. On Paseo 0.15.x this version cannot be installed or run normally; if you are on Paseo 0.15, stay on Clear Chat 0.15.4.x.
+- Validated on Paseo 0.16.1. Real-model operation was not part of this release validation.
 
 ### Added
 
-- **Sidebar search.** A Search field in the Clear Chat sidebar matches conversation titles and text from conversations you have already opened; choosing a result opens that conversation ([#480](https://github.com/jasonhnd/paseo-clear-chat/issues/480)).
+- **Sidebar search.** Search conversation titles and fetched timeline text on the current host. The sidebar fetches up to 100 recent entries per accessible conversation; choosing a result opens that conversation. ([#480](https://github.com/jasonhnd/paseo-clear-chat/issues/480)).
 - **Saved replies as buttons in the composer.** Choosing a saved reply inserts it at the cursor, keeps the existing draft, and does not send; choosing it again inserts it again ([#481](https://github.com/jasonhnd/paseo-clear-chat/issues/481)).
-- **Workspace changes for each turn.** A read-only card lists the files the workspace changed during a turn, with per-file added and deleted line counts and a read-only diff on expansion; it labels binary files, renamed files and files without a textual diff, and warns when the workspace is not a Git repository or another conversation ran at the same time ([#482](https://github.com/jasonhnd/paseo-clear-chat/issues/482), [#485](https://github.com/jasonhnd/paseo-clear-chat/issues/485)).
+- **Workspace changes.** When snapshots identify workspace changes, a read-only card lists the changed files. Available text files can show line counts and an expandable diff. The file list comes from before/after snapshots; counts and diffs compare the end state with Git HEAD and may include edits made before the turn. Binary or untracked files and files beyond the count or size limits may lack counts or diffs. Concurrent conversations can contribute changes; no card appears when no visible change is found. ([#482](https://github.com/jasonhnd/paseo-clear-chat/issues/482), [#485](https://github.com/jasonhnd/paseo-clear-chat/issues/485)).
 - **Errors group in the sidebar.** Conversations that stopped because of an error are listed in their own group with an `Error` label and an empty state ([#483](https://github.com/jasonhnd/paseo-clear-chat/issues/483)).
 - **Finish time on Today rows.** A finished turn shows `Finished HH:mm` on its Today row, with the note "Observed locally; may be slightly late", in the local time zone ([#470](https://github.com/jasonhnd/paseo-clear-chat/issues/470)).
 
@@ -19,10 +19,10 @@
 
 ### Known limitations
 
-- Search covers only titles and timeline text already loaded on this computer. Unloaded history, archived conversations, conversations from other providers, and older pages that were not fetched do not appear in the results.
+- Search covers accessible conversation titles and fetched timeline tail pages on this host, up to 100 recent entries per conversation. Archived conversations, other providers, unavailable conversations and older pages that were not fetched are not searched.
 - A saved reply is inserted exactly as written; no space is added before or after it.
 - The errors group includes only conversations that stopped because of an error. Conversations that finished but have not been viewed are not included, and they are not counted as unread.
-- The changes card is built from snapshots taken before and after the turn. If another conversation ran in the same workspace during the turn, the changes may not all belong to that turn; if the turn was interrupted or the snapshots overlapped, the list may be incomplete. Binary files, renamed files and files with no textual diff are labelled; diffs cut at a size limit say so. A workspace that is not a Git repository shows a message instead of changes.
+- When snapshots identify workspace changes, a read-only card lists the changed files. Available text files can show line counts and an expandable diff. The file list comes from before/after snapshots; counts and diffs compare the end state with Git HEAD and may include edits made before the turn. Binary or untracked files and files beyond the count or size limits may lack counts or diffs. Concurrent conversations can contribute changes; no card appears when no visible change is found.
 - A finish time is recorded only when the app observes the turn go from running to finished. After a reload, older turns have no time and show no placeholder; a time outside the current local day is hidden while its row stays in its section.
 - Not yet verified on iOS or Android devices; tablet and foldable screen sizes were only simulated in the desktop app.
 
