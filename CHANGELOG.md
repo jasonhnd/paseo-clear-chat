@@ -5,10 +5,6 @@
 - Clear Chat 0.16.1.1 needs Paseo 0.16.0 or newer. On Paseo 0.15.x the host refuses to install or update this version; if you are on Paseo 0.15, stay on Clear Chat 0.15.4.x.
 - Checked on isolated Paseo 0.16.1 hosts with a synthetic provider, not real models.
 
-### Changed
-
-- **The answer card sends the answer itself.** The main button sends the chosen answers straight away, from a click or from Enter on the focused button, instead of filling Paseo's input box and waiting for its own send button. Choosing an option also leaves the input box alone, so a draft you already typed is never rewritten, and the card no longer shows a "not sent" note or offers to replace the first line of an edited answer. The previous behaviour made the button look unresponsive: pressing it changed nothing on the card. The **Automatically fill the answer** switch is removed with that behaviour; a saved value for it is ignored.
-
 ### Added
 
 - **Sidebar search.** A Search field in the Clear Chat sidebar matches conversation titles and text from conversations you have already opened; choosing a result opens that conversation ([#480](https://github.com/jasonhnd/paseo-clear-chat/issues/480)).

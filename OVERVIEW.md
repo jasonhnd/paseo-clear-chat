@@ -9,7 +9,6 @@ It is a display layer, not a provider. Finished steps fold into one row each, ev
 - **See what a turn changed.** A read-only card lists the files the workspace changed during a turn, with per-file line counts and a read-only diff.
 - **Errors group.** Conversations that stopped because of an error are listed in their own group in the sidebar view.
 - **Finish time on Today rows.** A finished turn shows `Finished HH:mm` on its Today row, in your local time zone.
-- **One click sends the answer.** The answer card's main button sends the chosen answers straight away, and choosing an option no longer copies the answer into Paseo's input box.
 
 ## What it does
 
