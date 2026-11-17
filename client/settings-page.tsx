@@ -635,14 +635,6 @@ export function ClearChatSettingsPage({ theme }: PluginSurfaceProps) {
         <SavedRepliesEditor value={preferences.savedReplies} tokens={tokens} />
 
         <ToggleRow
-          title={t("answerStyle.autoFillLabel")}
-          description={t("answerStyle.autoFillDescription")}
-          value={preferences.autoFillAnswer}
-          onChange={(autoFillAnswer) => updateEnhancerPreferences({ autoFillAnswer })}
-          tokens={tokens}
-        />
-
-        <ToggleRow
           title={t("settings.jumpChips.label")}
           description={t("settings.jumpChips.description")}
           value={preferences.showJumpChips}

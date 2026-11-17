@@ -2,13 +2,14 @@ Clear Chat changes how agent conversations look in Paseo, so an answer is easy t
 
 It is a display layer, not a provider. Finished steps fold into one row each, every tool call gets its own card, replies keep their code, links and paths, and the answer card lets you write an answer to each question in the conversation. The interface text follows the app language: English, Simplified Chinese or Japanese.
 
-## What's new in 0.16.0.1
+## What's new in 0.16.1.1
 
 - **Search the sidebar.** Find conversations by title, or by text from a conversation you have already opened, and open a result in one click.
 - **Saved replies as buttons.** Your saved replies appear as buttons in the composer and insert their text at the cursor without sending.
 - **See what a turn changed.** A read-only card lists the files the workspace changed during a turn, with per-file line counts and a read-only diff.
 - **Errors group.** Conversations that stopped because of an error are listed in their own group in the sidebar view.
 - **Finish time on Today rows.** A finished turn shows `Finished HH:mm` on its Today row, in your local time zone.
+- **One click sends the answer.** The answer card's main button sends the chosen answers straight away, and choosing an option no longer copies the answer into Paseo's input box.
 
 ## What it does
 
@@ -29,7 +30,7 @@ Measured 2026-11-04 on a 300-step conversation (150 tool calls), three runs per 
 
 ## Setup
 
-Clear Chat 0.16.0.1 needs Paseo 0.16.0 or later and was tested on Paseo 0.16.0. On Paseo 0.15.x the host refuses this version; stay on Clear Chat 0.15.4.x.
+Clear Chat 0.16.1.1 needs Paseo 0.16.0 or later and was tested on Paseo 0.16.1. On Paseo 0.15.x the host refuses this version; stay on Clear Chat 0.15.4.x.
 
 Installation runs `npm ci` on the daemon host, so Node.js and npm must be available there and the host must be able to reach the npm registry.
 
