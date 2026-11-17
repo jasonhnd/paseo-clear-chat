@@ -81,7 +81,18 @@ function waitEvent(connection, predicate) {
 
 function fixture(t, store = new FakeHistoryStore()) {
   const root = fs.mkdtempSync(join(fs.realpathSync(tmpdir()), "cc-history-"));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const connections = [];
+  // Node runs t.after hooks in registration order. This one is registered
+  // before any connect(), so every runtime - including the `hermes` child that
+  // appends to requests.jsonl - is stopped before the root is removed. Removing
+  // the root first let that child recreate an entry mid-delete: ENOTEMPTY.
+  t.after(async () => {
+    try {
+      for (const connection of connections) await connection.close();
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
   const command = join(root, "hermes"), log = join(root, "requests.jsonl");
   fs.writeFileSync(command, `#!/usr/bin/env node
     const fs = require("node:fs"), readline = require("node:readline");
@@ -131,7 +142,7 @@ function fixture(t, store = new FakeHistoryStore()) {
       if (info.clientMessageId) await images.save({ sessionKey: info.sessionKey, messageId: info.clientMessageId }, info.images);
     }, store);
     const connection = await provider.connect({ versions: [1], capabilities: ["prompt.message", "prompt.command", "prompt.image", "session.persistence"] });
-    t.after(() => connection.close());
+    connections.push(connection);
     const events = [];
     connection.onEvent(event => events.push(structuredClone(event)));
     return { connection, events };
@@ -161,7 +172,7 @@ function fixture(t, store = new FakeHistoryStore()) {
       sessionId: "native-session", prompt: before.prompt.input.content,
     });
   }
-  return { root, store, images, resolver, requests, connect, open, prompt };
+  return { root, store, images, resolver, requests, connect, open, prompt, connections };
 }
 
 test("new sessions record final snapshots; a fresh ACP runtime loads once and replays exact IDs, text and images before ready", async t => {
@@ -545,7 +556,7 @@ test("server contribution injects the supplied history store into its registered
   t.after(cleanup);
   assert.equal(providers.length, 1);
   const connection = await providers[0].connect({ versions: [1], capabilities: ["prompt.message", "session.persistence"] });
-  t.after(() => connection.close());
+  f.connections.push(connection);
   await f.open({ connection });
   await f.prompt({ connection });
   assert.equal((await f.store.read(key)).status, "complete");
@@ -1324,7 +1335,7 @@ test("default contribution restores two image prompts from disk after restart an
     t.after(cleanup);
     assert.deepEqual(providers.map(provider => provider.id), ["hermes-cc"]);
     const connection = await providers[0].connect({ versions: [1], capabilities: ["prompt.message", "prompt.image", "session.persistence"] });
-    t.after(() => connection.close());
+    f.connections.push(connection);
     const events = [];
     connection.onEvent(event => events.push(structuredClone(event)));
     const history = load("server/hermes-cc/history-store.ts", modules);
@@ -1413,7 +1424,7 @@ for (const setting of [true, false]) test(`original Hermes sessions never write 
   const { runAcpProvider } = require("@getpaseo/plugin/server/acp");
   const provider = runAcpProvider({ id: "hermes", label: "Hermes", command: [join(f.root, "hermes"), "acp"] });
   const connection = await provider.connect({ versions: [1], capabilities: ["prompt.message", "session.persistence"] });
-  t.after(() => connection.close());
+  f.connections.push(connection);
   await f.open({ connection });
   await f.prompt({ connection });
   await connection.close();

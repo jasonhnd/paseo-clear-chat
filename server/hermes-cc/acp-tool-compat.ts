@@ -19,9 +19,18 @@ const record = (value: unknown): Record<string, unknown> | undefined =>
 const status = (value: string) => value === "pending" || value === "in_progress" ? "running" : value;
 const json = (value: unknown) => z.json().safeParse(value);
 const fallbackError = () => ({ message: "Tool call failed" });
+// Paseo 0.16.0 supplies its own generic failure object ("Tool failed") where
+// earlier hosts left `error` null. Treat that as the absence of a reported
+// error so the shell exit-code message and the plugin's wording stay intact.
+const genericFailure = (value: unknown): boolean => {
+  const rec = record(value);
+  const keys = rec ? Object.keys(rec) : [];
+  return keys.length === 1 && typeof rec?.message === "string" &&
+    /^Tool\s+(?:call\s+)?failed$/i.test(rec.message.trim());
+};
 const normalizeUncorrelatedError = (event: ProviderEvent): ProviderEvent =>
   event.type === "timeline.item" && event.item.type === "tool_call" &&
-  event.item.status === "failed" && event.item.error === null
+  event.item.status === "failed" && (event.item.error === null || genericFailure(event.item.error))
     ? { ...event, item: { ...event.item, error: fallbackError() } }
     : event;
 
@@ -170,7 +179,7 @@ class ToolRuntime {
     // Textual content is output: never derive an error description from it.
     const explicit = tool.error ?? event.item.error;
     const parsed = json(explicit);
-    const error = parsed.success && parsed.data !== null ? parsed.data : fallbackError();
+    const error = parsed.success && parsed.data !== null && !genericFailure(parsed.data) ? parsed.data : fallbackError();
     return { ...event, item: { ...event.item, detail, metadata, error } };
   }
 }

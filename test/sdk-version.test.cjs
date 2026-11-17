@@ -5,7 +5,7 @@ const test = require("node:test");
 
 const root = join(__dirname, "..");
 const readJson = file => JSON.parse(readFileSync(file, "utf8"));
-const target = "0.13.0";
+const target = "0.16.0";
 
 test("the installed SDK and protocol peers match the development SDK contract", () => {
   const manifest = readJson(join(root, "package.json"));
@@ -20,7 +20,7 @@ test("the installed SDK and protocol peers match the development SDK contract", 
   }
 });
 
-test("installation requires Paseo 0.14.0 or later", () => {
+test("installation requires Paseo 0.16.0 or later", () => {
   const manifest = readJson(join(root, "paseo-plugin.json"));
-  assert.equal(manifest.requirements.paseo, ">=0.14.0");
+  assert.equal(manifest.requirements.paseo, ">=0.16.0");
 });

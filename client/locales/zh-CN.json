@@ -165,6 +165,7 @@
     "copiedInstead": "已改为复制"
   },
   "toast": {
+    "sidebarViewHint": "打开 Settings → Sidebar，选 Clear Chat，就能在侧栏使用它。",
     "copied": "已复制到剪贴板",
     "copyFailed": "无法复制。请在弹窗里全选文字，再用“复制”。",
     "pathCopied": "路径已复制。请到主机电脑上打开。",
@@ -203,6 +204,11 @@
     "imageThumbA11y": "粘贴的图片",
     "moreImages": "+{{count}}",
     "closeImage": "关闭图片",
+    "imagesDidNotLoad": "图片没加载出来",
+    "retryImages": "重试",
+    "imageUnavailable": "这张图片无法显示",
+    "imageNotSaved": "图片没保存下来",
+    "imageSaving": "图片保存中…",
     "usageIn": "输入",
     "usageCached": "缓存",
     "usageOut": "输出",
@@ -645,6 +651,22 @@
     "hintReopen": "↑ 重新展开",
     "sendAction": "发送",
     "hintCustom": "Enter 确认 · Shift+Enter 换行",
+    "progress": "已答 {{chosen}} / {{total}} · 还差 {{remaining}} 题",
+    "replaceFirstLine": "用 {{answer}} 替换第一行",
+    "keepEdited": "保留我改的",
+    "limitEdited": "你改过答案后再点「替换第一行」，只换第一行；多行答案的其余部分会留着，请自己删。",
     "hintEnter": "Enter"
+  },
+  "answerStyle": {
+    "title": "下一次回复的回答风格",
+    "none": "不追加",
+    "concise": "简洁",
+    "formal": "正式",
+    "casual": "口语",
+    "oneLine": "一句话",
+    "savedRepliesLabel": "常用回答",
+    "savedRepliesDescription": "每行一个短语；插入后不会自动发送。",
+    "autoFillLabel": "自动填入答案",
+    "autoFillDescription": "将所选答案填入输入框，供你检查。"
   }
 }

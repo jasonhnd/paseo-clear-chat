@@ -542,6 +542,10 @@ test("v0.13.0 agents.providers mirrors only enabled Hermes sources and captures 
   await secondCompleted;
   assert.deepEqual(JSON.parse(fs.readFileSync(join(root, "received.json"))).prompt, second.prompt.input.content);
   assert.deepEqual((await rpc(lookup, host("hermes-cc"))).images, []);
+  for (const deadline = Date.now() + 2000; Date.now() < deadline
+    && !h.logs.some(log => log.length === 1 && log[0] === "[clear-chat] hermes_cc: save_conflict"); ) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
   assert.ok(h.logs.some(log => log.length === 1 && log[0] === "[clear-chat] hermes_cc: save_conflict"));
 
   const settingDir = join(root, "plugin-settings", "clear-chat");

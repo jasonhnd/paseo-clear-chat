@@ -317,25 +317,87 @@ const approvedAnswerCardHashes = {
   "zh-CN": "bd487920e1ba4b63008ed85228907ad51aa0828cfcd53e3146d4136347aa69c3",
   "ja": "d45fce67f549e1250f538b9eeb5c8997346e1caa322575572a58bbd98cc0f095",
 };
-const addedAnswerCardKeys = ["other", "otherHint", "otherEmpty", "readOnlyStatus", "sendAction", "hintCustom"];
+const addedAnswerCardKeys = ["other", "otherHint", "otherEmpty", "readOnlyStatus", "sendAction", "hintCustom", "progress", "replaceFirstLine", "keepEdited", "limitEdited"];
 const signedAnswerCardCopy = {
   en: ["Send", "Enter to confirm · Shift+Enter for a new line"],
   "zh-CN": ["发送", "Enter 确认 · Shift+Enter 换行"],
   ja: ["送信", "Enter で確定 · Shift+Enter で改行"],
 };
+const signedAnswerStyleCopy = {
+  "en": {
+    "title": "Answer style for the next reply",
+    "none": "None",
+    "concise": "Concise",
+    "formal": "Formal",
+    "casual": "Casual",
+    "oneLine": "One line",
+    "savedRepliesLabel": "Saved replies",
+    "savedRepliesDescription": "One phrase per line. Replies are inserted without sending.",
+    "autoFillLabel": "Automatically fill the answer",
+    "autoFillDescription": "Put the selected answer in the input box so you can review it."
+  },
+  "zh-CN": {
+    "title": "下一次回复的回答风格",
+    "none": "不追加",
+    "concise": "简洁",
+    "formal": "正式",
+    "casual": "口语",
+    "oneLine": "一句话",
+    "savedRepliesLabel": "常用回答",
+    "savedRepliesDescription": "每行一个短语；插入后不会自动发送。",
+    "autoFillLabel": "自动填入答案",
+    "autoFillDescription": "将所选答案填入输入框，供你检查。"
+  },
+  "ja": {
+    "title": "次の返信の回答スタイル",
+    "none": "追加しない",
+    "concise": "簡潔",
+    "formal": "フォーマル",
+    "casual": "カジュアル",
+    "oneLine": "一文",
+    "savedRepliesLabel": "よく使う回答",
+    "savedRepliesDescription": "1行に1つ入力します。挿入しても送信されません。",
+    "autoFillLabel": "回答を自動入力",
+    "autoFillDescription": "選んだ回答を入力欄に入れ、送信前に確認できます。"
+  }
+};
+const signedSidebarViewHint = {
+  en: "Open Settings → Sidebar and select Clear Chat to use it in the sidebar.",
+  "zh-CN": "打开 Settings → Sidebar，选 Clear Chat，就能在侧栏使用它。",
+  ja: "Settings → Sidebar で Clear Chat を選ぶと、サイドバーで使えます。",
+};
+const rootAnswerStyle = /,\n  "answerStyle": \{\n(?:    .*\n)*  \}/gm;
 const rootAnswerCard = /^  "answerCard": \{\n(?:    .*\n)*  \}/gm;
 
 function verifyResourceBaseline(locale, text) {
   assert.equal([...text.matchAll(rootAnswerCard)].length, 1, "one root answerCard object");
-  const answerCard = JSON.parse(text).answerCard;
+  const parsed = JSON.parse(text);
+  assert.equal(parsed.toast.sidebarViewHint, signedSidebarViewHint[locale]);
+  assert.equal([...text.matchAll(/"sidebarViewHint"\s*:/g)].length, 1, "one sidebarViewHint key in the resource");
+  const styleBlocks = [...text.matchAll(rootAnswerStyle)];
+  assert.equal(styleBlocks.length, 1, "one root answerStyle object");
+  assert.equal([...text.matchAll(/"answerStyle"\s*:/g)].length, 1, "one answerStyle key in the resource");
+  assert.deepEqual(parsed.answerStyle, signedAnswerStyleCopy[locale]);
+  for (const key of Object.keys(signedAnswerStyleCopy[locale])) {
+    const keyPattern = new RegExp(`^    "${key}":`, "gm");
+    assert.equal([...styleBlocks[0][0].matchAll(keyPattern)].length, 1, `one answerStyle.${key}`);
+  }
+  const answerCard = parsed.answerCard;
   assert.deepEqual([answerCard.sendAction, answerCard.hintCustom], signedAnswerCardCopy[locale]);
+  assert.equal(answerCard.progress, {
+    en: "{{chosen}} of {{total}} answered · {{remaining}} to go",
+    "zh-CN": "已答 {{chosen}} / {{total}} · 还差 {{remaining}} 题",
+    ja: "{{total}} 問中 {{chosen}} 問回答済み · 残り {{remaining}} 問",
+  }[locale]);
   const keys = [...text.matchAll(/"(?:\\.|[^"\\])*"/g)]
     .filter(match => /^\s*:/.test(text.slice(match.index + match[0].length)))
     .map(match => JSON.parse(match[0]));
-  for (const key of addedAnswerCardKeys) {
+  for (const key of addedAnswerCardKeys.filter(key => key !== "progress")) {
     assert.equal(keys.filter(value => value === key).length, 1, `one ${key} key in the resource`);
   }
   const original = text
+    .replace(/^    "sidebarViewHint": ".*",\n/m, "")
+    .replace(rootAnswerStyle, "")
     .replace(/    "keepItemLineBreaks": \{\n(?:      ".*\n){2}    \},\n/, "")
     .replace(/    "jumpChips": \{\n(?:      ".*\n){2}    \},\n/, "")
     .replace(/,\n    "answerCard": \{\n(?:      ".*\n){2}    \}/, "")
@@ -364,6 +426,7 @@ function verifyResourceBaseline(locale, text) {
     .replace(/    "codeBlockOpen": \{\n(?:      ".*\n){2}    \},\n/, "")
     .replace(/    "open": ".*",\n    "openA11y": ".*",\n/, "")
     .replace(/    "imageThumbA11y": ".*",\n    "moreImages": ".*",\n    "closeImage": ".*",\n/, "")
+    .replace(/    "imagesDidNotLoad": ".*",\n    "retryImages": ".*",\n    "imageUnavailable": ".*",\n    "imageNotSaved": ".*",\n    "imageSaving": ".*",\n/, "")
     .replace(/    "stepsOne": ".*",\n/, "")
     .replace(/    "tokensOne": ".*",\n/, "")
     .replace(/    "sectionInline": \{\n(?:      ".*\n){5}    \},\n/, "");
@@ -389,6 +452,9 @@ for (const locale of ["en", "zh-CN", "ja"]) {
     const statusLine = root.match(/^    "readOnlyStatus": .*\n/m)[0];
     const cases = {
       "old answerCard label": text.replace('"pillTitle": "', '"pillTitle": "changed '),
+      "changed sidebar hint": text.replace(signedSidebarViewHint[locale], "changed"),
+      "missing sidebar hint": text.replace(/^    "sidebarViewHint": ".*",\n/m, ""),
+      "duplicate sidebar hint": text.replace(/^(    "sidebarViewHint": ".*",\n)/m, "$1$1"),
       "old translation": text.replace('"startupFailed": "', '"startupFailed": "changed '),
       "missing read-only status": text.replace(statusLine, ""),
       "duplicate read-only status": text.replace(statusLine, statusLine + statusLine),
@@ -422,7 +488,13 @@ test("all locales contain the same translation keys", () => {
       return child && typeof child === "object" ? keys(child, path) : [path];
     }).sort();
   }
-  for (const locale of ["zh-CN", "ja"]) assert.deepEqual(keys(resources[locale]), keys(resources.en));
+  // English copy that intentionally has no Japanese translation yet; the SDK
+  // falls back to English for these keys, as it does for the other optionalJa
+  // entries used by the sidebar tests.
+  const optionalJa = new Set(["prompt.imagesDidNotLoad", "prompt.retryImages", "prompt.imageUnavailable", "prompt.imageNotSaved", "prompt.imageSaving"]);
+  const en = keys(resources.en);
+  assert.deepEqual(keys(resources["zh-CN"]), en);
+  assert.deepEqual(keys(resources.ja).filter((key) => !optionalJa.has(key)), en.filter((key) => !optionalJa.has(key)));
 });
 
 for (const [locale, quote] of [["en", /"([^"]+)"/], ["zh-CN", /“([^”]+)”/], ["ja", /「([^」]+)」/]]) {
