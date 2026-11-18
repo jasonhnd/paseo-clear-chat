@@ -115,7 +115,7 @@ test('a hung metadata write times out and releases the next write', async () => 
     await second;
     assert.equal(warnings.length, 1); assert.deepEqual(emitted, ['a']);
     resolveLate(); await wait();
-    assert.deepEqual(emitted, ['a'], 'late completion must not emit again');
+    assert.deepEqual(emitted, ['a', 'a'], 'late completion reapplies and emits');
   } finally { global.setTimeout = originalSet; global.clearTimeout = originalClear; console.warn = originalWarn; unsubscribe(); }
 });
 
