@@ -9,8 +9,23 @@ export function subscribeAnswerMetadata(listener: Listener): () => void {
 
 export function publishAnswerMetadata(agentId: string, write: () => Promise<void>): Promise<void> {
   const previous = writes.get(agentId) ?? Promise.resolve();
-  const next = previous.catch(() => {}).then(write).then(() => {
-    for (const listener of listeners) listener(agentId);
+  const next = previous.catch(() => {}).then(async () => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const completed = await Promise.race([
+        Promise.resolve().then(write).then(() => true),
+        new Promise<false>(resolve => {
+          timer = setTimeout(() => resolve(false), 10_000);
+        }),
+      ]);
+      if (!completed) {
+        console.warn("Clear Chat answer metadata write timed out");
+        return;
+      }
+      for (const listener of listeners) listener(agentId);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
   });
   writes.set(agentId, next);
   void next.then(() => { if (writes.get(agentId) === next) writes.delete(agentId); }, () => { if (writes.get(agentId) === next) writes.delete(agentId); });
