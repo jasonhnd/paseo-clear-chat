@@ -50,7 +50,7 @@ function render(marker, active = { kind: 'agent', hostId: 'host', id: 'a', key: 
   const filename = path.join(root, 'client/components/agent-board.tsx');
   const js = ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
   const mod = { exports: {} };
-  const req = id => id === 'react' ? react : id === 'react/jsx-runtime' ? { jsx, jsxs: jsx } : id === 'react-native' ? native : id === '@getpaseo/plugin/client' ? hooks : id === '../preferences' ? { useEnhancerPreferences: () => ({ savedReplies: [] }) } : id === '../messages' ? { messages } : id === '../agent-board-model' ? require('../client/agent-board-model.ts') : id === '../outline-model' ? model : require(id);
+  const req = id => id === 'react' ? react : id === 'react/jsx-runtime' ? { jsx, jsxs: jsx } : id === 'react-native' ? native : id === '@getpaseo/plugin/client' ? hooks : id === '../preferences' ? { useEnhancerPreferences: () => ({ savedReplies: [] }) } : id === '../messages' ? { messages } : id === '../agent-board-model' ? require('../client/agent-board-model.ts') : id === '../answer-state-events' ? { subscribeAnswerMetadata: () => () => {} } : id === '../outline-model' ? model : require(id);
   vm.runInThisContext(`(function(require,module,exports){${js}\n})`, { filename })(req, mod, mod.exports);
   const nodes = [];
   function walk(n) { if (n == null || typeof n === 'boolean') return; if (Array.isArray(n)) return n.forEach(walk); if (typeof n !== 'object') { nodes.push({ type: 'literal', text: String(n) }); return; } if (typeof n.type === 'function') return walk(n.type(n.props)); nodes.push(n); walk(n.props.children); }

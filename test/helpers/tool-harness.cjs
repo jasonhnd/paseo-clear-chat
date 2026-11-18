@@ -290,6 +290,7 @@ function createToolHarness(platform = "ios", options = {}) {
   }
   const dispose = load("index.client.tsx").default({
     i18n: translations.runtime,
+    composers: options.composers,
     paseo,
     rpc: options.presentationHost?.rpc ?? noop,
     addSettingsScreen(value) { settingsScreens.set(value.id, value); return noop; },
