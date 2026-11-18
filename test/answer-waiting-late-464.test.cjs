@@ -27,7 +27,7 @@ async function scenario(mode, newer) {
       assert.ok(notices.length > before, "listener must fire after late settlement");
     } else {
       assert.deepEqual(calls, [1]);
-      assert.equal(notices.length, before);
+      assert.equal(notices.length, before + (mode === "resolve" ? 1 : 0), "only a late success notifies once");
     }
     if (mode === "reject") assert.ok(warnings.length >= 2, "late rejection must be logged");
   } finally { global.setTimeout = oldSet; global.clearTimeout = oldClear; console.warn = oldWarn; unsubscribe(); }
@@ -35,3 +35,21 @@ async function scenario(mode, newer) {
 test("late timed-out write is followed by latest state and notification", () => scenario("resolve", true));
 test("late rejection is logged and latest state is reapplied", () => scenario("reject", true));
 test("late write with no newer generation causes no extra write", () => scenario("resolve", false));
+
+test("late rejection without newer generation does not notify", () => scenario("reject", false));
+test("generation state is pruned after settlement and a later write still works", async () => {
+  const events = createToolHarness("ios").load("client/answer-state-events.ts");
+  const notices = [];
+  const unsubscribe = events.subscribeAnswerMetadata(id => notices.push(id));
+  try {
+    let stored = 0;
+    await events.publishAnswerMetadata("prune-agent", async () => { stored = 1; });
+    await wait();
+    assert.equal(events.__testHasAnswerMetadataState("prune-agent"), false, "idle agent state must be pruned");
+    await events.publishAnswerMetadata("prune-agent", async () => { stored = 2; });
+    await wait();
+    assert.equal(stored, 2);
+    assert.deepEqual(notices, ["prune-agent", "prune-agent"]);
+    assert.equal(events.__testHasAnswerMetadataState("prune-agent"), false);
+  } finally { unsubscribe(); }
+});

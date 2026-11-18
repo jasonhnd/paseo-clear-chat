@@ -7,7 +7,11 @@ type AgentWrites = {
 };
 const listeners = new Set<Listener>();
 const writes = new Map<string, AgentWrites>();
-const generations = new Map<string, number>();
+
+/** Test-only visibility into retained per-agent generation state. */
+export function __testHasAnswerMetadataState(agentId: string): boolean {
+  return writes.has(agentId);
+}
 
 export function subscribeAnswerMetadata(listener: Listener): () => void {
   listeners.add(listener);
@@ -22,14 +26,16 @@ function enqueue(agentId: string, state: AgentWrites, select: () => { generation
     state.pending++;
     const operation = Promise.resolve().then(write);
     void operation.then(
-      () => settled(),
-      error => { if (timedOut) console.warn("Clear Chat answer metadata write failed after timeout", error); settled(); },
+      () => settled(true),
+      error => { if (timedOut) console.warn("Clear Chat answer metadata write failed after timeout", error); settled(false); },
     );
-    function settled() {
+    function settled(succeeded: boolean) {
       state.pending--;
       if (timedOut && state.generation > generation) {
         void enqueue(agentId, state, () => ({ generation: state.generation, write: state.latest }))
           .catch(error => console.warn("Clear Chat answer metadata reapply failed", error));
+      } else if (timedOut && succeeded) {
+        for (const listener of listeners) listener(agentId);
       }
       cleanup();
     }
@@ -59,11 +65,10 @@ function enqueue(agentId: string, state: AgentWrites, select: () => { generation
 export function publishAnswerMetadata(agentId: string, write: () => Promise<void>): Promise<void> {
   let state = writes.get(agentId);
   if (!state) {
-    state = { generation: generations.get(agentId) ?? 0, latest: write, queue: Promise.resolve(), pending: 0 };
+    state = { generation: 0, latest: write, queue: Promise.resolve(), pending: 0 };
     writes.set(agentId, state);
   }
   const generation = ++state.generation;
-  generations.set(agentId, generation);
   state.latest = write;
   return enqueue(agentId, state, () => ({ generation, write }));
 }
