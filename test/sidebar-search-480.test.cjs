@@ -72,6 +72,7 @@ function harness(locale = 'en', missingKeyReturnsKey = false) {
     if (id === '../messages') return { messages };
     if (id === '../preferences') return { useEnhancerPreferences: () => ({ savedReplies: [] }) };
     if (id === '../agent-board-model') return require('../client/agent-board-model.ts');
+    if (id === '../answer-state-events') return { subscribeAnswerMetadata: () => () => {} };
     if (id === '../outline-model') return require('../client/outline-model.ts');
     throw Error(`unexpected import ${id}`);
   };

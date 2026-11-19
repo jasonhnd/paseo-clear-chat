@@ -3,6 +3,7 @@ import type { PluginTheme, PluginText, PluginAgentSnapshot } from "@getpaseo/plu
 import type { AgentRef, ProjectRef } from "@getpaseo/plugin/client";
 import React, { useEffect, useState } from "react";
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { subscribeAnswerMetadata } from "../answer-state-events";
 import { messages } from "../messages";
 import { isBackgroundAgent, boardSection, compareBoardAgents, lastActivityTime, localDayBounds, runningMinutes, answerMarker, compareWaitingAgents, finishedClock, observeAgentTime, getObservedAgentTimes } from "../agent-board-model";
 import type { ObservedAgentTimeState } from "../agent-board-model";
@@ -176,41 +177,43 @@ function WaitingBoard(props: BoardProps) {
   useEffect(() => {
     if (!paseo || !useHostsHook) return;
     let cancelled = false;
-    const unique = new Map(candidates.map(ref => [ref.id, ref]));
-    const skipped: Record<string, null> = {};
-    for (const ref of unique.values()) {
-      if (!hosts.some(host => host.serverId === ref.hostId && host.status === "online")) skipped[ref.id] = null;
-    }
-    setLive(skipped);
-    for (const ref of unique.values()) {
-      const serverId = hosts.find(host => host.serverId === ref.hostId && host.status === "online")?.serverId;
-      if (!serverId) continue;
+    const unique = new Map(candidates.map(ref => [ref.key, ref]));
+    const sequences = new Map<string, number>();
+    setLive({});
+    const refresh = (ref: AgentRef) => {
+      if (!hosts.some(host => host.serverId === ref.hostId && host.status === "online")) return;
+      const sequence = (sequences.get(ref.key) ?? 0) + 1;
+      sequences.set(ref.key, sequence);
       void (async () => {
         try {
           const fresh = await paseo.agents.ref(ref).refresh();
-          if (cancelled || !fresh?.agent) return;
+          if (cancelled || sequences.get(ref.key) !== sequence || !fresh?.agent) return;
           const agent = { id: ref.id, title: fresh.agent.title, metadata: fresh.agent.metadata ?? {} };
-          setLive(previous => ({ ...previous, [ref.id]: agent }));
-        } catch {
-          // A failed refresh leaves this agent's snapshot in place.
+          setLive(previous => ({ ...previous, [ref.key]: agent }));
+        } catch (error) {
+          console.warn("Clear Chat waiting board refresh failed", error);
         }
       })();
-    }
-    return () => { cancelled = true; };
+    };
+    const unsubscribe = subscribeAnswerMetadata(agentId => {
+      for (const ref of unique.values()) if (ref.id === agentId) refresh(ref);
+    });
+    for (const ref of unique.values()) refresh(ref);
+    return () => { cancelled = true; unsubscribe(); };
   }, [paseo, candidateKey, hostKey]);
   const live = state && typeof state === "object" ? state : {};
-  const snapshots = [...new Map(groups.flatMap(group => group.items).map(ref => [ref.id, ref])).values()];
-  const snapshotIds = new Set(snapshots.map(ref => ref.id));
-  const refs = new Map(candidates.map(ref => [ref.id, ref]));
-  const rows = snapshots.filter(ref => { const fresh = live[ref.id]; return !fresh || answerMarker(fresh) !== null; });
-  const extras = Object.values(live).filter((agent): agent is WaitingLiveAgent => !!agent && !snapshotIds.has(agent.id) && refs.has(agent.id) && answerMarker(agent) !== null)
-    .sort(compareWaitingAgents).map(agent => refs.get(agent.id)!);
+  const snapshots = [...new Map(groups.flatMap(group => group.items).map(ref => [ref.key, ref])).values()];
+  const snapshotIds = new Set(snapshots.map(ref => ref.key));
+  const refs = new Map(candidates.map(ref => [ref.key, ref]));
+  const rows = snapshots.filter(ref => { const fresh = live[ref.key]; return !fresh || answerMarker(fresh) !== null; });
+  const extras = Object.entries(live).filter(([key, agent]) => !!agent && !snapshotIds.has(key) && refs.has(key) && answerMarker(agent) !== null)
+    .sort((a, b) => compareWaitingAgents(a[1]!, b[1]!)).map(([key]) => refs.get(key)!);
   const agents = [...rows, ...extras];
   return (
     <ScrollView contentContainerStyle={styles.board}>
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: props.theme.colors.foregroundMuted }]}>{t("sidebar.waiting")}</Text>
-        {agents.length ? agents.map(ref => <WaitingRow key={ref.key} agentRef={ref} live={live[ref.id] ?? undefined} {...props} />)
+        {agents.length ? agents.map(ref => <WaitingRow key={ref.key} agentRef={ref} live={live[ref.key] ?? undefined} {...props} />)
           : <Text style={[styles.empty, { color: props.theme.colors.foregroundMuted }]}>{t("sidebar.waitingEmpty")}</Text>}
       </View>
       <View style={styles.section}>
