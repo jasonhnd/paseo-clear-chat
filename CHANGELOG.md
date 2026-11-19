@@ -8,7 +8,7 @@
 
 ### Fixed
 
-- **The Answers waiting row clears without a reload.** When you answer the last question of an answer card, the conversation leaves the sidebar's **Answers waiting** group on the same page instead of staying there until the chat is reloaded. The answer write is waited for up to 10 seconds and then released; a write that settles after that is re-applied through the same queue and the sidebar is updated once, an older response cannot restore the row, and a failed write is logged without interrupting the answer card ([#464](https://github.com/jasonhnd/paseo-clear-chat/issues/464), [PR #499](https://github.com/jasonhnd/paseo-clear-chat/pull/499)).
+- **The Answers waiting row clears without a reload.** When you choose the last remaining answer in an answer card, the conversation leaves the sidebar's **Answers waiting** group on the same page instead of staying there until the chat is reloaded. The group counts questions not chosen yet, so the row leaves as soon as that last choice is made, before you press Send. The card's progress is written to the host through one write queue per conversation; each write is waited for up to 10 seconds, a write that settles after that is re-applied through the same queue and refreshes the sidebar once, an older response cannot restore the row, and a failed write is logged without interrupting the answer card ([#464](https://github.com/jasonhnd/paseo-clear-chat/issues/464), [PR #499](https://github.com/jasonhnd/paseo-clear-chat/pull/499)).
 
 ### Changed
 
@@ -25,9 +25,9 @@
 
 ### Known limitations
 
-- The Answers waiting row clears when the host reports that the answer was written. If that write fails, the row stays until the chat is reloaded; the failure is logged.
-- The sidebar update after the last answer was checked with regression tests on isolated hosts, not on a real host page with a real model.
-- Not yet verified on iOS or Android devices; tablet and foldable screen sizes were only simulated in the desktop app.
+- The sidebar re-reads a conversation after Clear Chat writes the card's progress to the host. If that write fails, the row stays until the sidebar reads the conversation again, for example after a reload; the failure is logged and the answer card keeps working.
+- The same-page update was checked on the Paseo 0.16.1 and 0.16.2 CLI-host web pages with a synthetic agent and no model: the answered conversation left the group on the same page, and another conversation's unanswered row stayed. It was not checked with a real model, on the desktop app host, or in the phone apps.
+- Physical iOS and Android devices were not used; tablet and foldable screen sizes were only simulated.
 
 ## [0.16.1.1] - 2026-11-18
 
