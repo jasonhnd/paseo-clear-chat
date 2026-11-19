@@ -21,7 +21,6 @@ import { extractGeneratedImages } from "./client/generated-images";
 import { containsComponentFence } from "./client/component-fences";
 import { projectedApprovalStatus } from "./client/tool-approval";
 import { installStepDetailPanel } from "./client/components/step-detail-host";
-import { AnswerStyleControl, answerStyleSupported } from "./client/components/answer-style-control";
 import { setOptionSender, setAnswerDraftStore, setAnswerStatePublisher } from "./client/option-session";
 import {
   getEnhancerPreferences,
