@@ -73,6 +73,10 @@
 
 <img alt="返信下の回答枠で B、A と選び、1B 2A を送信。答えは灰色の読み取り専用枠に残ります" src="docs/images/answers-typed.gif" width="800">
 
+自分の答えも同じ枠で書けます。片方の問は選択肢を選び、もう片方は自分で入力すると、送信後の枠は読み取り専用になり、両方の答えが残ります。
+
+<img alt="回答カード：片方の問は選択肢を選び、もう片方は自分で入力。送信後は両方の答えが読み取り専用の枠に残ります" src="docs/images/question-card-demo.gif" width="800">
+
 - **おすすめの印を正しく読みます。** 選択肢の後ろの `（推荐）` や `(recommended)` は認識され、「not recommended」と `不推荐` は認識されません（[#239](https://github.com/jasonhnd/paseo-clear-chat/issues/239)）。
 
 ## インストール

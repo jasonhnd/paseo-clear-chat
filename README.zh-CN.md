@@ -91,6 +91,10 @@
 
 <img alt="回复下面的答题框：依次选 B 和 A，发送 1B 2A 后，答案留在灰色只读框中" src="docs/images/answers-typed.gif" width="800">
 
+自己写答案也一样：一题点选项，另一题自己打字，发出的卡片会变成只读，并显示两个答案。
+
+<img alt="答题卡：一题选选项，另一题自己写答案；发出的卡片只读并显示两个答案" src="docs/images/question-card-demo.gif" width="800">
+
 - **推荐标记读得对。** 选项后面写的 `（推荐）`、`(recommended)` 会被认出来，「not recommended」和 `不推荐` 不会（[#239](https://github.com/jasonhnd/paseo-clear-chat/issues/239)）。
 
 ## 安装

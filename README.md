@@ -91,6 +91,10 @@ Verification scope: synthetic-provider replies on isolated hosts, not real-model
 
 <img alt="An answer frame below the reply: choose B then A, Send 1B 2A, and the sent answer remains in a grey read-only frame" src="docs/images/answers-typed.gif" width="800">
 
+Write your own answer in the same card: choose an option for one question, type the answer for the other, and the sent card stays read-only with both answers.
+
+<img alt="The answer card: an option chosen for one question, a written answer for the other, and the sent card read-only with both answers" src="docs/images/question-card-demo.gif" width="800">
+
 - **Recommendation marks are read correctly.** A mark such as `（推荐）` or `(recommended)` after an option is recognised, and "not recommended" and `不推荐` are not ([#239](https://github.com/jasonhnd/paseo-clear-chat/issues/239)).
 
 ## Install
