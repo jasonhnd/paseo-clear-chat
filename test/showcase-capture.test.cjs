@@ -46,11 +46,37 @@ test("all README languages retain matching published pairs alongside the separat
     }
   }
   const actual = ["images", "docs/images"].flatMap(directory =>
-    readdirSync(resolve(root, directory)).map(file => `${directory}/${file}`)).sort();
+    readdirSync(resolve(root, directory), { withFileTypes: true }).flatMap(entry =>
+      entry.isDirectory()
+        ? readdirSync(resolve(root, directory, entry.name)).map(file => `${directory}/${entry.name}/${file}`)
+        : [`${directory}/${entry.name}`])).sort();
   const extraImages = ["icon.png", "compare-light.png", "compare-dark.png"].map(file => `images/${file}`);
   // Short recordings sit beside the screenshots but are not screenshots: the capture
   // tooling does not produce them, so they are allowed here by name.
-  const recordings = ["docs/images/answers-typed.gif", "docs/images/jump-chips.gif"];
+  const recordings = [
+    "docs/images/answer-card.gif",
+    "docs/images/answers-typed-0153.gif",
+    "docs/images/answers-typed.gif",
+    "docs/images/jump-chips.gif",
+    "docs/images/question-card-demo.gif",
+  ];
+  // Demo videos and their poster frames are edited footage, not captured stills.
+  const videos = [
+    "docs/images/demo-dark.mp4",
+    "docs/images/demo-poster-dark.png",
+    "docs/images/demo-poster.png",
+    "docs/images/demo.mp4",
+  ];
+  // The option-picker stills are documentation art without a light/dark pair in the README.
+  const optionPickerImages = [
+    "docs/images/option-picker/picker-desktop-collapsed-light.png",
+    "docs/images/option-picker/picker-desktop-dark.png",
+    "docs/images/option-picker/picker-desktop-light.png",
+    "docs/images/option-picker/picker-mobile.png",
+  ];
+  // The app icon and store preview art live beside the README stills but are not
+  // part of the capture plan.
+  const appImages = ["images/icon-512.png", "images/preview-on-dark.png", "images/preview-on-light.png"];
   // These are catalog-page images, not README picture pairs. The answer card
   // has only the dark image on purpose.
   const catalogImages = [
@@ -64,7 +90,7 @@ test("all README languages retain matching published pairs alongside the separat
     "docs/images/phone-timeline-dark-0154.png",
     "docs/images/phone-timeline-light-0154.png",
   ];
-  assert.deepEqual(actual, [...new Set([...expected, ...files(readmeV2Groups), demoCapture.light, ...extraImages, ...recordings, ...catalogImages])].sort());
+  assert.deepEqual(actual, [...new Set([...expected, ...files(readmeV2Groups), demoCapture.light, ...extraImages, ...recordings, ...videos, ...optionPickerImages, ...appImages, ...catalogImages])].sort());
 });
 
 test("v2 stills retain the required filenames, viewport sizes, and pixel densities", () => {
