@@ -126,11 +126,9 @@ function registerClient(client: PluginClientContext) {
   const removeChatFind = installChatFind();
   const removeToolSpacing = installCompactToolSpacing();
   const removeStepDetails = installStepDetailPanel(client);
-  // Composer item needs the 0.16 host API; an older host simply does not get the control.
-  const removeAnswerStyle = typeof (client as { addComposerItem?: unknown }).addComposerItem === "function"
-    ? (client as unknown as { addComposerItem(c: { id: string; Component: unknown }): () => void })
-        .addComposerItem({ id: "answer-style", Component: AnswerStyleControl })
-    : null;
+  // The answer-style composer item is hidden for now: choosing a style had no effect (#466).
+  // The control stays in the source so the saved setting and its formatter keep working.
+  // To bring it back, restore the addComposerItem registration guarded by the 0.16 host API.
 
   // Configuration lives in the host Settings area.
   client.addSettingsScreen({
