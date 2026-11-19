@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=date"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <a href="https://paseo.sh"><img alt="Paseo 0.16.0+，已在 0.16.1 上验过" src="https://img.shields.io/badge/Paseo-%3E%3D0.16.0%20%C2%B7%20tested%200.16.1-5b5bd6"></a>
+  <a href="https://paseo.sh"><img alt="Paseo 0.16.0+，已在 0.16.2 上验过" src="https://img.shields.io/badge/Paseo-%3E%3D0.16.0%20%C2%B7%20tested%200.16.2-5b5bd6"></a>
 </p>
 
 <p align="center">
@@ -39,15 +39,18 @@
 
 <sub>1. 在一台机器上用无头 Google Chrome 跑 5 次取中位数。你的结果会不一样。测法见 [scripts/perf/README.md](scripts/perf/README.md)（英文）。</sub>
 
-## 这一版新增（0.16.1.1）
+## 这一版新增（0.16.2.1）
+
+- **「等你回答」这一行会立刻消失。** 答完答题卡上的最后一道题后，这段对话会在当前页面就从侧边栏的 **等你回答** 组里消失，不必再重新加载（[#464](https://github.com/jasonhnd/paseo-clear-chat/issues/464)、[PR #499](https://github.com/jasonhnd/paseo-clear-chat/pull/499)）。
+- **答题风格选择器已隐藏。** 输入框里的答题风格选择器暂时隐藏，因为选了风格对实际发出的消息没有影响；已保存的选择仍然保留，输入框里其他部分没有变化（[#466](https://github.com/jasonhnd/paseo-clear-chat/issues/466)）。
+
+### 之前几版新增的
 
 - **侧边栏搜索。** 搜索当前主机上的对话标题及已获取的时间线文本。侧边栏为可访问的对话获取最多 100 条最近记录；点一条结果可打开对话。（[#480](https://github.com/jasonhnd/paseo-clear-chat/issues/480)）。
 - **常用短句变成按钮。** 在普通输入框里，已保存的常用短句显示为按钮；点一下把短句插到光标位置，已经打好的草稿保留，再点一次会再插一次。按发送之前不会发出去（[#481](https://github.com/jasonhnd/paseo-clear-chat/issues/481)）。
 - **工作区改动。** 回合前后快照检测到工作区变化时，显示只读文件清单；可提供文本差异的文件可显示行数并展开查看。文件清单来自前后快照，行数和差异则取结束时相对 Git HEAD 的比较，可能包含回合前已有的改动。二进制、未跟踪及超出数量或大小限制的文件可能没有行数或差异；并行对话也可能产生其中的改动。未检测到可见变化时不显示卡片。（[#482](https://github.com/jasonhnd/paseo-clear-chat/issues/482)、[#485](https://github.com/jasonhnd/paseo-clear-chat/issues/485)）。
 - **错误组。** 侧边栏视图新增 **错误** 组，列出因错误停下的对话，带「出错」标记；没有时显示「没有因错误停下的对话。」（[#483](https://github.com/jasonhnd/paseo-clear-chat/issues/483)）。
 - **今天看板显示完成时间。** 今天看板的每行行尾显示「HH:mm 完成」，区段带灰字注记「时间为本机观察，可能略晚」，时间按本机时区显示。只有应用亲眼看到一轮从「跑着」变成「结束」时才记时间；页面打开前就已经结束的回合没有时间（[#470](https://github.com/jasonhnd/paseo-clear-chat/issues/470)）。
-
-### 之前几版新增的
 
 - **在插件列表里更好认。** 目录页那句一句话描述现在会提到答题卡（[#450](https://github.com/jasonhnd/paseo-clear-chat/issues/450)）。
 - **深色主题下「推荐」徽标看得清。** 文字对比度从 2.36:1 提到 12.99:1，浅色主题仍是 4.63:1（[#451](https://github.com/jasonhnd/paseo-clear-chat/issues/451)）。
@@ -100,12 +103,12 @@
 ## 安装
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.16.1.1
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.16.2.1
 ```
 
 打开 Paseo 的插件页面，在 Clear Chat 的说明开头查看版本号。Paseo 0.14.0 在这里显示默认英文说明，即使切换应用语言也是如此。
 
-Clear Chat 0.16.1.1 需要 Paseo 0.16.0 或更新的版本。在 Paseo 0.15.x 上，这一版无法正常安装或运行，请留在 Clear Chat 0.15.4.x。打开 **Settings → Plugins → Clear Chat**，可以选颜色、字体和折叠方式。
+Clear Chat 0.16.2.1 需要 Paseo 0.16.0 或更新的版本。在 Paseo 0.15.x 上，这一版无法正常安装或运行，请留在 Clear Chat 0.15.4.x。打开 **Settings → Plugins → Clear Chat**，可以选颜色、字体和折叠方式。
 
 以后要更新：
 
@@ -167,7 +170,7 @@ Clear Chat 为自己接手的时间线内容改变显示方式，例如助手回
 ```bash
 paseo plugin update clear-chat                 # 跟 main 上的最新版，改之前会问
 paseo plugin update clear-chat --yes           # 同上，不再问
-paseo plugin update clear-chat --ref v0.16.1.1 --yes   # 固定到某个版本
+paseo plugin update clear-chat --ref v0.16.2.1 --yes   # 固定到某个版本
 ```
 
 升级会保留你的设置。回退到更早的版本一般也保留，但某一次回退对设置的影响没有保证，设置重要的话先备份。卸载插件会删掉它的设置。
@@ -359,7 +362,7 @@ Ctrl/Cmd+F 打开查找栏。只搜当前显示出来的文字：折叠的步骤
 | 在长回复中显示跳转标签（Show jump chips on long replies） | 默认关。写完的回复有 1200 字以上、至少 2 个锚点时，文字上方出现一排标签，每个锚点一个（最多 8 个），点一下回复就滚到那一段。锚点是 1 到 3 级标题，或者整行只有一个加粗短语、自己起一段的行。可在网页和桌面应用中使用，原生手机应用上不显示。内容不会被折叠。 |
 | 让每个选项单独占一行（Keep each option on its own line） | 默认关。以大写字母（A 到 H，也可以是全角 Ａ 到 Ｈ）开头、后面跟着点、括号、顿号 `、`、冒号、制表符、全角空格或半角空格（例如 `A.`、`B)`、`A、文字`、`A: 文字`、`A：文字`、`A　文字`）的行会各占一行，不再连成一段。点和半角括号、半角冒号后面要有空格或制表符，其他标记后面不用；制表符和全角空格本身就够，其余标记还要求紧邻的上一行或下一行是相邻字母的选项行。只对 Clear Chat 自己画的回复生效，所以要开着 **助手回复 Markdown**。在同一个窗口里切换开关，已经显示的回复会立刻重画；换到别的窗口或设备，就要重新加载聊天才会重画。 |
 
-**已安装版本。** 设置页标题下面显示 `Clear Chat 版本 0.16.1.1`，再下面一行说明这个值的来历：从目录安装时会沿用该目录里已有的版本信息，因此可能显示比你安装的更旧的版本。构建里没有可用的版本信息时，这一行显示 **未知**（Unknown）。
+**已安装版本。** 设置页标题下面显示 `Clear Chat 版本 0.16.2.1`，再下面一行说明这个值的来历：从目录安装时会沿用该目录里已有的版本信息，因此可能显示比你安装的更旧的版本。构建里没有可用的版本信息时，这一行显示 **未知**（Unknown）。
 
 **自定强调色。** 点一个色块，或输入 `#RGB`、`#RRGGBB` 后按 **应用**（Apply）。HEX 写错时会留在输入框里并提示错误，已保存的颜色不变。切换到预设色后，你的自定颜色仍会记住。保存的 HEX 值始终不变；只有文字可能看不清时，显示出来的颜色才会在浅色主题下调深、在深色主题下调浅。实心按钮上的文字用黑或白，哪个对比度高用哪个。
 
@@ -505,14 +508,14 @@ Clear Chat 只改变 Paseo 显示对话的方式。下面每一条都是插件�
 
 **为什么看不到回答卡片？** 要打开答题卡设置和 **助手回复 Markdown**（Assistant markdown）。最新回复要有带编号的问题，每题至少两个字母选项，并要求简短作答或标了推荐项；字母不必从 A 开始，也不必连续。代码块和引用里的问题不认。Agent 运行时可操作框隐藏，答过的框在你回复后保留为只读。误认时点 **不是选项**（Not options），这条回复重新加载后也不再出框。
 
-**支持哪些 Paseo 版本？** 0.16.0 或更新；0.16.1.1 已在 Paseo 0.16.1 上验证；本次未验证真实模型运行。在 Paseo 0.15.x 上这一版无法正常运行，请留在 Clear Chat 0.15.4.x。Clear Chat 0.15.4.x 及更早版本在 Paseo 0.13／0.12 上的旧路径见[安装](#安装)，尚未实测。
+**支持哪些 Paseo 版本？** 0.16.0 或更新；0.16.2.1 已在 Paseo 0.16.2 上验证；本次未验证真实模型运行。在 Paseo 0.15.x 上这一版无法正常运行，请留在 Clear Chat 0.15.4.x。Clear Chat 0.15.4.x 及更早版本在 Paseo 0.13／0.12 上的旧路径见[安装](#安装)，尚未实测。
 
 ## 常见问题
 
 | 问题 | 怎么办 |
 |---|---|
 | 用 Cafe 插件安装失败，或 Paseo 提示缺少 `@shikijs/core` 等 Shiki 依赖。 | 用[安装](#安装)里的 Paseo CLI 命令重试，仓库和版本标签保持不变。Clear Chat 用 `npm ci --include=dev` 安装依赖，所以运行 daemon 的主机上要有 Node.js 和 npm，网络也要能连到 npm 仓库。如果代码目录是你自己管理的，请先在那里运行 `npm ci --include=dev` 再重试。 |
-| 安装停止，提示插件需要更新的 Paseo 版本。 | Clear Chat 0.16.1.1 需要 daemon 主机和所有连接的应用都用 Paseo 0.16.0 或更新版本；在 Paseo 0.15.x 上请留在 Clear Chat 0.15.4.x。Clear Chat 0.15.4.x 及更早版本在旧宿主上的做法，请看[安装](#安装)中的 Paseo 0.13 命令及其未实测提示，以及单独的 Paseo 0.12 说明。 |
+| 安装停止，提示插件需要更新的 Paseo 版本。 | Clear Chat 0.16.2.1 需要 daemon 主机和所有连接的应用都用 Paseo 0.16.0 或更新版本；在 Paseo 0.15.x 上请留在 Clear Chat 0.15.4.x。Clear Chat 0.15.4.x 及更早版本在旧宿主上的做法，请看[安装](#安装)中的 Paseo 0.13 命令及其未实测提示，以及单独的 Paseo 0.12 说明。 |
 | Paseo 拒绝这个插件版本，或 Clear Chat 提示缺少插件设置或时间线支持。 | 把运行 daemon 的主机和所有连着的应用都更新到新版 Paseo，再重新加载 Clear Chat。Clear Chat 需要的 Paseo 版本写在 `paseo-plugin.json` 里。 |
 | 插件注册失败，Clear Chat 启动不了。 | 更新 Paseo，再重新加载 Clear Chat。还不行的话，先备份插件设置，再用 CLI 重新安装。 |
 | Clear Chat 读不到主机上的设置。 | 重新连接主机，在 **Settings → Plugins → Clear Chat** 里点 **重试**（Retry）。还不行的话，检查 daemon 能不能访问插件设置文件夹。 |
@@ -547,7 +550,7 @@ cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_back
 **2. 安装**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.16.1.1
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.16.2.1
 ```
 
 **3. 确认后卸载旧插件**

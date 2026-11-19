@@ -2,13 +2,9 @@ Clear Chat changes how agent conversations look in Paseo, so an answer is easy t
 
 It is a display layer, not a provider. Finished steps fold into one row each, every tool call gets its own card, replies keep their code, links and paths, and the answer card lets you write an answer to each question in the conversation. The interface text follows the app language: English, Simplified Chinese or Japanese.
 
-## What's new in 0.16.1.1
+## What's new in 0.16.2.1
 
-- **Sidebar search.** Search conversation titles and fetched timeline text on the current host. The sidebar fetches up to 100 recent entries per accessible conversation; choosing a result opens that conversation. ([#480](https://github.com/jasonhnd/paseo-clear-chat/issues/480)).
-- **Saved replies as buttons.** Your saved replies appear as buttons in the composer and insert their text at the cursor without sending.
-- **Workspace changes.** When snapshots identify workspace changes, a read-only card lists the changed files. Available text files can show line counts and an expandable diff. The file list comes from before/after snapshots; counts and diffs compare the end state with Git HEAD and may include edits made before the turn. Binary or untracked files and files beyond the count or size limits may lack counts or diffs. Concurrent conversations can contribute changes; no card appears when no visible change is found. ([#482](https://github.com/jasonhnd/paseo-clear-chat/issues/482), [#485](https://github.com/jasonhnd/paseo-clear-chat/issues/485)).
-- **Errors group.** Conversations that stopped because of an error are listed in their own group in the sidebar view.
-- **Finish time on Today rows.** A finished turn shows `Finished HH:mm` on its Today row, in your local time zone.
+- **The Answers waiting row clears at once.** After you answer the last question in an answer card, the conversation leaves the sidebar's **Answers waiting** group on the same page; you no longer have to reload ([#464](https://github.com/jasonhnd/paseo-clear-chat/issues/464)).
 
 ## What it does
 
@@ -29,7 +25,7 @@ Measured 2026-11-04 on a 300-step conversation (150 tool calls), three runs per 
 
 ## Setup
 
-Clear Chat 0.16.1.1 needs Paseo 0.16.0 or later and was tested on Paseo 0.16.1. On Paseo 0.15.x this version cannot run normally; stay on Clear Chat 0.15.4.x.
+Clear Chat 0.16.2.1 needs Paseo 0.16.0 or later and was tested on Paseo 0.16.2. On Paseo 0.15.x this version cannot run normally; stay on Clear Chat 0.15.4.x.
 
 Installation runs `npm ci` on the daemon host, so Node.js and npm must be available there and the host must be able to reach the npm registry.
 
