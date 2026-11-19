@@ -25,6 +25,7 @@ import { buildJumpChips, jumpHeadingLines } from "./jump-chips";
 import { OptionCard } from "./components/option-card";
 import { TimelineTailHub } from "./components/hub-live";
 import { AssistantFooter } from "./components/turn-footer";
+import { TurnWindowCard } from "./components/turn-window-card";
 import { SystemCard } from "./components/system-card";
 import { parseSystemEnvelope } from "./system-envelope";
 import { toolErrorLine } from "./tool-error";
@@ -583,4 +584,10 @@ export function LiveUserMessageRenderer({
       )}
     </View>
   );
+}
+
+/** Timeline item the server appends after a turn; it carries its own snapshot. */
+export function TurnWindowItem({ item, theme }: { item: { data: unknown }; theme: PluginTimelineItemProps["theme"] }) {
+  const tokens = useMemo(() => buildThemeTokens(theme.colors, {} as never), [theme]);
+  return <TurnWindowCard snapshot={item.data as never} tokens={tokens} />;
 }

@@ -2,7 +2,11 @@ import { messages } from "./client/messages";
 import { initializeClientTranslations, translate as t } from "./client/translation";
 import type { PluginClientContext, PluginTimelineTransformerContribution } from "@getpaseo/plugin/client";
 import { z } from "zod";
+import { turnWindowItemSchema } from "./client/turn-window-schema";
 import { requireHostMethods, STARTUP_MESSAGES } from "./shared/startup-diagnostics";
+import { ClearChatSidebar, type SidebarViewRegistration } from "./client/components/agent-board";
+import { TurnWindowItem } from "./client/live-renderers";
+import { SidebarHintItem } from "./client/components/sidebar-hint-item";
 import { ClearChatSettingsPage } from "./client/settings-page";
 import { embedFonts } from "./client/components/embed-fonts";
 import { installFrostedGlass } from "./client/components/frosted";
@@ -16,11 +20,15 @@ import { extractGeneratedImages } from "./client/generated-images";
 import { containsComponentFence } from "./client/component-fences";
 import { projectedApprovalStatus } from "./client/tool-approval";
 import { installStepDetailPanel } from "./client/components/step-detail-host";
-import { setOptionSender } from "./client/option-session";
+import { AnswerStyleControl, answerStyleSupported } from "./client/components/answer-style-control";
+import { setOptionSender, setAnswerDraftStore, setAnswerStatePublisher } from "./client/option-session";
 import {
   getEnhancerPreferences,
   initializeEnhancerPreferences,
   onEnhancerPreferencesReady,
+  getStoredAnswerDraft,
+  storeAnswerDraft,
+  clearStoredAnswerDraft,
 } from "./client/preferences";
 import {
   LiveToolCallRenderer,
@@ -64,8 +72,47 @@ export default function contribute(client: PluginClientContext) {
 }
 
 function registerClient(client: PluginClientContext) {
+  // Sidebar views were introduced in Paseo 0.16.
+  const sidebarClient = client as PluginClientContext & SidebarViewRegistration;
+  const removeTurnWindow = typeof (client as { addTimelineRenderer?: unknown }).addTimelineRenderer === "function"
+    ? (client as unknown as { addTimelineRenderer(c: unknown): () => void }).addTimelineRenderer({
+      kind: "turn-window", version: 1,
+      schema: turnWindowItemSchema,
+      Component: TurnWindowItem,
+    })
+    : undefined;
+  const removeSidebar = typeof sidebarClient.addSidebarView === "function"
+    ? sidebarClient.addSidebarView({ id: "clear-chat", title: messages.message("sidebar.title"),
+      description: messages.message("sidebar.description"), Component: ClearChatSidebar })
+    : undefined;
+  // A header item is the only surface that mounts without the user selecting the view.
+  const removeSidebarHint = typeof (sidebarClient as { addSidebarHeaderItem?: unknown }).addSidebarHeaderItem === "function"
+    ? (sidebarClient as unknown as { addSidebarHeaderItem(c: { id: string; title: unknown; Component: unknown }): () => void })
+        .addSidebarHeaderItem({ id: "clear-chat-hint", title: messages.message("sidebar.title"), Component: SidebarHintItem })
+    : undefined;
   setOptionSender((agentId, text) => client.paseo.agents.ref(agentId).send(text));
   void initializeEnhancerPreferences((contract, input) => client.rpc(contract, input));
+  // Drafts of an unfinished answer card live in host settings, one entry per card.
+  setAnswerDraftStore({ read: getStoredAnswerDraft, write: storeAnswerDraft, clear: clearStoredAnswerDraft });
+  // The sidebar lists conversations with open questions; it reads agent metadata.
+  setAnswerStatePublisher({
+    initialize(agentId, pending, total) {
+      try {
+        const composer = (client as unknown as { composers?: (selector: { agentId: string }) => readonly { agent?: { metadata?: Record<string, unknown> }; setMetadata?: (patch: Record<string, unknown>) => Promise<void> }[] }).composers?.({ agentId })?.[0];
+        if (!composer?.setMetadata || composer.agent?.metadata?.clearChat !== undefined) return;
+        void composer.setMetadata({ clearChat: { pending, total, updatedAt: new Date().toISOString() } }).catch(() => {});
+      } catch { /* Metadata must not interrupt rendering. */ }
+    },
+    publish(agentId, pending, total) {
+      try {
+        const composers = (client as unknown as { composers?: (selector: { agentId: string }) => readonly { setMetadata?: (patch: Record<string, unknown>) => Promise<void> }[] }).composers;
+        const composer = composers?.({ agentId })?.[0];
+        if (!composer?.setMetadata) return;
+        void composer.setMetadata({ clearChat: { pending, total, updatedAt: new Date().toISOString() } })
+          .catch(() => { /* a sidebar hint must never surface as a card error */ });
+      } catch { /* same */ }
+    },
+  });
   // Install the bundled faces before any surface paints.
   const removeFonts = embedFonts();
   const removeFrost = installFrostedGlass();
@@ -77,6 +124,11 @@ function registerClient(client: PluginClientContext) {
   const removeChatFind = installChatFind();
   const removeToolSpacing = installCompactToolSpacing();
   const removeStepDetails = installStepDetailPanel(client);
+  // Composer item needs the 0.16 host API; an older host simply does not get the control.
+  const removeAnswerStyle = typeof (client as { addComposerItem?: unknown }).addComposerItem === "function"
+    ? (client as unknown as { addComposerItem(c: { id: string; Component: unknown }): () => void })
+        .addComposerItem({ id: "answer-style", Component: AnswerStyleControl })
+    : null;
 
   // Configuration lives in the host Settings area.
   client.addSettingsScreen({
@@ -341,6 +393,9 @@ function registerClient(client: PluginClientContext) {
   });
 
   return () => {
+    removeSidebar?.();
+    removeTurnWindow?.();
+    removeSidebarHint?.();
     setOptionSender(null);
     removeFonts();
     removeFrost();

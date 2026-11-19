@@ -10,11 +10,17 @@ import { z } from "zod";
  */
 export const promptImagesRpc = defineRpc({
   name: "prompt.images",
-  input: z.object({ agentId: z.string(), messageId: z.string().nullable().optional(), clientMessageId: z.string().nullable().optional(), text: z.string() }),
+  input: z.object({ agentId: z.string(), messageId: z.string().nullable().optional(), clientMessageId: z.string().nullable().optional(), text: z.string(), sessionId: z.string().nullable().optional() }),
   output: z.object({
     images: z.array(z.object({ id: z.string(), thumbDataUri: z.string(), mime: z.string(), width: z.number().nullable(), height: z.number().nullable() })),
     total: z.number(),
     reason: z.string().nullable(),
+    /** The timeout metadata's answer: this message already has stored images. */
+    hasStored: z.boolean().optional(),
+    /** The provider is still storing this message's images. */
+    saving: z.boolean().optional(),
+    /** The provider gave up storing this message's images. */
+    saveFailed: z.boolean().optional(),
   }),
 });
 export const promptImageRpc = defineRpc({

@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { registerTurnWindows } from "./server/turn-window";
+import { turnWindowRpc } from "./shared/turn-window-rpc";
 import { open, realpath, stat, type FileHandle } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { homedir } from "node:os";
@@ -9,6 +11,9 @@ import { imageRpc } from "./shared/image-rpc";
 import { promptImageRpc, promptImagesRpc } from "./shared/prompt-images-rpc";
 import { createPromptImageHandlers } from "./server/prompt-images/registry";
 import { createHermesCcImageStore, hermesCcImageRoot, hermesCcPaseoHome, type HermesCcImageStore } from "./server/hermes-cc/store";
+import { saveWithRetry } from "./server/hermes-cc/save-retry";
+import { createHermesCcSaveStatusStore } from "./server/hermes-cc/save-status";
+import { createHermesCcImageCapture } from "./server/hermes-cc/capture";
 import { createHermesCcCatalogStore } from "./server/hermes-cc/catalog";
 import { hermesCcProvidersFromConfig } from "./server/hermes-cc/provider";
 import type { HermesCcHistoryStore } from "./server/hermes-cc/history-store";
@@ -477,6 +482,8 @@ function contributeWithHistoryFactory(server: PluginServerContext, historyStore:
 }
 
 function registerServer(server: PluginServerContext, historyStore: (home: string) => HermesCcHistoryStore) {
+  const turnWindows = registerTurnWindows(server);
+  server.handle(turnWindowRpc, async ({ agentId, turnId }) => turnWindows.windows.get(agentId, turnId));
   migrateHostSettings();
   server.registerSettings(presentationSettings);
   server.registerSettings(toolExpansionSettings);
@@ -559,29 +566,39 @@ function registerServer(server: PluginServerContext, historyStore: (home: string
   });
 
   let hermesCcImageStore: HermesCcImageStore | undefined;
+  let hermesCcSaveStatus: ReturnType<typeof createHermesCcSaveStatusStore> | undefined;
   let home: string | undefined;
   let startup: ReturnType<typeof hermesCcStartupConfig> = { providers: {}, enabled: false };
   try {
     home = hermesCcPaseoHome();
     hermesCcImageStore = createHermesCcImageStore(hermesCcImageRoot(server, home), { trustedRoot: home });
+    hermesCcSaveStatus = createHermesCcSaveStatusStore(join(home, "plugin-data", "clear-chat", "hermes-cc-save-status"));
+    void hermesCcSaveStatus.sweep().catch(() => {});
     startup = hermesCcStartupConfig(home);
   } catch { console.debug?.("[clear-chat] hermes_cc: startup_unavailable"); }
+  const capture = hermesCcImageStore && hermesCcSaveStatus
+    ? createHermesCcImageCapture({
+        status: hermesCcSaveStatus,
+        save: (key, images) => saveWithRetry(hermesCcImageStore!, key, images),
+        warn: (message) => (console.warn ?? console.debug)?.(message),
+        debug: (message) => console.debug(message),
+      })
+    : undefined;
   const providers = startup.enabled && home !== undefined ? hermesCcProvidersFromConfig(startup.providers, true, async ({ sessionKey, clientMessageId, images }) => {
     if (!clientMessageId) {
       console.debug("[clear-chat] hermes_cc: message_id_unavailable");
       return;
     }
-    // Async capture is awaited by ProviderConnection.send(), whose SDK contract
-    // permits Promise<void> (server/provider.ts:77-83). Contribution stays sync.
-    try {
-      const result = await hermesCcImageStore?.save({ sessionKey, messageId: clientMessageId }, images);
-      if (result === "conflict") console.debug("[clear-chat] hermes_cc: save_conflict");
-    } catch { console.debug("[clear-chat] hermes_cc: save_failed"); }
+    // Only the durable pending marker is awaited here: ProviderConnection.send()
+    // awaits this hook, so the save and its retries must not block the turn.
+    if (!capture) return;
+    await capture({ sessionKey, messageId: clientMessageId }, images);
   }, historyStore(home), createHermesCcCatalogStore(join(home, "plugin-data", "clear-chat", "hermes-cc-catalog"))) : [];
   for (const provider of providers) server.registerProvider(provider);
   const promptImages = createPromptImageHandlers({
     hermesCcImageStore,
     hermesCcProviderIds: new Set(providers.map(provider => provider.id)),
+    saveStatus: hermesCcSaveStatus,
   });
   server.handle(promptImagesRpc, promptImages.images);
   server.handle(promptImageRpc, promptImages.image);
@@ -619,5 +636,5 @@ function registerServer(server: PluginServerContext, historyStore: (home: string
 
   // The highlighter and the cache sit at module scope on purpose, shared by
   // every contribution, so a single teardown must not dispose them.
-  return () => {};
+  return () => { turnWindows.dispose(); };
 }

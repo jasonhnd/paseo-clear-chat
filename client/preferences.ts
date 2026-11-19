@@ -7,6 +7,7 @@ import {
   presentationSettingsRpc,
   type PresentationSettings,
   type PreferenceOverrides,
+  type AnswerDraft,
 } from "../shared/settings";
 
 export const ACCENT_PRESETS = {
@@ -80,6 +81,9 @@ export interface EnhancerPreferences {
   foldFinishedSteps: boolean;
   collapsedStepAction: CollapsedStepAction;
   foldLongOutputAfter: OutputLineLimit;
+  answerStyle: NonNullable<PreferenceOverrides["answerStyle"]>;
+  savedReplies: string[];
+  autoFillAnswer: boolean;
   showAnswerCard: boolean;
   showJumpChips: boolean;
   keepItemLineBreaks: boolean;
@@ -111,6 +115,9 @@ export const DEFAULT_PREFERENCES: Readonly<EnhancerPreferences> = {
   foldFinishedSteps: true,
   collapsedStepAction: "details",
   foldLongOutputAfter: 15,
+  answerStyle: "none",
+  savedReplies: ["Go with the recommended", "Leave it for now", "Continue"],
+  autoFillAnswer: true,
   showAnswerCard: false,
   showJumpChips: false,
   keepItemLineBreaks: false,
@@ -157,7 +164,7 @@ function loadLegacyPreferences(): PreferenceOverrides | undefined {
     const valid: Record<string, unknown> = {};
     for (const [key, schema] of Object.entries(preferenceOverridesSchema.shape)) {
       // New host-only preferences must never come from a browser import snapshot.
-      if (["textScale", "foldFinishedSteps", "foldLongOutputAfter", "codeFontFamily", "customAccent", "customAccentEnabled", "collapsedStepAction", "delegatedTools", "delegatedCodeBlocks", "hiddenTools", "codeBlockOpen", "foldMessagePrefixes", "showAnswerCard", "showJumpChips", "keepItemLineBreaks", "dismissedOptionReplies"].includes(key)) continue;
+      if (["textScale", "foldFinishedSteps", "foldLongOutputAfter", "codeFontFamily", "customAccent", "customAccentEnabled", "collapsedStepAction", "delegatedTools", "delegatedCodeBlocks", "hiddenTools", "codeBlockOpen", "foldMessagePrefixes", "showAnswerCard", "showJumpChips", "keepItemLineBreaks", "dismissedOptionReplies", "answerStyle", "savedReplies", "autoFillAnswer"].includes(key)) continue;
       const parsed = schema.safeParse((candidate as Record<string, unknown>)[key]);
       if (parsed.success && parsed.data !== undefined) valid[key] = parsed.data;
     }
@@ -174,6 +181,7 @@ let localVersion = 0;
 let resetVersion = 0;
 let ready = false;
 let storageError: string | null = null;
+const dirtyAnswerBlocks = new Map<string, string | undefined>();
 
 class SettingsFailure extends Error {}
 
@@ -223,7 +231,14 @@ async function savePreferences(
     });
     if (result.status !== "ready") throw new SettingsFailure(STARTUP_MESSAGES.settingsInvalid);
     const current = parseSettings(result.values);
-    const next = change(current);
+    let next = change(current);
+    if (dirtyAnswerBlocks.size) {
+      const drafts = { ...(next.answerDrafts ?? {}) };
+      for (const [key, block] of dirtyAnswerBlocks) {
+        if (drafts[key]) drafts[key] = { ...drafts[key], block };
+      }
+      next = { ...next, answerDrafts: drafts };
+    }
     if (next === current) return current;
     const saved = await invoke(presentationSettingsRpc.write, {
       revision: result.revision,
@@ -236,6 +251,12 @@ async function savePreferences(
 }
 
 function applySavedPreferences(values: PresentationSettings, version: number, reset: number): void {
+  answerDrafts = (values.answerDrafts ?? {}) as Record<string, unknown>;
+  for (const [key, block] of dirtyAnswerBlocks) {
+    const entry = answerDrafts[key] as AnswerDraft | undefined;
+    if (entry && entry.block === block) dirtyAnswerBlocks.delete(key);
+  }
+  draftCacheReliable = true;
   // A queued edit must not be replaced by an older read/write response.
   if (version === localVersion) preferences = { ...DEFAULT_PREFERENCES, ...values.preferences };
   else if (reset === resetVersion) preferences = { ...preferences, dismissedOptionReplies: values.preferences.dismissedOptionReplies ?? [] };
@@ -244,17 +265,59 @@ function applySavedPreferences(values: PresentationSettings, version: number, re
   publish();
 }
 
-function enqueue(change: (values: PresentationSettings) => PresentationSettings): Promise<void> {
+const DRAFT_LIMIT = 40;
+let answerDrafts: Record<string, unknown> = {};
+let draftCacheReliable = false;
+let pendingDraftOperations = 0;
+
+/** Last values read from host settings; used to answer a draft read synchronously. */
+export function getStoredAnswerDraft(key: string): unknown {
+  if (!draftCacheReliable || pendingDraftOperations) throw new SettingsFailure(STARTUP_MESSAGES.settingsRead);
+  return answerDrafts[key];
+}
+
+/** Best effort: a draft write never blocks or breaks the card. */
+export function storeAnswerDraft(key: string, draft: AnswerDraft): Promise<void> {
+  return enqueue((values) => {
+    const previous = values.answerDrafts?.[key];
+    const nextDraft = previous?.block === undefined ? draft : { ...draft, block: previous.block };
+    const entries = Object.entries({ ...(values.answerDrafts ?? {}), [key]: nextDraft });
+    const kept = entries.length <= DRAFT_LIMIT ? entries : entries.slice(entries.length - DRAFT_LIMIT);
+    return { ...values, answerDrafts: Object.fromEntries(kept) };
+  }, true);
+}
+
+export function clearStoredAnswerDraft(key: string): Promise<void> {
+  return enqueue((values) => {
+    if (!(key in (values.answerDrafts ?? {}))) return values;
+    const next = { ...(values.answerDrafts ?? {}) };
+    delete next[key];
+    return { ...values, answerDrafts: next };
+  }, true);
+}
+
+function enqueue(change: (values: PresentationSettings) => PresentationSettings, propagateFailure = false): Promise<void> {
   const version = localVersion;
   const reset = resetVersion;
-  pending = pending.then(async () => {
-    const values = await savePreferences(change);
-    applySavedPreferences(values, version, reset);
-  }).catch((error: unknown) => {
+  if (propagateFailure) pendingDraftOperations += 1;
+  const operation = pending.then(async () => {
+    try {
+      const values = await savePreferences(change);
+      applySavedPreferences(values, version, reset);
+    } catch (error) {
+      if (propagateFailure) draftCacheReliable = false;
+      throw error;
+    } finally {
+      if (propagateFailure) pendingDraftOperations -= 1;
+    }
+  });
+  pending = operation.catch((error: unknown) => {
     storageError = error instanceof SettingsFailure ? error.message : STARTUP_MESSAGES.settingsRead;
     publish();
   });
-  return pending;
+  // A legacy fire-and-forget caller is observed by pending.catch above; draft
+  // callers can still await the original rejection without poisoning the queue.
+  return propagateFailure ? operation : pending;
 }
 
 export function initializeEnhancerPreferences(rpc: PluginClientContext["rpc"]): Promise<void> {
@@ -270,8 +333,10 @@ export function initializeEnhancerPreferences(rpc: PluginClientContext["rpc"]): 
     // Existing SDK choices win over legacy values. The host marker prevents
     // stale localStorage from restoring settings after an edit or reset.
     return {
+      ...values,
       preferences: { ...legacy, ...values.preferences },
       legacyMigrated: true,
+      answerDrafts: values.answerDrafts,
     };
   });
 }
@@ -289,8 +354,10 @@ export function updateEnhancerPreferences(update: Partial<EnhancerPreferences>):
   preferences = { ...preferences, ...patch };
   publish();
   return enqueue((values) => ({
+    ...values,
     preferences: { ...values.preferences, ...patch },
     legacyMigrated: true,
+    answerDrafts: values.answerDrafts,
   }));
 }
 
@@ -314,6 +381,25 @@ export function saveDismissedOptionReply(agentId: string, at: number): Promise<v
   return pending;
 }
 
+export function getOptionAnswerDraft(agentId: string, at: number): { block?: string } | undefined {
+  const key = `${agentId}\u0000${at}`;
+  const entry = answerDrafts[key] as AnswerDraft | undefined;
+  if (!entry) return undefined;
+  return dirtyAnswerBlocks.has(key) ? { ...entry, block: dirtyAnswerBlocks.get(key) } : entry;
+}
+
+export function saveOptionAnswerDraft(agentId: string, at: number, block: string | null, draft?: AnswerDraft): Promise<void> {
+  const key = `${agentId}\u0000${at}`;
+  const value = block ?? undefined;
+  if (!answerDrafts[key] && draft) answerDrafts[key] = draft;
+  dirtyAnswerBlocks.set(key, value);
+  return enqueue(values => {
+    const entry = values.answerDrafts?.[key] ?? draft;
+    if (!entry) return values;
+    return { ...values, answerDrafts: { ...values.answerDrafts, [key]: { ...entry, block: value } } };
+  });
+}
+
 export function resetEnhancerPreferences(): Promise<void> {
   localVersion += 1;
   resetVersion += 1;
@@ -321,7 +407,7 @@ export function resetEnhancerPreferences(): Promise<void> {
   publish();
   // SDK reset would also clear the migration marker, so write an empty set of
   // explicit choices instead. Each platform then uses its own defaults.
-  return enqueue(() => ({ preferences: {}, legacyMigrated: true }));
+  return enqueue(() => ({ preferences: {}, legacyMigrated: true, answerDrafts: {} }));
 }
 
 export function subscribeEnhancerPreferences(listener: () => void): () => void {

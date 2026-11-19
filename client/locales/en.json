@@ -165,6 +165,7 @@
     "copiedInstead": "Copied instead"
   },
   "toast": {
+    "sidebarViewHint": "Open Settings → Sidebar and select Clear Chat to use it in the sidebar.",
     "copied": "Copied to clipboard",
     "copyFailed": "Could not copy. Select all the text in the dialog and use Copy.",
     "pathCopied": "Path copied. Open it on the host computer.",
@@ -203,6 +204,11 @@
     "imageThumbA11y": "Pasted image",
     "moreImages": "+{{count}}",
     "closeImage": "Close image",
+    "imagesDidNotLoad": "Images didn't load",
+    "retryImages": "Retry",
+    "imageUnavailable": "This image can't be displayed",
+    "imageNotSaved": "Image wasn't saved",
+    "imageSaving": "Saving image…",
     "usageIn": "in",
     "usageCached": "cached",
     "usageOut": "out",
@@ -645,6 +651,22 @@
     "hintReopen": "↑ to reopen",
     "sendAction": "Send",
     "hintCustom": "Enter to confirm · Shift+Enter for a new line",
+    "progress": "{{chosen}} of {{total}} answered · {{remaining}} to go",
+    "replaceFirstLine": "Replace first line with {{answer}}",
+    "keepEdited": "Keep my edit",
+    "limitEdited": "If you edited the answer and then choose Replace first line, only the first line is replaced; the rest of a multi-line answer stays for you to remove.",
     "hintEnter": "Enter"
+  },
+  "answerStyle": {
+    "title": "Answer style for the next reply",
+    "none": "None",
+    "concise": "Concise",
+    "formal": "Formal",
+    "casual": "Casual",
+    "oneLine": "One line",
+    "savedRepliesLabel": "Saved replies",
+    "savedRepliesDescription": "One phrase per line. Replies are inserted without sending.",
+    "autoFillLabel": "Automatically fill the answer",
+    "autoFillDescription": "Put the selected answer in the input box so you can review it."
   }
 }

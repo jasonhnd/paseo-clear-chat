@@ -281,3 +281,21 @@ test("missing and invalid calendar dates and invalid tag options fail", t => {
   assert.match(run(dir, ["--tag-day"], { noTagDay: true }).stderr, /--tag-day requires one date/);
   assert.match(run(dir, ["--tag-day", day]).stderr, /--tag-day requires one date/);
 });
+
+for (const value of ["YYYY-MM-DD", "TBD", "TODO", "XXXX-XX-XX", "<date>"]) {
+  test(`placeholder changelog release date ${value} fails`, t => {
+    const { dir, write } = fixture(t);
+    write("CHANGELOG.md", `## [${current}] - ${value}\n## [${prior}]\n## [${legacy}]\n`);
+    const result = run(dir);
+    assert.equal(result.status, 1, `${value}: expected exit 1\nstdout: ${result.stdout}\nstderr: ${result.stderr}`);
+    assert.match(result.stderr, /FAIL release date: CHANGELOG\.md:1: invalid or missing date/, value);
+  });
+
+  test(`placeholder release notes date ${value} fails`, t => {
+    const { dir, write } = fixture(t);
+    write("release-notes.md", `# Release\nRelease date: ${value}\n`);
+    const result = run(dir, ["--release-notes", "release-notes.md"]);
+    assert.equal(result.status, 1, `${value}: expected exit 1\nstdout: ${result.stdout}\nstderr: ${result.stderr}`);
+    assert.match(result.stderr, /FAIL release date: release-notes\.md:2: invalid or missing date/, value);
+  });
+}

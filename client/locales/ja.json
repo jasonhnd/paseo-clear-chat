@@ -165,6 +165,7 @@
     "copiedInstead": "コピーしました"
   },
   "toast": {
+    "sidebarViewHint": "Settings → Sidebar で Clear Chat を選ぶと、サイドバーで使えます。",
     "copied": "クリップボードにコピーしました",
     "copyFailed": "コピーできませんでした。画面の文字をすべて選んで「コピー」を使ってください。",
     "pathCopied": "パスをコピーしました。ホストのコンピューターで開いてください。",
@@ -645,6 +646,22 @@
     "hintReopen": "↑ で再表示",
     "sendAction": "送信",
     "hintCustom": "Enter で確定 · Shift+Enter で改行",
+    "progress": "{{total}} 問中 {{chosen}} 問回答済み · 残り {{remaining}} 問",
+    "replaceFirstLine": "1行目を{{answer}}に置き換える",
+    "keepEdited": "自分の編集を残す",
+    "limitEdited": "回答を編集したあとで「置き換える」ボタンを押しても、置き換わるのは1行目だけです。複数行の回答の2行目以降はそのまま残るので、自分で消してください。",
     "hintEnter": "Enter"
+  },
+  "answerStyle": {
+    "title": "次の返信の回答スタイル",
+    "none": "追加しない",
+    "concise": "簡潔",
+    "formal": "フォーマル",
+    "casual": "カジュアル",
+    "oneLine": "一文",
+    "savedRepliesLabel": "よく使う回答",
+    "savedRepliesDescription": "1行に1つ入力します。挿入しても送信されません。",
+    "autoFillLabel": "回答を自動入力",
+    "autoFillDescription": "選んだ回答を入力欄に入れ、送信前に確認できます。"
   }
 }

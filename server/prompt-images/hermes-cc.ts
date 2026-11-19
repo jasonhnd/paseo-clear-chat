@@ -3,6 +3,21 @@ import type { HermesCcStoredImage } from "../hermes-cc/store";
 import type { FoundImages, PromptImageResolver } from "./registry";
 
 const empty = (): FoundImages => ({ matchedMessages: 0, images: [] });
+
+/** A status read that stalls is not a status: the lookup must still run. */
+const STATUS_READ_BUDGET_MS = 50;
+
+async function readStatus(context: Parameters<PromptImageResolver["find"]>[0], sessionKey: string, messageId: string) {
+  const reader = context.saveStatus?.read;
+  if (!reader) return null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      reader({ sessionKey, messageId }).catch(() => null),
+      new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), STATUS_READ_BUDGET_MS); }),
+    ]);
+  } finally { if (timer) clearTimeout(timer); }
+}
 function sameImages(left: HermesCcStoredImage[], right: HermesCcStoredImage[]): boolean {
   return left.length === right.length && left.every((image, index) => {
     const other = right[index]!;
@@ -12,6 +27,25 @@ function sameImages(left: HermesCcStoredImage[], right: HermesCcStoredImage[]): 
 
 export const hermesCcPromptImageResolver: PromptImageResolver = {
   matches: provider => provider.startsWith("hermes") && provider.endsWith("-cc"),
+  async timeoutInfo(context) {
+    // Request-time id first (C/D pass the refreshed snapshot; B may pass the client id).
+    const sessionKey = nativeSessionKeyFromPersistence(context.requestSessionId ?? null)
+      ?? nativeSessionKeyFromPersistence(context.sessionId, context.nativeHandle);
+    if (!sessionKey) return {};
+    const ids = [...new Set([context.messageId, context.clientMessageId].filter(
+      (id): id is string => typeof id === "string" && !!id.trim() && id.length <= 512 && !id.includes("\0"),
+    ))];
+    let hasStored = false, saveFailed = false;
+    for (const messageId of ids) {
+      // Durable state first: it survives reloads and is the post-#491 contract.
+      const status = await readStatus(context, sessionKey, messageId);
+      if (status?.state === "saveFailed") saveFailed = true;
+      if (!hasStored && context.hermesCcImageStore?.hasStoredImages) {
+        hasStored = await context.hermesCcImageStore.hasStoredImages({ sessionKey, messageId });
+      }
+    }
+    return { hasStored, ...(saveFailed ? { saveFailed: true } : {}) };
+  },
   async find(context) {
     if (context.signal.aborted || !context.hermesCcImageStore) return empty();
     const sessionKey = nativeSessionKeyFromPersistence(context.sessionId, context.nativeHandle);
@@ -21,6 +55,19 @@ export const hermesCcPromptImageResolver: PromptImageResolver = {
     const ids = [...new Set([context.messageId, context.clientMessageId].filter(
       (id): id is string => typeof id === "string" && !!id.trim() && id.length <= 512 && !id.includes("\0"),
     ))];
+    // Durable state comes first: reading it takes no disk lock, while a save in
+    // flight holds the store's lock — load() would then block until the RPC
+    // budget expires and the row would surface as `timeout`, never as `saving`.
+    let saving = false;
+    for (const messageId of ids) {
+      const status = await readStatus(context, sessionKey, messageId);
+      if (context.signal.aborted) return empty();
+      // Both markers can be present across the two ids; saveFailed wins because
+      // the client paints the failure before the in-flight spinner.
+      if (status?.state === "saveFailed") return { matchedMessages: 1, images: [], saveFailed: true };
+      if (status?.state === "pending") saving = true;
+    }
+    if (saving) return { matchedMessages: 1, images: [], saving: true };
     let selected: HermesCcStoredImage[] | null = null;
     for (const messageId of ids) {
       const images = await context.hermesCcImageStore.load({ sessionKey, messageId });

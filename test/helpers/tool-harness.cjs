@@ -1,16 +1,36 @@
-const { readFileSync, existsSync } = require("node:fs");
+const { readFileSync, existsSync, statSync } = require("node:fs");
 const { createRequire } = require("node:module");
 const { resolve, dirname, relative } = require("node:path");
 const { runInThisContext } = require("node:vm");
 const ts = require("typescript");
 const { createExpansionHost } = require("./expansion-host.cjs");
 
+// TypeScript transpilation is pure per file and dominates harness creation
+// (measured ~644 ms per createToolHarness). Cache the compiled text at module
+// scope; module instances are still re-evaluated per harness, so test state
+// stays isolated exactly as before.
+const transpiledSources = new Map();
+function transpileFile(filename) {
+  // Key on name + mtime + size: a file rewritten inside the same process must
+  // not silently reuse an older transpilation of its previous contents.
+  const info = statSync(filename);
+  const key = `${filename}:${info.mtimeMs}:${info.size}`;
+  let source = transpiledSources.get(key);
+  if (source === undefined) {
+    source = ts.transpileModule(readFileSync(filename, "utf8"), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX },
+    }).outputText;
+    transpiledSources.set(key, source);
+  }
+  return source;
+}
+
 // Exercise the registered transformer, schema, live renderer and card bodies.
 // Only the host runtime, animation, syntax painting and unrelated UI are shims.
 function createToolHarness(platform = "ios", options = {}) {
   const root = resolve(__dirname, "../..");
   const cache = new Map(), frames = new Map(), transformers = options.timelineHost?.transformers ?? new Map(), renderers = options.timelineHost?.renderers ?? new Map(), panels = new Map();
-  const panelOpens = [], settingsScreens = new Map();
+  const panelOpens = [], settingsScreens = new Map(), sidebarHeaderItems = new Map();
   const dimensions = { width: options.width ?? 1440, height: options.height ?? 900, scale: 1, fontScale: 1, ...options.dimensions };
   let activePanel;
   let panelMounted = true;
@@ -23,8 +43,9 @@ function createToolHarness(platform = "ios", options = {}) {
   const noop = () => {};
   const cleanup = () => noop;
   // Body replays exercise inline cards; detail/gesture suites opt into details explicitly.
-  const preferences = { showJumpChips: false, keepItemLineBreaks: false, dismissedOptionReplies: [], delegatedTools: "", delegatedCodeBlocks: "", hiddenTools: "", foldMessagePrefixes: "", enhancedUserBubble: true, assistantMarkdown: true, markdownVariant: "document", textScale: 1, foldFinishedSteps: true, foldLongOutputAfter: 15, collapsedStepAction: "inline", ...options.preferences };
+  const preferences = { answerStyle: 'none', savedReplies: ['Go with the recommended', 'Leave it for now', 'Continue'], autoFillAnswer: true, showJumpChips: false, keepItemLineBreaks: false, dismissedOptionReplies: [], delegatedTools: "", delegatedCodeBlocks: "", hiddenTools: "", foldMessagePrefixes: "", enhancedUserBubble: true, assistantMarkdown: true, markdownVariant: "document", textScale: 1, foldFinishedSteps: true, foldLongOutputAfter: 15, collapsedStepAction: "inline", ...options.preferences };
   const getPreferences = () => options.presentationHost ? load("client/preferences.ts").getEnhancerPreferences() : preferences;
+  const answerDrafts = options.answerDrafts ?? new Map();
   const expansionHost = options.expansionHost ?? createExpansionHost();
   const rpcFunctions = new Map();
   const preferenceListeners = new Set();
@@ -111,7 +132,7 @@ function createToolHarness(platform = "ios", options = {}) {
     Linking: { openURL: (...args) => { links.push(args[0]); return options.openURL?.(...args) ?? Promise.resolve(); } },
   };
   const stubs = {
-    "client/preferences": { initializeEnhancerPreferences: async () => {}, areEnhancerPreferencesReady: () => true, onEnhancerPreferencesReady: callback => { callback(); return noop; }, getEnhancerPreferences: () => preferences, saveDismissedOptionReply: async () => {}, subscribeEnhancerPreferences: listener => { preferenceListeners.add(listener); return () => preferenceListeners.delete(listener); }, useEnhancerPreferences: () => preferences, useEnhancerPreferencesError: () => null, updateEnhancerPreferences: async patch => Object.assign(preferences, patch), resetEnhancerPreferences: async () => {}, OUTPUT_LINE_OPTIONS: [10, 15, 30, "never"].map(value => ({ value: String(value), label: value === "never" ? "Never" : `${value} lines` })), TEXT_SIZE_OPTIONS: [], ACCENT_PRESETS: {} },
+    "client/preferences": { getEnhancerPreferencesError: () => null, getOptionAnswerDraft: (agentId, at) => answerDrafts.get(JSON.stringify([agentId, at])), saveOptionAnswerDraft: async (agentId, at, block) => { answerDrafts.set(JSON.stringify([agentId, at]), { block }); }, initializeEnhancerPreferences: async () => {}, areEnhancerPreferencesReady: () => true, onEnhancerPreferencesReady: callback => { callback(); return noop; }, getEnhancerPreferences: () => preferences, saveDismissedOptionReply: async () => {}, subscribeEnhancerPreferences: listener => { preferenceListeners.add(listener); return () => preferenceListeners.delete(listener); }, useEnhancerPreferences: () => preferences, useEnhancerPreferencesError: () => null, updateEnhancerPreferences: async patch => Object.assign(preferences, patch), resetEnhancerPreferences: async () => {}, OUTPUT_LINE_OPTIONS: [10, 15, 30, "never"].map(value => ({ value: String(value), label: value === "never" ? "Never" : `${value} lines` })), TEXT_SIZE_OPTIONS: [], ACCENT_PRESETS: {} },
     "client/settings-page": { ClearChatSettingsPage: noop },
     "server/settings-migration": { migrateHostSettings: noop },
     "client/image-file": { useImageFile: noop, isImagePath: path => /\.(png|jpe?g|gif|webp)$/i.test(path ?? "") },
@@ -200,14 +221,13 @@ function createToolHarness(platform = "ios", options = {}) {
     if (key in stubs) return stubs[key];
     if (cache.has(filename)) return cache.get(filename).exports;
     const mod = { exports: {} }; cache.set(filename, mod);
-    const source = ts.transpileModule(readFileSync(filename, "utf8"), {
-      compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX },
-    }).outputText;
+    const source = transpileFile(filename);
     const localRequire = id => {
       if (id === "react") return react;
       if (id === "react/jsx-runtime") return { jsx, jsxs: jsx, Fragment: "Fragment" };
       if (id === "react-native") return native;
       if (id === "@getpaseo/plugin/client") return {
+        ...(options.useComposers ? { useComposers: options.useComposers } : {}),
         defineTranslations: translations.defineTranslations,
         useTranslation: translations.useTranslation,
         useSettings: definition => options.settingsHost?.(definition) ?? {
@@ -273,6 +293,7 @@ function createToolHarness(platform = "ios", options = {}) {
     paseo,
     rpc: options.presentationHost?.rpc ?? noop,
     addSettingsScreen(value) { settingsScreens.set(value.id, value); return noop; },
+    addSidebarHeaderItem(value) { sidebarHeaderItems.set(value.id, value); return noop; },
     addAgentPanel(value) { panels.set(value.id, value); return noop; },
     openPanel(id, input) {
       if (options.panelError) throw new Error("Panel unavailable");
@@ -336,7 +357,7 @@ function createToolHarness(platform = "ios", options = {}) {
   }
   const unmount = () => unmountRoot();
   return {
-    settingsScreens, translations, setLocale: translations.setLocale, load, nodes, text, reveals, links, copies, toasts, imageReads, transformers, renderers, panels, panelOpens, dimensions, get preferences() { return getPreferences(); }, tokens, draw, expansionHost, unmount, dispose, flushEffects,
+    settingsScreens, sidebarHeaderItems, translations, setLocale: translations.setLocale, load, nodes, text, reveals, links, copies, toasts, imageReads, transformers, renderers, panels, panelOpens, dimensions, get preferences() { return getPreferences(); }, tokens, draw, expansionHost, unmount, dispose, flushEffects,
     notifyPreferences() { for (const listener of preferenceListeners) listener(); },
     setPanelMounted(value) { panelMounted = value; },
     mount(item, expand = true, identity = {}) {

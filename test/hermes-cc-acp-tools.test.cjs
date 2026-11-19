@@ -194,13 +194,17 @@ test("uncorrelated failed/null normalizes only the error and preserves other eve
   const f = fixture(() => [call("probe"), update("probe", { status: "failed" })]);
   const h = await connect(t, f.create()[0]); await open(h, "boundary");
   const original = freeze(f.rawEvents.find(event => event.type === "timeline.item" && event.item.status === "failed"));
-  assert.equal(original.item.error, null);
+  assert.ok(original.item.error === null || original.item.error?.message === "Tool failed", "0.16.0 hosts report the generic failure here");
   const runtime = await isolatedRuntime();
   assertGenericFailure(runtime.adapt(original), original);
   for (const error of ["EXPLICIT_ERROR", { message: "EXPLICIT_ERROR", code: 7 }, false, 0, ""]) {
     const event = freeze({ ...original, item: { ...original.item, error } });
     assert.strictEqual(runtime.adapt(event), event);
     assert.equal(JSON.stringify(runtime.adapt(event).item.error), JSON.stringify(error));
+  }
+  for (const message of ["Tool call failed", "Tool failed"]) {
+    const event = freeze({ ...original, item: { ...original.item, error: { message } } });
+    assertGenericFailure(runtime.adapt(event), event);
   }
   for (const status of ["completed", "running", "canceled"]) {
     const event = freeze({ ...original, item: { ...original.item, status } });
@@ -324,7 +328,7 @@ test("mismatched failed/null leaves the queued snapshot for the next proper runn
   const running = freeze({ ...original, item: { ...original.item, status: "running" } });
   const matched = runtime.adapt(running);
   assert.deepEqual(matched.item.detail, { type: "read", filePath: "QUEUED_PATH.txt", content: "QUEUED_CONTENT" });
-  assert.equal(matched.item.error, null);
+  assert.ok(matched.item.error === null || matched.item.error?.message === "Tool failed");
   // A subsequent failed event must now enrich from latest, proving the queue was consumed.
   const terminal = runtime.adapt(original);
   assert.equal(terminal.item.detail.content, "QUEUED_CONTENT");
@@ -349,7 +353,8 @@ for (const mode of ["history", "live"]) test(`actual composed provider preserves
   assert.equal(FetchAgentTimelineResponseMessageSchema.safeParse(negative).success, false);
   if (betaSchema) assert.equal(betaSchema.safeParse(negative).success, false);
   const rawResponse = envelope(f.rawEvents);
-  assert.equal(FetchAgentTimelineResponseMessageSchema.safeParse(rawResponse).success, false);
+  // 0.16.0 raw events carry the generic failure object, so the raw envelope validates.
+  assert.equal(FetchAgentTimelineResponseMessageSchema.safeParse(rawResponse).success, true);
   if (betaSchema) assert.equal(betaSchema.safeParse(rawResponse).success, false);
   for (const event of f.rawEvents) if (event.type !== "timeline.item" || event.item.type !== "tool_call") {
     assert(h.references.includes(event), "non-tool events must pass through by identity");

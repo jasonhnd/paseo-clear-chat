@@ -28,7 +28,8 @@ function reportedText(value: unknown): string | undefined {
 
 export function toolFailureMessage(error: unknown, detail: Record<string, unknown>, tool: ToolCallKind, exitCode?: number): string | undefined {
   const fallback = record(error);
-  if (["shell", "bash", "git"].includes(tool) && fallback.message === "Tool call failed" && Object.keys(fallback).length === 1 &&
+  if (["shell", "bash", "git"].includes(tool) && typeof fallback.message === "string" &&
+      /^Tool\s+(?:call\s+)?failed$/i.test(fallback.message.trim()) && Object.keys(fallback).length === 1 &&
       typeof exitCode === "number" && Number.isInteger(exitCode) && exitCode !== 0) {
     return t("tool.error.commandExit", { code: exitCode });
   }
