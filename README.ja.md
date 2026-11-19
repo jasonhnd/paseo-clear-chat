@@ -44,6 +44,8 @@
 - **「回答待ち」の行がすぐ消えます。** 回答カードの最後の質問に答えると、その会話は再読み込みしなくても、同じページでサイドバーの **回答待ち** から外れます（[#464](https://github.com/jasonhnd/paseo-clear-chat/issues/464)）。
 - **回答スタイルの選択は非表示です。** スタイルを選んでも送る文に効果がなかったため、入力欄の回答スタイル選択はしばらく非表示にしました。保存した選択はそのまま残り、入力欄のほかの部分は変わっていません（[#466](https://github.com/jasonhnd/paseo-clear-chat/issues/466)）。
 
+### 0.15.3.6 までの新機能
+
 - **会話の中で答えを選べます。** 回答カードは最新のアシスタント返信の下、本文と同じ列に表示されます。クリックまたはキーボードで選ぶと、初めて答えた質問から次の未回答の質問へ進み、最後の選択後は **送信**（Send）にフォーカスが移ります。タブには短い質問名、回答済みなら `✓` と答えが表示されます。カードから送信するか Paseo の入力欄で回答を送ると、古い枠は灰色の読み取り専用として残ります。**選択肢ではない**（Not options）で誤検出を閉じられ、既存の設定で制御します（[#366](https://github.com/jasonhnd/paseo-clear-chat/issues/366) / [#364](https://github.com/jasonhnd/paseo-clear-chat/issues/364) / [#368](https://github.com/jasonhnd/paseo-clear-chat/issues/368) / [#369](https://github.com/jasonhnd/paseo-clear-chat/issues/369) / [#371](https://github.com/jasonhnd/paseo-clear-chat/issues/371) / [PR #367](https://github.com/jasonhnd/paseo-clear-chat/pull/367)）。
 
 ### 以前のリリースで追加されたもの
