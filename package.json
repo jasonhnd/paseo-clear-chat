@@ -1,6 +1,6 @@
 {
   "name": "clear-chat",
-  "version": "0.16.1.1",
+  "version": "0.16.2.1",
   "private": true,
   "description": "Makes agent conversations easy to read: one-line steps, a card for every tool, an answer card you can write answers in, and a sidebar that searches, groups errors and shows finish times.",
   "license": "MIT",
