@@ -1,7 +1,7 @@
 {
   "id": "clear-chat",
   "name": "Clear Chat",
-  "description": "v0.16.1.1 · Makes agent conversations easy to read: one-line steps, a card for every tool, an answer card you can write answers in, and a sidebar that searches, groups errors and shows finish times.",
+  "description": "v0.16.2.1 · Makes agent conversations easy to read: one-line steps, a card for every tool, an answer card you can write answers in, and a sidebar that searches, groups errors and shows finish times.",
   "requirements": {
     "paseo": ">=0.16.0"
   },

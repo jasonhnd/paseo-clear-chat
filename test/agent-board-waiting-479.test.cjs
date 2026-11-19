@@ -57,6 +57,7 @@ function harness(agents, { live = false, locale = 'en', hosts = [{ serverId: 'sr
     if (id === '../preferences') return { useEnhancerPreferences: () => ({ savedReplies: [] }) };
     if (id === '../messages') return { messages };
     if (id === '../agent-board-model') return require('../client/agent-board-model.ts');
+    if (id === '../answer-state-events') return { subscribeAnswerMetadata: () => () => {} };
     if (id === '../outline-model') return require('../client/outline-model.ts');
     throw Error(`unexpected import ${id}`);
   };

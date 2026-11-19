@@ -1,3 +1,34 @@
+## [0.16.2.1] - 2026-11-20
+
+### Upgrade notes
+
+- Clear Chat 0.16.2.1 needs Paseo 0.16.0 or newer. This release was validated on Paseo 0.16.2; the plugin interface it uses is unchanged from 0.16.1, so the minimum host version stays 0.16.0. On Paseo 0.15.x this version cannot be installed or run normally; if you are on Paseo 0.15, stay on Clear Chat 0.15.4.x.
+- Update with `paseo plugin update clear-chat --ref v0.16.2.1 --yes`, or install with `paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.16.2.1`. Settings are kept as they are; this release adds no setting.
+- Real-model operation was not part of this release validation.
+
+### Fixed
+
+- **The Answers waiting row clears without a reload.** When you choose the last remaining answer in an answer card, the conversation leaves the sidebar's **Answers waiting** group on the same page instead of staying there until the chat is reloaded. The group counts questions not chosen yet, so the row leaves as soon as that last choice is made, before you press Send. The card's progress is written to the host through one write queue per conversation; each write is waited for up to 10 seconds, a write that settles after that is re-applied through the same queue and refreshes the sidebar once, an older response cannot restore the row, and a failed write is logged without interrupting the answer card ([#464](https://github.com/jasonhnd/paseo-clear-chat/issues/464), [PR #499](https://github.com/jasonhnd/paseo-clear-chat/pull/499)).
+
+### Changed
+
+- **The answer style selector is hidden for now.** The composer no longer registers the answer style selector, because choosing a style had no effect on the message that was sent. The control and the saved preference stay in place, so the stored choice is not lost and bringing the selector back needs no migration ([#466](https://github.com/jasonhnd/paseo-clear-chat/issues/466)).
+
+### Test stability
+
+- Improved the stability of one test; no user-visible change. The Today board fixture is frozen at local midday and the error-row ordering is asserted unconditionally, including when a test overrides the clock near local midnight ([#475](https://github.com/jasonhnd/paseo-clear-chat/issues/475), [PR #498](https://github.com/jasonhnd/paseo-clear-chat/pull/498)).
+- Added regression tests for the live Answers waiting update ([#464](https://github.com/jasonhnd/paseo-clear-chat/issues/464), [PR #499](https://github.com/jasonhnd/paseo-clear-chat/pull/499)).
+
+### Documentation
+
+- The Japanese README's answer card steps now say, as the English and Chinese ones do, that the message can be previewed before sending and that switching question tabs shows each answer again, including written answers, also after reloading ([#500](https://github.com/jasonhnd/paseo-clear-chat/issues/500)).
+
+### Known limitations
+
+- The sidebar re-reads a conversation after Clear Chat writes the card's progress to the host. If that write fails, the row stays until the sidebar reads the conversation again, for example after a reload; the failure is logged and the answer card keeps working.
+- The same-page update was checked on the Paseo 0.16.1 and 0.16.2 CLI-host web pages with a synthetic agent and no model: the answered conversation left the group on the same page, and another conversation's unanswered row stayed. It was not checked with a real model, on the desktop app host, or in the phone apps.
+- Physical iOS and Android devices were not used; tablet and foldable screen sizes were only simulated.
+
 ## [0.16.1.1] - 2026-11-18
 
 ### Upgrade notes
@@ -588,6 +619,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.16.2.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.16.1.1...v0.16.2.1
 [0.16.1.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.4.2...v0.16.1.1
 [0.15.4.2]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.4.1...v0.15.4.2
 [0.15.4.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.3.6...v0.15.4.1

@@ -1,3 +1,4 @@
+import { publishAnswerMetadata } from "./client/answer-state-events";
 import { messages } from "./client/messages";
 import { initializeClientTranslations, translate as t } from "./client/translation";
 import type { PluginClientContext, PluginTimelineTransformerContribution } from "@getpaseo/plugin/client";
@@ -20,7 +21,6 @@ import { extractGeneratedImages } from "./client/generated-images";
 import { containsComponentFence } from "./client/component-fences";
 import { projectedApprovalStatus } from "./client/tool-approval";
 import { installStepDetailPanel } from "./client/components/step-detail-host";
-import { AnswerStyleControl, answerStyleSupported } from "./client/components/answer-style-control";
 import { setOptionSender, setAnswerDraftStore, setAnswerStatePublisher } from "./client/option-session";
 import {
   getEnhancerPreferences,
@@ -100,17 +100,18 @@ function registerClient(client: PluginClientContext) {
       try {
         const composer = (client as unknown as { composers?: (selector: { agentId: string }) => readonly { agent?: { metadata?: Record<string, unknown> }; setMetadata?: (patch: Record<string, unknown>) => Promise<void> }[] }).composers?.({ agentId })?.[0];
         if (!composer?.setMetadata || composer.agent?.metadata?.clearChat !== undefined) return;
-        void composer.setMetadata({ clearChat: { pending, total, updatedAt: new Date().toISOString() } }).catch(() => {});
-      } catch { /* Metadata must not interrupt rendering. */ }
+        void publishAnswerMetadata(agentId, () => composer.setMetadata!({ clearChat: { pending, total, updatedAt: new Date().toISOString() } }))
+          .catch(error => console.warn("Clear Chat answer metadata write failed", error));
+      } catch (error) { console.warn("Clear Chat answer metadata write failed", error); }
     },
     publish(agentId, pending, total) {
       try {
         const composers = (client as unknown as { composers?: (selector: { agentId: string }) => readonly { setMetadata?: (patch: Record<string, unknown>) => Promise<void> }[] }).composers;
         const composer = composers?.({ agentId })?.[0];
         if (!composer?.setMetadata) return;
-        void composer.setMetadata({ clearChat: { pending, total, updatedAt: new Date().toISOString() } })
-          .catch(() => { /* a sidebar hint must never surface as a card error */ });
-      } catch { /* same */ }
+        void publishAnswerMetadata(agentId, () => composer.setMetadata!({ clearChat: { pending, total, updatedAt: new Date().toISOString() } }))
+          .catch(error => console.warn("Clear Chat answer metadata write failed", error));
+      } catch (error) { console.warn("Clear Chat answer metadata write failed", error); }
     },
   });
   // Install the bundled faces before any surface paints.
@@ -124,11 +125,9 @@ function registerClient(client: PluginClientContext) {
   const removeChatFind = installChatFind();
   const removeToolSpacing = installCompactToolSpacing();
   const removeStepDetails = installStepDetailPanel(client);
-  // Composer item needs the 0.16 host API; an older host simply does not get the control.
-  const removeAnswerStyle = typeof (client as { addComposerItem?: unknown }).addComposerItem === "function"
-    ? (client as unknown as { addComposerItem(c: { id: string; Component: unknown }): () => void })
-        .addComposerItem({ id: "answer-style", Component: AnswerStyleControl })
-    : null;
+  // The answer-style composer item is hidden for now: choosing a style had no effect (#466).
+  // The control stays in the source so the saved setting and its formatter keep working.
+  // To bring it back, restore the addComposerItem registration guarded by the 0.16 host API.
 
   // Configuration lives in the host Settings area.
   client.addSettingsScreen({
