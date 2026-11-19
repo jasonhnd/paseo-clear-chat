@@ -45,12 +45,21 @@ test("all README languages retain matching published pairs alongside the separat
       assert.equal(light[1], expectedLight);
     }
   }
+  // One level of subdirectories is walked too, so a file inside a new
+  // subdirectory is checked by name instead of its directory being one entry.
   const actual = ["images", "docs/images"].flatMap(directory =>
-    readdirSync(resolve(root, directory)).map(file => `${directory}/${file}`)).sort();
+    readdirSync(resolve(root, directory), { withFileTypes: true }).flatMap(entry =>
+      entry.isDirectory()
+        ? readdirSync(resolve(root, directory, entry.name)).map(file => `${directory}/${entry.name}/${file}`)
+        : [`${directory}/${entry.name}`])).sort();
   const extraImages = ["icon.png", "compare-light.png", "compare-dark.png"].map(file => `images/${file}`);
   // Short recordings sit beside the screenshots but are not screenshots: the capture
   // tooling does not produce them, so they are allowed here by name.
-  const recordings = ["docs/images/answers-typed.gif", "docs/images/jump-chips.gif"];
+  const recordings = [
+    "docs/images/answers-typed.gif",
+    "docs/images/jump-chips.gif",
+    "docs/images/question-card-demo.gif",
+  ];
   // These are catalog-page images, not README picture pairs. The answer card
   // has only the dark image on purpose.
   const catalogImages = [
