@@ -91,9 +91,9 @@ test("npm spawn errors explain that npm could not start without a stack trace", 
   }
 });
 
-test("missing Shiki packages name the dependency and explain how to repair it", () => {
+test("missing runtime packages name the dependency and explain how to repair it", () => {
   const { install } = require("../scripts/install.cjs");
-  for (const missing of ["@shikijs/core", "@shikijs/engine-javascript", "@shikijs/langs/typescript", "@shikijs/themes/github-dark-default", "@getpaseo/plugin", "zod"]) {
+  for (const missing of ["@getpaseo/plugin", "zod"]) {
     const errors = [];
     const status = install({
       run: () => ({ status: 0 }),

@@ -89,7 +89,7 @@ function fixture(t, base = os.tmpdir()) {
   for (const name of [bin, home, path.join(dir, "fallback"), path.join(home, "appdata"), path.join(home, "localappdata"), path.join(home, "tmp")]) fs.mkdirSync(name, { recursive: true });
   assertMissingResolution(dir);
   const modules = path.join(dir, "node_modules");
-  for (const name of ["@shikijs/core", "@shikijs/engine-javascript", "@shikijs/langs", "@shikijs/themes", "@getpaseo/plugin", "zod", "@shikijs/langs/typescript", "@shikijs/themes/github-dark-default", "@shikijs/themes/github-light-default"]) {
+  for (const name of ["@getpaseo/plugin", "zod"]) {
     const file = path.join(modules, name, "index.js");
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, "module.exports = {};\n");

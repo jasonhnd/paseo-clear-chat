@@ -38,9 +38,11 @@ function install({ run = spawnSync, resolveDependency = require.resolve, report 
     return 1;
   }
 
+  const packageJson = require("../package.json");
   const dependencies = [
-    ...Object.keys(require("../package.json").dependencies), "@getpaseo/plugin", "zod",
-    "@shikijs/langs/typescript", "@shikijs/themes/github-dark-default", "@shikijs/themes/github-light-default",
+    ...Object.keys(packageJson.dependencies ?? {}),
+    "@getpaseo/plugin",
+    "zod",
   ];
   for (const name of dependencies) {
     try {

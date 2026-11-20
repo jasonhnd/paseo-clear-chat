@@ -9,12 +9,6 @@
     "typecheck": "tsc --noEmit",
     "manifest:version": "node scripts/manifest-version.cjs --write"
   },
-  "dependencies": {
-    "@shikijs/core": "^4.0.2",
-    "@shikijs/engine-javascript": "^4.0.2",
-    "@shikijs/langs": "^4.0.2",
-    "@shikijs/themes": "^4.0.2"
-  },
   "devDependencies": {
     "@getpaseo/plugin": "0.16.0",
     "@getpaseo/server": "0.14.0",
