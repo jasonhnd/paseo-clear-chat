@@ -12,7 +12,7 @@
     }
   },
   "startup": {
-    "incompatibleHost": "Clear Chat 需要 Paseo 的插件设置和时间线支持。请更新运行 daemon 的主机和所有连着的应用上的 Paseo，再重新加载 Clear Chat。",
+    "incompatibleHost": "Clear Chat 需要 Paseo 的插件 RPC、设置页面、设置注册和请求处理。请更新运行 daemon 的主机和所有连着的应用上的 Paseo，再重新加载 Clear Chat。",
     "startupFailed": "Paseo 没能注册插件，Clear Chat 无法启动。请更新 Paseo 并重新加载 Clear Chat。还不行的话，先备份插件设置，再用 Paseo CLI 重新安装。",
     "settingsRead": "Clear Chat 读不到主机上的设置。请重新连接所选主机，然后点“重试”。还不行的话，请检查 daemon 能不能访问插件设置文件夹。",
     "settingsInvalid": "Clear Chat 的设置无效或格式不支持。请先备份插件设置，用一份正常的备份恢复，或在 daemon 主机上修好设置文件，然后点“重试”。",

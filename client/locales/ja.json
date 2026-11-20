@@ -12,7 +12,7 @@
     }
   },
   "startup": {
-    "incompatibleHost": "Clear Chat には Paseo のプラグイン設定とタイムラインへの対応が必要です。daemon のホストと、つないでいるすべてのアプリの Paseo を更新してから、Clear Chat を再読み込みしてください。",
+    "incompatibleHost": "Clear Chat には Paseo のプラグイン RPC、設定画面、設定の登録、リクエスト処理が必要です。daemon のホストと、つないでいるすべてのアプリの Paseo を更新してから、Clear Chat を再読み込みしてください。",
     "startupFailed": "Paseo がプラグインを登録できなかったため、Clear Chat を起動できません。Paseo を更新して Clear Chat を再読み込みしてください。それでも直らない場合は、プラグインの設定をバックアップしてから Paseo CLI で入れ直してください。",
     "settingsRead": "Clear Chat がホストの設定を読み込めません。選択中のホストにつなぎ直してから「再試行」を押してください。それでも直らない場合は、daemon がプラグインの設定フォルダーにアクセスできるか確認してください。",
     "settingsInvalid": "Clear Chat の設定が正しくないか、対応していない形式です。プラグインの設定をバックアップし、正しいバックアップから戻すか daemon のホストで設定ファイルを直してから、「再試行」を押してください。",

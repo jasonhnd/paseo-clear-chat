@@ -119,7 +119,11 @@ for (const entry of ["index.server.ts", "index.client.tsx"]) {
   test(`${entry} explains missing host capabilities before startup`, () => {
     const h = createToolHarness();
     assert.throws(() => h.load(entry).default({}), error => {
-      assert.match(error.message, /Paseo.*plugin.*support/i);
+      assert.match(error.message, /plugin RPC/i);
+      assert.match(error.message, /settings screen/i);
+      assert.match(error.message, /settings registration/i);
+      assert.match(error.message, /request handler/i);
+      assert.doesNotMatch(error.message, /timeline/i);
       assert.match(error.message, /Update Paseo.*reload Clear Chat/i);
       assert.doesNotMatch(error.message, /is not a function|Sensitive/);
       return true;
