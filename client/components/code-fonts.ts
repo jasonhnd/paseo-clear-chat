@@ -3,15 +3,6 @@ import type { CodeFontFamilyPreference, CodeFontPreference } from "../preference
 export const fontMono = "OMP Iosevka";
 export const fontCode = "OMP Iosevka Code";
 
-export const CODE_FONT_OPTIONS: ReadonlyArray<{ value: CodeFontFamilyPreference; label: string }> = [
-  { value: "host", label: "Default (Iosevka)" },
-  { value: "iosevka", label: "Iosevka" },
-  { value: "menlo", label: "Menlo" },
-  { value: "consolas", label: "Consolas" },
-  { value: "fira-code", label: "Fira Code" },
-  { value: "cascadia-code", label: "Cascadia Code" },
-];
-
 export const LOCAL_CODE_FONTS = {
   menlo: "Menlo",
   consolas: "Consolas",

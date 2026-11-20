@@ -3,7 +3,7 @@
     "version": "Clear Chat 版本 {{version}}",
     "versionNote": "这里显示的是这次安装所用构建的版本。从目录安装时会沿用该目录里已有的版本信息，因此可能显示旧版本。",
     "title": "聊天显示",
-    "intro": "改动会保存在所选主机上，连到这台主机的客户端都共用。显示方面的改动对新消息生效；要更新已有消息，请重新加载聊天。强调色会马上更新。",
+    "intro": "改动会保存在所选主机上，连到这台主机的客户端都共用。这一页设置回答卡片和常用回答。",
     "report": "报告问题",
     "retry": "重试",
     "answerCard": {
@@ -12,7 +12,7 @@
     }
   },
   "startup": {
-    "incompatibleHost": "Clear Chat 需要 Paseo 的插件设置和时间线支持。请更新运行 daemon 的主机和所有连着的应用上的 Paseo，再重新加载 Clear Chat。",
+    "incompatibleHost": "Clear Chat 需要 Paseo 的插件 RPC、设置页面、设置注册和请求处理。请更新运行 daemon 的主机和所有连着的应用上的 Paseo，再重新加载 Clear Chat。",
     "startupFailed": "Paseo 没能注册插件，Clear Chat 无法启动。请更新 Paseo 并重新加载 Clear Chat。还不行的话，先备份插件设置，再用 Paseo CLI 重新安装。",
     "settingsRead": "Clear Chat 读不到主机上的设置。请重新连接所选主机，然后点“重试”。还不行的话，请检查 daemon 能不能访问插件设置文件夹。",
     "settingsInvalid": "Clear Chat 的设置无效或格式不支持。请先备份插件设置，用一份正常的备份恢复，或在 daemon 主机上修好设置文件，然后点“重试”。",
@@ -23,25 +23,12 @@
     "unknown": "未知"
   },
   "answerCard": {
-    "pillTitle": "待回答的问题",
-    "openQuestions": "待回答的问题：{{count}}",
-    "running": "请等待代理完成后再发送。",
-    "question": "问题 {{current}} / {{total}}",
-    "questionTab": "问题 {{question}}",
-    "detected": "在最新回复中检测到选项",
-    "collapse": "收起",
-    "reopen": "展开回答卡片",
-    "summary": "{{total}} 个问题 · 已选择 {{chosen}} · 问题 {{question}} 已打开",
-    "none": "无",
     "optionLabel": "{{letter}}：{{text}}",
     "other": "自己写",
     "otherHint": "写下你自己的回答",
     "otherEmpty": "请先写下你的回答",
     "readOnlyStatus": "已答 · 只读",
     "recommended": "推荐",
-    "writeOwn": "自己填写",
-    "noteLabel": "回答备注",
-    "chooseFirst": "请先选择一个选项",
     "next": "下一题",
     "notOptions": "不是选项",
     "error": "发送失败：{{reason}}",
@@ -49,17 +36,10 @@
     "missing": "选择第 {{question}} 题后发送",
     "hintMove": "↑ ↓ 移动",
     "hintPick": "A B C D 选择",
-    "hintNext": "Tab 下一题",
-    "hintBack": "⇧Tab 上一题",
     "hintSend": "Tab → 发送",
-    "hintReopen": "↑ 重新展开",
     "sendAction": "发送",
     "hintCustom": "Enter 确认 · Shift+Enter 换行",
-    "progress": "已答 {{chosen}} / {{total}} · 还差 {{remaining}} 题",
-    "replaceFirstLine": "用 {{answer}} 替换第一行",
-    "keepEdited": "保留我改的",
-    "limitEdited": "你改过答案后再点「替换第一行」，只换第一行；多行答案的其余部分会留着，请自己删。",
-    "hintEnter": "Enter"
+    "progress": "已答 {{chosen}} / {{total}} · 还差 {{remaining}} 题"
   },
   "answerStyle": {
     "savedRepliesLabel": "常用回答",

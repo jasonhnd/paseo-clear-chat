@@ -91,9 +91,9 @@ test("npm spawn errors explain that npm could not start without a stack trace", 
   }
 });
 
-test("missing Shiki packages name the dependency and explain how to repair it", () => {
+test("missing runtime packages name the dependency and explain how to repair it", () => {
   const { install } = require("../scripts/install.cjs");
-  for (const missing of ["@shikijs/core", "@shikijs/engine-javascript", "@shikijs/langs/typescript", "@shikijs/themes/github-dark-default", "@getpaseo/plugin", "zod"]) {
+  for (const missing of ["@getpaseo/plugin", "zod"]) {
     const errors = [];
     const status = install({
       run: () => ({ status: 0 }),
@@ -119,7 +119,11 @@ for (const entry of ["index.server.ts", "index.client.tsx"]) {
   test(`${entry} explains missing host capabilities before startup`, () => {
     const h = createToolHarness();
     assert.throws(() => h.load(entry).default({}), error => {
-      assert.match(error.message, /Paseo.*plugin.*support/i);
+      assert.match(error.message, /plugin RPC/i);
+      assert.match(error.message, /settings screen/i);
+      assert.match(error.message, /settings registration/i);
+      assert.match(error.message, /request handler/i);
+      assert.doesNotMatch(error.message, /timeline/i);
       assert.match(error.message, /Update Paseo.*reload Clear Chat/i);
       assert.doesNotMatch(error.message, /is not a function|Sensitive/);
       return true;

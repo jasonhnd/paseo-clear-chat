@@ -2,18 +2,12 @@
   "name": "clear-chat",
   "version": "0.16.2.1",
   "private": true,
-  "description": "Makes agent conversations easy to read: one-line steps, a card for every tool, an answer card you can write answers in, and a sidebar that searches, groups errors and shows finish times.",
+  "description": "Answer an agent's lettered questions with a card: pick an option or write your own, preview, and send.",
   "license": "MIT",
   "scripts": {
     "test": "node --test test/*.test.cjs",
     "typecheck": "tsc --noEmit",
     "manifest:version": "node scripts/manifest-version.cjs --write"
-  },
-  "dependencies": {
-    "@shikijs/core": "^4.0.2",
-    "@shikijs/engine-javascript": "^4.0.2",
-    "@shikijs/langs": "^4.0.2",
-    "@shikijs/themes": "^4.0.2"
   },
   "devDependencies": {
     "@getpaseo/plugin": "0.16.0",

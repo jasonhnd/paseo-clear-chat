@@ -3,7 +3,7 @@
     "version": "Clear Chat version {{version}}",
     "versionNote": "This is the version of the build this install was made from. A directory install keeps the version metadata already in that directory, so it can show an older release.",
     "title": "Chat presentation",
-    "intro": "Changes are saved on the selected host and shared by its clients. New messages follow rendering changes; reload the chat to update existing messages. Accent colours update immediately.",
+    "intro": "Changes are saved on the selected host and shared by its clients. This page sets the answer card and saved replies.",
     "report": "Report a problem",
     "retry": "Retry",
     "answerCard": {
@@ -12,7 +12,7 @@
     }
   },
   "startup": {
-    "incompatibleHost": "Clear Chat requires Paseo plugin settings and timeline support. Update Paseo on the daemon host and all connected apps, then reload Clear Chat.",
+    "incompatibleHost": "Clear Chat requires Paseo plugin RPC, a settings screen, settings registration, and a request handler. Update Paseo on the daemon host and all connected apps, then reload Clear Chat.",
     "startupFailed": "Clear Chat could not start because Paseo could not register the plugin. Update Paseo and reload Clear Chat. If it still fails, back up the plugin settings before reinstalling with the Paseo CLI.",
     "settingsRead": "Clear Chat cannot read its host settings. Reconnect to the selected host, then select Retry. If it still fails, check the daemon's access to the plugin settings folder.",
     "settingsInvalid": "Clear Chat settings are invalid or use an unsupported format. Back up the plugin settings, restore a valid backup or repair the settings file on the daemon host, then select Retry.",
@@ -23,25 +23,12 @@
     "unknown": "unknown"
   },
   "answerCard": {
-    "pillTitle": "Open questions",
-    "openQuestions": "Open questions: {{count}}",
-    "running": "Wait for the agent to finish before sending.",
-    "question": "Question {{current}} of {{total}}",
-    "questionTab": "Question {{question}}",
-    "detected": "Options detected in the last reply",
-    "collapse": "Collapse",
-    "reopen": "Reopen answer card",
-    "summary": "{{total}} questions · {{chosen}} chosen · Q{{question}} open",
-    "none": "none",
     "optionLabel": "{{letter}}: {{text}}",
     "other": "Other",
     "otherHint": "Write your own answer",
     "otherEmpty": "Write your answer first",
     "readOnlyStatus": "Answered · read-only",
     "recommended": "Recommended",
-    "writeOwn": "Write my own",
-    "noteLabel": "Answer note",
-    "chooseFirst": "Choose an option first",
     "next": "Next",
     "notOptions": "Not options",
     "error": "Could not send: {{reason}}",
@@ -49,17 +36,10 @@
     "missing": "Choose an answer for Q{{question}}",
     "hintMove": "↑ ↓ move",
     "hintPick": "A B C D choose",
-    "hintNext": "Tab next",
-    "hintBack": "⇧Tab back",
     "hintSend": "Tab → Send",
-    "hintReopen": "↑ to reopen",
     "sendAction": "Send",
     "hintCustom": "Enter to confirm · Shift+Enter for a new line",
-    "progress": "{{chosen}} of {{total}} answered · {{remaining}} to go",
-    "replaceFirstLine": "Replace first line with {{answer}}",
-    "keepEdited": "Keep my edit",
-    "limitEdited": "If you edited the answer and then choose Replace first line, only the first line is replaced; the rest of a multi-line answer stays for you to remove.",
-    "hintEnter": "Enter"
+    "progress": "{{chosen}} of {{total}} answered · {{remaining}} to go"
   },
   "answerStyle": {
     "savedRepliesLabel": "Saved replies",

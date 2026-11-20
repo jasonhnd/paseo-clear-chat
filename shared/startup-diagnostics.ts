@@ -1,6 +1,6 @@
 /** Only fixed messages may cross the host boundary; errors can contain private paths. */
 export const STARTUP_MESSAGES = {
-  incompatibleHost: "Clear Chat requires Paseo plugin settings and timeline support. Update Paseo on the daemon host and all connected apps, then reload Clear Chat.",
+  incompatibleHost: "Clear Chat requires Paseo plugin RPC, a settings screen, settings registration, and a request handler. Update Paseo on the daemon host and all connected apps, then reload Clear Chat.",
   startupFailed: "Clear Chat could not start because Paseo could not register the plugin. Update Paseo and reload Clear Chat. If it still fails, back up the plugin settings before reinstalling with the Paseo CLI.",
   settingsRead: "Clear Chat cannot read its host settings. Reconnect to the selected host, then select Retry. If it still fails, check the daemon's access to the plugin settings folder.",
   settingsInvalid: "Clear Chat settings are invalid or use an unsupported format. Back up the plugin settings, restore a valid backup or repair the settings file on the daemon host, then select Retry.",
