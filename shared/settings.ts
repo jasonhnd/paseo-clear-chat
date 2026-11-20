@@ -18,6 +18,8 @@ export const preferenceOverridesSchema = z.object({
   // Accepted so settings files written by older builds still parse; the UI font
   // now follows the host and this value changes nothing.
   uiFont: z.enum(["inter", "system"]).optional(),
+  // Accepted so settings files written by older builds still parse; code text
+  // now uses one system stack and these two values change nothing.
   codeFont: z.enum(["code", "plain"]).optional(),
   codeFontFamily: z.enum(["host", "iosevka", "menlo", "consolas", "fira-code", "cascadia-code"]).optional(),
   textScale: z.number().transform((value) => Math.min(1.35, Math.max(0.85, value))).optional(),

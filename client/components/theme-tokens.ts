@@ -2,7 +2,6 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import { Platform } from "react-native";
 import { DEFAULT_PREFERENCES, type EnhancerPreferences, ACCENT_PRESETS } from "../preferences";
 import { resolveCodeFonts } from "./code-fonts";
-export { fontMono, fontCode } from "./code-fonts";
 
 export type PluginSurfaceColors = PluginTheme["colors"];
 
@@ -37,8 +36,9 @@ export function resolveUiFont(platform: string): string | undefined {
 
 export interface ExtendedThemeTokens {
   isDark: boolean;
-  fontMono: string;
-  fontCode: string;
+  /** Undefined where no face is named: native keeps the platform's own monospace. */
+  fontMono: string | undefined;
+  fontCode: string | undefined;
   /** Undefined on native: there the platform's default UI font is the answer. */
   fontUi: string | undefined;
 
@@ -256,7 +256,6 @@ export function buildThemeTokens(
     colors.surface0, colors.foreground, colors.foregroundMuted,
     colors.accent, colors.accentForeground, colors.statusDanger,
     preferences.accent, preferences.customAccent, preferences.customAccentEnabled,
-    preferences.codeFont,
     codeFonts.mono, codeFonts.code,
     preferences.textScale, preferences.frostedGlass,
   ]);
