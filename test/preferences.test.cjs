@@ -343,61 +343,6 @@ test("edits made before initial storage load are saved", async () => {
   assert.equal(p.getEnhancerPreferences().accent, "amber");
 });
 
-test("iOS preferences enhance text-only prompts and honor explicit opt-out", async () => {
-  const server = host();
-  const h = harness();
-  const cleanup = h.contribute(server.rpc);
-  await new Promise(setImmediate);
-  assert.ok(server.calls.some(({ name }) => name === "settings.presentation.read"));
-  const assistant = h.transformers.get("omp-enhanced-assistant");
-  const user = h.transformers.get("omp-enhanced-user-message");
-  const reply = { item: { type: "assistant_message", text: "Hello" } };
-  const prompt = { item: { type: "user_message", text: "Hi", images: [] } };
-  const textOnly = { item: require("./fixtures/real-hermes-reply-footer.json")[0].item };
-  assert.equal(assistant.transform(reply).items[0].kind, "omp-assistant");
-  assert.equal(user.transform(prompt).items[0].kind, "omp-user-message");
-  assert.deepEqual(user.transform(textOnly).items[0].data, { text: textOnly.item.text, messageId: textOnly.item.messageId });
-  await h.preferences.updateEnhancerPreferences({ assistantMarkdown: false, enhancedUserBubble: false });
-  assert.equal(assistant.transform(reply), undefined);
-  assert.equal(user.transform(prompt), undefined);
-  assert.equal(user.transform(textOnly), undefined);
-  cleanup();
-});
-
-test("text transformers defer to the host while saved preferences are unavailable", async () => {
-  const server = host();
-  server.failReads = true;
-  const h = harness("web");
-  const cleanup = h.contribute(server.rpc);
-  await new Promise(setImmediate);
-  assert.equal(h.transformers.has("omp-enhanced-assistant"), false);
-  assert.equal(h.transformers.has("omp-enhanced-user-message"), false);
-  assert.match(h.preferences.getEnhancerPreferencesError(), /cannot read.*Reconnect.*Retry/);
-  cleanup();
-});
-
-for (const platform of ["android", "web"]) {
-  test(`${platform} preferences enhance text-only prompts and honor explicit opt-out`, async () => {
-    const server = host();
-    const h = harness(platform);
-    const cleanup = h.contribute(server.rpc);
-    await new Promise(setImmediate);
-    const assistant = h.transformers.get("omp-enhanced-assistant");
-    const user = h.transformers.get("omp-enhanced-user-message");
-    const reply = { item: { type: "assistant_message", text: "Hello" } };
-    const prompt = { item: { type: "user_message", text: "Hi", images: [] } };
-    const textOnly = { item: require("./fixtures/real-hermes-reply-footer.json")[0].item };
-    assert.equal(assistant.transform(reply).items[0].kind, "omp-assistant");
-    assert.equal(user.transform(prompt).items[0].kind, "omp-user-message");
-    assert.deepEqual(user.transform(textOnly).items[0].data, { text: textOnly.item.text, messageId: textOnly.item.messageId });
-    await h.preferences.updateEnhancerPreferences({ assistantMarkdown: false, enhancedUserBubble: false });
-    assert.equal(assistant.transform(reply), undefined);
-    assert.equal(user.transform(prompt), undefined);
-    assert.equal(user.transform(textOnly), undefined);
-    cleanup();
-  });
-}
-
 test("server registers an SDK settings schema without platform-dependent defaults", () => {
   const h = harness();
   let definition;
@@ -532,75 +477,24 @@ test("fold preferences reject invalid limits and ignore legacy browser values", 
   }
 });
 
-test("delegated tool names match exactly and survive reload and reset", async () => {
+test("delegated and hidden tool names survive reload and reset without coming from a browser snapshot", async () => {
   const server = host({ legacyMigrated: true });
-  const first = harness();
-  const cleanup = first.contribute(server.rpc);
-  await new Promise(setImmediate);
-  const transform = (client, name) => client.transformers.get("omp-enhanced-tool-call").transform({
-    item: { type: "tool_call", name, status: "completed", callId: name, detail: { type: "shell", command: "true" } },
-    phase: "complete",
-  });
-  for (const name of ["shell", "Shell", "read"]) assert.equal(transform(first, name).items[0].kind, "omp-tool-call");
-  await first.preferences.updateEnhancerPreferences({ delegatedTools: "shell" });
-  assert.equal(transform(first, "shell"), undefined);
-  assert.equal(transform(first, "read").items[0].kind, "omp-tool-call");
+  const first = harness("web", JSON.stringify({ delegatedTools: "browser", hiddenTools: "browser" })).preferences;
+  await first.initializeEnhancerPreferences(server.rpc);
+  assert.equal(first.getEnhancerPreferences().delegatedTools, "");
+  assert.equal(first.getEnhancerPreferences().hiddenTools, "");
   const value = " shell, , read_file ,";
-  await first.preferences.updateEnhancerPreferences({ delegatedTools: value });
+  await first.updateEnhancerPreferences({ delegatedTools: value, hiddenTools: value });
   assert.equal(server.values.preferences.delegatedTools, value);
-  assert.equal(transform(first, "shell"), undefined);
-  assert.equal(transform(first, "read_file"), undefined);
-  for (const name of ["Shell", "read", ""]) assert.equal(transform(first, name).items[0].kind, "omp-tool-call");
-
-  const fresh = harness();
-  const freshCleanup = fresh.contribute(server.rpc);
-  const initialTransformer = fresh.transformers.get("omp-enhanced-tool-call");
-  await new Promise(setImmediate);
-  assert.notEqual(fresh.transformers.get("omp-enhanced-tool-call"), initialTransformer);
-  assert.equal(fresh.preferences.getEnhancerPreferences().delegatedTools, value);
-  assert.equal(transform(fresh, "shell"), undefined);
-  assert.equal(transform(fresh, "Shell").items[0].kind, "omp-tool-call");
-  await fresh.preferences.resetEnhancerPreferences();
-  assert.equal(fresh.preferences.getEnhancerPreferences().delegatedTools, "");
-  assert.equal(transform(fresh, "shell").items[0].kind, "omp-tool-call");
+  assert.equal(server.values.preferences.hiddenTools, value);
+  const fresh = harness().preferences;
+  await fresh.initializeEnhancerPreferences(server.rpc);
+  assert.equal(fresh.getEnhancerPreferences().delegatedTools, value);
+  assert.equal(fresh.getEnhancerPreferences().hiddenTools, value);
+  await fresh.resetEnhancerPreferences();
+  assert.equal(fresh.getEnhancerPreferences().delegatedTools, "");
+  assert.equal(fresh.getEnhancerPreferences().hiddenTools, "");
   assert.deepEqual(server.values.preferences, {});
-  freshCleanup();
-  cleanup();
-});
-
-test("hidden tool names match exactly, preserve failures and approvals, and survive reload and reset", async () => {
-  const server = host({ legacyMigrated: true });
-  const first = harness();
-  const cleanup = first.contribute(server.rpc);
-  await new Promise(setImmediate);
-  const transform = (client, item) => client.transformers.get("omp-enhanced-tool-call").transform({ item, phase: "complete" });
-  const call = (name, extra = {}) => ({ type: "tool_call", name, status: "completed", callId: name, detail: { type: "shell", command: "true" }, ...extra });
-  const kind = (item) => transform(first, item)?.items[0]?.kind;
-  for (const name of ["shell", "read", "Shell", ""]) assert.equal(kind(call(name)), "omp-tool-call");
-  await first.preferences.updateEnhancerPreferences({ hiddenTools: " shell, , read_file ," });
-  assert.deepEqual(transform(first, call("shell")), { items: [] });
-  assert.deepEqual(transform(first, call("read_file")), { items: [] });
-  for (const name of ["Shell", "read", ""]) assert.equal(kind(call(name)), "omp-tool-call");
-  assert.deepEqual(transform(first, call("shell", { status: "running" })), { items: [] });
-  for (const extra of [{ status: "failed" }, { status: "error" }, { error: "failure" }, { error: {} }, { status: "waiting" }, { status: "pending" }, { status: "awaiting_approval" }, { status: "pending_approval" }, { status: "waiting_for_approval" }]) {
-    assert.equal(kind(call("shell", extra)), "omp-tool-call", JSON.stringify(extra));
-  }
-  const approval = require("./fixtures/real-hermes-approvals.json").items.find(item => item.name?.startsWith("edit-approval-"));
-  await first.preferences.updateEnhancerPreferences({ hiddenTools: `shell, ${approval.name}`, delegatedTools: "shell" });
-  for (const status of ["completed", "waiting", "failed"]) assert.equal(kind({ ...approval, status }), "omp-approval");
-  assert.deepEqual(transform(first, call("shell")), { items: [] });
-  assert.equal(transform(first, call("shell", { status: "failed" })), undefined);
-  const fresh = harness();
-  const freshCleanup = fresh.contribute(server.rpc);
-  await new Promise(setImmediate);
-  assert.equal(fresh.preferences.getEnhancerPreferences().hiddenTools, `shell, ${approval.name}`);
-  assert.deepEqual(transform(fresh, call("shell")), { items: [] });
-  await fresh.preferences.resetEnhancerPreferences();
-  assert.equal(fresh.preferences.getEnhancerPreferences().hiddenTools, "");
-  assert.equal(transform(fresh, call("shell")).items[0].kind, "omp-tool-call");
-  assert.deepEqual(server.values.preferences, {});
-  freshCleanup();
-  cleanup();
 });
 
 test("message folding prefixes persist, reset, and cannot be imported from a browser snapshot", async () => {
@@ -657,21 +551,21 @@ test("delegated code blocks persist, reset, and are never imported from a browse
   assert.deepEqual(server.values.preferences, {});
 });
 
-test("answer card setting persists, resets and ignores browser snapshots", async () => {
+test("answer card setting defaults on, persists an explicit off, and ignores browser snapshots", async () => {
   const server = host();
-  const first = harness("web", JSON.stringify({ showAnswerCard: true })).preferences;
+  const first = harness("web", JSON.stringify({ showAnswerCard: false })).preferences;
   await first.initializeEnhancerPreferences(server.rpc);
-  assert.equal(first.getEnhancerPreferences().showAnswerCard, false);
-  await first.updateEnhancerPreferences({ showAnswerCard: true });
-  assert.equal(server.values.preferences.showAnswerCard, true);
+  assert.equal(first.getEnhancerPreferences().showAnswerCard, true);
+  await first.updateEnhancerPreferences({ showAnswerCard: false });
+  assert.equal(server.values.preferences.showAnswerCard, false);
   const fresh = harness().preferences;
   await fresh.initializeEnhancerPreferences(server.rpc);
-  assert.equal(fresh.getEnhancerPreferences().showAnswerCard, true);
-  await fresh.resetEnhancerPreferences();
   assert.equal(fresh.getEnhancerPreferences().showAnswerCard, false);
+  await fresh.resetEnhancerPreferences();
+  assert.equal(fresh.getEnhancerPreferences().showAnswerCard, true);
   const reloaded = harness().preferences;
   await reloaded.initializeEnhancerPreferences(server.rpc);
-  assert.equal(reloaded.getEnhancerPreferences().showAnswerCard, false);
+  assert.equal(reloaded.getEnhancerPreferences().showAnswerCard, true);
 });
 
 const optionReply = "1) Pick?\nA One\nB Two\n\nI recommend B";

@@ -118,7 +118,7 @@ export const DEFAULT_PREFERENCES: Readonly<EnhancerPreferences> = {
   answerStyle: "none",
   savedReplies: ["Go with the recommended", "Leave it for now", "Continue"],
   autoFillAnswer: true,
-  showAnswerCard: false,
+  showAnswerCard: true,
   showJumpChips: false,
   keepItemLineBreaks: false,
   dismissedOptionReplies: [],
