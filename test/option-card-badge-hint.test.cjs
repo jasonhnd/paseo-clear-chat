@@ -44,8 +44,11 @@ function nativeFixture(t) {
   const h = createToolHarness("ios", { width: 390, agents, preferences: { showAnswerCard: true } });
   t.after(() => { h.unmount(); h.dispose(); });
   const s = h.load("client/option-session.ts");
-  const Renderer = h.load("client/live-renderers.tsx").LiveAssistantRenderer;
-  const draw = (at = 10) => h.draw({ type: Renderer, props: { agentId: "a", host: { id: "host" }, item: { data: { text: reply } }, timestamp: new Date(at), theme: { colors: {} } } }, `reply-${at}`);
+  const Card = h.load("client/components/option-card.tsx").OptionCard;
+  const draw = (at = 10) => {
+    s.publishAssistantReply("a", { at, text: reply });
+    return h.draw({ type: Card, props: { agentId: "a", at, tokens: h.tokens } }, `reply-${at}`);
+  };
   return { h, s, draw };
 }
 
