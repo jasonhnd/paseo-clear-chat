@@ -2,7 +2,7 @@
   "settings": {
     "version": "Clear Chat version {{version}}",
     "versionNote": "This is the version of the build this install was made from. A directory install keeps the version metadata already in that directory, so it can show an older release.",
-    "title": "Chat presentation",
+    "title": "Answer card",
     "intro": "Changes are saved on the selected host and shared by its clients. This page sets the answer card and saved replies.",
     "report": "Report a problem",
     "retry": "Retry",
