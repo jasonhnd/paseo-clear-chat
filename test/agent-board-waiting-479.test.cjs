@@ -153,7 +153,7 @@ test('unanswered cards remain in the first group and errors appear in a separate
 test('idle, running and unknown status are neither unread nor errors', () => {
   const timestamp = '2026-11-12T12:00:00Z';
   const agents = ['idle', 'running', 'unknown'].map(status => ({
-    ...agent(`${status}-agent`, { clearChat: { pending: 0, total: 1, updatedAt: timestamp } }),
+    ...agent(`${status}-agent`, { clearChat: { pending: 0, total: 1, sent: true, updatedAt: timestamp } }),
     status, updatedAt: timestamp, lastActivityAt: timestamp, attentionReason: 'finished',
   }));
   const h = harness(agents);

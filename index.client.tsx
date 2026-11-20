@@ -96,20 +96,20 @@ function registerClient(client: PluginClientContext) {
   setAnswerDraftStore({ read: getStoredAnswerDraft, write: storeAnswerDraft, clear: clearStoredAnswerDraft });
   // The sidebar lists conversations with open questions; it reads agent metadata.
   setAnswerStatePublisher({
-    initialize(agentId, pending, total) {
+    initialize(agentId, pending, total, sent) {
       try {
         const composer = (client as unknown as { composers?: (selector: { agentId: string }) => readonly { agent?: { metadata?: Record<string, unknown> }; setMetadata?: (patch: Record<string, unknown>) => Promise<void> }[] }).composers?.({ agentId })?.[0];
         if (!composer?.setMetadata || composer.agent?.metadata?.clearChat !== undefined) return;
-        void publishAnswerMetadata(agentId, () => composer.setMetadata!({ clearChat: { pending, total, updatedAt: new Date().toISOString() } }))
+        void publishAnswerMetadata(agentId, () => composer.setMetadata!({ clearChat: { pending, total, sent: sent === true, updatedAt: new Date().toISOString() } }))
           .catch(error => console.warn("Clear Chat answer metadata write failed", error));
       } catch (error) { console.warn("Clear Chat answer metadata write failed", error); }
     },
-    publish(agentId, pending, total) {
+    publish(agentId, pending, total, sent) {
       try {
         const composers = (client as unknown as { composers?: (selector: { agentId: string }) => readonly { setMetadata?: (patch: Record<string, unknown>) => Promise<void> }[] }).composers;
         const composer = composers?.({ agentId })?.[0];
         if (!composer?.setMetadata) return;
-        void publishAnswerMetadata(agentId, () => composer.setMetadata!({ clearChat: { pending, total, updatedAt: new Date().toISOString() } }))
+        void publishAnswerMetadata(agentId, () => composer.setMetadata!({ clearChat: { pending, total, sent: sent === true, updatedAt: new Date().toISOString() } }))
           .catch(error => console.warn("Clear Chat answer metadata write failed", error));
       } catch (error) { console.warn("Clear Chat answer metadata write failed", error); }
     },

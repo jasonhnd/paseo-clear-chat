@@ -122,7 +122,7 @@ function WaitingAgentRow({ agent, theme, navigation }: BoardProps & { agent: Plu
     <Pressable accessibilityRole="button" onPress={() => navigation.openAgent(agent.ref)} style={[styles.row, { borderColor: theme.colors.border }]}>
       <Text numberOfLines={1} style={[styles.meta, { color: theme.colors.foregroundMuted }]}>{workspaceName ?? agent.workspace.id}</Text>
       <Text numberOfLines={1} style={[styles.rowTitle, { color: theme.colors.foreground }]}>{agent.title?.trim() || agent.id.slice(0, 8)}</Text>
-      <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>{t("sidebar.answeredOf", { answered: marker.answered, total: marker.total })}</Text>
+      <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>{marker.chosenNotSent ? t("answerCard.chosenNotSent") : t("sidebar.answeredOf", { answered: marker.answered, total: marker.total })}</Text>
       <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>{marker.time === null ? t("sidebar.unknownTime") : new Date(marker.time).toLocaleString()}</Text>
     </Pressable>
   );

@@ -94,7 +94,7 @@ A Yes
 B No
 
 Reply with a letter for each.`;
-test('last answer refreshes after its metadata write and leaves the other agent alone', async () => {
+test('all chosen but unsent stays until the answer is sent, and leaves the other agent alone', async () => {
   const a = agent('a', marker(1, 2)), b = agent('b', marker(1, 2));
   let saved = marker(1, 2), complete;
   const write = new Promise(resolve => { complete = resolve; });
@@ -110,11 +110,22 @@ test('last answer refreshes after its metadata write and leaves the other agent 
   await wait();
   assert.equal(h.calls.length, before, 'local notify occurs before the metadata write completes');
   complete(); await wait(); await wait();
-  const text = h.render();
-  assert.ok(!text.includes('a'), 'last answer removes its row');
+  let text = h.render();
+  assert.ok(text.includes('a'), 'all chosen but not sent keeps the row');
+  assert.ok(text.includes('All chosen · not sent yet'));
   assert.ok(text.includes('b'), 'other agent remains');
+  assert.ok(text.includes('1/2 answered'));
   assert.ok(h.calls.slice(before).length > 0, 'the completed write starts a refresh');
   assert.ok(h.calls.slice(before).every(r => r.id === 'a'));
+  session.setOptionSender(async () => {});
+  const beforeSend = h.calls.length;
+  await session.sendAnswer('a');
+  await wait(); await wait();
+  text = h.render();
+  assert.ok(!text.includes('a'), 'sending removes the row');
+  assert.ok(!text.includes('All chosen · not sent yet'));
+  assert.ok(text.includes('b'), 'other agent remains after send');
+  assert.ok(h.calls.slice(beforeSend).every(r => r.id === 'a'));
 });
 
 test('a delayed older refresh cannot overwrite a newer refresh', async () => {
@@ -128,7 +139,7 @@ test('a delayed older refresh cannot overwrite a newer refresh', async () => {
   session.choose('a', 0, 'A');
   await wait();
   assert.equal(pending.length, 2, 'completed write starts a newer refresh');
-  pending[1]({ agent: { ...a, metadata: marker(0, 2) } }); await wait();
+  pending[1]({ agent: { ...a, metadata: { clearChat: { pending: 0, total: 2, sent: true, updatedAt: '2026-01-01T00:00:00Z' } } } }); await wait();
   pending[0]({ agent: { ...a, metadata: marker(1, 2) } }); await wait();
   assert.ok(!h.render().includes('a'), 'older response must not restore a finished card');
 });

@@ -68,11 +68,14 @@ function render(agents = [], { locale = 'en', projectCount = 1, workspaceName = 
 }
 
 test('filters positive finite pending markers, handles malformed metadata and clamps answered', () => {
-  const inputs = [agent('good', marker(2, 5, '2026-01-01T00:00:00Z')), agent('clamp', marker(7, 2, '2026-01-01T00:00:00Z')), ...[null, {}, 'x', [], { clearChat: null }, { clearChat: [] }, marker(0, 2, ''), marker(-1, 2, ''), marker(NaN, 2, ''), marker(Infinity, 2, ''), marker('2', 2, '')].map((m, i) => agent(`bad${i}`, m))];
+  const malformed = [null, {}, 'x', [], { clearChat: null }, { clearChat: [] }, marker(-1, 2, ''), marker(NaN, 2, ''), marker(Infinity, 2, ''), marker('2', 2, '')];
+  const inputs = [agent('good', marker(2, 5, '2026-01-01T00:00:00Z')), agent('clamp', marker(7, 2, '2026-01-01T00:00:00Z')), agent('legacy-unsent', marker(0, 2, '2026-01-01T00:00:00Z')), ...malformed.map((m, i) => agent(`bad${i}`, m))];
   const { text } = render(inputs);
   assert.ok(text.includes('good')); assert.ok(text.includes('clamp'));
   assert.ok(text.includes('3/5 answered')); assert.ok(text.includes('0/2 answered'));
-  for (let i = 0; i < 11; i++) assert.ok(!text.includes(`bad${i}`));
+  assert.ok(text.includes('legacy-unsent'));
+  assert.ok(text.includes('All chosen · not sent yet'));
+  for (let i = 0; i < malformed.length; i++) assert.ok(!text.includes(`bad${i}`));
 });
 
 test('orders all agents by marker time descending, invalid last, ties by title then id', () => {
