@@ -4,9 +4,8 @@ Clear Chat 是 Paseo 的插件，只做回答卡片。回复里有字母选项�
 
 ## 0.16.2.2 的变化
 
-- Clear Chat 不再绘制对话：没有步骤行、工具卡、侧边栏、搜索、引用回复或语法高亮。
+- Clear Chat 不再绘制对话：没有步骤行、工具卡、侧边栏、搜索、引用回复、跳转标签或语法高亮。标题为 **这一轮的改动** 的卡片也没有了。
 - 设置页标题是 **回答卡片**。它设置回答卡片开关和常用回答，并显示已安装版本和 **报告问题**。
-- 这一版不显示回答卡片。
 
 ## 它做什么
 
@@ -18,11 +17,11 @@ Clear Chat 是 Paseo 的插件，只做回答卡片。回复里有字母选项�
 
 <!-- TODO(answer-card-location) -->
 
-这一版没有把卡片放到界面上。设置页已注册。
+设置页可以打开。
 
 ## 安装
 
-Clear Chat 0.16.2.2 需要 Paseo 0.16.0 或更新。在 Paseo 0.15.x 上这一版无法正常运行，请留在 Clear Chat 0.15.4.x。这一版没有在正在运行的 Paseo 应用里检查过。
+Clear Chat 0.16.2.2 需要 Paseo 0.16.0 或更新。在 Paseo 0.15.x 上这一版无法正常运行，请留在 Clear Chat 0.15.4.x。这一版没有在正在运行的 Paseo 应用里检查过。 <!-- TODO(host-verification) -->
 
 安装会在 daemon 主机上跑 `npm ci`，所以那台机器要有 Node.js 和 npm，并且能连到 npm 仓库。
 
@@ -37,7 +36,7 @@ paseo plugin update clear-chat --ref v0.16.2.2 --yes
 
 打开 **Settings → Plugins → Clear Chat**。页面标题是 **回答卡片**。
 
-- **在包含字母选项问题的回复下显示回答卡片**：没有存过值时为开。存过的值仍然有效。这一版无论开还是关都不显示卡片。
+- **在包含字母选项问题的回复下显示回答卡片**：没有存过值时为开。存过的值仍然有效。
 - **常用回答**：每行一个短语。默认是 `Go with the recommended`、`Leave it for now`、`Continue`。
 - 标题下面显示已安装版本。从目录安装时可能显示该目录里的旧版本。
 - **报告问题** 在浏览器里打开 GitHub 的问题表单。你不提交，就什么都不会发出。
@@ -54,10 +53,9 @@ paseo plugin update clear-chat --ref v0.16.2.2 --yes
 
 ## 已知限制
 
-- 这一版不显示回答卡片。
 - Clear Chat 不绘制对话。对话显示用 Better Paseo。
 - `Plan 2B` 仍可能被当成答案。
-- 这一版没有在正在运行的 Paseo 应用里、用真实模型、或在真实的 iOS 与 Android 设备上检查过。
+- 这一版没有在正在运行的 Paseo 应用里、用真实模型、或在真实的 iOS 与 Android 设备上检查过。 <!-- TODO(host-verification) -->
 - 移除插件会删掉它的设置，请先备份。
 
 仓库 README 里有安装命令、回答卡片的步骤和故障排查。

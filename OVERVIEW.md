@@ -4,9 +4,8 @@ The interface text follows the app language: English, Simplified Chinese, or Jap
 
 ## What's new in 0.16.2.2
 
-- Clear Chat no longer draws the conversation: no step rows, tool cards, sidebar, search, quote-and-reply, or syntax highlighting.
+- Clear Chat no longer draws the conversation: no step rows, tool cards, sidebar, search, quote-and-reply, jump chips, or syntax highlighting. The **Workspace changes during this turn** card is gone.
 - The settings page is titled **Answer card**. It sets the answer card switch and saved replies, and shows the installed version and **Report a problem**.
-- This version does not show the answer card.
 
 ## What it does
 
@@ -18,11 +17,11 @@ The interface text follows the app language: English, Simplified Chinese, or Jap
 
 <!-- TODO(answer-card-location) -->
 
-This version does not place the card on screen. The settings page is registered.
+The settings page can be opened.
 
 ## Setup
 
-Clear Chat 0.16.2.2 needs Paseo 0.16.0 or later. On Paseo 0.15.x this version cannot run normally; stay on Clear Chat 0.15.4.x. This build was not checked inside a running Paseo app.
+Clear Chat 0.16.2.2 needs Paseo 0.16.0 or later. On Paseo 0.15.x this version cannot run normally; stay on Clear Chat 0.15.4.x. This build was not checked inside a running Paseo app. <!-- TODO(host-verification) -->
 
 Installation runs `npm ci` on the daemon host, so Node.js and npm must be available there and the host must be able to reach the npm registry.
 
@@ -37,7 +36,7 @@ If you used Beautiful Chat, its settings file is copied on first start when Clea
 
 Open **Settings → Plugins → Clear Chat**. The page title is **Answer card**.
 
-- **Show an answer card under replies that ask lettered questions** is on when no value is stored. A stored value still wins. This version does not show the card either way.
+- **Show an answer card under replies that ask lettered questions** is on when no value is stored. A stored value still wins.
 - **Saved replies** is one phrase per line. The default phrases are `Go with the recommended`, `Leave it for now`, and `Continue`.
 - The installed version is shown under the title. A directory install can show an older version from that directory.
 - **Report a problem** opens a GitHub issue form in the browser. Nothing is sent unless you submit it.
@@ -54,10 +53,9 @@ Settings are saved on the host and shared by every client connected to it.
 
 ## Limitations
 
-- This version does not show the answer card.
 - Clear Chat does not draw the conversation. Use Better Paseo for that view.
 - `Plan 2B` can still be read as an answer.
-- This version was not checked inside a running Paseo app, with a real model, or on physical iOS or Android devices.
+- This version was not checked inside a running Paseo app, with a real model, or on physical iOS or Android devices. <!-- TODO(host-verification) -->
 - Removing the plugin deletes its settings. Back them up first.
 
 The repository README has the install commands, the answer-card steps, and troubleshooting.

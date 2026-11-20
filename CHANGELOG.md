@@ -2,16 +2,16 @@
 
 ### Upgrade notes
 
-- Clear Chat 0.16.2.2 needs Paseo 0.16.0 or newer. The minimum host version is unchanged. This build was not installed into a running Paseo app. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x.
+- Clear Chat 0.16.2.2 needs Paseo 0.16.0 or newer. The minimum host version is unchanged. This build was not installed into a running Paseo app. <!-- TODO(host-verification) --> On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x.
 - Update with `paseo plugin update clear-chat --ref v0.16.2.2 --yes`, or install with `paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.16.2.2`.
 - The settings file is kept. The settings page shows the answer card switch, saved replies, the installed version, and **Report a problem**. If the file has no stored switch, the switch defaults to on. A stored value still wins. Saved replies, dismissed false detections, and unfinished answer drafts are kept. Keys for features this version no longer shows stay in the file and have no controls.
 - Clear Chat no longer draws the conversation. For that view, use the separate plugin Better Paseo: https://paseo.sh/plugins/roundreddot/better-paseo
-- After updating, Clear Chat's step rows, tool cards, sidebar, search, quote-and-reply, jump chips, and syntax highlighting are gone. The answer card is not shown either: this version does not place it on screen. The **Answer card** settings page is still there.
+- After updating, Clear Chat's step rows, tool cards, sidebar, search, quote-and-reply, jump chips, and syntax highlighting are gone. The **Answer card** settings page is still there. <!-- TODO(answer-card-location) -->
 - Startup does not delete anything under the plugin data directory. Older image and history directories are left in place. This version does not use them.
 
 ### Removed
 
-- **Conversation rendering.** Clear Chat no longer draws assistant replies, your messages, tool rows, approvals, reasoning, to-do lists, errors, notices, or turn-window cards. The conversation is left to Paseo or another plugin ([PR #503](https://github.com/jasonhnd/paseo-clear-chat/pull/503)).
+- **Conversation rendering.** Clear Chat no longer draws assistant replies, your messages, tool rows, approvals, reasoning, to-do lists, errors, notices, or turn-window cards. The read-only card titled **Workspace changes during this turn** is gone; in Simplified Chinese that title was **这一轮的改动**, and Japanese showed the English title. The conversation is left to Paseo or another plugin ([PR #503](https://github.com/jasonhnd/paseo-clear-chat/pull/503)).
 - **Sidebar.** The sidebar, its hint, conversation search, the **Answers waiting** group, the **Errors** group, and finish times on Today rows are gone ([PR #503](https://github.com/jasonhnd/paseo-clear-chat/pull/503)).
 - **Composer tools that belonged to this plugin.** Quote-and-reply, the find bar, and jump chips are gone. The answer style selector, which was already hidden, is removed ([PR #503](https://github.com/jasonhnd/paseo-clear-chat/pull/503)).
 - **Settings for that rendering.** Accent colour, fonts, text size, folding, frosted glass, pointer glow, the prompt bubble, assistant markdown, markdown style, delegating or hiding tools, code-block delegation, jump chips, and keeping each option on its own line are no longer on the settings page. Stored values remain in the settings file ([PR #503](https://github.com/jasonhnd/paseo-clear-chat/pull/503)).
@@ -36,9 +36,8 @@
 
 ### Known limitations
 
-- This version does not show the answer card. The settings page is available.
 - `Plan 2B` can still be read as an answer.
-- This version was not checked inside a running Paseo app, with a real model, or on physical iOS or Android devices.
+- This version was not checked inside a running Paseo app, with a real model, or on physical iOS or Android devices. <!-- TODO(host-verification) -->
 - Removing the plugin deletes its settings. Startup does not delete older plugin-data files.
 
 ## [0.16.2.1] - 2026-11-20

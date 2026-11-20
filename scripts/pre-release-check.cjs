@@ -19,13 +19,11 @@ const compatibilityLines = {
     "Still on Paseo 0.13? Clear Chat " + legacyVersion + " is already released and declares support for Paseo 0.13.0 or later. The exact installation command below has not yet been tested on Paseo 0.13:",
     "paseo plugin install git:jasonhnd/paseo-clear-chat --ref v" + legacyVersion,
     "paseo plugin update clear-chat --ref v" + legacyVersion + " --yes",
-    "**Previously affected conversations.** Clear Chat " + legacyVersion + " prevents a compatibility issue in which certain failed tool calls with no error message could make a **·CC** conversation's history fail to open. Conversations already affected by this issue may still fail to open after upgrading; there is currently no automatic fix for those affected conversations."
   ]),
   "README.zh-CN.md": new Set([
     "还在用 Paseo 0.13？Clear Chat " + legacyVersion + " 已经发布，并声明支持 Paseo 0.13.0 或更新版本。下面这条安装命令尚未在 Paseo 0.13 上实测：",
     "paseo plugin install git:jasonhnd/paseo-clear-chat --ref v" + legacyVersion,
     "paseo plugin update clear-chat --ref v" + legacyVersion + " --yes",
-    "**已经受影响的旧对话。** Clear Chat " + legacyVersion + " 可以防止以后因某些工具调用失败且没有错误信息，导致 **·CC** 对话的历史打不开。已经受这个问题影响的旧对话升级后仍可能打不开，目前还没有自动修复这些对话的办法。"
   ]),
 };
 const signoff = ["package.json", "package-lock.json", "paseo-plugin.json", "CHANGELOG.md",

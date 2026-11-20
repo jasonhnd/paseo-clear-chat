@@ -16,15 +16,15 @@
 
 ## This version
 
-Clear Chat 0.16.2.2 no longer draws step rows, tool cards, the sidebar, search, quote-and-reply, jump chips, or syntax highlighting. Those belong to the conversation view. The settings page is titled **Answer card** and only sets the answer card and saved replies.
+Clear Chat 0.16.2.2 no longer draws step rows, tool cards, the sidebar, search, quote-and-reply, jump chips, or syntax highlighting. The **Workspace changes during this turn** card is gone. Those belong to the conversation view. The settings page is titled **Answer card** and only sets the answer card and saved replies.
 
-This version does not show the answer card. The full list of changes is in the [changelog](CHANGELOG.md).
+The full list of changes is in the [changelog](CHANGELOG.md).
 
 ## Answer card
 
 <!-- TODO(answer-card-location) -->
 
-Open **Settings → Plugins → Clear Chat**. The page title is **Answer card**. The switch **Show an answer card under replies that ask lettered questions** is on when the settings file has no stored value. A stored on or off value still wins. The note under that switch says to reload the chat to update existing replies. Turning the switch on does not put the card on screen in this version.
+Open **Settings → Plugins → Clear Chat**. The page title is **Answer card**. The switch **Show an answer card under replies that ask lettered questions** is on when the settings file has no stored value. A stored on or off value still wins. The note under that switch says to reload the chat to update existing replies.
 
 The card's controls are:
 
@@ -38,7 +38,7 @@ A reply is recognised only when it has numbered questions, each with at least tw
 6. If an ordinary list was mistaken for questions, press **Not options**. That reply stays dismissed after reloading. The button is not shown on a read-only card or while sending.
 7. Saved replies that you edit on the settings page appear on the card as buttons. Choosing one inserts the phrase at the cursor and does not send.
 
-A sentence that only contains a bare letter, such as “wait a moment”, is not treated as an answer. A numbered token such as `1A`, `2b`, or `Q1A` still counts, including when punctuation sits against it (`1A.`). A message that is only an answer is unchanged, including a single-question reply whose whole message is `b`. A message such as `Plan 2B` can still be read as an answer.
+A bare letter inside a sentence (for example “wait a moment”) is not treated as an answer. A numbered token such as `1A`, `2b`, or `Q1A` still counts, including when punctuation sits against it (`1A.`). A message that is only an answer is unchanged, including a single-question reply whose whole message is `b`. A message such as `Plan 2B` can still be read as an answer.
 
 ## Install
 
@@ -100,7 +100,9 @@ paseo plugin update clear-chat --ref v0.16.2.2 --yes
 
 An update keeps the settings file. Values for the answer card, saved replies, dismissed false detections, and unfinished drafts are kept. Keys for features this version no longer shows stay in the file and have no control on the settings page. A rollback to an earlier ref also keeps the file, but the effect of a specific rollback on settings is not guaranteed, so back the file up first if the settings matter. Removing the plugin deletes its settings.
 
-After this update the conversation is no longer drawn by Clear Chat. Use [Better Paseo](https://paseo.sh/plugins/roundreddot/better-paseo) for that view. You will not see Clear Chat's step rows, tool cards, sidebar, or answer card.
+After this update the conversation is no longer drawn by Clear Chat. Use [Better Paseo](https://paseo.sh/plugins/roundreddot/better-paseo) for that view. You will not see Clear Chat's step rows, tool cards, or sidebar.
+
+<!-- TODO(answer-card-location) -->
 
 Startup does not delete anything under the plugin's data directory. Older image and history directories are left in place. This version does not use them.
 
@@ -110,7 +112,7 @@ The page title is **Answer card**.
 
 | Setting | Effect |
 |---|---|
-| Show an answer card under replies that ask lettered questions | On when no value is stored. A stored value still wins. This version does not show the card either way. The note under the switch says to reload the chat to update existing replies. |
+| Show an answer card under replies that ask lettered questions | On when no value is stored. A stored value still wins. The note under the switch says to reload the chat to update existing replies. |
 | Saved replies | One phrase per line. The default phrases are `Go with the recommended`, `Leave it for now`, and `Continue`. On the answer card, choosing a phrase inserts it and does not send. Editing here is saved on blur. |
 
 **Installed version.** Under the title, Clear Chat shows the version of the build this install was made from. A directory install keeps the version information already in that directory, so it can show an older release. If the build carries no usable version, the line shows **Unknown**.
@@ -125,10 +127,9 @@ Clear Chat's own text follows the Paseo app language: English, Simplified Chines
 
 ## Known limitations
 
-- This version does not show the answer card. The settings page is available; the card is not placed on screen.
 - `Plan 2B` can still be read as an answer. A bare letter inside a sentence is not.
 - At phone width, Enter in Paseo's own input box inserts a newline. Use that box's Send button. This is the host's behaviour.
-- This version was not checked inside a running Paseo app, with a real model, or on physical iOS or Android devices.
+- This version was not checked inside a running Paseo app, with a real model, or on physical iOS or Android devices. <!-- TODO(host-verification) -->
 - Removing the plugin deletes its settings. Back them up first. Startup does not delete older files in the plugin data directory.
 
 ## Privacy and data on the host
@@ -141,9 +142,9 @@ Clear Chat's own text follows the Paseo app language: English, Simplified Chines
 
 ## FAQ
 
-**Does Clear Chat still draw the conversation?** No. Step rows, tool cards, the sidebar, search, quote-and-reply, and syntax highlighting are gone. Use [Better Paseo](https://paseo.sh/plugins/roundreddot/better-paseo) for the conversation view.
+**Does Clear Chat still draw the conversation?** No. Step rows, tool cards, the sidebar, search, quote-and-reply, jump chips, and syntax highlighting are gone. The **Workspace changes during this turn** card is gone. Use [Better Paseo](https://paseo.sh/plugins/roundreddot/better-paseo) for the conversation view.
 
-**Why do I not see the answer card?** This version does not place it on screen. The switch on the **Answer card** settings page is stored, and it defaults to on when no value is stored, but neither position shows the card in this version.
+**Why do I not see the answer card?** Turn on **Show an answer card under replies that ask lettered questions**. The latest reply must have numbered questions, each with at least two lettered options, and either a recommendation mark or a short-reply hint such as “reply with” or “answer with”. <!-- TODO(answer-card-location) -->
 
 **Which replies would the card recognise?** Numbered questions with at least two lettered options each, plus a recommendation mark or a short-reply hint. Code fences and quotations are ignored.
 
