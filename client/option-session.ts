@@ -289,6 +289,11 @@ export function getOptionSessionAt(agentId: string, at: number): OptionSession |
   return snapshots.get(agentId)?.get(at) ?? null;
 }
 
+/** Every card recorded for this agent, including earlier ones that are not current. */
+export function listOptionSessions(agentId: string): OptionSession[] {
+  return [...(snapshots.get(agentId)?.values() ?? [])];
+}
+
 function isDismissed(agentId: string, at: number): boolean {
   return getEnhancerPreferences().dismissedOptionReplies.some(entry => entry.agentId === agentId && entry.at === at);
 }
