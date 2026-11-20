@@ -19,7 +19,9 @@ export const ACCENT_PRESETS = {
 } as const;
 
 export type AccentPreset = keyof typeof ACCENT_PRESETS;
+/** Kept so stored settings that name a UI font still load; the UI font follows the host. */
 export type UiFontPreference = "inter" | "system";
+/** Kept so stored settings that name a code font still load; one system stack draws all code. */
 export type CodeFontPreference = "code" | "plain";
 export type CodeFontFamilyPreference = NonNullable<PreferenceOverrides["codeFontFamily"]>;
 export type MarkdownVariantPreference = "document" | "compact" | "terminal";
@@ -45,8 +47,11 @@ export interface EnhancerPreferences {
   accent: AccentPreset;
   customAccent?: string;
   customAccentEnabled?: boolean;
+  /** Read and written for older settings files only; it no longer changes the UI font. */
   uiFont: UiFontPreference;
+  /** Read and written for older settings files only; it no longer picks a code face. */
   codeFont: CodeFontPreference;
+  /** Read and written for older settings files only; code text uses one system stack. */
   codeFontFamily: CodeFontFamilyPreference;
   /** Scales every text style the plugin renders; 1 is the authored size. */
   textScale: number;
