@@ -305,40 +305,25 @@ test("disk full while copying leaves old settings and removes the partial tempor
   assert.deepEqual(fs.readdirSync(dirname(h.path(PLUGIN_ID))), []);
 });
 
-test("server startup still registers settings with defaults and RPCs after migration fails", (t) => {
+test("server startup still registers presentation settings after migration fails", (t) => {
   const denied = Object.assign(new Error("Source unreadable"), { code: "EACCES" });
   const h = fixture(t, { fsOverrides: { readFileSync() { throw denied; } } });
   const old = h.seed(LEGACY_PLUGIN_ID);
-  let registered = false;
-  const methods = [];
+  const registered = [];
   let cleanup;
   assert.doesNotThrow(() => {
     cleanup = h.load("index.server.ts").default({
       registerSettings(definition) {
-        if (definition.id === "hermes-cc") {
-          assert.equal(definition.scope, "host");
-          assert.deepEqual(definition.schema.parse({}), { enabled: true });
-          return;
-        }
-        if (definition.id !== "presentation") {
-          assert.equal(definition.id, "tool-expansion");
-          assert.equal(definition.scope, "host");
-          assert.deepEqual(definition.schema.parse({}), { entries: {} });
-          return;
-        }
+        registered.push(definition.id);
         assert.equal(definition.id, "presentation");
+        assert.equal(definition.scope, "host");
         assert.deepEqual(definition.schema.parse({}), { preferences: {}, legacyMigrated: false });
-        registered = true;
       },
-      handle(contract) { methods.push(contract.name); },
+      handle() { throw new Error("removed RPC"); },
     });
   });
   assertMigrationError(h, denied);
-  assert.equal(registered, true);
-  assert.ok(methods.includes("file.reveal"));
-  assert.ok(methods.includes("file.image"));
-  assert.ok(methods.includes("prompt.images"));
-  assert.ok(methods.includes("prompt.image"));
+  assert.deepEqual(registered, ["presentation"]);
   assert.equal(typeof cleanup, "function");
   assert.equal(fs.readFileSync(old, "utf8"), oldRaw);
   assert.equal(fs.existsSync(h.path(PLUGIN_ID)), false);
@@ -361,4 +346,59 @@ test("server startup migrates before registering the SDK settings", (t) => {
   assert.equal(registered, true);
   assert.equal(typeof cleanup, "function");
   cleanup();
+});
+
+test("a stored document with removed-feature keys still loads answer-card values", async (t) => {
+  const h = fixture(t);
+  const values = {
+    preferences: {
+      accent: "jade",
+      customAccent: "#8b5cf6",
+      customAccentEnabled: false,
+      uiFont: "system",
+      codeFont: "plain",
+      codeFontFamily: "iosevka",
+      textScale: 1.15,
+      frostedGlass: false,
+      pointerGlow: false,
+      enhancedUserBubble: false,
+      foldMessagePrefixes: "[Old]",
+      selectionActions: false,
+      assistantMarkdown: false,
+      codeBlockOpen: true,
+      markdownVariant: "compact",
+      foldFinishedSteps: false,
+      collapsedStepAction: "inline",
+      foldLongOutputAfter: 30,
+      answerStyle: "concise",
+      savedReplies: ["Keep this"],
+      autoFillAnswer: false,
+      showAnswerCard: false,
+      showJumpChips: true,
+      keepItemLineBreaks: true,
+      dismissedOptionReplies: [{ agentId: "agent-1", at: 10 }],
+      delegatedTools: "shell",
+      delegatedCodeBlocks: "chart",
+      hiddenTools: "read",
+    },
+    legacyMigrated: true,
+    answerDrafts: {
+      "agent-1\u000010": {
+        schema: 1,
+        choices: { "0": "A" },
+        customDrafts: {},
+        customOpen: {},
+        activeQuestion: 0,
+      },
+    },
+  };
+  const definition = h.load("shared/settings.ts").presentationSettings;
+  const parsed = definition.schema.parse(await definition.migrate(values, 2));
+  assert.equal(parsed.preferences.showAnswerCard, false);
+  assert.deepEqual(parsed.preferences.savedReplies, ["Keep this"]);
+  assert.deepEqual(parsed.preferences.dismissedOptionReplies, [{ agentId: "agent-1", at: 10 }]);
+  assert.equal(parsed.answerDrafts["agent-1\u000010"].choices["0"], "A");
+  assert.equal(parsed.preferences.accent, "jade");
+  assert.equal(parsed.preferences.hiddenTools, "read");
+  assert.equal(parsed.preferences.foldLongOutputAfter, 30);
 });
