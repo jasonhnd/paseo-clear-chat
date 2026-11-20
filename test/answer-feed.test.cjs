@@ -40,7 +40,10 @@ function page(entries, hasOlder) {
 }
 
 function createAgent(id) {
-  const state = { older: [], recent: [], activeTurn: null, stopped: 0 };
+  const state = {
+    older: [], recent: [], activeTurn: null, stopped: 0, failReads: 0,
+    calls: [], subscribeCount: 0,
+  };
   const subscribers = [];
   const handle = {
     id,
@@ -56,10 +59,16 @@ function createAgent(id) {
     },
     timeline: {
       async refetch(options = {}) {
+        state.calls.push(options);
+        if (state.failReads > 0) {
+          state.failReads -= 1;
+          throw new Error("timeline unavailable");
+        }
         const older = options.direction === "before";
         return page(older ? state.older : state.recent, !older && state.older.length > 0);
       },
       subscribe(handler) {
+        state.subscribeCount += 1;
         subscribers.push(handler);
         const stop = () => {
           state.stopped += 1;
@@ -154,6 +163,15 @@ test("loads history, including an older page, and does not feed the same reply t
   await settle();
   assert.equal(notices, 0);
   assert.equal(session.getOptionSession("a").at, 20);
+  assert.equal(agent.state.calls[0].direction, "tail");
+  assert.equal(agent.state.calls[0].projection, "projected");
+  const olderCall = agent.state.calls.find(call => call.direction === "before");
+  assert.equal(olderCall.projection, "projected");
+  assert.deepEqual(olderCall.cursor, { epoch: "e1", seq: 1 });
+  const restored = agent.state.calls.filter(call => call.wholeTurns === true);
+  assert.ok(restored.length >= 1);
+  assert.equal(restored.at(-1).direction, "tail");
+  assert.equal(restored.at(-1).projection, "projected");
 });
 
 test("a streaming reply does not open a card until the turn finishes", async t => {
@@ -176,7 +194,7 @@ test("a streaming reply does not open a card until the turn finishes", async t =
   assert.equal(watched.currentCard(), null);
   agent.state.activeTurn = null;
   agent.state.recent = [entry("assistant_message", two, 31, "live")];
-  agent.handle.emit({ type: "turn_completed", provider: "mock" });
+  agent.handle.emit({ type: "turn_completed", provider: "mock", turnId: "live" });
   await settle();
   const card = watched.currentCard();
   assert.ok(card, "finished reply is missing");
@@ -305,3 +323,117 @@ test("the current card reports how many questions are answered while it is still
   assert.equal(feed.currentAnswerCard("a").at, 10);
   assert.equal(h.text(h.draw({ type: Probe, props: {} })), "2/1");
 });
+
+function warnSpy(t) {
+  const warnings = [];
+  const previous = console.warn;
+  console.warn = (...args) => { warnings.push(args.map(part => String(part)).join(" ")); };
+  t.after(() => { console.warn = previous; });
+  return warnings;
+}
+
+test("a restored subscription publishes the reply once the open turn is gone", async t => {
+  const { session, feed, host } = await fixture(t);
+  const agent = host.agent("a");
+  agent.state.activeTurn = "live";
+  agent.state.recent = [entry("assistant_message", one, 30, "live")];
+  const watched = feed.startAnswerFeed({ serverId: "srv", agentId: "a", client: host.client });
+  t.after(() => watched.stop());
+  await watched.ready;
+  assert.equal(watched.currentCard(), null);
+  agent.state.activeTurn = null;
+  agent.state.recent = [entry("assistant_message", two, 31, "live")];
+  agent.handle.emit({ type: "subscription_restored" });
+  await settle();
+  const card = watched.currentCard();
+  assert.ok(card, "finished reply stayed hidden after the turn was gone");
+  assert.equal(card.questionCount, 2);
+  assert.equal(session.getOptionSession("a").at, 31);
+});
+
+test("a different turn ending does not publish the reply that is still streaming", async t => {
+  const { feed, host } = await fixture(t);
+  const agent = host.agent("a");
+  agent.state.activeTurn = "live";
+  agent.state.recent = [entry("assistant_message", two, 30, "live")];
+  const watched = feed.startAnswerFeed({ serverId: "srv", agentId: "a", client: host.client });
+  t.after(() => watched.stop());
+  await watched.ready;
+  assert.equal(watched.currentCard(), null);
+  agent.handle.emit({ type: "turn_completed", provider: "mock", turnId: "other" });
+  await settle();
+  assert.equal(watched.currentCard(), null);
+  agent.state.activeTurn = null;
+  agent.handle.emit({ type: "turn_completed", provider: "mock", turnId: "live" });
+  await settle();
+  assert.equal(watched.currentCard().questionCount, 2);
+});
+
+test("a failed first read retries on the next event and keeps the subscription", async t => {
+  const warnings = warnSpy(t);
+  const { feed, host } = await fixture(t);
+  const agent = host.agent("a");
+  agent.state.failReads = 4;
+  agent.state.recent = [entry("assistant_message", two, 10, "t1")];
+  const watched = feed.startAnswerFeed({ serverId: "srv", agentId: "a", client: host.client });
+  t.after(() => watched.stop());
+  await watched.ready;
+  assert.equal(watched.currentCard(), null);
+  assert.ok(warnings.some(line => line.includes("timeline unavailable")));
+  assert.equal(agent.state.stopped, 0);
+  assert.equal(agent.state.subscribeCount, 1);
+  agent.state.recent = [entry("assistant_message", two, 10, "t1")];
+  agent.handle.emit({ type: "turn_completed", provider: "mock" });
+  await settle();
+  assert.ok(agent.state.calls.length > 4);
+  assert.equal(watched.currentCard().questionCount, 2);
+  watched.stop();
+  assert.equal(agent.state.stopped, 1);
+  assert.equal(agent.state.subscribeCount, 1);
+});
+
+test("a blank assistant row keeps later prose off the earlier card", async t => {
+  const { session, feed, host } = await fixture(t);
+  const agent = host.agent("a");
+  agent.state.recent = [
+    entry("assistant_message", two, 10, "t1"),
+    entry("assistant_message", "", 20, "t2"),
+  ];
+  const watched = feed.startAnswerFeed({ serverId: "srv", agentId: "a", client: host.client });
+  t.after(() => watched.stop());
+  await watched.ready;
+  agent.state.recent = [
+    entry("assistant_message", two, 10, "t1"),
+    entry("assistant_message", "", 20, "t2"),
+    entry("user_message", "hello", 30, "t3"),
+  ];
+  agent.handle.emit({
+    type: "timeline",
+    provider: "mock",
+    item: { type: "user_message", text: "hello" },
+  });
+  await settle();
+  const card = session.getOptionSessionAt("a", 10);
+  assert.equal(card.readOnly, false);
+  assert.equal(card.answeredText, null);
+});
+
+test("a timeline error resubscribes and unmount cancels further retries", async t => {
+  const warnings = warnSpy(t);
+  const { feed, host } = await fixture(t);
+  const agent = host.agent("a");
+  const watched = feed.startAnswerFeed({ serverId: "srv", agentId: "a", client: host.client });
+  t.after(() => watched.stop());
+  await watched.ready;
+  agent.state.recent = [entry("assistant_message", two, 10, "t1")];
+  agent.handle.emit({ type: "error", error: "socket closed" });
+  await new Promise(resolve => setTimeout(resolve, 50));
+  assert.ok(agent.state.subscribeCount >= 2, "subscription was not replaced");
+  assert.equal(watched.currentCard().questionCount, 2);
+  assert.ok(warnings.some(line => line.includes("socket closed") || line.includes("subscription")));
+  const subscribed = agent.state.subscribeCount;
+  watched.stop();
+  await new Promise(resolve => setTimeout(resolve, 80));
+  assert.equal(agent.state.subscribeCount, subscribed);
+});
+

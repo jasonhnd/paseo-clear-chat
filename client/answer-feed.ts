@@ -12,10 +12,11 @@ import {
 /**
  * Feeds answer-card state from an agent's timeline.
  *
- * A committed projected row is published with its timestamp and full text, the
- * same pair the old assistant renderer passed in. While that row's turn is
- * still open the host treats the reply as streaming, so it is withheld: the
- * first partial text would stick, because a later text at the same time is ignored.
+ * A committed projected row is published with its timestamp and text, including
+ * a blank assistant row: the old renderer published that text, and the row's
+ * time keeps a later user message from answering the previous card. A row whose
+ * turn is still the agent's active turn is withheld. The active turn is read
+ * again on every reload, so a missed end event cannot hide the finished reply.
  * System envelopes are not the model's words and are not published.
  */
 
@@ -23,10 +24,13 @@ const ENVELOPE_TAGS = new Set([
   "system-notice", "system-reminder", "irc", "system-interrupt", "paseo-system", "agent-response",
 ]);
 const PROCESS_LINE = /^Supervised process ([\w.-]+) ((?:exited|started|stopped|restarted|failed|is ready)\b.*)$/;
+const READ_RETRY_DELAYS_MS = [10, 20, 40];
+const RESUBSCRIBE_DELAYS_MS = [10, 20, 40];
 
 type AgentHandle = ReturnType<PaseoApi["agents"]["ref"]>;
 type TimelinePage = Awaited<ReturnType<AgentHandle["timeline"]["refetch"]>>;
 type TimelineEntry = TimelinePage["entries"][number];
+type Unsubscribe = ReturnType<AgentHandle["timeline"]["subscribe"]>;
 
 export interface AnswerCardSummary {
   agentId: string;
@@ -47,6 +51,10 @@ function isSystemEnvelope(text: string): boolean {
   if (process && !trimmed.includes("\n")) return true;
   const tag = trimmed.match(/^<([\w-]+)(?:\s[^>]*)?>/)?.[1]?.toLowerCase();
   return tag ? ENVELOPE_TAGS.has(tag) : false;
+}
+
+function warnFeed(message: string, error: unknown): void {
+  console.warn(`Clear Chat answer feed ${message}`, error);
 }
 
 function answeredCount(session: OptionSession): number {
@@ -83,7 +91,7 @@ function publishEntries(agentId: string, entries: readonly TimelineEntry[], stre
       if (!isSystemEnvelope(item.text)) publishUserMessage(agentId, at, item.text);
     } else if (item.type === "assistant_message") {
       if (streamingTurnId && entry.turnId === streamingTurnId) continue;
-      if (!item.text.trim() || isSystemEnvelope(item.text)) continue;
+      if (isSystemEnvelope(item.text)) continue;
       publishAssistantReply(agentId, { at, text: item.text });
     }
   }
@@ -117,12 +125,72 @@ export function startAnswerFeed(input: { serverId: string; agentId: string; clie
   let accepting = false;
   let streamingTurnId: string | null = null;
   let chain: Promise<void> = Promise.resolve();
+  let resubscribeAttempt = 0;
+  let resubscribeTimer: ReturnType<typeof setTimeout> | null = null;
+  let wakeSleep: (() => void) | null = null;
   const queued: PaseoAgentTimelineEvent[] = [];
 
+  const sync = async (full: boolean) => {
+    const refreshed = await handle.refresh();
+    streamingTurnId = refreshed?.agent.activeTurn?.turnId ?? null;
+    const entries = await readPages(handle, full);
+    if (!stopped) publishEntries(input.agentId, entries, streamingTurnId);
+  };
+
+  const sleep = (ms: number) => new Promise<void>(resolve => {
+    wakeSleep = resolve;
+    const timer = setTimeout(() => {
+      if (wakeSleep === resolve) wakeSleep = null;
+      resolve();
+    }, ms);
+    const finish = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    wakeSleep = finish;
+  });
+
+  const syncWithRetry = async (full: boolean) => {
+    for (let attempt = 0; ; attempt += 1) {
+      if (stopped) return;
+      try {
+        await sync(full);
+        return;
+      } catch (error) {
+        warnFeed("could not read the timeline", error);
+        const delay = READ_RETRY_DELAYS_MS[attempt];
+        if (delay === undefined || stopped) return;
+        await sleep(delay);
+      }
+    }
+  };
+
   const enqueue = (full: boolean) => {
-    chain = chain.then(() => (stopped ? undefined : readPages(handle, full).then(entries => {
-      if (!stopped) publishEntries(input.agentId, entries, streamingTurnId);
-    }))).catch(() => undefined);
+    chain = chain.then(() => (stopped ? undefined : syncWithRetry(full))).catch(error => {
+      warnFeed("could not read the timeline", error);
+    });
+  };
+
+  const scheduleResubscribe = () => {
+    if (stopped || resubscribeAttempt >= RESUBSCRIBE_DELAYS_MS.length) {
+      if (!stopped) warnFeed("stopped retrying the timeline subscription", "retry limit");
+      return;
+    }
+    const delay = RESUBSCRIBE_DELAYS_MS[resubscribeAttempt] ?? 40;
+    resubscribeAttempt += 1;
+    if (resubscribeTimer) clearTimeout(resubscribeTimer);
+    resubscribeTimer = setTimeout(() => {
+      resubscribeTimer = null;
+      if (stopped) return;
+      current = handle.timeline.subscribe(onMessage);
+      void current.ready.then(() => {
+        resubscribeAttempt = 0;
+        if (!stopped) enqueue(true);
+      }).catch(error => {
+        warnFeed("could not resubscribe to the timeline", error);
+        scheduleResubscribe();
+      });
+    }, delay);
   };
 
   const onMessage = (message: PaseoAgentTimelineEvent) => {
@@ -137,17 +205,17 @@ export function startAnswerFeed(input: { serverId: string; agentId: string; clie
       return;
     }
     if (event.type === "turn_completed" || event.type === "turn_failed" || event.type === "turn_canceled") {
-      streamingTurnId = null;
+      if (streamingTurnId && event.turnId !== streamingTurnId) return;
       enqueue(false);
       return;
     }
-    if (event.type === "replacement") {
-      streamingTurnId = null;
-      enqueue(true);
+    if (event.type === "replacement" || event.type === "subscription_restored") {
+      enqueue(event.type === "replacement");
       return;
     }
-    if (event.type === "subscription_restored") {
-      enqueue(false);
+    if (event.type === "error") {
+      warnFeed("lost the timeline subscription", event.error);
+      scheduleResubscribe();
       return;
     }
     if (event.type === "timeline") {
@@ -156,15 +224,17 @@ export function startAnswerFeed(input: { serverId: string; agentId: string; clie
     }
   };
 
-  const unsubscribe = handle.timeline.subscribe(onMessage);
+  let current: Unsubscribe = handle.timeline.subscribe(onMessage);
   const ready = (async () => {
-    await unsubscribe.ready;
+    try {
+      await current.ready;
+    } catch (error) {
+      warnFeed("could not subscribe to the timeline", error);
+      if (!stopped) scheduleResubscribe();
+    }
     if (stopped) return;
-    const refreshed = await handle.refresh();
-    streamingTurnId = refreshed?.agent.activeTurn?.turnId ?? null;
-    const entries = await readPages(handle, true);
+    await syncWithRetry(true);
     if (stopped) return;
-    publishEntries(input.agentId, entries, streamingTurnId);
     accepting = true;
     for (const message of queued.splice(0)) onMessage(message);
     await chain;
@@ -175,7 +245,11 @@ export function startAnswerFeed(input: { serverId: string; agentId: string; clie
     stop() {
       if (stopped) return;
       stopped = true;
-      unsubscribe();
+      if (resubscribeTimer) clearTimeout(resubscribeTimer);
+      resubscribeTimer = null;
+      wakeSleep?.();
+      wakeSleep = null;
+      current();
     },
     currentCard: () => currentAnswerCard(input.agentId),
   };
