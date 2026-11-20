@@ -14,7 +14,7 @@ export function codeFontAlias(family: keyof typeof LOCAL_CODE_FONTS): string {
   return `Clear Chat ${family}`;
 }
 
-/** One family per React Native style; web fallbacks are registered by embedFonts. */
+/** One family per React Native style: a comma-separated list is not a valid native value. */
 export function resolveCodeFonts(
   preferences: { codeFont: CodeFontPreference; codeFontFamily?: CodeFontFamilyPreference },
   platform: string,

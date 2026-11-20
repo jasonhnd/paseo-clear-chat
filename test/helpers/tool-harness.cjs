@@ -140,7 +140,6 @@ function createToolHarness(platform = "ios", options = {}) {
     "client/hub-activity": { publishHubSnapshot: noop },
     "client/timeline-tail": { useIsTimelineTail: () => options.timelineTail ?? false },
     "client/system-envelope": { parseSystemEnvelope: () => null },
-    "client/components/embed-fonts": { embedFonts: cleanup },
     "client/components/frosted": { frosted: {}, installFrostedGlass: cleanup },
     "client/components/shimmer": { installShimmer: cleanup },
     "client/components/glow": { glowing: () => ({}), usePointerGlow: noop, installPointerGlow: cleanup },
@@ -179,7 +178,6 @@ function createToolHarness(platform = "ios", options = {}) {
   if (options.realSelection) delete stubs["client/components/selection"];
   if (options.settingsPage) delete stubs["client/settings-page"];
   if (options.themeTokens) delete stubs["client/components/theme-tokens"];
-  if (options.fonts) delete stubs["client/components/embed-fonts"];
   if (options.presentationHost) delete stubs["client/preferences"];
   if (options.markdown) delete stubs["client/components/markdown/markdown-view"];
   if (options.syntax) {

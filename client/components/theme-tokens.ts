@@ -14,13 +14,33 @@ export type PluginSurfaceColors = PluginTheme["colors"];
  */
 export const radius = { card: 12, block: 8, chip: 5 } as const;
 
-export const fontUi = "OMP Inter";
+/**
+ * The host app's own UI stack. The plugin root opts out of the host's global
+ * font rule, so plugin text has to name the same system faces itself — naming
+ * an unregistered face instead falls back to the browser's default serif and
+ * reads as a different app. The quoted "system-ui" entry repeats the host's
+ * value verbatim; a quoted name is not the generic keyword, so it is a no-op
+ * there too.
+ */
+export const UI_FONT_WEB =
+  'system-ui, -apple-system, "system-ui", "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+
+/**
+ * One family per React Native style. A comma-separated list is CSS only, and
+ * native `fontFamily` names one installed face, so native gets `undefined`:
+ * the platform's own UI font stays in place instead of an unknown family that
+ * warns and falls back anyway.
+ */
+export function resolveUiFont(platform: string): string | undefined {
+  return platform === "web" ? UI_FONT_WEB : undefined;
+}
 
 export interface ExtendedThemeTokens {
   isDark: boolean;
   fontMono: string;
   fontCode: string;
-  fontUi: string;
+  /** Undefined on native: there the platform's default UI font is the answer. */
+  fontUi: string | undefined;
 
   /** The user's text size multiplier; 1 renders the authored sizes. */
   textScale: number;
@@ -236,7 +256,7 @@ export function buildThemeTokens(
     colors.surface0, colors.foreground, colors.foregroundMuted,
     colors.accent, colors.accentForeground, colors.statusDanger,
     preferences.accent, preferences.customAccent, preferences.customAccentEnabled,
-    preferences.uiFont, preferences.codeFont,
+    preferences.codeFont,
     codeFonts.mono, codeFonts.code,
     preferences.textScale, preferences.frostedGlass,
   ]);
@@ -267,7 +287,7 @@ export function buildThemeTokens(
     isDark,
     fontMono: codeFonts.mono,
     fontCode: codeFonts.code,
-    fontUi: preferences.uiFont === "system" ? "System" : fontUi,
+    fontUi: resolveUiFont(Platform.OS),
 
     textScale,
     fs: (base) => Math.round(base * textScale * 2) / 2,

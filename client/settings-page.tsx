@@ -30,6 +30,22 @@ const TRACK_WIDTH = 38;
 const TRACK_HEIGHT = 22;
 const KNOB = 16;
 
+// The saved replies box states its own line height so four lines are a known
+// height on every platform, instead of following whatever metrics the host
+// font happens to have. The default list is three lines; a fourth line of room
+// keeps the third one from being cut, and past the cap the box scrolls rather
+// than pushing the rest of the page away.
+const SAVED_REPLIES_FONT_SIZE = 16;
+const SAVED_REPLIES_LINE_HEIGHT = 20;
+const SAVED_REPLIES_PADDING = 8;
+const SAVED_REPLIES_BORDER = 1;
+const SAVED_REPLIES_VISIBLE_LINES = 4;
+const SAVED_REPLIES_MAX_LINES = 8;
+
+function savedRepliesHeight(lines: number): number {
+  return SAVED_REPLIES_LINE_HEIGHT * lines + SAVED_REPLIES_PADDING * 2 + SAVED_REPLIES_BORDER * 2;
+}
+
 function SavedRepliesEditor({ value, tokens }: { value: string[]; tokens: ExtendedThemeTokens }) {
   const { t } = useTranslation(messages);
   const joined = value.join("\n");
@@ -39,7 +55,7 @@ function SavedRepliesEditor({ value, tokens }: { value: string[]; tokens: Extend
   return <View style={[styles.row, { borderTopColor: tokens.borderSubtle }]}>
     <Text style={[styles.rowTitle, { color: tokens.foreground, fontFamily: tokens.fontUi }]}>{t("answerStyle.savedRepliesLabel")}</Text>
     <Text style={[styles.rowDescription, { color: tokens.foregroundMuted, fontFamily: tokens.fontUi }]}>{t("answerStyle.savedRepliesDescription")}</Text>
-    <TextInput testID="saved-replies-input" accessibilityLabel={t("answerStyle.savedRepliesLabel")} accessibilityHint={t("answerStyle.savedRepliesDescription")} value={draft} onChangeText={setDraft} onBlur={() => { void save(); }} multiline autoCorrect={false} style={[styles.toolNamesInput, { color: tokens.foreground, borderColor: tokens.border, fontFamily: tokens.fontUi }]} />
+    <TextInput testID="saved-replies-input" accessibilityLabel={t("answerStyle.savedRepliesLabel")} accessibilityHint={t("answerStyle.savedRepliesDescription")} value={draft} onChangeText={setDraft} onBlur={() => { void save(); }} multiline autoCorrect={false} style={[styles.savedRepliesInput, { color: tokens.foreground, borderColor: tokens.border, fontFamily: tokens.fontUi }]} />
   </View>;
 }
 
@@ -239,5 +255,12 @@ const styles = StyleSheet.create({
   firstRow: { borderTopWidth: 0 },
   rowTitle: { fontSize: 14, fontWeight: "600" },
   rowDescription: { fontSize: 12, lineHeight: 17 },
-  toolNamesInput: { alignSelf: "stretch", minWidth: 0, minHeight: 44, borderWidth: 1, borderRadius: radius.block, paddingHorizontal: 10, paddingVertical: 8, fontSize: 16 },
+  savedRepliesInput: {
+    alignSelf: "stretch", minWidth: 0,
+    minHeight: savedRepliesHeight(SAVED_REPLIES_VISIBLE_LINES),
+    maxHeight: savedRepliesHeight(SAVED_REPLIES_MAX_LINES),
+    borderWidth: SAVED_REPLIES_BORDER, borderRadius: radius.block,
+    paddingHorizontal: 10, paddingVertical: SAVED_REPLIES_PADDING,
+    fontSize: SAVED_REPLIES_FONT_SIZE, lineHeight: SAVED_REPLIES_LINE_HEIGHT,
+  },
 });

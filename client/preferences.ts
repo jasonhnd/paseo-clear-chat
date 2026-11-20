@@ -19,6 +19,7 @@ export const ACCENT_PRESETS = {
 } as const;
 
 export type AccentPreset = keyof typeof ACCENT_PRESETS;
+/** Kept so stored settings that name a UI font still load; the UI font follows the host. */
 export type UiFontPreference = "inter" | "system";
 export type CodeFontPreference = "code" | "plain";
 export type CodeFontFamilyPreference = NonNullable<PreferenceOverrides["codeFontFamily"]>;
@@ -45,6 +46,7 @@ export interface EnhancerPreferences {
   accent: AccentPreset;
   customAccent?: string;
   customAccentEnabled?: boolean;
+  /** Read and written for older settings files only; it no longer changes the UI font. */
   uiFont: UiFontPreference;
   codeFont: CodeFontPreference;
   codeFontFamily: CodeFontFamilyPreference;

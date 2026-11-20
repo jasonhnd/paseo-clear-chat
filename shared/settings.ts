@@ -15,6 +15,8 @@ export const preferenceOverridesSchema = z.object({
   // Keep the existing enum readable by older clients; they ignore these fields.
   customAccent: customAccentSchema.optional(),
   customAccentEnabled: z.boolean().optional(),
+  // Accepted so settings files written by older builds still parse; the UI font
+  // now follows the host and this value changes nothing.
   uiFont: z.enum(["inter", "system"]).optional(),
   codeFont: z.enum(["code", "plain"]).optional(),
   codeFontFamily: z.enum(["host", "iosevka", "menlo", "consolas", "fira-code", "cascadia-code"]).optional(),
