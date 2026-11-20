@@ -46,8 +46,8 @@ test("npm failure falls back to stdout when stderr is empty", () => {
   assert.ok(message.endsWith("npm stdout diagnostic"));
 });
 
-// Derived compatibility fixture: docs/STEP-DETAIL-FIELDS.md documents explicit
-// streams in a projected shell item's detail.output; no capture has these cases.
+// Compatibility fixture: a projected shell item's detail.output with explicit
+// streams. No capture in the suite has these cases.
 const installOutput = require("./fixtures/install-output.json").detail.output;
 
 test("npm failure falls back to stdout when stderr is whitespace only", () => {
