@@ -52,18 +52,13 @@ function record(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
-export function answerMarker(agent: WaitingAgent): { pending: number; total: number; answered: number; time: number | null; chosenNotSent: boolean } | null {
+export function answerMarker(agent: WaitingAgent): { pending: number; total: number; answered: number; time: number | null } | null {
   const marker = record(record(agent.metadata)?.clearChat);
-  // `sent: true` is the only "already delivered" signal. Older metadata has no such field.
-  if (!marker || marker.sent === true) return null;
-  const pending = marker.pending;
-  if (typeof pending !== "number" || !Number.isFinite(pending) || pending < 0) return null;
-  const total = typeof marker.total === "number" && Number.isFinite(marker.total) && marker.total >= 0 ? marker.total : 0;
-  const parsed = typeof marker.updatedAt === "string" ? Date.parse(marker.updatedAt) : NaN;
-  return {
-    pending, total, answered: Math.max(0, Math.min(total, total - pending)),
-    time: Number.isFinite(parsed) ? parsed : null, chosenNotSent: pending === 0,
-  };
+  const pending = marker?.pending;
+  if (typeof pending !== "number" || !Number.isFinite(pending) || pending <= 0) return null;
+  const total = typeof marker?.total === "number" && Number.isFinite(marker.total) && marker.total >= 0 ? marker.total : 0;
+  const parsed = typeof marker?.updatedAt === "string" ? Date.parse(marker.updatedAt) : NaN;
+  return { pending, total, answered: Math.max(0, Math.min(total, total - pending)), time: Number.isFinite(parsed) ? parsed : null };
 }
 
 export function compareWaitingAgents(a: WaitingAgent, b: WaitingAgent): number {

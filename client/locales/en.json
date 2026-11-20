@@ -652,7 +652,6 @@
     "sendAction": "Send",
     "hintCustom": "Enter to confirm · Shift+Enter for a new line",
     "progress": "{{chosen}} of {{total}} answered · {{remaining}} to go",
-    "chosenNotSent": "All chosen · not sent yet",
     "replaceFirstLine": "Replace first line with {{answer}}",
     "keepEdited": "Keep my edit",
     "limitEdited": "If you edited the answer and then choose Replace first line, only the first line is replaced; the rest of a multi-line answer stays for you to remove.",

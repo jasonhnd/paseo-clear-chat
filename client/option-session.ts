@@ -133,8 +133,8 @@ function restoreDraft(agentId: string, at: number): boolean {
 
 /** Sidebar hint: how many questions of this card are still open. Carries no draft text. */
 export interface AnswerStatePublisher {
-  publish(agentId: string, pending: number, total: number, sent?: boolean): void;
-  initialize?(agentId: string, pending: number, total: number, sent?: boolean): void;
+  publish(agentId: string, pending: number, total: number): void;
+  initialize?(agentId: string, pending: number, total: number): void;
 }
 
 let answerStatePublisher: AnswerStatePublisher | null = null;
@@ -144,17 +144,12 @@ export function setAnswerStatePublisher(publisher: AnswerStatePublisher | null):
   answerStatePublisher = publisher;
 }
 
-/** True only after the answer was sent or recognized in the chat, not while it is merely chosen. */
-function answerDelivered(session: OptionSession): boolean {
-  return session.readOnly && !session.followupStatus && (session.answerAt !== null || session.answeredText !== null);
-}
-
 function publishAnswerState(agentId: string, session: OptionSession): void {
   if (!answerStatePublisher) return;
   const total = session.set.questions.length;
   let answered = 0;
   for (let i = 0; i < total; i += 1) if (session.choices[i] !== undefined || session.customConfirmed[i] !== undefined) answered += 1;
-  try { answerStatePublisher.publish(agentId, Math.max(0, total - answered), total, answerDelivered(session)); } catch { /* A hint must never break the card. */ }
+  try { answerStatePublisher.publish(agentId, Math.max(0, total - answered), total); } catch { /* A hint must never break the card. */ }
 }
 
 /** Initialise an unanswered card once it mounts; the publisher checks existing metadata. */
@@ -163,7 +158,7 @@ export function initializeAnswerState(agentId: string, at: number): void {
   if (!session || session.readOnly || session.dismissed || !answerStatePublisher?.initialize) return;
   const total = session.set.questions.length;
   const answered = session.set.questions.filter((_, i) => session.choices[i] !== undefined || session.customConfirmed[i] !== undefined).length;
-  try { answerStatePublisher.initialize(agentId, Math.max(0, total - answered), total, false); } catch { /* A hint must not break rendering. */ }
+  try { answerStatePublisher.initialize(agentId, Math.max(0, total - answered), total); } catch { /* A hint must not break rendering. */ }
 }
 
 type DraftPending = { timer: ReturnType<typeof setTimeout>; completion: Promise<boolean>; cancel(): void };
@@ -394,7 +389,7 @@ function reconcileAnswers(agentId: string): boolean {
           }
         }
       }
-      const next = {
+      sessions.set(at, {
         ...session,
         choices: sent ? session.choices : restored ? choices : typedChoices(session.set, answer[1]),
         notes: restored ? {} : session.notes,
@@ -402,9 +397,7 @@ function reconcileAnswers(agentId: string): boolean {
         customDrafts: sent ? session.customDrafts : restored ? { ...customConfirmed } : session.answerAt === null && session.answeredText === null ? session.customDrafts : {},
         customOpen: sent ? session.customOpen : customOpen,
         readOnly: true, superseded: false, followupStatus: undefined, answeredText: answer[1], answerAt: answer[0], error: null,
-      };
-      sessions.set(at, next);
-      publishAnswerState(agentId, next);
+      });
       changed = true;
     } else if (!answer && session.answerAt !== null) {
       sessions.set(at, { ...session, choices: {}, customConfirmed: {}, customDrafts: {}, customOpen: {}, readOnly: false, answeredText: null, answerAt: null });
