@@ -1,3 +1,46 @@
+## [0.16.2.2] - Unreleased
+
+### Upgrade notes
+
+- Clear Chat 0.16.2.2 needs Paseo 0.16.0 or newer. The minimum host version is unchanged. This build was not installed into a running Paseo app. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x.
+- Update with `paseo plugin update clear-chat --ref v0.16.2.2 --yes`, or install with `paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.16.2.2`.
+- The settings file is kept. The settings page shows the answer card switch, saved replies, the installed version, and **Report a problem**. If the file has no stored switch, the switch defaults to on. A stored value still wins. Saved replies, dismissed false detections, and unfinished answer drafts are kept. Keys for features this version no longer shows stay in the file and have no controls.
+- Clear Chat no longer draws the conversation. For that view, use the separate plugin Better Paseo: https://paseo.sh/plugins/roundreddot/better-paseo
+- After updating, Clear Chat's step rows, tool cards, sidebar, search, quote-and-reply, jump chips, and syntax highlighting are gone. The answer card is not shown either: this version does not place it on screen. The **Answer card** settings page is still there.
+- Startup does not delete anything under the plugin data directory. Older image and history directories are left in place. This version does not use them.
+
+### Removed
+
+- **Conversation rendering.** Clear Chat no longer draws assistant replies, your messages, tool rows, approvals, reasoning, to-do lists, errors, notices, or turn-window cards. The conversation is left to Paseo or another plugin ([PR #503](https://github.com/jasonhnd/paseo-clear-chat/pull/503)).
+- **Sidebar.** The sidebar, its hint, conversation search, the **Answers waiting** group, the **Errors** group, and finish times on Today rows are gone ([PR #503](https://github.com/jasonhnd/paseo-clear-chat/pull/503)).
+- **Composer tools that belonged to this plugin.** Quote-and-reply, the find bar, and jump chips are gone. The answer style selector, which was already hidden, is removed ([PR #503](https://github.com/jasonhnd/paseo-clear-chat/pull/503)).
+- **Settings for that rendering.** Accent colour, fonts, text size, folding, frosted glass, pointer glow, the prompt bubble, assistant markdown, markdown style, delegating or hiding tools, code-block delegation, jump chips, and keeping each option on its own line are no longer on the settings page. Stored values remain in the settings file ([PR #503](https://github.com/jasonhnd/paseo-clear-chat/pull/503)).
+- **Pasted images and the bundled provider.** Clear Chat no longer adds a provider copy or saves pasted images. Existing plugin-data directories are not deleted ([PR #503](https://github.com/jasonhnd/paseo-clear-chat/pull/503)).
+- **Syntax-highlighting packages.** Install no longer fetches the packages this plugin used to colour code in the conversation ([PR #505](https://github.com/jasonhnd/paseo-clear-chat/pull/505)).
+
+### Changed
+
+- The settings page title is **Answer card** (English), **回答卡片** (Simplified Chinese), and **回答カード** (Japanese). It was **Chat presentation** ([PR #506](https://github.com/jasonhnd/paseo-clear-chat/pull/506)).
+- The settings introduction only says that this page sets the answer card and saved replies ([PR #505](https://github.com/jasonhnd/paseo-clear-chat/pull/505)).
+- The plugin-list description is one sentence about answering lettered questions. The version prefix still matches the package version ([PR #505](https://github.com/jasonhnd/paseo-clear-chat/pull/505)).
+- When the host is missing a required method, the message names plugin RPC, a settings screen, settings registration, and a request handler. It no longer mentions timeline support ([PR #505](https://github.com/jasonhnd/paseo-clear-chat/pull/505)).
+- The answer card switch defaults to on when no value is stored. A stored value still wins ([PR #503](https://github.com/jasonhnd/paseo-clear-chat/pull/503)).
+
+### Fixed
+
+- A bare letter inside a sentence is not treated as an answer. “wait a moment” no longer marks the card answered or clears a saved draft. A numbered token such as `1A`, `2b`, or `Q1A` still counts, including when punctuation sits against it (`1A.`). A message that is only an answer is unchanged, including a single-question reply whose whole message is `b`. A message such as `Plan 2B` can still be read as an answer ([PR #502](https://github.com/jasonhnd/paseo-clear-chat/pull/502)).
+
+### Documentation
+
+- The English, Simplified Chinese, and Japanese READMEs, and the catalog overview, now describe only the answer card. Instructions and screenshots for the removed conversation view are gone.
+
+### Known limitations
+
+- This version does not show the answer card. The settings page is available.
+- `Plan 2B` can still be read as an answer.
+- This version was not checked inside a running Paseo app, with a real model, or on physical iOS or Android devices.
+- Removing the plugin deletes its settings. Startup does not delete older plugin-data files.
+
 ## [0.16.2.1] - 2026-11-20
 
 ### Upgrade notes
@@ -619,6 +662,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.16.2.2]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.16.2.1...v0.16.2.2
 [0.16.2.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.16.1.1...v0.16.2.1
 [0.16.1.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.4.2...v0.16.1.1
 [0.15.4.2]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.4.1...v0.15.4.2
