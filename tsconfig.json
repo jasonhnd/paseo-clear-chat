@@ -14,6 +14,5 @@
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true
   },
-  "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": [".showcase", "node_modules"]
+  "include": ["**/*.ts", "**/*.tsx"]
 }
