@@ -9,13 +9,13 @@ The interface text follows the app language: English, Simplified Chinese, or Jap
 
 ## What it does
 
-- Recognises numbered questions with at least two lettered options, plus a recommendation mark or a short-reply hint. Code fences and quotations are ignored.
-- The card's controls choose an option, write **Other**, preview a message such as `1B 2A`, and send it. After sending, the card is grey and read-only.
+- Recognises numbered questions with at least two lettered options, plus a recommendation mark or a short-reply hint. A line of its own that names one option, such as `Recommended: A`, also marks that option. Code fences and quotations are ignored.
+- The card's controls choose an option, write **Other**, preview a message such as `1B 2A`, and send it. After sending, the card is no longer shown; the message in the chat, such as `1B 2A`, is your answer.
 - **Not options** dismisses a false detection and remembers it.
 - Saved replies are edited on the settings page. On the card they insert a phrase and do not send.
 - A bare letter inside a sentence is not treated as an answer. A numbered token such as `1A` still counts.
 
-<!-- TODO(answer-card-location) -->
+After a reply that asks lettered questions has finished, a button above the message box opens the card. It shows the progress, for example **Answer card · 0/2 answered**, and opens the whole card in a panel, which is a sheet on a narrow screen. Choosing answers updates the count, closing and reopening the panel keeps them, and the button is gone after **Send** until the next such reply finishes. The button belongs to the conversation on screen.
 
 The settings page can be opened.
 
@@ -55,6 +55,7 @@ Settings are saved on the host and shared by every client connected to it.
 
 - Clear Chat does not draw the conversation. Use Better Paseo for that view.
 - `Plan 2B` can still be read as an answer.
+- While a reply is still being written, its button does not appear. If the card is open when the agent starts answering again, the panel says the reply is still running, and answers cannot be given until it ends.
 - This version was not checked inside a running Paseo app, with a real model, or on physical iOS or Android devices. <!-- TODO(host-verification) -->
 - Removing the plugin deletes its settings. Back them up first.
 

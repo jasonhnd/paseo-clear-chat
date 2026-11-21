@@ -16,26 +16,26 @@
 
 ## This version
 
-Clear Chat 0.16.2.2 no longer draws step rows, tool cards, the sidebar, search, quote-and-reply, jump chips, or syntax highlighting. The **Workspace changes during this turn** card is gone. Those belong to the conversation view. The settings page is titled **Answer card** and only sets the answer card and saved replies.
+Clear Chat 0.16.2.2 no longer draws step rows, tool cards, the sidebar, search, quote-and-reply, jump chips, or syntax highlighting. The **Workspace changes during this turn** card is gone. Those belong to the conversation view. The settings page is titled **Answer card** and sets the answer card and saved replies.
 
 The full list of changes is in the [changelog](CHANGELOG.md).
 
 ## Answer card
 
-<!-- TODO(answer-card-location) -->
+A reply that asks lettered questions gets a button above the message box once that reply has finished. It carries the progress, for example **Answer card · 0/2 answered**. Press it to open the whole card in a panel; on a narrow screen the panel rises from the bottom. Choose your answers there and press **Send** on the card: the message goes to the chat as if you had sent it, and the message box keeps what you were writing. The count follows your answers (**Answer card · 1/2 answered**), closing the panel keeps them, and after **Send** the button is gone until another reply asks lettered questions. The button belongs to the conversation on screen, so switching chats shows that chat's own card, or none.
 
 Open **Settings → Plugins → Clear Chat**. The page title is **Answer card**. The switch **Show an answer card under replies that ask lettered questions** is on when the settings file has no stored value. A stored on or off value still wins. The note under that switch says to reload the chat to update existing replies.
 
 The card's controls are:
 
-A reply is recognised only when it has numbered questions, each with at least two lettered options (`A`–`H`, including full-width `Ａ`–`Ｈ`), and either a recommendation mark or a short-reply hint such as “reply with” or “answer with”. Lines inside code fences and quotations are ignored. Letters must move forward in each question (`A` then `C` counts; `B` then `A` does not). A mark such as `（推荐）` or `(recommended)` is read; “not recommended” and `不推荐` are not.
+A reply is recognised only when it has numbered questions, each with at least two lettered options (`A`–`H`, including full-width `Ａ`–`Ｈ`), and either a recommendation mark or a short-reply hint such as “reply with” or “answer with”. Lines inside code fences and quotations are ignored. Letters must move forward in each question (`A` then `C` counts; `B` then `A` does not). A mark such as `（推荐）` or `(recommended)` is read; “not recommended” and `不推荐` are not. A line on its own under the options that names one option and holds nothing else, such as `Recommended: A`, `推荐：A`, or `おすすめ：A`, marks that option as recommended and is not part of the option above it; the label may end with a period and may be bold. In Japanese it needs a colon or a space after it. A line such as `不推荐：A` is not read as a recommendation, and the line stays ordinary text.
 
 1. Choose an option by clicking it, or, with focus inside the card, press its letter. You can also move with **↑/↓** and press **Enter**. Keys typed in Paseo's input box stay in that box.
 2. Choosing an unanswered question moves to the next unanswered question. The last choice moves focus to **Send**. Until every question has an answer, **Send** names the missing question and cannot be used.
 3. Question tabs show a short name. An answered tab that is not current shows `✓` and the answer text. Changing an answered question stays on that question.
 4. To write your own answer, choose **Other**. Press **Enter** to confirm and move on, or **Shift+Enter** for a new line. Choosing a character with an input method does not confirm. An empty answer shows a prompt.
-5. **Send** shows the letter indexes, such as `1B 2A`. A written answer is included in the message as you confirmed it. After a successful send the card stays grey and read-only (`Answered · read-only`). Switch question tabs to review each answer, including written answers after reloading.
-6. If an ordinary list was mistaken for questions, press **Not options**. That reply stays dismissed after reloading. The button is not shown on a read-only card or while sending.
+5. **Send** shows the letter indexes, such as `1B 2A`. A written answer is included in the message as you confirmed it. After a successful send the button is gone and the card is no longer shown; the message in the chat, for example `1B 2A`, is your answer.
+6. If an ordinary list was mistaken for questions, press **Not options**. That reply stays dismissed after reloading. The button is not shown while sending.
 7. Saved replies that you edit on the settings page appear on the card as buttons. Choosing one inserts the phrase at the cursor and does not send.
 
 A bare letter inside a sentence (for example “wait a moment”) is not treated as an answer. A numbered token such as `1A`, `2b`, or `Q1A` still counts, including when punctuation sits against it (`1A.`). A message that is only an answer is unchanged, including a single-question reply whose whole message is `b`. A message such as `Plan 2B` can still be read as an answer.
@@ -102,7 +102,7 @@ An update keeps the settings file. Values for the answer card, saved replies, di
 
 After this update the conversation is no longer drawn by Clear Chat. Use [Better Paseo](https://paseo.sh/plugins/roundreddot/better-paseo) for that view. You will not see Clear Chat's step rows, tool cards, or sidebar.
 
-<!-- TODO(answer-card-location) -->
+The answer card opens from the button above the message box. After the update, a reply that asks lettered questions shows the button, for example **Answer card · 0/2 answered**, when that reply has finished; press it to open the card.
 
 Startup does not delete anything under the plugin's data directory. Older image and history directories are left in place. This version does not use them.
 
@@ -128,6 +128,7 @@ Clear Chat's own text follows the Paseo app language: English, Simplified Chines
 ## Known limitations
 
 - `Plan 2B` can still be read as an answer. A bare letter inside a sentence is not.
+- While a reply is still being written, its button does not appear above the message box. If the card is open when the agent starts answering again, the panel says the reply is still running, and answers cannot be given until it ends.
 - At phone width, Enter in Paseo's own input box inserts a newline. Use that box's Send button. This is the host's behaviour.
 - This version was not checked inside a running Paseo app, with a real model, or on physical iOS or Android devices. <!-- TODO(host-verification) -->
 - Removing the plugin deletes its settings. Back them up first. Startup does not delete older files in the plugin data directory.
@@ -144,7 +145,7 @@ Clear Chat's own text follows the Paseo app language: English, Simplified Chines
 
 **Does Clear Chat still draw the conversation?** No. Step rows, tool cards, the sidebar, search, quote-and-reply, jump chips, and syntax highlighting are gone. The **Workspace changes during this turn** card is gone. Use [Better Paseo](https://paseo.sh/plugins/roundreddot/better-paseo) for the conversation view.
 
-**Why do I not see the answer card?** Turn on **Show an answer card under replies that ask lettered questions**. The latest reply must have numbered questions, each with at least two lettered options, and either a recommendation mark or a short-reply hint such as “reply with” or “answer with”. <!-- TODO(answer-card-location) -->
+**Why do I not see the answer card?** Turn on **Show an answer card under replies that ask lettered questions**. The latest reply must have numbered questions, each with at least two lettered options, and either a recommendation mark or a short-reply hint such as “reply with” or “answer with”. The button for a reply appears above the message box when that reply has finished; press it to open the card.
 
 **Which replies would the card recognise?** Numbered questions with at least two lettered options each, plus a recommendation mark or a short-reply hint. Code fences and quotations are ignored.
 
