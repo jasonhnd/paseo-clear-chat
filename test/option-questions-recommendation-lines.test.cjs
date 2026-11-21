@@ -107,6 +107,21 @@ test("a Japanese marker needs a separator, so prose does not become a card", () 
   assert.deepEqual(set.questions[0].options.map(option => option.recommended), [false, false]);
 });
 
+test("a Japanese marker accepts a full-width space as its separator", () => {
+  for (const [label, line] of [
+    ["space after the word", "おすすめ　C"],
+    ["space before the colon", "おすすめ　：C"],
+    ["space after the colon", "おすすめ：　C"],
+    ["synonym with a space", "オススメ　C"],
+  ]) {
+    const set = parse(`1) Which rollout?\nA Soft launch\nB Full rollout\nC Wait\n${line}\n\nReply: A`);
+    assert.ok(set, label);
+    assert.deepEqual(set.questions[0].options.map(option => option.text), ["Soft launch", "Full rollout", "Wait"], `${label}: the marker line is cut out`);
+    assert.deepEqual(set.questions[0].options.map(option => option.recommended), [false, false, true], `${label}: the marker picks C`);
+  }
+  assert.equal(parse("変更点:\nA API追加\nB バグ修正\nおすすめAプランを参照"), null, "a full-width space separator must not let おすすめAプラン match");
+});
+
 test("a negated marker never marks an option", () => {
   for (const line of ["不推荐：A", "not recommended: A", "Not recommended: A."]) {
     const set = parse(`1) Pick?\nA One\nB Two\n\n${line}\nReply: A`);
