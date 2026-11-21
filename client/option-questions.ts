@@ -56,9 +56,11 @@ function optionLine(line: string): { letter: string; text: string } | null {
   return { letter: String.fromCharCode(code >= 0xff21 ? code - 0xff21 + 65 : code), text };
 }
 
-// The marker vocabulary: Chinese 推荐/推荐选, Japanese おすすめ/オススメ (the label the Japanese
-// UI uses), and the English recommended/recommend. The letter must be an uppercase option letter.
-const RECOMMENDATION = /(?:推荐(?:选)?[ \t]*(?:[:：][ \t]*)?|おすすめ[ \t]*(?:[:：][ \t]*)?|オススメ[ \t]*(?:[:：][ \t]*)?|[Rr][Ee][Cc][Oo][Mm][Mm][Ee][Nn][Dd][Ee][Dd][ \t]*[:：][ \t]*|\b[Rr][Ee][Cc][Oo][Mm][Mm][Ee][Nn][Dd][ \t]+)([A-HＡ-Ｈ])(?![A-Za-zＡ-Ｚａ-ｚ])/;
+// The marker vocabulary: Chinese 推荐/推荐选, Japanese おすすめ/オススメ, and the English
+// recommended/recommend. The letter must be an uppercase option letter. Japanese needs a colon
+// or a space before the letter, so ordinary prose such as `おすすめAプラン` cannot match. A
+// negated marker (`不推荐`, `not recommended`) names no recommendation.
+const RECOMMENDATION = /(?:(?<!不)推荐(?:选)?[ \t]*(?:[:：][ \t]*)?|(?:おすすめ|オススメ)(?:[ \t]*[:：][ \t]*|[ \t]+)|(?<![Nn][Oo][Tt][ \t]+)(?:[Rr][Ee][Cc][Oo][Mm][Mm][Ee][Nn][Dd][Ee][Dd][ \t]*[:：][ \t]*|\b[Rr][Ee][Cc][Oo][Mm][Mm][Ee][Nn][Dd][ \t]+))([A-HＡ-Ｈ])(?![A-Za-zＡ-Ｚａ-ｚ])/;
 
 function recommendationLetter(match: RegExpExecArray): string {
   const code = match[1]!.toUpperCase().charCodeAt(0);
@@ -72,15 +74,16 @@ function recommendation(line: string): string | null {
 
 /**
  * A line that carries nothing but the marker, such as `Recommended: A`, `推荐：A` or
- * `おすすめ：A`. Agents write it on its own line after the option list, so it names an
- * option without being part of any option's text. Prose that merely mentions a letter
- * (`Recommended: A because …`) still stays ordinary text.
+ * `おすすめ：A`, optionally bolded, bulleted or closed with punctuation. Agents write it on
+ * its own line after the option list, so it names an option without being part of any
+ * option's text. A mention inside a sentence, or prose that keeps going after the letter
+ * (`Recommended: A because …`), stays ordinary text.
  */
 function standaloneRecommendation(line: string): string | null {
-  const match = RECOMMENDATION.exec(line);
-  if (!match) return null;
-  const rest = line.slice(match.index + match[0].length);
-  return /^[\s。．，,；;：:、!！?？)）\]】]*$/.test(rest) ? recommendationLetter(match) : null;
+  const value = stripPrefix(line, false);
+  const match = RECOMMENDATION.exec(value);
+  if (!match || match.index !== 0) return null;
+  return /^[^\p{L}\p{N}]*$/u.test(value.slice(match[0].length)) ? recommendationLetter(match) : null;
 }
 
 function firstSentence(text: string): string {
