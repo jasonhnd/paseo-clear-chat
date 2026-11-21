@@ -49,3 +49,69 @@ test("an option's own wrapped lines still join its text", () => {
   assert.deepEqual(set.questions[0].options.map(option => option.text), ["Postgres\nneeds a server, runs anywhere", "SQLite\none file, no server"], "a line that is not a marker stays part of the option above it");
   assert.deepEqual(set.questions[0].options.map(option => option.recommended), [false, false]);
 });
+
+// The marker may wear a period or bold around it; the line is still nothing but the marker.
+const tailForms = [
+  ["en period", "Recommended: C."],
+  ["en bold", "**Recommended: C**"],
+  ["zh bold", "**推荐：C**"],
+  ["ja bold", "**おすすめ：C**"],
+  ["ja period", "おすすめ：C。"],
+  ["ja synonym", "オススメ：C"],
+];
+
+test("a marker line may end in a period or bold and still stays out of the option text", () => {
+  for (const [label, line] of tailForms) {
+    const set = parse(`1) Which rollout?\nA Soft launch\nB Full rollout\nC Wait\n${line}\n\nReply: A`);
+    assert.ok(set, label);
+    assert.deepEqual(set.questions[0].options.map(option => option.text), ["Soft launch", "Full rollout", "Wait"], `${label}: the whole marker line is cut out`);
+    assert.deepEqual(set.questions[0].options.map(option => option.recommended), [false, false, true], `${label}: the marker still picks C`);
+    assert.equal(set.recommendedFound, true, label);
+  }
+});
+
+test("a marker in the middle of a line stays with the option as text", () => {
+  const cases = [
+    ["en", "runs a server, per Recommended: A"],
+    ["zh-CN", "说明见推荐：A"],
+    ["ja", "runs a server, per おすすめ：A"],
+  ];
+  for (const [locale, line] of cases) {
+    const set = parse(`1) Which storage?\nA Postgres\n${line}\nB SQLite\n\nReply: A`);
+    assert.ok(set, locale);
+    assert.deepEqual(set.questions[0].options.map(option => option.text), [`Postgres\n${line}`, "SQLite"], `${locale}: an in-line mention is option text, not a marker line`);
+  }
+});
+
+test("prose after the marker keeps the line as option text", () => {
+  const set = parse("1) Which rollout?\nA Soft launch\nB Full rollout\nC Wait\nRecommended: A because it ships today\n\nReply: A");
+  assert.ok(set);
+  assert.deepEqual(set.questions[0].options.map(option => option.text), ["Soft launch", "Full rollout", "Wait\nRecommended: A because it ships today"], "a sentence that merely starts with the marker is still text");
+});
+
+test("a Japanese marker line alone, with no reply hint, still carries a card", () => {
+  for (const line of ["おすすめ：C", "オススメ：C"]) {
+    const set = parse(`1) Which rollout?\nA Soft launch\nB Full rollout\nC Wait\n${line}`);
+    assert.ok(set, `${line}: a card without a reply hint`);
+    assert.equal(set.hint, false, `${line}: no reply hint`);
+    assert.equal(set.recommendedFound, true, line);
+    assert.deepEqual(set.questions[0].options.map(option => option.recommended), [false, false, true], line);
+  }
+});
+
+test("a Japanese marker needs a separator, so prose does not become a card", () => {
+  assert.equal(parse("変更点:\nA API追加\nB バグ修正\nおすすめAプランを参照"), null, "おすすめAプラン is prose, not a marker");
+  const set = parse("変更点:\nA API追加\nB バグ修正\nおすすめAプランを参照\nReply: A");
+  assert.ok(set);
+  assert.equal(set.recommendedFound, false);
+  assert.deepEqual(set.questions[0].options.map(option => option.recommended), [false, false]);
+});
+
+test("a negated marker never marks an option", () => {
+  for (const line of ["不推荐：A", "not recommended: A", "Not recommended: A."]) {
+    const set = parse(`1) Pick?\nA One\nB Two\n\n${line}\nReply: A`);
+    assert.ok(set, line);
+    assert.equal(set.recommendedFound, false, line);
+    assert.deepEqual(set.questions[0].options.map(option => option.recommended), [false, false], line);
+  }
+});
