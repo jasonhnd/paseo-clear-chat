@@ -17,9 +17,11 @@ export const radius = { card: 12, block: 8, chip: 5 } as const;
  * The host app's own UI stack. The plugin root opts out of the host's global
  * font rule, so plugin text has to name the same system faces itself — naming
  * an unregistered face instead falls back to the browser's default serif and
- * reads as a different app. The quoted "system-ui" entry repeats the host's
- * value verbatim; a quoted name is not the generic keyword, so it is a no-op
- * there too.
+ * reads as a different app. The unquoted `system-ui` at the front is the CSS
+ * keyword that selects the platform's UI face. The quoted "system-ui" later in
+ * the list is not a second copy of that selection and not a copy of any host
+ * declaration: a quoted name is not the keyword, so it matches no installed
+ * family and does nothing.
  */
 export const UI_FONT_WEB =
   'system-ui, -apple-system, "system-ui", "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
