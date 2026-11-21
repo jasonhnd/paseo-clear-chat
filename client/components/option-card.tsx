@@ -33,8 +33,8 @@ export function recommendedBadgeColor(tokens: ExtendedThemeTokens): string {
   return tokens.isDark ? tokens.foreground : tokens.accent;
 }
 
-export function OptionCard({ agentId, at, tokens }: { agentId: string; at: number; tokens: ExtendedThemeTokens }) {
-  const { t, locale } = useTranslation(messages);
+export function OptionCard({ agentId, at, tokens, surface = "timeline" }: { agentId: string; at: number; tokens: ExtendedThemeTokens; surface?: "timeline" | "popover" }) {
+  const { t } = useTranslation(messages);
   const preferences = useEnhancerPreferences();
   const composers = useComposers ? useComposers({ agentId }) : [];
   const composer = composers[0];
@@ -742,12 +742,12 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
     );
   };
   return (
-    <View {...keyboardProps} testID="option-card" accessibilityState={{ disabled: readOnly }} style={{ marginTop: 12, borderWidth: 1, borderColor: tokens.border, borderRadius: 12, backgroundColor: session.followupStatus === "waiting" ? (tokens.isDark ? tokens.surface0 : "#ffffff") : session.followupStatus === "ended" ? (tokens.isDark ? tokens.surface1 : "#f0f0f0") : tokens.surface1, opacity: readOnly && !session.followupStatus ? 0.55 : 1 }}>
+    <View {...keyboardProps} testID="option-card" accessibilityState={{ disabled: readOnly }} style={{ marginTop: surface === "timeline" ? 12 : 0, borderWidth: 1, borderColor: tokens.border, borderRadius: 12, backgroundColor: session.followupStatus === "waiting" ? (tokens.isDark ? tokens.surface0 : "#ffffff") : session.followupStatus === "ended" ? (tokens.isDark ? tokens.surface1 : "#f0f0f0") : tokens.surface1, opacity: readOnly && !session.followupStatus ? 0.55 : 1 }}>
       <View style={{ padding: 16, gap: 12 }}>
-        {session.followupStatus === "waiting" ? <Text testID="option-followup-heading" style={muted}>{locale?.startsWith("zh") ? `答题卡 · 已答 ${answeredCount}/${session.set.questions.length} · 未完成` : `Answer card · ${answeredCount} / ${session.set.questions.length} answered · Incomplete`}</Text> : null}
-        {session.followupStatus === "ended" ? <Text testID="option-followup-heading" style={muted}>{locale?.startsWith("zh") ? `答题卡 · 已答 ${answeredCount}/${session.set.questions.length} · 已结束` : `Answer card · ${answeredCount} / ${session.set.questions.length} answered · Ended`}</Text> : null}
-        {session.followupStatus === "waiting" ? <Text testID="option-saved-position" style={muted}>{locale?.startsWith("zh") ? `上次停在 Q${number(session.activeQuestion)}，进度已保存。` : `You stopped at Q${number(session.activeQuestion)}. Your progress is saved.`}</Text> : null}
-        {session.followupStatus === "ended" ? <Text testID="option-ended-message" style={muted}>{locale?.startsWith("zh") ? "这组题已结束，不能再修改。" : "This card has ended and can't be edited."}</Text> : null}
+        {session.followupStatus === "waiting" ? <Text testID="option-followup-heading" style={muted}>{t("answerCard.statusWaiting", { chosen: answeredCount, total: session.set.questions.length })}</Text> : null}
+        {session.followupStatus === "ended" ? <Text testID="option-followup-heading" style={muted}>{t("answerCard.statusEnded", { chosen: answeredCount, total: session.set.questions.length })}</Text> : null}
+        {session.followupStatus === "waiting" ? <Text testID="option-saved-position" style={muted}>{t("answerCard.savedPosition", { question: number(session.activeQuestion) })}</Text> : null}
+        {session.followupStatus === "ended" ? <Text testID="option-ended-message" style={muted}>{t("answerCard.endedMessage")}</Text> : null}
         <View testID="option-tabs" style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
           {session.set.questions.map((q, i) => {
             const chosen = q.options.find(option => option.letter === session.choices[i]);
@@ -774,12 +774,12 @@ export function OptionCard({ agentId, at, tokens }: { agentId: string; at: numbe
               const first = active.set.questions[active.activeQuestion]?.options[0];
               if (first) card?.querySelector<HTMLElement>(`[data-testid="option-row-${first.letter}"]`)?.focus({ preventScroll: true });
             }, 0);
-          }).catch(() => setResumeRetry(true)); }} style={{ minHeight: 44, justifyContent: "center" }}><Text>{locale?.startsWith("zh") ? "继续作答" : "Continue answering"}</Text></Pressable> : null}
-          {resumeRetry ? <Text testID="option-resume-retry" accessibilityRole="alert">{locale?.startsWith("zh") ? "请再点一次" : "Please try again"}</Text> : null}
+          }).catch(() => setResumeRetry(true)); }} style={{ minHeight: 44, justifyContent: "center" }}><Text>{t("answerCard.continueAnswering")}</Text></Pressable> : null}
+          {resumeRetry ? <Text testID="option-resume-retry" accessibilityRole="alert">{t("answerCard.tryAgain")}</Text> : null}
           {readOnly && !session.followupStatus ? <Text testID="option-read-only-status" style={{ ...muted, marginLeft: "auto" }}>{t("answerCard.readOnlyStatus")}</Text> : null}
           {!readOnly && !session.sending ? <Pressable testID="option-dismiss" accessibilityRole="button" onPress={() => { if (getOptionSessionAt(agentId, at)?.at === at) dismiss(agentId, at); }} style={{ minHeight: 44, justifyContent: "center", marginLeft: "auto" }}><Text style={muted}>{t("answerCard.notOptions")}</Text></Pressable> : null}
         </View>
-        {session.followupStatus === "waiting" ? <Text testID="option-current-question" style={muted}>{locale?.startsWith("zh") ? `Q${number(session.activeQuestion)} · 当前题` : `Q${number(session.activeQuestion)} · Current question`}</Text> : null}
+        {session.followupStatus === "waiting" ? <Text testID="option-current-question" style={muted}>{t("answerCard.currentQuestion", { question: number(session.activeQuestion) })}</Text> : null}
         <Text testID="option-progress" style={muted}>{t("answerCard.progress", { chosen: answeredCount, total: session.set.questions.length, remaining: session.set.questions.length - answeredCount })}</Text>
         {readOnly && Platform.OS === "web" ? <View style={{ backgroundColor: tokens.surface1 }} ref={(node: View | null) => {
           const frame = node as unknown as HTMLElement | null;

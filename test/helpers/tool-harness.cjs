@@ -30,7 +30,7 @@ function transpileFile(filename) {
 function createToolHarness(platform = "ios", options = {}) {
   const root = resolve(__dirname, "../..");
   const cache = new Map(), frames = new Map(), transformers = options.timelineHost?.transformers ?? new Map(), renderers = options.timelineHost?.renderers ?? new Map(), panels = new Map();
-  const panelOpens = [], settingsScreens = new Map(), sidebarHeaderItems = new Map();
+  const panelOpens = [], settingsScreens = new Map(), sidebarHeaderItems = new Map(), composerPills = [];
   const dimensions = { width: options.width ?? 1440, height: options.height ?? 900, scale: 1, fontScale: 1, ...options.dimensions };
   let activePanel;
   let panelMounted = true;
@@ -87,7 +87,14 @@ function createToolHarness(platform = "ios", options = {}) {
     useCallback: (fn, deps) => react.useMemo(() => fn, deps),
     useSyncExternalStore: (subscribe, getSnapshot) => {
       if (frame) react.useEffect(() => subscribe(noop), [subscribe]);
-      return getSnapshot();
+      const rendered = getSnapshot();
+      // React re-reads the snapshot after every commit and compares by identity: a new object
+      // each call re-renders forever (React error #185). Fail here instead of hiding it.
+      const checked = getSnapshot();
+      if (!Object.is(rendered, checked)) {
+        throw new Error("useSyncExternalStore getSnapshot must return a cached value (React error #185 when it does not)");
+      }
+      return rendered;
     },
     useEffect(fn, deps) {
       const owner = frame;
@@ -132,7 +139,7 @@ function createToolHarness(platform = "ios", options = {}) {
     Linking: { openURL: (...args) => { links.push(args[0]); return options.openURL?.(...args) ?? Promise.resolve(); } },
   };
   const stubs = {
-    "client/preferences": { getEnhancerPreferencesError: () => null, getOptionAnswerDraft: (agentId, at) => answerDrafts.get(JSON.stringify([agentId, at])), saveOptionAnswerDraft: async (agentId, at, block) => { answerDrafts.set(JSON.stringify([agentId, at]), { block }); }, initializeEnhancerPreferences: async () => {}, areEnhancerPreferencesReady: () => true, onEnhancerPreferencesReady: callback => { callback(); return noop; }, getEnhancerPreferences: () => preferences, saveDismissedOptionReply: async () => {}, subscribeEnhancerPreferences: listener => { preferenceListeners.add(listener); return () => preferenceListeners.delete(listener); }, useEnhancerPreferences: () => preferences, useEnhancerPreferencesError: () => null, updateEnhancerPreferences: async patch => Object.assign(preferences, patch), resetEnhancerPreferences: async () => {}, OUTPUT_LINE_OPTIONS: [10, 15, 30, "never"].map(value => ({ value: String(value), label: value === "never" ? "Never" : `${value} lines` })), TEXT_SIZE_OPTIONS: [], ACCENT_PRESETS: {} },
+    "client/preferences": { getEnhancerPreferencesError: () => options.preferencesError ?? null, getOptionAnswerDraft: (agentId, at) => answerDrafts.get(JSON.stringify([agentId, at])), saveOptionAnswerDraft: async (agentId, at, block) => { answerDrafts.set(JSON.stringify([agentId, at]), { block }); }, initializeEnhancerPreferences: async () => {}, areEnhancerPreferencesReady: () => options.preferencesReady ?? true, onEnhancerPreferencesReady: callback => { callback(); return noop; }, getEnhancerPreferences: () => preferences, saveDismissedOptionReply: async () => {}, subscribeEnhancerPreferences: listener => { preferenceListeners.add(listener); return () => preferenceListeners.delete(listener); }, useEnhancerPreferences: () => preferences, useEnhancerPreferencesError: () => null, updateEnhancerPreferences: async patch => Object.assign(preferences, patch), resetEnhancerPreferences: async () => {}, OUTPUT_LINE_OPTIONS: [10, 15, 30, "never"].map(value => ({ value: String(value), label: value === "never" ? "Never" : `${value} lines` })), TEXT_SIZE_OPTIONS: [], ACCENT_PRESETS: {} },
     "client/settings-page": { ClearChatSettingsPage: noop },
     "server/settings-migration": { migrateHostSettings: noop },
     "client/image-file": { useImageFile: noop, isImagePath: path => /\.(png|jpe?g|gif|webp)$/i.test(path ?? "") },
@@ -293,6 +300,20 @@ function createToolHarness(platform = "ios", options = {}) {
     rpc: options.presentationHost?.rpc ?? noop,
     addSettingsScreen(value) { settingsScreens.set(value.id, value); return noop; },
     addSidebarHeaderItem(value) { sidebarHeaderItems.set(value.id, value); return noop; },
+    // The app validates every composer pill on load: an id, a workspace, an agent and a button.
+    ...(options.noComposerPill ? {} : {
+      addComposerPill(value) {
+        const record = {
+          contribution: value,
+          patches: [],
+          removed: false,
+          update(patch) { this.patches.push(patch); },
+          remove() { this.removed = true; },
+        };
+        composerPills.push(record);
+        return record;
+      },
+    }),
     addAgentPanel(value) { panels.set(value.id, value); return noop; },
     openPanel(id, input) {
       if (options.panelError) throw new Error("Panel unavailable");
@@ -356,7 +377,7 @@ function createToolHarness(platform = "ios", options = {}) {
   }
   const unmount = () => unmountRoot();
   return {
-    settingsScreens, sidebarHeaderItems, translations, setLocale: translations.setLocale, load, nodes, text, reveals, links, copies, toasts, imageReads, transformers, renderers, panels, panelOpens, dimensions, get preferences() { return getPreferences(); }, tokens, draw, expansionHost, unmount, dispose, flushEffects,
+    settingsScreens, sidebarHeaderItems, composerPills, translations, setLocale: translations.setLocale, load, nodes, text, reveals, links, copies, toasts, imageReads, transformers, renderers, panels, panelOpens, dimensions, get preferences() { return getPreferences(); }, tokens, draw, expansionHost, unmount, dispose, flushEffects,
     notifyPreferences() { for (const listener of preferenceListeners) listener(); },
     setPanelMounted(value) { panelMounted = value; },
     mount(item, expand = true, identity = {}) {

@@ -39,7 +39,17 @@
     "hintSend": "Tab → 发送",
     "sendAction": "发送",
     "hintCustom": "Enter 确认 · Shift+Enter 换行",
-    "progress": "已答 {{chosen}} / {{total}} · 还差 {{remaining}} 题"
+    "progress": "已答 {{chosen}} / {{total}} · 还差 {{remaining}} 题",
+    "statusWaiting": "回答卡片 · 已答 {{chosen}}/{{total}} · 未完成",
+    "statusEnded": "回答卡片 · 已答 {{chosen}}/{{total}} · 已结束",
+    "savedPosition": "上次停在 Q{{question}}，进度已保存。",
+    "endedMessage": "这组题已结束，不能再修改。",
+    "continueAnswering": "继续作答",
+    "tryAgain": "请再点一次",
+    "currentQuestion": "Q{{question}} · 当前题",
+    "pillLabel": "回答卡片 · 已答 {{chosen}}/{{total}}",
+    "pillTitle": "回答卡片",
+    "waitingForReply": "回复还在生成，结束后才能作答。"
   },
   "answerStyle": {
     "savedRepliesLabel": "常用回答",
