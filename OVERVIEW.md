@@ -15,13 +15,13 @@ The interface text follows the app language: English, Simplified Chinese, or Jap
 - Saved replies are edited on the settings page. On the card they insert a phrase and do not send.
 - A bare letter inside a sentence is not treated as an answer. A numbered token such as `1A` still counts.
 
-After a reply that asks lettered questions has finished, a button above the message box opens the card. It shows the progress, for example **Answer card · 0/2 answered**, and opens the whole card in a panel, which is a sheet on a narrow screen. Choosing answers updates the count, closing and reopening the panel keeps them, and the button is gone after **Send** until the next such reply finishes. The button belongs to the conversation on screen.
+After a reply that asks lettered questions has finished, a button above the message box opens the card. It shows the progress, for example **Answer 0/2**, and the full name in a tooltip, for example **Answer card · 0/2 answered**. It opens the whole card in a panel, which is a sheet on a narrow screen. Choosing answers updates the count, closing and reopening the panel keeps them, and the button is gone after **Send** until the next such reply finishes. The button belongs to the conversation on screen.
 
 The settings page can be opened.
 
 ## Setup
 
-Clear Chat 0.16.2.2 needs Paseo 0.16.0 or later. On Paseo 0.15.x this version cannot run normally; stay on Clear Chat 0.15.4.x. This build was not checked inside a running Paseo app. <!-- TODO(host-verification) -->
+Clear Chat 0.16.2.2 needs Paseo 0.16.0 or later. On Paseo 0.15.x this version cannot run normally; stay on Clear Chat 0.15.4.x. This build was checked in the browser interface of Paseo 0.16.2 (the web UI the `paseo` command starts) with a test agent and no model; it was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
 
 Installation runs `npm ci` on the daemon host, so Node.js and npm must be available there and the host must be able to reach the npm registry.
 
@@ -56,7 +56,7 @@ Settings are saved on the host and shared by every client connected to it.
 - Clear Chat does not draw the conversation. Use Better Paseo for that view.
 - `Plan 2B` can still be read as an answer.
 - While a reply is still being written, its button does not appear. If the card is open when the agent starts answering again, the panel says the reply is still running, and answers cannot be given until it ends.
-- This version was not checked inside a running Paseo app, with a real model, or on physical iOS or Android devices. <!-- TODO(host-verification) -->
+- This version was checked in the browser interface of Paseo 0.16.2 with a test agent that needs no model: the button appears, opens the card, keeps answers across closing and reopening, sends, follows a conversation switch, honours the settings switch, shows the card as a bottom sheet at 390-wide, and renders in English, Simplified Chinese, and Japanese; the settings page opens. It was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
 - Removing the plugin deletes its settings. Back them up first.
 
 The repository README has the install commands, the answer-card steps, and troubleshooting.

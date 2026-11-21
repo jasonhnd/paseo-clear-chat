@@ -22,7 +22,12 @@ The full list of changes is in the [changelog](CHANGELOG.md).
 
 ## Answer card
 
-A reply that asks lettered questions gets a button above the message box once that reply has finished. It carries the progress, for example **Answer card · 0/2 answered**. Press it to open the whole card in a panel; on a narrow screen the panel rises from the bottom. Choose your answers there and press **Send** on the card: the message goes to the chat as if you had sent it, and the message box keeps what you were writing. The count follows your answers (**Answer card · 1/2 answered**), closing the panel keeps them, and after **Send** the button is gone until another reply asks lettered questions. The button belongs to the conversation on screen, so switching chats shows that chat's own card, or none.
+A reply that asks lettered questions gets a button above the message box once that reply has finished. It carries the progress, for example **Answer 0/2**; hovering shows the full name, **Answer card · 0/2 answered**. Press it to open the whole card in a panel; on a narrow screen the panel rises from the bottom. Choose your answers there and press **Send** on the card: the message goes to the chat as if you had sent it, and the message box keeps what you were writing. The count follows your answers (**Answer 1/2**), closing the panel keeps them, and after **Send** the button is gone until another reply asks lettered questions. The button belongs to the conversation on screen, so switching chats shows that chat's own card, or none.
+
+<p align="center">
+  <img width="360" alt="The answer card open in Paseo: two question tabs, options A to D, saved replies, and the send button" src="docs/images/answer-card.png">
+  <img width="320" alt="The answer card as a bottom sheet on a 390-wide screen" src="docs/images/answer-sheet-narrow.png">
+</p>
 
 Open **Settings → Plugins → Clear Chat**. The page title is **Answer card**. The switch **Show an answer card under replies that ask lettered questions** is on when the settings file has no stored value. A stored on or off value still wins. The note under that switch says to reload the chat to update existing replies.
 
@@ -102,7 +107,7 @@ An update keeps the settings file. Values for the answer card, saved replies, di
 
 After this update the conversation is no longer drawn by Clear Chat. Use [Better Paseo](https://paseo.sh/plugins/roundreddot/better-paseo) for that view. You will not see Clear Chat's step rows, tool cards, or sidebar.
 
-The answer card opens from the button above the message box. After the update, a reply that asks lettered questions shows the button, for example **Answer card · 0/2 answered**, when that reply has finished; press it to open the card.
+The answer card opens from the button above the message box. After the update, a reply that asks lettered questions shows the button, for example **Answer 0/2**, when that reply has finished; hover it for the full name, **Answer card · 0/2 answered**, and press it to open the card.
 
 Startup does not delete anything under the plugin's data directory. Older image and history directories are left in place. This version does not use them.
 
@@ -130,7 +135,7 @@ Clear Chat's own text follows the Paseo app language: English, Simplified Chines
 - `Plan 2B` can still be read as an answer. A bare letter inside a sentence is not.
 - While a reply is still being written, its button does not appear above the message box. If the card is open when the agent starts answering again, the panel says the reply is still running, and answers cannot be given until it ends.
 - At phone width, Enter in Paseo's own input box inserts a newline. Use that box's Send button. This is the host's behaviour.
-- This version was not checked inside a running Paseo app, with a real model, or on physical iOS or Android devices. <!-- TODO(host-verification) -->
+- This version was checked in the browser interface of Paseo 0.16.2 (the web UI the `paseo` command starts), with a test agent that needs no model: the button appears, opens the whole card, keeps the answers when it is closed and reopened, sends, follows a conversation switch, and honours the settings switch; a 390-wide window shows the card as a bottom sheet; English, Simplified Chinese, and Japanese render; the settings page opens. It was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
 - Removing the plugin deletes its settings. Back them up first. Startup does not delete older files in the plugin data directory.
 
 ## Privacy and data on the host
