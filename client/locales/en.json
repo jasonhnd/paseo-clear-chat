@@ -39,7 +39,16 @@
     "hintSend": "Tab → Send",
     "sendAction": "Send",
     "hintCustom": "Enter to confirm · Shift+Enter for a new line",
-    "progress": "{{chosen}} of {{total}} answered · {{remaining}} to go"
+    "progress": "{{chosen}} of {{total}} answered · {{remaining}} to go",
+    "statusWaiting": "Answer card · {{chosen}}/{{total}} answered · Incomplete",
+    "statusEnded": "Answer card · {{chosen}}/{{total}} answered · Ended",
+    "savedPosition": "You stopped at Q{{question}}. Your progress is saved.",
+    "endedMessage": "This card has ended and can't be edited.",
+    "continueAnswering": "Continue answering",
+    "tryAgain": "Please try again",
+    "currentQuestion": "Q{{question}} · Current question",
+    "pillLabel": "Answer card · {{chosen}}/{{total}} answered",
+    "pillTitle": "Answer card"
   },
   "answerStyle": {
     "savedRepliesLabel": "Saved replies",

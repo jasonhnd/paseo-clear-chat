@@ -39,7 +39,16 @@
     "hintSend": "Tab → 送信",
     "sendAction": "送信",
     "hintCustom": "Enter で確定 · Shift+Enter で改行",
-    "progress": "{{total}} 問中 {{chosen}} 問回答済み · 残り {{remaining}} 問"
+    "progress": "{{total}} 問中 {{chosen}} 問回答済み · 残り {{remaining}} 問",
+    "statusWaiting": "回答カード · 回答済み {{chosen}}/{{total}} · 未完了",
+    "statusEnded": "回答カード · 回答済み {{chosen}}/{{total}} · 終了",
+    "savedPosition": "前回は Q{{question}} で中断しました。進捗は保存されています。",
+    "endedMessage": "このカードは終了しました。変更できません。",
+    "continueAnswering": "回答を続ける",
+    "tryAgain": "もう一度お試しください",
+    "currentQuestion": "Q{{question}} · 現在の質問",
+    "pillLabel": "回答カード · 回答済み {{chosen}}/{{total}}",
+    "pillTitle": "回答カード"
   },
   "answerStyle": {
     "savedRepliesLabel": "よく使う回答",

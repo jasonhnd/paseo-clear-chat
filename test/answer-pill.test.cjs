@@ -101,7 +101,11 @@ test("answering and sending removes the pill and stops the feed", async t => {
   await f.controller.refresh();
   assert.equal(f.live().length, 0, "a sent card leaves no pill");
   assert.equal(f.registrations[0].removed, true);
-  assert.deepEqual(f.feeds, ["a", "stop:a"], "the sent card's feed stops");
+  assert.deepEqual(f.feeds, ["a"], "the conversation keeps its feed: a later card must appear without a switch");
+  f.session.publishAssistantReply("a", { at: 30, text: questions });
+  await f.controller.refresh();
+  assert.equal(f.live().length, 1, "the next card in the same conversation brings the pill back");
+  assert.equal(f.live()[0].input.button.label, "Answer card 0/2");
   f.session.setOptionSender(null);
 });
 
@@ -115,7 +119,7 @@ test("switching conversations never carries another conversation's card", async 
   await f.controller.refresh();
   assert.equal(f.live().length, 0, "b has no card, so b shows no pill");
   assert.equal(f.registrations[0].removed, true, "a's pill is gone once a is not in front");
-  assert.deepEqual(f.feeds, ["a", "stop:a"], "a's feed stops with a's pill");
+  assert.deepEqual(f.feeds, ["a", "stop:a", "b"], "a's feed stops, and b's own feed starts");
   f.session.publishAssistantReply("b", { at: 20, text: questions });
   f.session.choose("b", 0, "B");
   await f.controller.refresh();
@@ -149,13 +153,14 @@ test("the pill body draws the card with a reachable send control and no timeline
   t.after(() => { session.setAnswerDraftStore(null); h.unmount(); h.dispose(); });
   session.publishAssistantReply("a", { at: 10, text: questions });
   const Content = h.load("client/components/answer-pill-content.tsx").AnswerPillContent;
-  const tree = h.draw({ type: Content, props: { agentId: "a", theme: { colors: {} }, close: () => {}, layout: { compact: true, platform: "web" }, host: { id: "h", label: "host" } } });
+  const props = { context: "agent", agentId: "a", workspaceId: "w1", theme: { colors: {} }, close: () => {}, layout: { compact: true, platform: "web" }, host: { id: "h", label: "host" } };
+  const tree = h.draw({ type: Content, props });
   assert.equal(h.nodes(tree, node => node.props.testID === "option-card").length, 1, "the popover draws the whole card");
   assert.equal(h.nodes(tree, node => node.props.testID === "option-send").length, 1, "the send control is part of the popover body");
   const root = h.nodes(tree, node => node.props.testID === "option-card")[0];
   assert.equal(root.props.style.marginTop, 0, "the card sits in the popover, not under a timeline row");
   session.choose("a", 0, "B");
-  const again = h.draw({ type: Content, props: { agentId: "a", theme: { colors: {} }, close: () => {} } });
+  const again = h.draw({ type: Content, props });
   assert.equal(h.nodes(again, node => node.props.accessibilityState?.selected === true).length, 1, "a re-opened popover keeps the chosen answer");
 });
 
@@ -171,15 +176,15 @@ test("the pill body draws nothing once the card is sent", async t => {
   session.choose("a", 0, "A");
   session.choose("a", 1, "B");
   await session.sendAnswer("a");
-  const tree = h.draw({ type: Content, props: { agentId: "a", theme: { colors: {} }, close: () => {} } });
+  const tree = h.draw({ type: Content, props: { context: "agent", agentId: "a", workspaceId: "w1", theme: { colors: {} }, close: () => {} } });
   assert.equal(h.nodes(tree, node => node.props.testID === "option-card").length, 0, "a sent card leaves an empty popover");
 });
 
 test("the card status lines are translated with the settings wording in every language", async t => {
   const expected = {
-    en: { heading: "Answer card · 1/2 answered · Incomplete", saved: "You stopped at Q1. Your progress is saved.", resume: "Continue answering" },
-    "zh-CN": { heading: "回答卡片 · 已答 1/2 · 未完成", saved: "上次停在 Q1，进度已保存。", resume: "继续作答" },
-    ja: { heading: "回答カード · 回答済み 1/2 · 未完了", saved: "前回は Q1 で中断しました。進捗は保存されています。", resume: "回答を続ける" },
+    en: { heading: "Answer card · 1/2 answered · Incomplete", saved: ["You stopped at Q", ". Your progress is saved."], resume: "Continue answering" },
+    "zh-CN": { heading: "回答卡片 · 已答 1/2 · 未完成", saved: ["上次停在 Q", "，进度已保存。"], resume: "继续作答" },
+    ja: { heading: "回答カード · 回答済み 1/2 · 未完了", saved: ["前回は Q", " で中断しました。進捗は保存されています。"], resume: "回答を続ける" },
   };
   for (const [locale, copy] of Object.entries(expected)) {
     const h = createToolHarness("web", { locale });
@@ -194,7 +199,7 @@ test("the card status lines are translated with the settings wording in every la
     const tree = h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } });
     const text = h.text(tree);
     assert.ok(text.includes(copy.heading), `${locale}: ${copy.heading} in ${text}`);
-    assert.ok(text.includes(copy.saved), `${locale}: ${copy.saved} in ${text}`);
+    assert.ok(text.includes(copy.saved[0]) && text.includes(copy.saved[1]), `${locale}: saved position in ${text}`);
     assert.ok(text.includes(copy.resume), `${locale}: ${copy.resume} in ${text}`);
     assert.equal(text.includes("答题卡"), false, `${locale}: the old hard-coded Chinese label is gone`);
     assert.equal(/Answer card · \d/.test(text) && locale !== "en", false, `${locale}: no English fallback in place of a translation`);
