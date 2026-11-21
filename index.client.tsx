@@ -12,6 +12,7 @@ import {
   initializeEnhancerPreferences,
   areEnhancerPreferencesReady,
   getEnhancerPreferences,
+  getEnhancerPreferencesError,
   getStoredAnswerDraft,
   storeAnswerDraft,
   clearStoredAnswerDraft,
@@ -112,7 +113,18 @@ function registerAnswerPill(client: PluginClientContext): () => void {
   const composers = (selector: { focused: true } | { agentId: string }) => host.composers!(selector);
   const addComposerPill = (input: unknown) => host.addComposerPill!(input);
 
-  const showAnswerCard = () => areEnhancerPreferencesReady() && getEnhancerPreferences().showAnswerCard !== false;
+  /**
+   * The card switch, in all three states the preferences can be in: still reading (wait, ask the
+   * host for nothing), the read failed (the default is on: keep working and say so once), and
+   * read (use the stored value). One predicate: the pill registration and the agent-list guard
+   * must never disagree.
+   */
+  const showAnswerCard = () => {
+    if (areEnhancerPreferencesReady()) return getEnhancerPreferences().showAnswerCard !== false;
+    if (getEnhancerPreferencesError() === null) return false;
+    warnOnce("preferences-failed", "Clear Chat answer pin keeps the default because the settings read failed");
+    return getEnhancerPreferences().showAnswerCard !== false;
+  };
   const focusedComposer = (): unknown | null => {
     try { return composers({ focused: true })[0] ?? null; } catch { return null; }
   };
@@ -139,8 +151,8 @@ function registerAnswerPill(client: PluginClientContext): () => void {
   let listRetryAt = 0;
 
   const resolveFocusedAgent = async (): Promise<AnswerPillFocus | null> => {
-    // The switch is read before anything else: a turned-off pin must not spend an agent list,
-    // and the stored switch is unknown until the preferences arrive.
+    // The switch is read before anything else: a turned-off pin, or one whose stored value is
+    // still loading, must not spend an agent list.
     if (!showAnswerCard()) {
       cachedComposer = null;
       cachedAgent = null;
@@ -191,7 +203,7 @@ function registerAnswerPill(client: PluginClientContext): () => void {
   const pill = createAnswerPill({
     focusedAgent: resolveFocusedAgent,
     register: addComposerPill,
-    showAnswerCard: () => getEnhancerPreferences().showAnswerCard !== false,
+    showAnswerCard,
     // The pin only needs the newest reply, so the feed reads the tail page first; `serverId`
     // only names the default client.
     startFeed: agentId => startAnswerFeed({ serverId: "", agentId, client: client.paseo, history: "tail" }).stop,
