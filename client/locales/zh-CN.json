@@ -48,7 +48,8 @@
     "tryAgain": "请再点一次",
     "currentQuestion": "Q{{question}} · 当前题",
     "pillLabel": "回答卡片 · 已答 {{chosen}}/{{total}}",
-    "pillTitle": "回答卡片"
+    "pillTitle": "回答卡片",
+    "waitingForReply": "回复还在生成，结束后才能作答。"
   },
   "answerStyle": {
     "savedRepliesLabel": "常用回答",

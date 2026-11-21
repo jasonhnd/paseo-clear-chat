@@ -87,7 +87,7 @@ test("the pill appears above the composer with the answered count", async t => {
   assert.equal(f.registrations.length, 1, "the same registration is updated, not re-added");
 });
 
-test("answering and sending removes the pill and stops the feed", async t => {
+test("answering and sending removes the pill and keeps the conversation feed", async t => {
   const f = pillHarness(t, { focus: { workspaceId: "w1", agentId: "a" } });
   const sent = [];
   f.session.setOptionSender(async (agentId, text) => { sent.push([agentId, text]); });
@@ -164,6 +164,29 @@ test("the pill body draws the card with a reachable send control and no timeline
   assert.equal(h.nodes(again, node => node.props.accessibilityState?.selected === true).length, 1, "a re-opened popover keeps the chosen answer");
 });
 
+test("the popover explains the wait while the reply is still running", async t => {
+  const expected = {
+    en: "The reply is still running. Answer the card when it finishes.",
+    "zh-CN": "回复还在生成，结束后才能作答。",
+    ja: "返信を生成中です。完了後に回答できます。",
+  };
+  for (const [locale, copy] of Object.entries(expected)) {
+    const h = createToolHarness("web", { locale, agents: { a: { status: "running" } } });
+    const session = h.load("client/option-session.ts");
+    const data = {};
+    session.setAnswerDraftStore({ read: key => data[key], write: (key, value) => { data[key] = value; }, clear: key => { delete data[key]; } });
+    session.publishAssistantReply("a", { at: 10, text: questions });
+    const Content = h.load("client/components/answer-pill-content.tsx").AnswerPillContent;
+    const tree = h.draw({ type: Content, props: { context: "agent", agentId: "a", workspaceId: "w1", theme: { colors: {} }, close: () => {} } });
+    assert.equal(h.nodes(tree, node => node.props.testID === "option-pill-waiting").length, 1, `${locale}: the wait is explained`);
+    assert.ok(h.text(tree).includes(copy), `${locale}: ${copy}`);
+    assert.equal(h.nodes(tree, node => node.props.testID === "option-card").length, 0, `${locale}: no card while the reply runs`);
+    session.setAnswerDraftStore(null);
+    h.unmount();
+    h.dispose();
+  }
+});
+
 test("the pill body draws nothing once the card is sent", async t => {
   const h = createToolHarness("web", { locale: "en" });
   const session = h.load("client/option-session.ts");
@@ -182,9 +205,9 @@ test("the pill body draws nothing once the card is sent", async t => {
 
 test("the card status lines are translated with the settings wording in every language", async t => {
   const expected = {
-    en: { heading: "Answer card · 1/2 answered · Incomplete", saved: ["You stopped at Q", ". Your progress is saved."], resume: "Continue answering" },
-    "zh-CN": { heading: "回答卡片 · 已答 1/2 · 未完成", saved: ["上次停在 Q", "，进度已保存。"], resume: "继续作答" },
-    ja: { heading: "回答カード · 回答済み 1/2 · 未完了", saved: ["前回は Q", " で中断しました。進捗は保存されています。"], resume: "回答を続ける" },
+    en: { heading: "Answer card · 1/2 answered · Incomplete", saved: "You stopped at Q2. Your progress is saved.", resume: "Continue answering" },
+    "zh-CN": { heading: "回答卡片 · 已答 1/2 · 未完成", saved: "上次停在 Q2，进度已保存。", resume: "继续作答" },
+    ja: { heading: "回答カード · 回答済み 1/2 · 未完了", saved: "前回は Q2 で中断しました。進捗は保存されています。", resume: "回答を続ける" },
   };
   for (const [locale, copy] of Object.entries(expected)) {
     const h = createToolHarness("web", { locale });
@@ -199,7 +222,9 @@ test("the card status lines are translated with the settings wording in every la
     const tree = h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } });
     const text = h.text(tree);
     assert.ok(text.includes(copy.heading), `${locale}: ${copy.heading} in ${text}`);
-    assert.ok(text.includes(copy.saved[0]) && text.includes(copy.saved[1]), `${locale}: saved position in ${text}`);
+    const saved = h.nodes(tree, node => node.props.testID === "option-saved-position")[0];
+    assert.ok(saved, `${locale}: the saved-position line is missing`);
+    assert.equal(h.text(saved), copy.saved, `${locale}: one text node holds the whole saved-position sentence`);
     assert.ok(text.includes(copy.resume), `${locale}: ${copy.resume} in ${text}`);
     assert.equal(text.includes("答题卡"), false, `${locale}: the old hard-coded Chinese label is gone`);
     assert.equal(/Answer card · \d/.test(text) && locale !== "en", false, `${locale}: no English fallback in place of a translation`);

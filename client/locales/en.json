@@ -48,7 +48,8 @@
     "tryAgain": "Please try again",
     "currentQuestion": "Q{{question}} · Current question",
     "pillLabel": "Answer card · {{chosen}}/{{total}} answered",
-    "pillTitle": "Answer card"
+    "pillTitle": "Answer card",
+    "waitingForReply": "The reply is still running. Answer the card when it finishes."
   },
   "answerStyle": {
     "savedRepliesLabel": "Saved replies",

@@ -36,7 +36,7 @@ export interface AnswerPillFocus {
 }
 
 export interface AnswerPillRegistration {
-  update(patch: { visible?: boolean; label?: string; title?: string }): void;
+  update(patch: AnswerPillRegistrationPatch): void;
   remove(): void;
 }
 
@@ -45,12 +45,19 @@ export interface AnswerPillButton {
   workspaceId: string;
   agentId: string;
   button: {
-    title: string;
-    label: string;
+    /** Plugin text: the host resolves a message in the app language, a string is used as is. */
+    title: unknown;
+    label: unknown;
     icon: string;
     visible: boolean;
     behavior: { kind: "popover"; Content: unknown };
   };
+}
+
+export interface AnswerPillRegistrationPatch {
+  visible?: boolean;
+  title?: unknown;
+  label?: unknown;
 }
 
 /** Everything the pin reads outside itself, so a test can drive it without a host. */
@@ -61,8 +68,9 @@ export interface AnswerPillDeps {
   showAnswerCard(): boolean;
   /** Reads the conversation's timeline into the card store; returns its stop function. */
   startFeed(agentId: string): (() => void) | undefined;
-  title(): string;
-  label(card: AnswerCardSummary | null): string;
+  /** Plugin text, so a language switch re-resolves the pin without a count change. */
+  title(): unknown;
+  label(card: AnswerCardSummary | null): unknown;
   /** The popover body, handed to the host untouched. */
   content: unknown;
   /** Card store changes: an answer, a send, a new reply. */
@@ -81,7 +89,8 @@ export function createAnswerPill(deps: AnswerPillDeps): AnswerPillController {
   let registeredFor: AnswerPillFocus | null = null;
   let stopFeed: (() => void) | null = null;
   let feedAgentId: string | null = null;
-  let lastLabel: string | null = null;
+  // The counts the pin last published; plugin text has no stable identity to compare.
+  let lastCounts: { at: number; answered: number; total: number } | null = null;
   let chain: Promise<void> = Promise.resolve();
 
   const dropRegistration = () => {
@@ -90,7 +99,7 @@ export function createAnswerPill(deps: AnswerPillDeps): AnswerPillController {
     }
     registration = null;
     registeredFor = null;
-    lastLabel = null;
+    lastCounts = null;
   };
 
   const dropFeed = () => {
@@ -141,7 +150,7 @@ export function createAnswerPill(deps: AnswerPillDeps): AnswerPillController {
           },
         });
         registeredFor = focus;
-        lastLabel = deps.label(card);
+        lastCounts = { at: card.at, answered: card.answeredCount, total: card.questionCount };
       } catch (error) {
         warn("could not register the card pin", error);
         registration = null;
@@ -149,16 +158,14 @@ export function createAnswerPill(deps: AnswerPillDeps): AnswerPillController {
         return;
       }
     }
-    try {
-      // The host refuses an empty label, so only a real one is pushed, and only when it changed:
-      // every update republishes the button row.
-      const label = deps.label(card);
-      if (label !== lastLabel) {
-        registration.update({ visible: true, label });
-        lastLabel = label;
+    if (!lastCounts || lastCounts.at !== card.at || lastCounts.answered !== card.answeredCount || lastCounts.total !== card.questionCount) {
+      try {
+        // Every update republishes the button row, so only a real change is pushed.
+        registration.update({ visible: true, label: deps.label(card) });
+        lastCounts = { at: card.at, answered: card.answeredCount, total: card.questionCount };
+      } catch (error) {
+        warn("could not update the card pin", error);
       }
-    } catch (error) {
-      warn("could not update the card pin", error);
     }
   };
 

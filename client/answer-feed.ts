@@ -25,6 +25,8 @@ const ENVELOPE_TAGS = new Set([
 ]);
 const PROCESS_LINE = /^Supervised process ([\w.-]+) ((?:exited|started|stopped|restarted|failed|is ready)\b.*)$/;
 const READ_RETRY_DELAYS_MS = [10, 20, 40];
+// One summary object per agent while the card's identity does not change (see below).
+const cardSnapshots = new Map<string, AnswerCardSummary | null>();
 const RESUBSCRIBE_DELAYS_MS = [10, 20, 40];
 
 type AgentHandle = ReturnType<PaseoApi["agents"]["ref"]>;
@@ -73,8 +75,15 @@ export function currentAnswerCard(agentId: string): AnswerCardSummary | null {
     if (session.dismissed || session.superseded || session.readOnly) continue;
     if (!best || session.at > best.at) best = session;
   }
-  if (!best) return null;
-  return { agentId, at: best.at, questionCount: best.set.questions.length, answeredCount: answeredCount(best) };
+  const next = best ? { agentId, at: best.at, questionCount: best.set.questions.length, answeredCount: answeredCount(best) } : null;
+  // `useCurrentAnswerCard` hands this straight to `useSyncExternalStore`, which re-reads it
+  // after every commit and compares by identity: a fresh object each read re-renders until
+  // React throws error #185. The same card keeps the same summary object.
+  const cached = cardSnapshots.get(agentId) ?? null;
+  if (cached && next && cached.at === next.at && cached.questionCount === next.questionCount && cached.answeredCount === next.answeredCount) return cached;
+  if (!cached && !next) return null;
+  cardSnapshots.set(agentId, next);
+  return next;
 }
 
 export function useCurrentAnswerCard(agentId: string): AnswerCardSummary | null {
@@ -118,7 +127,10 @@ async function readPages(handle: AgentHandle, full: boolean): Promise<TimelineEn
   return collected;
 }
 
-export function startAnswerFeed(input: { serverId: string; agentId: string; client?: PaseoApi }): AnswerFeed {
+export function startAnswerFeed(input: { serverId: string; agentId: string; client?: PaseoApi; history?: "tail" | "full" }): AnswerFeed {
+  // A surface that only needs the newest reply reads the tail page first; `full` (the default)
+  // walks every older page up front for surfaces that list earlier cards.
+  const firstSyncFull = (input.history ?? "full") !== "tail";
   const api = input.client ?? getPaseoClient(input.serverId);
   const handle = api.agents.ref(input.agentId);
   let stopped = false;
@@ -233,7 +245,7 @@ export function startAnswerFeed(input: { serverId: string; agentId: string; clie
       if (!stopped) scheduleResubscribe();
     }
     if (stopped) return;
-    await syncWithRetry(true);
+    await syncWithRetry(firstSyncFull);
     if (stopped) return;
     accepting = true;
     for (const message of queued.splice(0)) onMessage(message);

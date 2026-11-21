@@ -12,9 +12,9 @@ Clear Chat is a Paseo plugin for the answer card. It does not register timeline 
 
 ## What the entries register
 
-`index.client.tsx` checks for plugin RPC and `addSettingsScreen`, then registers one settings screen (`chat-presentation`) whose title comes from `settings.title` (**Answer card** in English). It stores unfinished answer drafts in host settings and writes answer progress onto the current composer metadata when that API is present. It does not mount the answer card component.
+`index.client.tsx` checks for plugin RPC and `addSettingsScreen`, then registers one settings screen (`chat-presentation`) whose title comes from `settings.title` (**Answer card** in English) and, when the host exposes `addComposerPill`, the answer card as a composer pill above the input. It stores unfinished answer drafts in host settings and writes answer progress onto the current composer metadata when that API is present. The card itself is mounted in the pill popover (`client/components/answer-pill-content.tsx`); nothing else mounts it.
 
-`client/components/option-card.tsx` is the card. `client/option-questions.ts` decides which replies are questions. `client/option-session.ts` keeps choices, drafts, and whether a later user message counts as an answer. `client/answer-feed.ts` can publish timeline rows into that session, but the plugin entry does not call `startAnswerFeed`.
+`client/components/option-card.tsx` is the card. `client/option-questions.ts` decides which replies are questions. `client/option-session.ts` keeps choices, drafts, and whether a later user message counts as an answer. `client/answer-feed.ts` publishes timeline rows into that session, and the plugin entry calls `startAnswerFeed` for the conversation in front of the user (`history: "tail"`: the pill only needs the newest reply).
 
 `index.server.ts` checks for `registerSettings` and `handle`, copies a Beautiful Chat settings file on first start when Clear Chat has none (`server/settings-migration.ts`), and registers the host settings schema in `shared/settings.ts`. Startup does not delete plugin-data files.
 
@@ -25,7 +25,7 @@ The settings schema still accepts keys from the old conversation view. The setti
 ```text
 clear-chat/
   paseo-plugin.json          # id, description, Paseo requirement, build command
-  index.client.tsx           # settings screen only
+  index.client.tsx           # settings screen and the composer pill
   index.server.ts            # settings registration and first-run copy
   server/settings-migration.ts
   shared/settings.ts         # host settings schema

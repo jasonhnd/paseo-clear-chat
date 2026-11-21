@@ -10,6 +10,7 @@ import { createAnswerPill, type AnswerPillFocus } from "./client/answer-pill";
 import { AnswerPillContent } from "./client/components/answer-pill-content";
 import {
   initializeEnhancerPreferences,
+  areEnhancerPreferencesReady,
   getEnhancerPreferences,
   getStoredAnswerDraft,
   storeAnswerDraft,
@@ -29,6 +30,14 @@ import { subscribeOptionSession } from "./client/option-session";
  */
 const FOCUS_POLL_MS = 750;
 const LIST_RETRY_MS = 3000;
+
+/** One line per distinct reason: the pin is the card's only mount, so silence hides a bug. */
+function warnOnce(key: string, message: string, detail?: unknown): void {
+  if (warned.has(key)) return;
+  warned.add(key);
+  console.warn(message, detail);
+}
+const warned = new Set<string>();
 
 export default function contribute(client: PluginClientContext) {
   initializeClientTranslations(client);
@@ -90,15 +99,20 @@ function registerClient(client: PluginClientContext) {
  * not readable) keep every other screen: the pin is the only thing that goes away.
  */
 function registerAnswerPill(client: PluginClientContext): () => void {
-  // Kept on the client: a host method may read its own install record off `this`.
+  // Both calls go through the client object. Today the host closes over its own install record
+  // and never reads `this`, so this is only a cheap guard against a host that does.
   const host = client as unknown as {
     addComposerPill?: (input: unknown) => { update(patch: Record<string, unknown>): void; remove(): void };
     composers?: (selector: { focused: true } | { agentId: string }) => readonly unknown[];
   };
-  if (typeof host.addComposerPill !== "function" || typeof host.composers !== "function") return () => {};
+  if (typeof host.addComposerPill !== "function" || typeof host.composers !== "function") {
+    warnOnce("missing-api", "Clear Chat answer pin is unavailable: this host has no composer pill API");
+    return () => {};
+  }
   const composers = (selector: { focused: true } | { agentId: string }) => host.composers!(selector);
   const addComposerPill = (input: unknown) => host.addComposerPill!(input);
 
+  const showAnswerCard = () => areEnhancerPreferencesReady() && getEnhancerPreferences().showAnswerCard !== false;
   const focusedComposer = (): unknown | null => {
     try { return composers({ focused: true })[0] ?? null; } catch { return null; }
   };
@@ -125,6 +139,13 @@ function registerAnswerPill(client: PluginClientContext): () => void {
   let listRetryAt = 0;
 
   const resolveFocusedAgent = async (): Promise<AnswerPillFocus | null> => {
+    // The switch is read before anything else: a turned-off pin must not spend an agent list,
+    // and the stored switch is unknown until the preferences arrive.
+    if (!showAnswerCard()) {
+      cachedComposer = null;
+      cachedAgent = null;
+      return null;
+    }
     const composer = focusedComposer();
     if (!composer) {
       cachedComposer = null;
@@ -142,16 +163,26 @@ function registerAnswerPill(client: PluginClientContext): () => void {
     }
     if (Date.now() < listRetryAt) return null;
     const agents = await agentList();
-    if (!agents.length) listRetryAt = Date.now() + LIST_RETRY_MS;
+    if (!agents.length) {
+      // An empty list is a host state, not a transient miss: ask again later, and say so once.
+      listRetryAt = Date.now() + LIST_RETRY_MS;
+      warnOnce("empty-list", "Clear Chat answer pin found no agents on this host; retrying in the background");
+      return null;
+    }
     for (const agent of agents) {
       try {
         if (composers({ agentId: agent.id })[0] === composer) {
           cachedComposer = composer;
           cachedAgent = { workspaceId: agent.workspaceId, agentId: agent.id };
+          listRetryAt = 0;
           return cachedAgent;
         }
       } catch { /* One unresolvable agent must not hide the others. */ }
     }
+    // The composer belongs to an agent the list does not carry (background or archived): the
+    // pin stays away and the list is not read again on every tick.
+    listRetryAt = Date.now() + LIST_RETRY_MS;
+    warnOnce("no-match", "Clear Chat answer pin cannot match the focused composer to a listed agent");
     cachedComposer = null;
     cachedAgent = null;
     return null;
@@ -161,12 +192,14 @@ function registerAnswerPill(client: PluginClientContext): () => void {
     focusedAgent: resolveFocusedAgent,
     register: addComposerPill,
     showAnswerCard: () => getEnhancerPreferences().showAnswerCard !== false,
-    // The feed reads this host's timeline; `serverId` only names the default client.
-    startFeed: agentId => startAnswerFeed({ serverId: "", agentId, client: client.paseo }).stop,
-    title: () => t("answerCard.pillTitle"),
+    // The pin only needs the newest reply, so the feed reads the tail page first; `serverId`
+    // only names the default client.
+    startFeed: agentId => startAnswerFeed({ serverId: "", agentId, client: client.paseo, history: "tail" }).stop,
+    // Plugin messages, not resolved strings: the host re-resolves them on a language switch.
+    title: () => messages.message("answerCard.pillTitle"),
     label: card => card
-      ? t("answerCard.pillLabel", { chosen: card.answeredCount, total: card.questionCount })
-      : t("answerCard.pillTitle"),
+      ? messages.message("answerCard.pillLabel", { chosen: card.answeredCount, total: card.questionCount })
+      : messages.message("answerCard.pillTitle"),
     content: AnswerPillContent,
     subscribe: listener => {
       const stopSessions = subscribeOptionSession(listener);
