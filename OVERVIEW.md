@@ -9,7 +9,7 @@ The interface text follows the app language: English, Simplified Chinese, or Jap
 
 ## What it does
 
-- Recognises numbered questions with at least two lettered options, plus a recommendation mark or a short-reply hint. A line of its own that names options, such as `Recommended: A`, also marks those options. Code fences and quotations are ignored.
+- Recognises numbered questions with at least two lettered options, plus a recommendation mark or a short-reply hint. A line of its own that names one option, such as `Recommended: A`, also marks that option. Code fences and quotations are ignored.
 - The card's controls choose an option, write **Other**, preview a message such as `1B 2A`, and send it. After sending, the card is no longer shown; the message in the chat, such as `1B 2A`, is your answer.
 - **Not options** dismisses a false detection and remembers it.
 - Saved replies are edited on the settings page. On the card they insert a phrase and do not send.
