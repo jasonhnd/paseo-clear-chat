@@ -28,6 +28,7 @@ import { subscribeOptionSession } from "./client/option-session";
  * list is read only when the resolved composer is not the one cached.
  */
 const FOCUS_POLL_MS = 750;
+const LIST_RETRY_MS = 3000;
 
 export default function contribute(client: PluginClientContext) {
   initializeClientTranslations(client);
@@ -120,6 +121,8 @@ function registerAnswerPill(client: PluginClientContext): () => void {
 
   let cachedComposer: unknown = null;
   let cachedAgent: AnswerPillFocus | null = null;
+  // A host that lists no agents must not be asked on every tick.
+  let listRetryAt = 0;
 
   const resolveFocusedAgent = async (): Promise<AnswerPillFocus | null> => {
     const composer = focusedComposer();
@@ -137,7 +140,10 @@ function registerAnswerPill(client: PluginClientContext): () => void {
         }
       } catch { /* Fall through to the agent list. */ }
     }
-    for (const agent of await agentList()) {
+    if (Date.now() < listRetryAt) return null;
+    const agents = await agentList();
+    if (!agents.length) listRetryAt = Date.now() + LIST_RETRY_MS;
+    for (const agent of agents) {
       try {
         if (composers({ agentId: agent.id })[0] === composer) {
           cachedComposer = composer;
