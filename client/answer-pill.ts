@@ -69,8 +69,9 @@ export interface AnswerPillDeps {
   /** Reads the conversation's timeline into the card store; returns its stop function. */
   startFeed(agentId: string): (() => void) | undefined;
   /** Plugin text, so a language switch re-resolves the pin without a count change. */
-  title(): unknown;
-  label(card: AnswerCardSummary | null): unknown;
+  /** Full name for the tooltip and screen readers; the button label is short. */
+  title(card: AnswerCardSummary): unknown;
+  label(card: AnswerCardSummary): unknown;
   /** The popover body, handed to the host untouched. */
   content: unknown;
   /** Card store changes: an answer, a send, a new reply. */
@@ -142,7 +143,7 @@ export function createAnswerPill(deps: AnswerPillDeps): AnswerPillController {
           workspaceId: focus.workspaceId,
           agentId: focus.agentId,
           button: {
-            title: deps.title(),
+            title: deps.title(card),
             label: deps.label(card),
             icon: "ListChecks",
             visible: true,
@@ -161,7 +162,7 @@ export function createAnswerPill(deps: AnswerPillDeps): AnswerPillController {
     if (!lastCounts || lastCounts.at !== card.at || lastCounts.answered !== card.answeredCount || lastCounts.total !== card.questionCount) {
       try {
         // Every update republishes the button row, so only a real change is pushed.
-        registration.update({ visible: true, label: deps.label(card) });
+        registration.update({ visible: true, label: deps.label(card), title: deps.title(card) });
         lastCounts = { at: card.at, answered: card.answeredCount, total: card.questionCount };
       } catch (error) {
         warn("could not update the card pin", error);

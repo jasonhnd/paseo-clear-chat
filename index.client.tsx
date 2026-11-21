@@ -208,10 +208,10 @@ function registerAnswerPill(client: PluginClientContext): () => void {
     // only names the default client.
     startFeed: agentId => startAnswerFeed({ serverId: "", agentId, client: client.paseo, history: "tail" }).stop,
     // Plugin messages, not resolved strings: the host re-resolves them on a language switch.
-    title: () => messages.message("answerCard.pillTitle"),
-    label: card => card
-      ? messages.message("answerCard.pillLabel", { chosen: card.answeredCount, total: card.questionCount })
-      : messages.message("answerCard.pillTitle"),
+    // The button is at most 160 px wide with one line: a short label keeps the count visible,
+    // and the full name goes to the tooltip and screen readers.
+    title: card => messages.message("answerCard.pillTitle", { chosen: card.answeredCount, total: card.questionCount }),
+    label: card => messages.message("answerCard.pillLabel", { chosen: card.answeredCount, total: card.questionCount }),
     content: AnswerPillContent,
     subscribe: listener => {
       const stopSessions = subscribeOptionSession(listener);

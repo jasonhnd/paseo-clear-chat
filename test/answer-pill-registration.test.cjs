@@ -84,8 +84,8 @@ test("contribute() registers the pill for the conversation in front of the user"
   assert.equal(contribution.id, "clear-chat-answer-card");
   assert.equal(contribution.button.visible, true);
   // Title and label are plugin messages: the host resolves them in the app language.
-  assert.equal(h.translations.runtime.resolve(contribution.button.title), "回答卡片");
-  assert.equal(h.translations.runtime.resolve(contribution.button.label), "回答卡片 · 已答 0/2");
+  assert.equal(h.translations.runtime.resolve(contribution.button.title), "回答卡片 · 已答 0/2");
+  assert.equal(h.translations.runtime.resolve(contribution.button.label), "回答 0/2");
   assert.equal(contribution.button.behavior.kind, "popover");
   assert.equal(typeof contribution.button.behavior.Content, "function");
 });

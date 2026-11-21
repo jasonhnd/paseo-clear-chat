@@ -47,8 +47,8 @@
     "continueAnswering": "回答を続ける",
     "tryAgain": "もう一度お試しください",
     "currentQuestion": "Q{{question}} · 現在の質問",
-    "pillLabel": "回答カード · 回答済み {{chosen}}/{{total}}",
-    "pillTitle": "回答カード",
+    "pillLabel": "回答 {{chosen}}/{{total}}",
+    "pillTitle": "回答カード · 回答済み {{chosen}}/{{total}}",
     "waitingForReply": "返信を生成中です。完了後に回答できます。"
   },
   "answerStyle": {

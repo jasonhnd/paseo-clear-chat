@@ -47,8 +47,8 @@
     "continueAnswering": "Continue answering",
     "tryAgain": "Please try again",
     "currentQuestion": "Q{{question}} · Current question",
-    "pillLabel": "Answer card · {{chosen}}/{{total}} answered",
-    "pillTitle": "Answer card",
+    "pillLabel": "Answer {{chosen}}/{{total}}",
+    "pillTitle": "Answer card · {{chosen}}/{{total}} answered",
     "waitingForReply": "The reply is still running. Answer the card when it finishes."
   },
   "answerStyle": {
