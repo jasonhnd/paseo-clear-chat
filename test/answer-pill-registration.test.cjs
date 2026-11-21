@@ -43,6 +43,8 @@ function registrationHarness(t, options = {}) {
   const h = createToolHarness("web", {
     locale: options.locale ?? "zh-CN",
     noComposerPill: options.noComposerPill,
+    preferencesReady: options.preferencesReady,
+    preferencesError: options.preferencesError,
     presentationHost: options.preferences
       ? { rpc: async () => ({ status: "ready", revision: "0", values: { preferences: options.preferences, legacyMigrated: true } }) }
       : undefined,
@@ -152,6 +154,30 @@ test("a conversation with no card registers no pill and reads no pill body", asy
   focused.agentId = null;
   await settle();
   assert.equal(h.composerPills.length, 0);
+});
+
+test("a settings read that has not finished yet waits without asking the host", async t => {
+  const { h, listCalls } = registrationHarness(t, {
+    preferencesReady: false,
+    snapshots: { a: [replyEntry(Date.parse("2026-01-01T10:00:00Z"), questions)] },
+  });
+  await settle(8);
+  assert.equal(h.composerPills.length, 0, "the stored switch is unknown, so the pin waits");
+  assert.equal(listCalls.count, 0, "nothing is read before the switch is known");
+});
+
+test("a failed settings read keeps the default and says so once", async t => {
+  const warnings = captureWarnings();
+  const { h } = registrationHarness(t, {
+    preferencesReady: false,
+    preferencesError: "settings read failed",
+    snapshots: { a: [replyEntry(Date.parse("2026-01-01T10:00:00Z"), questions)] },
+  });
+  await settle(8);
+  warnings.restore();
+  const live = h.composerPills.filter(record => !record.removed);
+  assert.equal(live.length, 1, "the default is on, so the pin still appears");
+  assert.equal(warnings.lines.filter(line => line.includes("default")).length, 1, "the reason is said once");
 });
 
 test("the switched-off card does not read the agent list at all", async t => {
