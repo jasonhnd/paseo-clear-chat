@@ -89,10 +89,14 @@ function registerClient(client: PluginClientContext) {
  * not readable) keep every other screen: the pin is the only thing that goes away.
  */
 function registerAnswerPill(client: PluginClientContext): () => void {
-  const pillApi = (client as unknown as { addComposerPill?: (input: unknown) => { update(patch: Record<string, unknown>): void; remove(): void } }).addComposerPill;
-  const composerApi = (client as unknown as { composers?: (selector: { focused: true } | { agentId: string }) => readonly unknown[] }).composers;
-  if (typeof pillApi !== "function" || typeof composerApi !== "function") return () => {};
-  const composers = composerApi;
+  // Kept on the client: a host method may read its own install record off `this`.
+  const host = client as unknown as {
+    addComposerPill?: (input: unknown) => { update(patch: Record<string, unknown>): void; remove(): void };
+    composers?: (selector: { focused: true } | { agentId: string }) => readonly unknown[];
+  };
+  if (typeof host.addComposerPill !== "function" || typeof host.composers !== "function") return () => {};
+  const composers = (selector: { focused: true } | { agentId: string }) => host.composers!(selector);
+  const addComposerPill = (input: unknown) => host.addComposerPill!(input);
 
   const focusedComposer = (): unknown | null => {
     try { return composers({ focused: true })[0] ?? null; } catch { return null; }
@@ -149,7 +153,7 @@ function registerAnswerPill(client: PluginClientContext): () => void {
 
   const pill = createAnswerPill({
     focusedAgent: resolveFocusedAgent,
-    register: input => pillApi(input),
+    register: addComposerPill,
     showAnswerCard: () => getEnhancerPreferences().showAnswerCard !== false,
     // The feed reads this host's timeline; `serverId` only names the default client.
     startFeed: agentId => startAnswerFeed({ serverId: "", agentId, client: client.paseo }).stop,
