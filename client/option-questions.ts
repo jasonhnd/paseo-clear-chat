@@ -58,9 +58,10 @@ function optionLine(line: string): { letter: string; text: string } | null {
 
 // The marker vocabulary: Chinese 推荐/推荐选, Japanese おすすめ/オススメ, and the English
 // recommended/recommend. The letter must be an uppercase option letter. Japanese needs a colon
-// or a space before the letter, so ordinary prose such as `おすすめAプラン` cannot match. A
-// negated marker (`不推荐`, `not recommended`) names no recommendation.
-const RECOMMENDATION = /(?:(?<!不)推荐(?:选)?[ \t]*(?:[:：][ \t]*)?|(?:おすすめ|オススメ)(?:[ \t]*[:：][ \t]*|[ \t]+)|(?<![Nn][Oo][Tt][ \t]+)(?:[Rr][Ee][Cc][Oo][Mm][Mm][Ee][Nn][Dd][Ee][Dd][ \t]*[:：][ \t]*|\b[Rr][Ee][Cc][Oo][Mm][Mm][Ee][Nn][Dd][ \t]+))([A-HＡ-Ｈ])(?![A-Za-zＡ-Ｚａ-ｚ])/;
+// or a space (ASCII or ideographic) before the letter, so ordinary prose such as
+// `おすすめAプラン` cannot match. A negated marker (`不推荐`, `not recommended`) names no
+// recommendation.
+const RECOMMENDATION = /(?:(?<!不)推荐(?:选)?[ \t]*(?:[:：][ \t]*)?|(?:おすすめ|オススメ)(?:[ \t　]*[:：][ \t　]*|[ \t　]+)|(?<![Nn][Oo][Tt][ \t]+)(?:[Rr][Ee][Cc][Oo][Mm][Mm][Ee][Nn][Dd][Ee][Dd][ \t]*[:：][ \t]*|\b[Rr][Ee][Cc][Oo][Mm][Mm][Ee][Nn][Dd][ \t]+))([A-HＡ-Ｈ])(?![A-Za-zＡ-Ｚａ-ｚ])/;
 
 function recommendationLetter(match: RegExpExecArray): string {
   const code = match[1]!.toUpperCase().charCodeAt(0);
