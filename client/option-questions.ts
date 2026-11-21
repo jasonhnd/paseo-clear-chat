@@ -56,11 +56,35 @@ function optionLine(line: string): { letter: string; text: string } | null {
   return { letter: String.fromCharCode(code >= 0xff21 ? code - 0xff21 + 65 : code), text };
 }
 
-function recommendation(line: string): string | null {
-  const match = /(?:推荐(?:选)?[ \t]*(?:[:：][ \t]*)?|[Rr][Ee][Cc][Oo][Mm][Mm][Ee][Nn][Dd][Ee][Dd][ \t]*[:：][ \t]*|\b[Rr][Ee][Cc][Oo][Mm][Mm][Ee][Nn][Dd][ \t]+)([A-HＡ-Ｈ])(?![A-Za-zＡ-Ｚａ-ｚ])/.exec(line);
-  if (!match) return null;
+// The marker vocabulary: Chinese 推荐/推荐选, Japanese おすすめ/オススメ, and the English
+// recommended/recommend. The letter must be an uppercase option letter. Japanese needs a colon
+// or a space (ASCII or ideographic) before the letter, so ordinary prose such as
+// `おすすめAプラン` cannot match. A negated marker (`不推荐`, `not recommended`) names no
+// recommendation.
+const RECOMMENDATION = /(?:(?<!不)推荐(?:选)?[ \t]*(?:[:：][ \t]*)?|(?:おすすめ|オススメ)(?:[ \t　]*[:：][ \t　]*|[ \t　]+)|(?<![Nn][Oo][Tt][ \t]+)(?:[Rr][Ee][Cc][Oo][Mm][Mm][Ee][Nn][Dd][Ee][Dd][ \t]*[:：][ \t]*|\b[Rr][Ee][Cc][Oo][Mm][Mm][Ee][Nn][Dd][ \t]+))([A-HＡ-Ｈ])(?![A-Za-zＡ-Ｚａ-ｚ])/;
+
+function recommendationLetter(match: RegExpExecArray): string {
   const code = match[1]!.toUpperCase().charCodeAt(0);
   return String.fromCharCode(code >= 0xff21 ? code - 0xff21 + 65 : code);
+}
+
+function recommendation(line: string): string | null {
+  const match = RECOMMENDATION.exec(line);
+  return match ? recommendationLetter(match) : null;
+}
+
+/**
+ * A line that carries nothing but the marker, such as `Recommended: A`, `推荐：A` or
+ * `おすすめ：A`, optionally bolded, bulleted or closed with punctuation. Agents write it on
+ * its own line after the option list, so it names an option without being part of any
+ * option's text. A mention inside a sentence, or prose that keeps going after the letter
+ * (`Recommended: A because …`), stays ordinary text.
+ */
+function standaloneRecommendation(line: string): string | null {
+  const value = stripPrefix(line, false);
+  const match = RECOMMENDATION.exec(value);
+  if (!match || match.index !== 0) return null;
+  return /^[^\p{L}\p{N}]*$/u.test(value.slice(match[0].length)) ? recommendationLetter(match) : null;
 }
 
 function firstSentence(text: string): string {
@@ -126,6 +150,9 @@ export function parseOptionQuestions(text: string): OptionQuestionSet | null {
       } else if (!optionStarted) {
         before.push(line.text);
       } else if (!line.text.trim()) {
+        continuation = false;
+      } else if (standaloneRecommendation(line.text)) {
+        // The marker names an option; it ends the run instead of joining the option above it.
         continuation = false;
       } else if (continuation) {
         optionLines[optionLines.length - 1]!.push(line.text.trim());

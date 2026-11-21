@@ -18,10 +18,13 @@ import { OptionCard } from "./option-card";
  *
  * The card body refuses to draw while the agent is answering, because answers chosen then
  * would race the reply. The popover explains that instead of opening onto an empty sheet.
+ *
+ * The host marks a compact layout as a bottom sheet, where the card drops the keyboard hint.
  */
 export function AnswerPillContent(props: PluginButtonContentProps) {
   const { t } = useTranslation(messages);
   const agentId = props.context === "agent" ? props.agentId : null;
+  const compact = props.layout?.compact === true;
   const card = useCurrentPillCard(agentId ?? "");
   const session = useOptionSession(agentId ?? "", card?.at);
   const status = useAgent(agentId ?? "", agent => agent.status);
@@ -31,5 +34,5 @@ export function AnswerPillContent(props: PluginButtonContentProps) {
   if (status === "running" && session && !session.readOnly) {
     return <Text testID="option-pill-waiting" style={{ color: tokens.foregroundMuted, fontFamily: tokens.fontUi, fontSize: tokens.fs(13), paddingVertical: 8 }}>{t("answerCard.waitingForReply")}</Text>;
   }
-  return <OptionCard agentId={agentId} at={card.at} tokens={tokens} surface="popover" />;
+  return <OptionCard agentId={agentId} at={card.at} tokens={tokens} surface="popover" compact={compact} />;
 }

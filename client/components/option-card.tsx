@@ -33,7 +33,7 @@ export function recommendedBadgeColor(tokens: ExtendedThemeTokens): string {
   return tokens.isDark ? tokens.foreground : tokens.accent;
 }
 
-export function OptionCard({ agentId, at, tokens, surface = "timeline" }: { agentId: string; at: number; tokens: ExtendedThemeTokens; surface?: "timeline" | "popover" }) {
+export function OptionCard({ agentId, at, tokens, surface = "timeline", compact = false }: { agentId: string; at: number; tokens: ExtendedThemeTokens; surface?: "timeline" | "popover"; compact?: boolean }) {
   const { t } = useTranslation(messages);
   const preferences = useEnhancerPreferences();
   const composers = useComposers ? useComposers({ agentId }) : [];
@@ -796,7 +796,8 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline" }: { agen
       </View> : null}
       {readOnly ? <View style={{ padding: 16, borderTopWidth: 1, borderColor: tokens.border }}><Text testID="option-answered" style={muted}>{`Answered in the chat: ${session.answeredText}`}</Text></View> : <View style={{ flexDirection: hasCustomAnswer ? "column" : "row", alignItems: hasCustomAnswer ? "stretch" : "center", justifyContent: "space-between", gap: 8, padding: 16, borderTopWidth: 1, borderColor: tokens.border, borderBottomLeftRadius: 11, borderBottomRightRadius: 11, backgroundColor: tokens.surface2 }}>
         {hasCustomAnswer && answer !== null ? <Text testID="option-send-preview" selectable style={{ ...label, color: tokens.foregroundMuted }}>{answer}</Text> : null}
-        {Platform.OS === "web" || (customOpen && customConfirmed === undefined) ? <Text testID="option-hint" style={{ ...muted, lineHeight: hintHeight, minHeight: hintHeight, fontFamily: customOpen && customConfirmed === undefined ? tokens.fontUi : tokens.fontMono, flexShrink: 1 }}>{customOpen && customConfirmed === undefined
+        {/* A compact layout is a touch sheet: there is no hardware keyboard to hint at. */}
+        {(Platform.OS === "web" && !compact) || (customOpen && customConfirmed === undefined) ? <Text testID="option-hint" style={{ ...muted, lineHeight: hintHeight, minHeight: hintHeight, fontFamily: customOpen && customConfirmed === undefined ? tokens.fontUi : tokens.fontMono, flexShrink: 1 }}>{customOpen && customConfirmed === undefined
           ? t("answerCard.hintCustom")
           : focused === "option-send"
           ? t("answerCard.hintSend").replace(/^Tab →\s*/, "↵ ").toLowerCase()
