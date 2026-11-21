@@ -92,9 +92,9 @@ test("contribute() registers the pill for the conversation in front of the user"
 
 test("every language registers the same localized label", async t => {
   const expected = {
-    en: ["Answer card", "Answer card · 0/2 answered"],
-    "zh-CN": ["回答卡片", "回答卡片 · 已答 0/2"],
-    ja: ["回答カード", "回答カード · 回答済み 0/2"],
+    en: ["Answer card · 0/2 answered", "Answer 0/2"],
+    "zh-CN": ["回答卡片 · 已答 0/2", "回答 0/2"],
+    ja: ["回答カード · 回答済み 0/2", "回答 0/2"],
   };
   for (const [locale, copy] of Object.entries(expected)) {
     const { h } = registrationHarness(t, { locale, snapshots: { a: [replyEntry(Date.parse("2026-01-01T10:00:00Z"), questions)] } });
@@ -104,6 +104,28 @@ test("every language registers the same localized label", async t => {
     const { button } = live[0].contribution;
     assert.equal(h.translations.runtime.resolve(button.title), copy[0], locale);
     assert.equal(h.translations.runtime.resolve(button.label), copy[1], locale);
+    h.dispose();
+  }
+});
+
+test("the pill label fits the host button and the title keeps the full name", () => {
+  // The host draws a plugin button at most 160 px wide with a single line of label and no
+  // icon here; about 12 ASCII columns fit. Count full-width characters as two columns.
+  const expected = {
+    en: ["Answer 12/12", "Answer card · 12/12 answered"],
+    "zh-CN": ["回答 12/12", "回答卡片 · 已答 12/12"],
+    ja: ["回答 12/12", "回答カード · 回答済み 12/12"],
+  };
+  const columns = value => [...value].reduce((sum, character) =>
+    sum + (/[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6]/.test(character) ? 2 : 1), 0);
+  for (const [locale, [labelText, titleText]] of Object.entries(expected)) {
+    const h = createToolHarness("web", { locale });
+    const { messages } = h.load("client/messages.ts");
+    const label = h.translations.runtime.resolve(messages.message("answerCard.pillLabel", { chosen: 12, total: 12 }));
+    const title = h.translations.runtime.resolve(messages.message("answerCard.pillTitle", { chosen: 12, total: 12 }));
+    assert.equal(label, labelText, `${locale}: short label on the button`);
+    assert.equal(title, titleText, `${locale}: full name for the tooltip and screen readers`);
+    assert.ok(columns(label) <= 12, `${locale}: ${JSON.stringify(label)} is ${columns(label)} columns wide; at most 12 fit`);
     h.dispose();
   }
 });
