@@ -13,11 +13,6 @@ export function __testHasAnswerMetadataState(agentId: string): boolean {
   return writes.has(agentId);
 }
 
-export function subscribeAnswerMetadata(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => { listeners.delete(listener); };
-}
-
 function enqueue(agentId: string, state: AgentWrites, select: () => { generation: number; write: () => Promise<void> }): Promise<void> {
   const next = state.queue.catch(() => {}).then(async () => {
     const { generation, write } = select();

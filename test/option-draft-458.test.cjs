@@ -113,10 +113,12 @@ test("the card shows how many questions are answered", t => {
   const h = createToolHarness("ios", { width: 390, agents: { a: { status: "idle" } }, preferences: { showAnswerCard: true } });
   t.after(() => { h.unmount(); h.dispose(); });
   const s = h.load("client/option-session.ts");
-  const Renderer = h.load("client/live-renderers.tsx").LiveAssistantRenderer;
+  const Card = h.load("client/components/option-card.tsx").OptionCard;
   const byId = (tree, id) => h.nodes(tree, node => node.props.testID === id)[0];
-  const draw = () => h.draw({ type: Renderer, props: { agentId: "a", host: { id: "host" }, item: { data: { text: reply } }, timestamp: new Date(10), theme: { colors: {} } } }, "reply-10");
-  s.publishAssistantReply("a", { at: 10, text: reply });
+  const draw = () => {
+    s.publishAssistantReply("a", { at: 10, text: reply });
+    return h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } }, "reply-10");
+  };
   assert.match(h.text(byId(draw(), "option-progress")), /0 of 2 answered · 2 to go/);
   s.choose("a", 0, "B");
   assert.match(h.text(byId(draw(), "option-progress")), /1 of 2 answered · 1 to go/);

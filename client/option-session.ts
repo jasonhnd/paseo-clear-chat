@@ -289,6 +289,11 @@ export function getOptionSessionAt(agentId: string, at: number): OptionSession |
   return snapshots.get(agentId)?.get(at) ?? null;
 }
 
+/** Every card recorded for this agent, including earlier ones that are not current. */
+export function listOptionSessions(agentId: string): OptionSession[] {
+  return [...(snapshots.get(agentId)?.values() ?? [])];
+}
+
 function isDismissed(agentId: string, at: number): boolean {
   return getEnhancerPreferences().dismissedOptionReplies.some(entry => entry.agentId === agentId && entry.at === at);
 }
@@ -331,11 +336,13 @@ function matchTypedChoices(set: OptionQuestionSet, text: string, legacyIdentifie
   return choices;
 }
 
-/** Detect answer-shaped tokens without guessing intent. */
+/** Detect answer-shaped tokens without guessing intent.
+ * A bare letter inside a sentence is ordinary prose. A numbered token such as
+ * 1A or Q2b still counts, including when common punctuation hugs it. */
 function containsAnswerShape(text: string): boolean {
   const firstLine = text.split(/\r?\n/, 1)[0] ?? "";
   if (/^(?:[A-Z]?\d+[A-H](?:\s+|$))+/i.test(firstLine.trim())) return true;
-  return text.split(/\s+/).some(token => /^([A-Z]?[0-9]+)?([A-H])$/i.test(token));
+  return text.split(/\s+/).some(raw => /^[A-Z]?[0-9]+[A-H]$/i.test(raw.replace(/^[.,;:!?()[\]"']+|[.,;:!?()[\]"']+$/g, "")));
 }
 
 function reconcileAnswers(agentId: string): boolean {

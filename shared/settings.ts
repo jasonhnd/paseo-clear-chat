@@ -15,7 +15,11 @@ export const preferenceOverridesSchema = z.object({
   // Keep the existing enum readable by older clients; they ignore these fields.
   customAccent: customAccentSchema.optional(),
   customAccentEnabled: z.boolean().optional(),
+  // Accepted so settings files written by older builds still parse; the UI font
+  // now follows the host and this value changes nothing.
   uiFont: z.enum(["inter", "system"]).optional(),
+  // Accepted so settings files written by older builds still parse; code text
+  // now uses one system stack and these two values change nothing.
   codeFont: z.enum(["code", "plain"]).optional(),
   codeFontFamily: z.enum(["host", "iosevka", "menlo", "consolas", "fira-code", "cascadia-code"]).optional(),
   textScale: z.number().transform((value) => Math.min(1.35, Math.max(0.85, value))).optional(),
@@ -75,10 +79,3 @@ export const presentationSettings = defineSettings({
 export type PreferenceOverrides = z.output<typeof preferenceOverridesSchema>;
 export type PresentationSettings = z.output<typeof presentationSettings.schema>;
 export const presentationSettingsRpc = settingsRpc(presentationSettings.id);
-
-export const hermesCcSettings = defineSettings({
-  id: "hermes-cc",
-  scope: "host",
-  version: 1,
-  schema: z.object({ enabled: z.boolean().default(true) }),
-});

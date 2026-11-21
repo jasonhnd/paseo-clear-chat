@@ -1,62 +1,62 @@
-Clear Chat changes how agent conversations look in Paseo, so an answer is easy to find. It does not change what agents do.
+Clear Chat is a Paseo plugin for the answer card. When a reply asks lettered questions, the card lets you pick an option or write your own, preview the answer, and send it. It does not draw the conversation. For the conversation view, use the separate plugin Better Paseo.
 
-It is a display layer, not a provider. Finished steps fold into one row each, every tool call gets its own card, replies keep their code, links and paths, and the answer card lets you write an answer to each question in the conversation. The interface text follows the app language: English, Simplified Chinese or Japanese.
+The interface text follows the app language: English, Simplified Chinese, or Japanese. The plugin list shows the English description.
 
-## What's new in 0.16.2.1
+## What's new in 0.16.2.2
 
-- **The Answers waiting row clears at once.** After you answer the last question in an answer card, the conversation leaves the sidebar's **Answers waiting** group on the same page; you no longer have to reload ([#464](https://github.com/jasonhnd/paseo-clear-chat/issues/464)).
+- Clear Chat no longer draws the conversation: no step rows, tool cards, sidebar, search, quote-and-reply, jump chips, or syntax highlighting. The **Workspace changes during this turn** card is gone.
+- The settings page is titled **Answer card**. It sets the answer card switch and saved replies, and shows the installed version and **Report a problem**.
 
 ## What it does
 
-- Finished steps fold into one short row each: icon, summary and status. The reply that ends a turn stays open.
-- Each tool kind Paseo reports gets its own card, including shell commands, file reads and edits, search, subagents, MCP calls and approvals. Claude, Codex and Hermes calls are all supported.
-- Opening a folded step shows its details: a bottom sheet on phones, a popover on tablets and a side panel on desktop. Details include the full input and output, and the exit code or duration when the agent reports them.
-- Replies get code highlighting with line numbers, clickable links and file paths, and folding for long code and long prompts.
-- Any message that contains text can be quoted and answered.
-- The sidebar finds conversations by title or by text already loaded on this host, and groups conversations that stopped on an error.
-- When snapshots identify workspace changes, a read-only card lists the changed files. Available text files can show line counts and an expandable diff. The file list comes from before/after snapshots; counts and diffs compare the end state with Git HEAD and may include edits made before the turn. Binary or untracked files and files beyond the count or size limits may lack counts or diffs. Concurrent conversations can contribute changes; no card appears when no visible change is found.
-- Finished turns show their finish time on their Today row.
-- On a browser or the desktop app, steps can be moved between and opened with the keyboard.
-- Code blocks and tool rows can be left to other plugins when you use more than one, and the settings page shows the version of the installed build so a bug report can name it.
+- Recognises numbered questions with at least two lettered options, plus a recommendation mark or a short-reply hint. A line of its own that names one option, such as `Recommended: A`, also marks that option. Code fences and quotations are ignored.
+- The card's controls choose an option, write **Other**, preview a message such as `1B 2A`, and send it. After sending, the card is no longer shown; the message in the chat, such as `1B 2A`, is your answer.
+- **Not options** dismisses a false detection and remembers it.
+- Saved replies are edited on the settings page. On the card they insert a phrase and do not send.
+- A bare letter inside a sentence is not treated as an answer. A numbered token such as `1A` still counts.
 
-## Performance
+After a reply that asks lettered questions has finished, a button above the message box opens the card. It shows the progress, for example **Answer 0/2**; a desktop tooltip and a narrow screen's panel title carry the full name, for example **Answer card · 0/2 answered**. It opens the whole card in a panel, which is a sheet on a narrow screen. Choosing answers updates the count, closing and reopening the panel keeps them, and the button is gone after **Send** until the next such reply finishes. The button belongs to the conversation on screen.
 
-Measured 2026-11-04 on a 300-step conversation (150 tool calls), three runs per state, on a 4-core, 8 GB cloud test machine with Playwright's Chromium: first screen 673–843 ms with Clear Chat on, 387–444 ms with it off. Native Paseo is quicker because it folds the whole turn into one row; Clear Chat shows each step, and that is what it is for. The repository README documents the method and the runner.
+The settings page can be opened.
 
 ## Setup
 
-Clear Chat 0.16.2.1 needs Paseo 0.16.0 or later and was tested on Paseo 0.16.2. On Paseo 0.15.x this version cannot run normally; stay on Clear Chat 0.15.4.x.
+Clear Chat 0.16.2.2 needs Paseo 0.16.0 or later. On Paseo 0.15.x this version cannot run normally; stay on Clear Chat 0.15.4.x. This build was checked in the browser interface of Paseo 0.16.2 (the web UI the `paseo` command starts) with a test agent and no model, at 1280×900 and 390×844; it was not checked in the desktop app, in a dark theme, with a real model, or on physical iOS or Android devices.
 
 Installation runs `npm ci` on the daemon host, so Node.js and npm must be available there and the host must be able to reach the npm registry.
 
-If you used Beautiful Chat, its settings are copied over on first start. Read the upgrade steps in the repository README before removing Beautiful Chat, because removing a plugin also removes its settings.
+```bash
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.16.2.2
+paseo plugin update clear-chat --ref v0.16.2.2 --yes
+```
+
+If you used Beautiful Chat, its settings file is copied on first start when Clear Chat has none yet. Read the upgrade steps in the repository README before removing Beautiful Chat, because removing a plugin also removes its settings. Copied keys for features this version no longer shows stay in the file and have no control.
 
 ## Settings
 
-Open **Settings → Plugins → Clear Chat** to choose the accent colour, interface and code fonts, text size, folding, what happens when a folded step is pressed, the answer card, and which code blocks or tool rows are left to other plugins. Settings are saved on the host and shared by every device connected to it.
+Open **Settings → Plugins → Clear Chat**. The page title is **Answer card**.
+
+- **Show an answer card under replies that ask lettered questions** is on when no value is stored. A stored value still wins.
+- **Saved replies** is one phrase per line. The default phrases are `Go with the recommended`, `Leave it for now`, and `Continue`.
+- The installed version is shown under the title. A directory install can show an older version from that directory.
+- **Report a problem** opens a GitHub issue form in the browser. Nothing is sent unless you submit it.
+
+Settings are saved on the host and shared by every client connected to it.
 
 ## Data and permissions
 
-- Clear Chat reads the conversation that Paseo already shows and changes only how it is displayed. It does not send conversation content off the host, to agent providers or to any other service. An image in a reply that points to a web address is loaded by the app or browser from that address, as in a web page. Clicking a link in a reply opens it in your browser or the matching app.
-- The messages you send yourself are the exception: **Send** on the answer card sends one message, written as you, for example `1B 2A`, to the agent of the current chat, and a quote reply sends the quoted text and your reply as one message. Both go through Paseo to that agent's provider like any message you type. Clear Chat sends nothing to any other place.
-- The answer card requires **Assistant markdown**. The letters you choose are never added to a message automatically; a written answer is sent as you typed it.
-- With a **·CC** provider copy, Clear Chat saves the images you paste, a record of the conversation and the list of model and mode options of that provider in its plugin data folder in your Paseo home on the host, so that it can show the images later; your prompt is passed to Hermes unchanged.
-- To show a pasted image in the prompt bubble, the server looks the message up in the local conversation records of the provider that runs the chat, read-only and only when exactly one message matches: Codex records under `CODEX_HOME` (default `~/.codex`), Claude records under `CLAUDE_CONFIG_DIR` (default `~/.claude`, the projects folder), and, for a **·CC** provider copy, Clear Chat's own image store. It never writes to, copies or locks those records, opens files without following symbolic links, reads only regular image files (png, jpg, jpeg, webp, gif) of at most 8 MiB inside the expected folders, and returns the image only to the Clear Chat page in your Paseo.
-- On the host, its daemon process reads local image files that a conversation refers to, so they can be shown, highlights code locally, and opens a file in the host's file manager when you ask it to. Settings are stored on the host in Paseo's plugin settings folder.
-- The only network use by Clear Chat itself is at installation, when `npm ci` downloads its dependencies from the npm registry.
-- **Report a problem** in the settings opens a GitHub issue form in your browser. Nothing is sent unless you submit that form yourself.
+- Clear Chat does not send conversation content off the host, except the message you send yourself. **Send** on the answer card sends one message, written as you, through Paseo to the agent of the current chat.
+- This version does not read local image files, highlight code, or register a provider copy.
+- Startup does not delete anything under the plugin data directory. Older image and history directories are left in place and are not used.
+- The only network use by Clear Chat itself is `npm ci` at install time.
+- **Report a problem** opens a GitHub issue form. Nothing is sent unless you submit it.
 
 ## Limitations
 
-Clear Chat changes only how Paseo shows a conversation; the repository README lists every limit with what you can do today and what would have to change upstream. In short:
+- Clear Chat does not draw the conversation. Use Better Paseo for that view.
+- `Plan 2B` can still be read as an answer.
+- While a reply is still being written, its button does not appear. If the card is open when the agent starts answering again, the panel says the reply is still running, and answers cannot be given until it ends.
+- This version was checked in the browser interface of Paseo 0.16.2 with a test agent that needs no model, at 1280×900 and 390×844: the button appears and opens the card; answers survive closing and reopening; sending posts the message and the button goes away, and a later card brings it back; switching conversations does not carry a card over; the settings switch hides and shows the button; the 390-wide layout is a bottom sheet without the keyboard hints; a recommendation on its own line, including the Japanese `おすすめ：B`, marks its option and stays out of the option text; the button label fits without ellipsis in all three languages; a desktop tooltip and a narrow-screen panel title carry the full name; the card's progress line, the send button, and the settings page title are translated in Simplified Chinese and Japanese. It was not checked in the desktop app, in a dark theme, with a real model, or on physical iOS or Android devices.
+- Removing the plugin deletes its settings. Back them up first.
 
-- Interface text follows the app language in English, Simplified Chinese and Japanese.
-- On the iOS and Android apps, code uses the system monospace font, and hardware keyboard shortcuts for steps are not available.
-- In the iPhone app you cannot long-press to select text in paragraphs containing links or in step summaries; use the reply's **Copy** button to copy the whole reply.
-- After you confirm an answer, Paseo scrolls the conversation to the bottom. If you had scrolled up above the answer card, you are taken back to the bottom. This is Paseo's own behaviour after the content changes; the plugin cannot prevent it.
-- In the read-only answer frame, Space on a focused question tab does not switch questions because Paseo handles that key first; click the tab or press Enter instead.
-- When a code block is drawn by Paseo, its own **Copy** button is about 22 × 22 px on a phone-width screen and does not include trailing blank lines; the plugin interface offers no way to resize that button.
-- Pasted images in your original Hermes agents need the **·CC** provider copy, because Paseo removes the images before a plugin sees them.
-- At phone width, Enter in Paseo's input box inserts a newline; use its Send button. This is host behaviour and was also seen with the previous release and with Clear Chat disabled.
-- Real-model operation, physical devices and the native phone apps were not verified for this release.
-- Removing the plugin deletes its settings; back them up first.
+The repository README has the install commands, the answer-card steps, and troubleshooting.

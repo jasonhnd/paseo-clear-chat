@@ -1,3 +1,53 @@
+## [0.16.2.2] - 2026-11-21
+
+### Upgrade notes
+
+- Clear Chat 0.16.2.2 needs Paseo 0.16.0 or newer. The minimum host version is unchanged. This build was loaded and used in the browser interface of Paseo 0.16.2 (the web UI the `paseo` command starts) with a test agent and no model, at 1280×900 and 390×844; it was not checked in the desktop app, in a dark theme, with a real model, or on physical iOS or Android devices. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x.
+- Update with `paseo plugin update clear-chat --ref v0.16.2.2 --yes`, or install with `paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.16.2.2`.
+- The settings file is kept. The settings page shows the answer card switch, saved replies, the installed version, and **Report a problem**. If the file has no stored switch, the switch defaults to on. A stored value still wins. Saved replies, dismissed false detections, and unfinished answer drafts are kept. Keys for features this version no longer shows stay in the file and have no controls.
+- A font saved in an earlier version no longer changes anything. Older builds let you choose an interface font, a code font, and a code-font family; this version draws with the system fonts and stops reading those values. They stay in the settings file ([PR #508](https://github.com/jasonhnd/paseo-clear-chat/pull/508)).
+- Clear Chat no longer draws the conversation. For that view, use the separate plugin Better Paseo: https://paseo.sh/plugins/roundreddot/better-paseo
+- After updating, Clear Chat's step rows, tool cards, sidebar, search, quote-and-reply, jump chips, and syntax highlighting are gone. The **Answer card** settings page is still there, and the card opens from a button above the message box.
+- Startup does not delete anything under the plugin data directory. Older image and history directories are left in place. This version does not use them.
+
+### Removed
+
+- **Conversation rendering.** Clear Chat no longer draws assistant replies, your messages, tool rows, approvals, reasoning, to-do lists, errors, notices, or turn-window cards. The read-only card titled **Workspace changes during this turn** is gone; in Simplified Chinese that title was **这一轮的改动**, and Japanese showed the English title. The conversation is left to Paseo or another plugin ([PR #503](https://github.com/jasonhnd/paseo-clear-chat/pull/503)).
+- **Sidebar.** The sidebar, its hint, conversation search, the **Answers waiting** group, the **Errors** group, and finish times on Today rows are gone ([PR #503](https://github.com/jasonhnd/paseo-clear-chat/pull/503)).
+- **Composer tools that belonged to this plugin.** Quote-and-reply, the find bar, and jump chips are gone. The answer style selector, which was already hidden, is removed ([PR #503](https://github.com/jasonhnd/paseo-clear-chat/pull/503)).
+- **Settings for that rendering.** Accent colour, fonts, text size, folding, frosted glass, pointer glow, the prompt bubble, assistant markdown, markdown style, delegating or hiding tools, code-block delegation, jump chips, and keeping each option on its own line are no longer on the settings page. Stored values remain in the settings file ([PR #503](https://github.com/jasonhnd/paseo-clear-chat/pull/503)).
+- **Pasted images and the bundled provider.** Clear Chat no longer adds a provider copy or saves pasted images. Existing plugin-data directories are not deleted ([PR #503](https://github.com/jasonhnd/paseo-clear-chat/pull/503)).
+- **Syntax-highlighting packages.** Install no longer fetches the packages this plugin used to colour code in the conversation ([PR #505](https://github.com/jasonhnd/paseo-clear-chat/pull/505)).
+
+### Changed
+
+- **The answer card opens from a button above the message box.** When the latest reply asks lettered questions and has finished, a button sits above the message box with the progress, for example **Answer 0/2** (**回答 0/2** in Simplified Chinese and Japanese). The full name with the same count is in the desktop tooltip and, on a narrow screen, in the panel title: **Answer card · 0/2 answered** (**回答卡片 · 已答 0/2**, **回答カード · 回答済み 0/2**). The host cuts a button label to one short line, so the label itself carries only the count. Pressing it opens the whole card in a panel, a sheet on narrow screens. Choosing an answer updates the count, closing and reopening the panel keeps the answers, and after **Send** the button is gone until another reply asks lettered questions. The button follows the conversation on screen, so another conversation's card never appears, and it stays away while the answer card switch is off. The card is no longer drawn inside the reply. Sending is unchanged: **Send** posts the message through Paseo, not through the message box ([PR #509](https://github.com/jasonhnd/paseo-clear-chat/pull/509)).
+- The settings page title is **Answer card** (English), **回答卡片** (Simplified Chinese), and **回答カード** (Japanese). It was **Chat presentation** ([PR #506](https://github.com/jasonhnd/paseo-clear-chat/pull/506)).
+- The settings introduction says that changes are saved on the selected host and that this page sets the answer card and saved replies ([PR #505](https://github.com/jasonhnd/paseo-clear-chat/pull/505)).
+- The plugin-list description is one sentence about answering lettered questions. The version prefix still matches the package version ([PR #505](https://github.com/jasonhnd/paseo-clear-chat/pull/505)).
+- When the host is missing a required method, the message names plugin RPC, a settings screen, settings registration, and a request handler. It no longer mentions timeline support ([PR #505](https://github.com/jasonhnd/paseo-clear-chat/pull/505)).
+- The answer card switch defaults to on when no value is stored. A stored value still wins ([PR #503](https://github.com/jasonhnd/paseo-clear-chat/pull/503)).
+- **Text draws with the system fonts.** The bundled font files are gone: on the web, interface text names a system sans-serif stack and code names a system monospace stack; on iOS and Android the interface font is left to the platform and code keeps Menlo and monospace. A stored interface font, code font, or code-font family is still accepted and stays in the settings file, but it no longer changes anything ([PR #508](https://github.com/jasonhnd/paseo-clear-chat/pull/508)).
+
+### Fixed
+
+- A bare letter inside a sentence is not treated as an answer. “wait a moment” no longer marks the card answered or clears a saved draft. A numbered token such as `1A`, `2b`, or `Q1A` still counts, including when punctuation sits against it (`1A.`). A message that is only an answer is unchanged, including a single-question reply whose whole message is `b`. A message such as `Plan 2B` can still be read as an answer ([PR #502](https://github.com/jasonhnd/paseo-clear-chat/pull/502)).
+- **The saved replies box fits four lines.** The box was shorter than the three default replies together, so the last one was cut off. It now shows at least four lines, grows to eight, and scrolls inside the box for a longer list; saving still happens when you leave the box ([PR #508](https://github.com/jasonhnd/paseo-clear-chat/pull/508)).
+- **A recommendation on its own line marks one option instead of joining the last one.** A line on its own under the options that names one option and holds nothing else, such as `Recommended: A`, `推荐：A`, `おすすめ：A`, or `オススメ：A`, marks that option as recommended and is no longer shown as part of the option above it; the label may end with a period and may be bold. In Japanese it needs a colon or a space after it. A line such as `不推荐：A` is not read as a recommendation, and the line stays ordinary text. A Japanese reply that only names its recommendation now shows a card where it previously showed none ([PR #510](https://github.com/jasonhnd/paseo-clear-chat/pull/510)).
+- **The narrow panel no longer shows the move-and-choose hints.** The `↑↓ move · ↵ choose` line is gone from the panel that opens on a narrow screen. The hint for a written answer, `Enter to confirm · Shift+Enter for a new line`, stays ([PR #510](https://github.com/jasonhnd/paseo-clear-chat/pull/510)).
+- **The card's status lines use the same wording as the rest of the page.** Simplified Chinese used a different word for the card than the rest of the interface, and Japanese showed English; both now use the card's own strings from the locale files ([PR #509](https://github.com/jasonhnd/paseo-clear-chat/pull/509)).
+
+### Documentation
+
+- The English, Simplified Chinese, and Japanese READMEs, and the catalog overview, now describe only the answer card, say that the card opens from a button above the message box, and show the button text as it appears in each language. Instructions and screenshots for the removed conversation view are gone.
+
+### Known limitations
+
+- `Plan 2B` can still be read as an answer.
+- While a reply is still being written, its button does not appear above the message box. If the card is open when the agent starts answering again, the panel says the reply is still running, and answers cannot be given until it ends.
+- This version was checked in the browser interface of Paseo 0.16.2 (the web UI the `paseo` command starts) with a test agent that needs no model, at 1280×900 and 390×844: the button appears and opens the whole card; answers survive closing and reopening the panel; sending posts the message and the button goes away, and a later card brings it back; switching conversations does not carry a card over; the settings switch hides and shows the button; the 390-wide layout uses a bottom sheet without the keyboard hints; a recommendation on its own line, including the Japanese `おすすめ：B`, marks its option and stays out of the option text; the button label fits without ellipsis in all three languages, and in English also with a 12-question card; a desktop tooltip and a narrow-screen panel title carry the full name; the card's progress line, the send button, and the settings page title are translated in Simplified Chinese and Japanese. It was not checked in the desktop app, in a dark theme, with a real model, or on physical iOS or Android devices.
+- Removing the plugin deletes its settings. Startup does not delete older plugin-data files.
+
 ## [0.16.2.1] - 2026-11-20
 
 ### Upgrade notes
@@ -619,6 +669,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.16.2.2]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.16.2.1...v0.16.2.2
 [0.16.2.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.16.1.1...v0.16.2.1
 [0.16.1.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.4.2...v0.16.1.1
 [0.15.4.2]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.15.4.1...v0.15.4.2

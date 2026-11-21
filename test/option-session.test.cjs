@@ -176,51 +176,19 @@ test("notifies once per change and isolates throwing listeners", t => {
   assert.equal(count, 3);
 });
 
-test("renderer effects publish only ordinary owned messages and cleanup removes sender", async t => {
+test("sending uses the registered sender and cleanup removes it", async t => {
   const calls = [];
   const paseo = { agents: { ref: agent => ({ refresh: async () => null, send: async text => { calls.push([agent, text]); } }) } };
-  const { h, s } = fixture(t, { paseo, systemEnvelope: true, agents: { a: { status: "idle" } } });
-  const { LiveAssistantRenderer, LiveUserMessageRenderer } = h.load("client/live-renderers.tsx");
-  const observed = [];
-  for (const name of ["publishAssistantReply", "publishUserMessage"]) {
-    const publish = s[name];
-    s[name] = (...args) => { observed.push([name, ...args]); publish(...args); };
-  }
-  let count = 0;
-  const stop = s.subscribeOptionSession(() => { count++; });
-  t.after(stop);
-  function draw(Component, text, at, key) {
-    h.draw({ type: Component, props: { agentId: "a", host: { id: "host" }, item: { data: { text } }, theme: { colors: {} }, timestamp: new Date(at) } }, key);
-  }
-  draw(LiveAssistantRenderer, one, 10, "reply");
-  draw(LiveAssistantRenderer, one, 10, "reply");
-  assert.equal(count, 1);
-  assert.equal(observed.length, 1);
-  draw(LiveAssistantRenderer, one + "\nExtra", 10, "reply");
-  assert.equal(observed.length, 2);
-  draw(LiveAssistantRenderer, "<system-notice>\n" + two + "\n</system-notice>", 11, "reply");
-  assert.equal(s.getOptionSession("a").at, 10);
-  draw(LiveUserMessageRenderer, "<system-notice>notice</system-notice>", 12, "user");
-  assert.equal(s.getOptionSession("a").at, 10);
-  draw(LiveUserMessageRenderer, "hello", 13, "user");
-  draw(LiveUserMessageRenderer, "hello", 13, "user");
-  assert.equal(observed.length, 3);
-  assert.equal(s.getOptionSession("a").readOnly, true);
-  assert.equal(count, 2);
-  draw(LiveAssistantRenderer, two, 14, "reply");
-  s.choose("a", 0, "A"); s.choose("a", 1, "B");
+  const { h, s } = fixture(t, { paseo, agents: { a: { status: "idle" } } });
+  s.publishAssistantReply("a", { at: 14, text: two });
+  s.choose("a", 0, "A");
+  s.choose("a", 1, "B");
   await s.sendAnswer("a");
   assert.deepEqual(calls, [["a", "1A 2B"]]);
   h.dispose();
   await s.sendAnswer("a");
   assert.equal(calls.length, 1);
   assert.equal(s.getOptionSession("a").readOnly, true);
-  const transform = h.transformers.get("assistant_message").transform;
-  h.preferences.assistantMarkdown = false;
-  assert.equal(transform({ item: { type: "assistant_message", text: one } }), undefined);
-  h.preferences.assistantMarkdown = true;
-  h.preferences.delegatedCodeBlocks = "chart";
-  assert.equal(transform({ item: { type: "assistant_message", text: `${one}\n\`\`\`chart\ndata\n\`\`\`` } }), undefined);
 });
 
 test("auto-advance finds the next unanswered question and wraps", t => {

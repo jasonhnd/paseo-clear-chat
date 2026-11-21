@@ -1,6 +1,6 @@
 # Agent notes
 
-Clear Chat is a Paseo plugin that renders agent conversations. These notes are for coding agents and contributors.
+Clear Chat is a Paseo plugin for the answer card. It does not render the conversation. These notes are for coding agents and contributors.
 
 ## Language
 
@@ -32,4 +32,4 @@ Commit identity is `jasonhnd <3293256+jasonhnd@users.noreply.github.com>`. Do no
 
 ## Compatibility
 
-Requires Paseo >= 0.14.0. The development SDK is `@getpaseo/plugin` 0.13.0.
+Requires Paseo >= 0.16.0, as declared in `paseo-plugin.json`. The development SDK is `@getpaseo/plugin` 0.16.0.
