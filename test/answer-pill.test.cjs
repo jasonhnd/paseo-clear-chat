@@ -35,8 +35,8 @@ function pillHarness(t, options = {}) {
       feeds.push(agentId);
       return () => feeds.push(`stop:${agentId}`);
     },
-    label: card => card ? `Answer card ${card.answeredCount}/${card.questionCount}` : "Answer card",
-    title: () => "Answer card",
+    label: card => `Answer card ${card.answeredCount}/${card.questionCount}`,
+    title: card => `Answer card · ${card.answeredCount}/${card.questionCount} answered`,
     content: () => null,
     subscribe: session.subscribeOptionSession,
   };
@@ -78,12 +78,13 @@ test("the pill appears above the composer with the answered count", async t => {
   assert.equal(input.workspaceId, "w1");
   assert.equal(input.button.visible, true);
   assert.equal(input.button.label, "Answer card 0/2");
-  assert.equal(input.button.title, "Answer card");
+  assert.equal(input.button.title, "Answer card · 0/2 answered");
   assert.equal(input.button.behavior.kind, "popover");
   assert.deepEqual(f.feeds, ["a"], "the feed starts for the conversation in front of the user");
   f.session.choose("a", 0, "B");
   await f.controller.refresh();
   assert.equal(f.live()[0].patches.at(-1).label, "Answer card 1/2");
+  assert.equal(f.live()[0].patches.at(-1).title, "Answer card · 1/2 answered", "the tooltip keeps the same count");
   assert.equal(f.registrations.length, 1, "the same registration is updated, not re-added");
 });
 
