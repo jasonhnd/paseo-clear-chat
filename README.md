@@ -28,14 +28,14 @@ Open **Settings → Plugins → Clear Chat**. The page title is **Answer card**.
 
 The card's controls are:
 
-A reply is recognised only when it has numbered questions, each with at least two lettered options (`A`–`H`, including full-width `Ａ`–`Ｈ`), and either a recommendation mark or a short-reply hint such as “reply with” or “answer with”. Lines inside code fences and quotations are ignored. Letters must move forward in each question (`A` then `C` counts; `B` then `A` does not). A mark such as `（推荐）` or `(recommended)` is read; “not recommended” and `不推荐` are not.
+A reply is recognised only when it has numbered questions, each with at least two lettered options (`A`–`H`, including full-width `Ａ`–`Ｈ`), and either a recommendation mark or a short-reply hint such as “reply with” or “answer with”. Lines inside code fences and quotations are ignored. Letters must move forward in each question (`A` then `C` counts; `B` then `A` does not). A mark such as `（推荐）` or `(recommended)` is read; “not recommended” and `不推荐` are not. A line of its own that names options, such as `Recommended: A`, `推荐：A`, or `おすすめ：A`, marks those options as recommended and is not part of the option above it; the label may end with a period and may be bold. In Japanese it needs a colon or a space after it. A line such as `不推荐：A` is not read as a recommendation.
 
 1. Choose an option by clicking it, or, with focus inside the card, press its letter. You can also move with **↑/↓** and press **Enter**. Keys typed in Paseo's input box stay in that box.
 2. Choosing an unanswered question moves to the next unanswered question. The last choice moves focus to **Send**. Until every question has an answer, **Send** names the missing question and cannot be used.
 3. Question tabs show a short name. An answered tab that is not current shows `✓` and the answer text. Changing an answered question stays on that question.
 4. To write your own answer, choose **Other**. Press **Enter** to confirm and move on, or **Shift+Enter** for a new line. Choosing a character with an input method does not confirm. An empty answer shows a prompt.
-5. **Send** shows the letter indexes, such as `1B 2A`. A written answer is included in the message as you confirmed it. After a successful send the card stays grey and read-only (`Answered · read-only`). Switch question tabs to review each answer, including written answers after reloading.
-6. If an ordinary list was mistaken for questions, press **Not options**. That reply stays dismissed after reloading. The button is not shown on a read-only card or while sending.
+5. **Send** shows the letter indexes, such as `1B 2A`. A written answer is included in the message as you confirmed it. After a successful send the button is gone and the card is no longer shown; the message in the chat, for example `1B 2A`, is your answer.
+6. If an ordinary list was mistaken for questions, press **Not options**. That reply stays dismissed after reloading. The button is not shown while sending.
 7. Saved replies that you edit on the settings page appear on the card as buttons. Choosing one inserts the phrase at the cursor and does not send.
 
 A bare letter inside a sentence (for example “wait a moment”) is not treated as an answer. A numbered token such as `1A`, `2b`, or `Q1A` still counts, including when punctuation sits against it (`1A.`). A message that is only an answer is unchanged, including a single-question reply whose whole message is `b`. A message such as `Plan 2B` can still be read as an answer.
@@ -128,7 +128,7 @@ Clear Chat's own text follows the Paseo app language: English, Simplified Chines
 ## Known limitations
 
 - `Plan 2B` can still be read as an answer. A bare letter inside a sentence is not.
-- While a reply is still being written, its button does not appear above the message box. If you open an unfinished card while the agent is answering again, the panel says the reply is still running and the card can be answered when it ends.
+- While a reply is still being written, its button does not appear above the message box. If the card is open when the agent starts answering again, the panel says the reply is still running, and answers cannot be given until it ends.
 - At phone width, Enter in Paseo's own input box inserts a newline. Use that box's Send button. This is the host's behaviour.
 - This version was not checked inside a running Paseo app, with a real model, or on physical iOS or Android devices. <!-- TODO(host-verification) -->
 - Removing the plugin deletes its settings. Back them up first. Startup does not delete older files in the plugin data directory.

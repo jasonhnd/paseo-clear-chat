@@ -27,15 +27,15 @@
 - The plugin-list description is one sentence about answering lettered questions. The version prefix still matches the package version ([PR #505](https://github.com/jasonhnd/paseo-clear-chat/pull/505)).
 - When the host is missing a required method, the message names plugin RPC, a settings screen, settings registration, and a request handler. It no longer mentions timeline support ([PR #505](https://github.com/jasonhnd/paseo-clear-chat/pull/505)).
 - The answer card switch defaults to on when no value is stored. A stored value still wins ([PR #503](https://github.com/jasonhnd/paseo-clear-chat/pull/503)).
+- **Text draws with the system fonts.** The bundled font files are gone: on the web, interface text names a system sans-serif stack and code names a system monospace stack; on iOS and Android the interface font is left to the platform and code keeps Menlo and monospace. A stored interface font, code font, or code-font family is still accepted and stays in the settings file, but it no longer changes anything ([PR #508](https://github.com/jasonhnd/paseo-clear-chat/pull/508)).
 
 ### Fixed
 
 - A bare letter inside a sentence is not treated as an answer. “wait a moment” no longer marks the card answered or clears a saved draft. A numbered token such as `1A`, `2b`, or `Q1A` still counts, including when punctuation sits against it (`1A.`). A message that is only an answer is unchanged, including a single-question reply whose whole message is `b`. A message such as `Plan 2B` can still be read as an answer ([PR #502](https://github.com/jasonhnd/paseo-clear-chat/pull/502)).
-- **Interface and code text use the system fonts again.** Removing the bundled fonts left the interface font naming a family that nothing registered any more, so settings labels and the card fell back to the browser's default serif. The web build now names a system sans-serif stack for interface text and a system monospace stack for code; on iOS and Android the interface font is left to the platform and code keeps Menlo and monospace. A stored interface font, code font, or code-font family is still accepted and stays in the settings file, but nothing reads it ([PR #508](https://github.com/jasonhnd/paseo-clear-chat/pull/508)).
-- **The saved replies box fits four lines.** The box was shorter than the three default replies together, so the last one was cut off. It now holds at least four lines and scrolls inside the box when the list is longer; saving still happens when you leave the box ([PR #508](https://github.com/jasonhnd/paseo-clear-chat/pull/508)).
-- **A recommendation on its own line is no longer shown as part of the last option.** A line such as `Recommended: A` under the options was displayed as if it belonged to the last choice. <!-- TODO(polish-pr) -->
-- **The narrow panel does not show the desktop keyboard hints.** The hints under the card (`↑ ↓ move`, `A B C D choose`) are gone from the panel that opens on a narrow screen. <!-- TODO(polish-pr) -->
-- **The card's status lines follow the app language.** Simplified Chinese showed 答题卡 where the settings page says 回答卡片, and Japanese fell back to English; both now use the saved answer-card strings ([PR #509](https://github.com/jasonhnd/paseo-clear-chat/pull/509)).
+- **The saved replies box fits four lines.** The box was shorter than the three default replies together, so the last one was cut off. It now shows at least four lines, grows to eight, and scrolls inside the box for a longer list; saving still happens when you leave the box ([PR #508](https://github.com/jasonhnd/paseo-clear-chat/pull/508)).
+- **A recommendation on its own line marks options instead of joining the last one.** A line under the options that names them, such as `Recommended: A`, `推荐：A`, `おすすめ：A`, or `オススメ：A`, marks those options as recommended and is no longer shown as part of the option above it; the label may end with a period and may be bold. In Japanese it needs a colon or a space after it. A line such as `不推荐：A` is not read as a recommendation ([PR #510](https://github.com/jasonhnd/paseo-clear-chat/pull/510)).
+- **The narrow panel no longer shows the move-and-choose hints.** The `↑↓ move · ↵ choose` line is gone from the panel that opens on a narrow screen. The hint for a written answer, `Enter to confirm · Shift+Enter for a new line`, stays ([PR #510](https://github.com/jasonhnd/paseo-clear-chat/pull/510)).
+- **The card's status lines use the same wording as the rest of the page.** Simplified Chinese used a different word for the card than the rest of the interface, and Japanese showed English; both now use the card's own strings from the locale files ([PR #509](https://github.com/jasonhnd/paseo-clear-chat/pull/509)).
 
 ### Documentation
 
@@ -44,7 +44,7 @@
 ### Known limitations
 
 - `Plan 2B` can still be read as an answer.
-- While a reply is still being written, its button does not appear above the message box. A card opened while the agent is answering again says the reply is still running; the card can be answered when that reply ends.
+- While a reply is still being written, its button does not appear above the message box. If the card is open when the agent starts answering again, the panel says the reply is still running, and answers cannot be given until it ends.
 - This version was not checked inside a running Paseo app, with a real model, or on physical iOS or Android devices. <!-- TODO(host-verification) -->
 - Removing the plugin deletes its settings. Startup does not delete older plugin-data files.
 
