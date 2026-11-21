@@ -87,7 +87,14 @@ function createToolHarness(platform = "ios", options = {}) {
     useCallback: (fn, deps) => react.useMemo(() => fn, deps),
     useSyncExternalStore: (subscribe, getSnapshot) => {
       if (frame) react.useEffect(() => subscribe(noop), [subscribe]);
-      return getSnapshot();
+      const rendered = getSnapshot();
+      // React re-reads the snapshot after every commit and compares by identity: a new object
+      // each call re-renders forever (React error #185). Fail here instead of hiding it.
+      const checked = getSnapshot();
+      if (!Object.is(rendered, checked)) {
+        throw new Error("useSyncExternalStore getSnapshot must return a cached value (React error #185 when it does not)");
+      }
+      return rendered;
     },
     useEffect(fn, deps) {
       const owner = frame;
