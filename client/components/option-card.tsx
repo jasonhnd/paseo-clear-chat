@@ -940,7 +940,7 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
         </View>;
         // One bottom row: progress on the left, Send on the right, and no keyboard hint. A written
         // answer may take its own line above that row. This leaves the question body the height.
-        return <View testID="option-footer" style={{ borderTopWidth: 1, borderColor: tokens.border, borderBottomLeftRadius: 11, borderBottomRightRadius: 11, backgroundColor: tokens.surface2 }}>
+        return <View testID="option-footer" style={{ borderTopWidth: 1, borderColor: tokens.border, borderBottomLeftRadius: 11, borderBottomRightRadius: 11, backgroundColor: "transparent" }}>
           {preview}
           <View testID="option-footer-row" style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 12 }}>
             <Text testID="option-progress" style={{ ...muted, flexShrink: 1 }}>{progressText}</Text>
