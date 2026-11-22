@@ -35,7 +35,37 @@ test("focusing an option below the popover viewport scrolls only the question bo
   };
   const card = {
     style: {}, clientTop: 0, clientLeft: 0,
-    querySelector: selector => selector === '[data-testid="option-row-A"]' ? row : null,
+    querySelector: selector => selector === '[data-testid="option-row-B"]' ? row : null,
+    closest: () => null,
+    getBoundingClientRect: () => ({ top: 100, left: 10, width: 380, height: 300 }),
+    appendChild() {}, animate() {},
+  };
+  const tree = draw();
+  byId(h, tree, "option-card").props.ref(card);
+  // Drive with the keyboard: ArrowDown from A moves the cursor to B.
+  byId(h, tree, "option-card").props.onKeyDown({
+    key: "ArrowDown", target: { getAttribute: () => "option-row-A", closest: () => true },
+    nativeEvent: {}, preventDefault() {}, stopPropagation() {},
+  });
+  await new Promise(resolve => setTimeout(resolve, 10));
+  assert.ok(scroller.scrollTop > 0, `the focused row must be revealed, scrollTop=${scroller.scrollTop}`);
+  assert.equal(s.getOptionSession("a").activeQuestion, 0, "precondition: the arrow only moves within Q1");
+});
+
+test("choosing an option that advances to the next question resets the popover scroll", async t => {
+  const { h, draw } = fixture(t);
+  const row = {
+    focus() {},
+    closest: () => null,
+    getBoundingClientRect: () => ({ top: 20, bottom: 70, left: 0, right: 100 }),
+  };
+  const scroller = {
+    style: {}, scrollTop: 180, clientHeight: 200, scrollHeight: 600,
+    getBoundingClientRect: () => ({ top: 0, bottom: 200, left: 0, right: 320 }),
+  };
+  const card = {
+    style: {}, clientTop: 0, clientLeft: 0,
+    querySelector: selector => selector === '[data-testid="option-question-scroll"]' ? scroller : selector === '[data-testid="option-row-A"]' ? row : null,
     closest: () => null,
     getBoundingClientRect: () => ({ top: 100, left: 10, width: 380, height: 300 }),
     appendChild() {}, animate() {},
@@ -44,6 +74,5 @@ test("focusing an option below the popover viewport scrolls only the question bo
   byId(h, tree, "option-card").props.ref(card);
   byId(h, tree, "option-row-A").props.onPress();
   await new Promise(resolve => setTimeout(resolve, 10));
-  assert.ok(scroller.scrollTop > 0, `the focused row must be revealed, scrollTop=${scroller.scrollTop}`);
-  assert.equal(s.getOptionSession("a").activeQuestion, 1, "precondition: the card advanced to Q2");
+  assert.equal(scroller.scrollTop, 0, `a new question starts at the top, scrollTop=${scroller.scrollTop}`);
 });
