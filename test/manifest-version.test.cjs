@@ -117,7 +117,7 @@ child.spawnSync = (command, args, options) => {
   const expected = process.platform === "win32" ? "npm.cmd" : "npm";
   const record = { command, args, shell: !!options.shell, executable: process.env.FAKE_PATH };
   try {
-    if (command !== expected || JSON.stringify(args) !== JSON.stringify(["ci", "--include=dev"]) || !!options.shell !== (process.platform === "win32")) throw new Error("unexpected installer invocation");
+    if (command !== expected || JSON.stringify(args) !== JSON.stringify(["ci", "--include=dev", "--ignore-scripts"]) || !!options.shell !== (process.platform === "win32")) throw new Error("unexpected installer invocation");
     const stat = fs.lstatSync(process.env.FAKE_PATH);
     if (!stat.isFile() || (process.platform !== "win32" && !(stat.mode & 0o111))) throw new Error("fake is not executable");
     const digest = crypto.createHash("sha256").update(fs.readFileSync(process.env.FAKE_PATH)).digest("hex");
@@ -153,9 +153,9 @@ function assertInvocation(dir, expected = "run") {
     console.log("fake npm markers: guard=0; executed=0");
     return;
   }
-  assert.deepEqual(guard, [{ command: process.platform === "win32" ? "npm.cmd" : "npm", args: ["ci", "--include=dev"], shell: process.platform === "win32", executable: fakePath(dir), rejected: expected === "rejected" }]);
-  assert.deepEqual(fake, expected === "run" ? [{ executable: fakePath(dir), args: ["ci", "--include=dev"] }] : []);
-  console.log(`fake npm markers: guard=1; rejected=${expected === "rejected"}; executed=${fake.length}; args=ci,--include=dev`);
+  assert.deepEqual(guard, [{ command: process.platform === "win32" ? "npm.cmd" : "npm", args: ["ci", "--include=dev", "--ignore-scripts"], shell: process.platform === "win32", executable: fakePath(dir), rejected: expected === "rejected" }]);
+  assert.deepEqual(fake, expected === "run" ? [{ executable: fakePath(dir), args: ["ci", "--include=dev", "--ignore-scripts"] }] : []);
+  console.log(`fake npm markers: guard=1; rejected=${expected === "rejected"}; executed=${fake.length}; args=ci,--include=dev,--ignore-scripts`);
 }
 
 function clearMarkers(dir) {

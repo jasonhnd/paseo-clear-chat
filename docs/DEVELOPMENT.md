@@ -50,7 +50,7 @@ npx tsc --noEmit
 
 Run `npm test` with `PASEO_HOME` pointed at an empty directory so the suite does not read a real host config.
 
-`node scripts/install.cjs` runs `npm ci --include=dev` in the checkout, then resolves `@getpaseo/plugin` and `zod`. It does not install a syntax-highlighting package. Dependency failures use a fixed recovery message.
+`node scripts/install.cjs` runs `npm ci --include=dev --ignore-scripts` in the checkout, then resolves `@getpaseo/plugin` and `zod`. It does not install a syntax-highlighting package. Dependency failures use a fixed recovery message.
 
 The manifest requirement is enforced by Paseo before plugin code runs. After load, the client checks `rpc` and `addSettingsScreen`. The server checks `registerSettings` and `handle`. The incompatible-host text names those methods. The SDK does not give the contribution a host version, so the plugin does not guess one.
 

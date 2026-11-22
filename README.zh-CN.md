@@ -169,7 +169,7 @@ Clear Chat 自己的文字跟随 Paseo 的应用语言：英文、简体中文�
 
 | 问题 | 怎么办 |
 |---|---|
-| 用 Cafe 插件安装失败。 | 用[安装](#安装)里的 Paseo CLI 命令重试，仓库和版本标签保持不变。Clear Chat 用 `npm ci --include=dev` 安装依赖，所以运行 daemon 的主机上要有 Node.js 和 npm，网络也要能连到 npm 仓库。如果代码目录是你自己管理的，请先在那里运行 `npm ci --include=dev` 再重试。 |
+| 用 Cafe 插件安装失败。 | 用[安装](#安装)里的 Paseo CLI 命令重试，仓库和版本标签保持不变。Clear Chat 用 `npm ci --include=dev --ignore-scripts` 安装依赖，所以运行 daemon 的主机上要有 Node.js 和 npm，网络也要能连到 npm 仓库。如果代码目录是你自己管理的，请先在那里运行 `npm ci --include=dev --ignore-scripts` 再重试。 |
 | 安装停止，提示插件需要更新的 Paseo 版本。 | Clear Chat 0.17.1.1 需要 daemon 主机和所有连接的应用都用 Paseo 0.16.0 或更新版本。在 Paseo 0.15.x 上请留在 Clear Chat 0.15.4.x。更旧的宿主见[安装](#安装)。 |
 | Clear Chat 提示需要插件 RPC、设置页面、设置注册和请求处理。 | 把运行 daemon 的主机和所有连着的应用都更新 Paseo，再重新加载 Clear Chat。需要的版本写在 `paseo-plugin.json` 里。 |
 | 插件注册失败，Clear Chat 启动不了。 | 更新 Paseo，再重新加载 Clear Chat。还不行的话，先备份插件设置，再用 CLI 重新安装。 |

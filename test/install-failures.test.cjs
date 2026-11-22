@@ -102,16 +102,16 @@ test("missing runtime packages name the dependency and explain how to repair it"
     });
     assert.equal(status, 1);
     assert.ok(errors.join("").includes(missing));
-    assert.match(errors.join(""), /npm ci --include=dev.*retry.*Paseo CLI/i);
+    assert.match(errors.join(""), /npm ci --include=dev --ignore-scripts.*retry.*Paseo CLI/i);
     assert.doesNotMatch(errors.join(""), /Sensitive|internal\/file/);
   }
 });
 
-test("successful installation includes development dependencies and prints no warning", () => {
+test("successful installation includes development dependencies with lifecycle scripts disabled", () => {
   const { install } = require("../scripts/install.cjs");
   const calls = [], errors = [];
   assert.equal(install({ run: (...args) => { calls.push(args); return { status: 0 }; }, resolveDependency() {}, report: value => errors.push(value) }), 0);
-  assert.deepEqual(calls[0].slice(0, 2), [process.platform === "win32" ? "npm.cmd" : "npm", ["ci", "--include=dev"]]);
+  assert.deepEqual(calls[0].slice(0, 2), [process.platform === "win32" ? "npm.cmd" : "npm", ["ci", "--include=dev", "--ignore-scripts"]]);
   assert.deepEqual(errors, []);
 });
 
