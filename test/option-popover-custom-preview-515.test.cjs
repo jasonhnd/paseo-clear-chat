@@ -23,7 +23,7 @@ test("the popover preview shows the answer index and the start of the written an
   assert.ok(preview, "precondition: the preview renders");
   const lines = h.text(preview).split("\n").map(line => line.trim()).filter(Boolean);
   assert.equal(lines[0], "1C", "the first line is the answer index");
-  assert.match(lines[1], /^1C：CUSTOMBODY/, `the second line starts the written answer, got ${lines[1]}`);
+  assert.match(lines[1], /^1C：A deliberately long custom answer/, `the second line starts the written answer, got ${lines[1]}`);
 });
 
 test("shortening the preview does not change the sent message", async t => {
