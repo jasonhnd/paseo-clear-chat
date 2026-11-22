@@ -18,7 +18,8 @@ function install({ run = spawnSync, resolveDependency = require.resolve, report 
   // every package in the lock that declares one (esbuild, fsevents, msgpackr-extract,
   // node-pty) is development-only tooling pulled in by @getpaseo/server and the test
   // toolchain. The plugin runtime loads host-provided libraries plus zod, all plain
-  // JavaScript, so no native binary is required and npm must not fetch or build one.
+  // JavaScript, so no lifecycle script may fetch or build one. npm ci still installs
+  // the platform packages the lock names, such as @esbuild/darwin-arm64.
   let result;
   try {
     result = run(process.platform === "win32" ? "npm.cmd" : "npm", ["ci", "--include=dev", "--ignore-scripts"], {

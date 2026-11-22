@@ -9,7 +9,7 @@
 
 - **The version follows Paseo 0.17.2.** The first three parts of the Clear Chat version are the Paseo version this build was checked with, and the fourth counts Clear Chat's releases for that host version. The minimum host version is unchanged at Paseo 0.16.0: the plugin uses no host interface that appeared after 0.16.0.
 - **The host badge reads tested 0.17.2.** The README badge in all three languages names Paseo 0.17.2, the browser interface this build was checked in, while the minimum stays Paseo 0.16.0.
-- **The answer card code is the same as the previous release.** Nothing changes in how the card works. The previous release kept **Send** in view when the card opens in the desktop panel, with the question area scrolling inside the card and the saved replies scrolling with it.
+- **The answer card code is the same as the previous release.** Nothing changes in how the card works. The card keeps **Send** in view when it opens in the desktop panel, with the question area scrolling inside the card and the saved replies scrolling with it.
 - The dependency pins are unchanged: the install still uses the patched versions of six transitive packages, and CI fails when a production dependency has an advisory.
 
 ### Upgrade notes
