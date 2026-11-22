@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Animated, Platform, Pressable, Text, View, useWindowDimensions, type TextInput as NativeTextInput, type ViewStyle } from "react-native";
+import { Animated, Platform, Pressable, ScrollView, Text, View, useWindowDimensions, type TextInput as NativeTextInput, type ViewStyle } from "react-native";
 import * as pluginClient from "@getpaseo/plugin/client";
 import { useAgent, useTranslation } from "@getpaseo/plugin/client";
 import { TextInput } from "@getpaseo/plugin/client/ui";
@@ -23,6 +23,16 @@ const useComposers = (pluginClient as unknown as { useComposers?: (selector: { a
 
 const pendingSendFocusAgents = new Map<string, number>();
 const focusCardKey = (agentId: string, at: number) => `${agentId}\u0000${at}`;
+
+// The host opens a composer pill in a popover capped at 440 px (host `PluginPopoverSurface`).
+// Its body pads 12 px a side and the scroll content adds 4 px top and bottom, so the card may
+// use 408 px. A short window is clamped by the host to `windowHeight - 16` before that padding
+// is removed (`menu-overlay.tsx:122-129` in both host v0.16.2 and v0.17.1).
+export function popoverCardMaxHeight(windowHeight: number): number {
+  // Below roughly 117 px the footer itself no longer fits; such a window is not supported.
+  if (!Number.isFinite(windowHeight)) return 408;
+  return Math.min(408, Math.max(0, windowHeight - 16 - 32));
+}
 
 /**
  * The Recommended badge sits on a tinted accent background. On dark themes the
@@ -61,7 +71,7 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
       else node.focus();
     }
   }, [customKeyListener]);
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const [viewed, setViewed] = useState<{ agentId: string; at: number; index: number } | null>(null);
   const [focused, setFocused] = useState<string | null>(null);
   const [resumeRetry, setResumeRetry] = useState(false);
@@ -74,6 +84,38 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
   const pendingPreview = useRef<{ card: HTMLElement; height: number; scroller: HTMLElement | null; scrollTop: number; anchor: string; previousHeight: string; previousOverflow: string } | null>(null);
   const pendingResize = useRef<{ card: HTMLElement; row: HTMLElement; input: HTMLElement | null; opening: boolean; height: number; rowHeight: number; inputHeight: number; scroller: HTMLElement | null; scrollTop: number; anchor: string; previousHeight: string; previousOverflow: string } | null>(null);
   const scrollSpace = useRef<{ card: HTMLElement; scroller: HTMLElement; original: string; base: number; amount: number; stop: () => void; trim: () => void } | null>(null);
+  // Popover layout: the question body scrolls inside the card, so the cue must follow both its
+  // viewport and its content. The values live in a ref until a scroll or layout event arrives.
+  const [popoverScrollCue, setPopoverScrollCue] = useState({ top: false, bottom: false });
+  const popoverScrollMetrics = useRef({ viewport: 0, content: 0, offset: 0 });
+  // The popover panel colour behind the card, with the card's own 2% overlay baked in. The scroll
+  // fade must end on this opaque colour: fading to a translucent overlay leaves a visible edge.
+  const [popoverBackdrop, setPopoverBackdrop] = useState<string | null>(null);
+  const readOnlyNow = session?.readOnly === true;
+  const wantsPinnedSurface = Platform.OS === "web" && surface === "popover" && !compact && !readOnlyNow;
+  useEffect(() => {
+    if (!wantsPinnedSurface) { setPopoverBackdrop(null); return; }
+    const card = root.current as unknown as HTMLElement | null;
+    if (!card?.parentElement || typeof globalThis.getComputedStyle !== "function") return;
+    const parse = (value: string) => {
+      const match = /rgba?\(([^)]+)\)/.exec(value);
+      if (!match) return null;
+      const parts = match[1]!.split(",").map(part => Number.parseFloat(part.trim()));
+      return { r: parts[0] ?? 0, g: parts[1] ?? 0, b: parts[2] ?? 0, a: parts[3] ?? 1 };
+    };
+    let backdrop: { r: number; g: number; b: number; a: number } | null = null;
+    let node: HTMLElement | null = card.parentElement;
+    while (node && node !== globalThis.document.body) {
+      const color = parse(globalThis.getComputedStyle(node).backgroundColor);
+      if (color && color.a > 0) { backdrop = color; break; }
+      node = node.parentElement;
+    }
+    const own = parse(globalThis.getComputedStyle(card).backgroundColor);
+    if (!backdrop || !own) { setPopoverBackdrop(null); return; }
+    const alpha = own.a;
+    const mix = (front: number, back: number) => Math.round(front * alpha + back * (1 - alpha));
+    setPopoverBackdrop(`rgb(${mix(own.r, backdrop.r)}, ${mix(own.g, backdrop.g)}, ${mix(own.b, backdrop.b)})`);
+  }, [wantsPinnedSurface, surface, compact, tokens.isDark, tokens.surface1, session?.followupStatus]);
   const clearScrollSpace = () => {
     const space = scrollSpace.current;
     if (!space) return;
@@ -447,14 +489,78 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
       ? state : { agentId, at, index, height: 0, empty: false }), ...change }));
   };
   const readOnly = session.readOnly;
+  // The desktop popover hands the card a 440 px box (the host caps `PluginPopoverSurface` and
+  // pads it by 12 px a side). The narrow sheet and the timeline keep their single-column layout;
+  // only the desktop popover gets an inner scroll and a pinned footer.
+  const pinnedPopover = Platform.OS === "web" && surface === "popover" && !compact && !readOnly;
+  const cardBackground = session.followupStatus === "waiting" ? (tokens.isDark ? tokens.surface0 : "#ffffff") : session.followupStatus === "ended" ? (tokens.isDark ? tokens.surface1 : "#f0f0f0") : tokens.surface1;
+  const updatePopoverScrollCue = (offset: number, viewport: number, content: number) => {
+    popoverScrollMetrics.current = { viewport, content, offset };
+    const next = { top: offset > 1, bottom: viewport > 0 && content > 0 && offset + viewport < content - 1 };
+    setPopoverScrollCue(current => current.top === next.top && current.bottom === next.bottom ? current : next);
+  };
+  // Keyboard and tab focus can land on a row outside the inner viewport. Scroll only the
+  // question body, never the host conversation scroller.
+  const revealPopoverRow = (node: HTMLElement | null) => {
+    if (!pinnedPopover || !node) return;
+    const scroller = node.closest?.('[data-testid="option-question-scroll"]') as HTMLElement | null;
+    if (!scroller || typeof scroller.getBoundingClientRect !== "function" || typeof node.getBoundingClientRect !== "function") return;
+    const row = node.getBoundingClientRect();
+    const view = scroller.getBoundingClientRect();
+    let next = scroller.scrollTop;
+    // Keep the row clear of the 24 px bottom fade, not merely inside the viewport.
+    const fadeInset = 24;
+    if (row.top < view.top + fadeInset) next -= view.top + fadeInset - row.top + 4;
+    else if (row.bottom > view.bottom - fadeInset) next += row.bottom - (view.bottom - fadeInset) + 4;
+    const max = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+    if (next !== scroller.scrollTop) scroller.scrollTop = Math.max(0, Math.min(next, max));
+    updatePopoverScrollCue(scroller.scrollTop, scroller.clientHeight, scroller.scrollHeight);
+  };
+  const resetPopoverScroll = () => {
+    if (!pinnedPopover) return;
+    const scroller = root.current?.querySelector<HTMLElement>('[data-testid="option-question-scroll"]');
+    if (!scroller) return;
+    scroller.scrollTop = 0;
+    popoverScrollMetrics.current.offset = 0;
+    updatePopoverScrollCue(0, scroller.clientHeight, scroller.scrollHeight);
+  };
+  const popoverScrollProps = pinnedPopover ? {
+    onScroll: (event: { nativeEvent: { contentOffset: { y: number }; contentSize: { height: number }; layoutMeasurement: { height: number } } }) => {
+      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+      updatePopoverScrollCue(contentOffset.y, layoutMeasurement.height, contentSize.height);
+    },
+    onLayout: (event: { nativeEvent: { layout: { height: number } } }) => {
+      updatePopoverScrollCue(popoverScrollMetrics.current.offset, event.nativeEvent.layout.height, popoverScrollMetrics.current.content);
+    },
+    onContentSizeChange: (_width: number, height: number) => {
+      updatePopoverScrollCue(popoverScrollMetrics.current.offset, popoverScrollMetrics.current.viewport, height);
+    },
+    scrollEventThrottle: 16,
+  } : {};
+  // The card background is a 2% overlay; fading to it leaves a visible edge. Fade to the opaque
+  // panel colour behind the card instead, so the lower end disappears into the background.
+  const fadeBackdrop = popoverBackdrop ?? (tokens.isDark ? "#1a1a1e" : "#fafafa");
+  const scrollFade = (edge: "top" | "bottom"): ViewStyle => ({
+    position: "absolute", left: 0, right: 0, [edge]: 0, height: 24, pointerEvents: "none", zIndex: 2,
+    backgroundImage: edge === "bottom"
+      ? `linear-gradient(to bottom, ${withAlpha(fadeBackdrop, 0)}, ${fadeBackdrop})`
+      : `linear-gradient(to top, ${withAlpha(fadeBackdrop, 0)}, ${fadeBackdrop})`,
+  } as unknown as ViewStyle);
   const disabled = readOnly || session.sending || status === "running";
   const missing = missingQuestion(agentId, at);
   const answer = answerText(agentId, at);
   const answeredCount = session.set.questions.filter((_, i) => session.choices[i] !== undefined || session.customConfirmed[i] !== undefined).length;
+  const progressText = t("answerCard.progress", { chosen: answeredCount, total: session.set.questions.length, remaining: session.set.questions.length - answeredCount });
   const hasCustomAnswer = Object.keys(session.customConfirmed).length > 0;
   const draftReady = customOpen && customConfirmed === undefined && !!session.customDrafts[index]?.trim();
   const sendDisabled = disabled || (answer === null && !draftReady);
   const number = (i: number) => questionNumber(session.set, i);
+  const firstCustomIndex = session.set.questions.findIndex((_, i) => session.customConfirmed[i] !== undefined);
+  const firstCustomContent = firstCustomIndex >= 0 ? session.customConfirmed[firstCustomIndex] : undefined;
+  const customPreviewLine = firstCustomContent === undefined ? null
+    : `${number(firstCustomIndex)}${customLetterFor(agentId, firstCustomIndex, at) ?? customAnswerLetter(session.set.questions[firstCustomIndex]!)}：${firstCustomContent.replace(/\s+/g, " ").trim()}`;
+  // Display only: the sent message still comes from `answerText`/`formatCustomAnswers`.
+  const previewAnswer = pinnedPopover && customPreviewLine ? `${answerIndex(agentId, at) ?? ""}\n${customPreviewLine}` : answer;
   const label = { color: tokens.foreground, fontFamily: tokens.fontUi, fontSize: tokens.fs(13) };
   const muted = { ...label, color: tokens.foregroundMuted, fontSize: tokens.fs(12) };
   // Reserve one hint row so the card does not jump when the hint appears or clears.
@@ -465,13 +571,17 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
     onBlur: () => setFocused(current => current === id ? null : current),
   } : {};
   const focusStyle = (id: string) => Platform.OS === "web" ? {
-    outlineStyle: focused === id ? "solid" : "none", outlineWidth: 2, outlineOffset: 1, outlineColor: tokens.accent,
+    outlineStyle: focused === id ? "solid" : "none", outlineWidth: 2, outlineOffset: -2, outlineColor: tokens.accent,
   } as ViewStyle : undefined;
   const focus = (testId: string) => {
     setTimeout(() => {
       const current = getOptionSessionAt(agentId, at);
       if (current?.at !== at || current.readOnly || current.sending || status === "running") return;
-      if (Platform.OS === "web") root.current?.querySelector<HTMLElement>(`[data-testid="${testId}"]`)?.focus({ preventScroll: true });
+      if (Platform.OS === "web") {
+        const node = root.current?.querySelector<HTMLElement>(`[data-testid="${testId}"]`) ?? null;
+        node?.focus({ preventScroll: true });
+        revealPopoverRow(node);
+      }
       else if (testId === "option-custom-input") customInput.current?.focus();
     }, 0);
   };
@@ -531,12 +641,14 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
   const switchQuestion = (nextIndex: number) => {
     if (nextIndex === index) return;
     if (readOnly) {
+      resetPopoverScroll();
       prepareQuestionSwitch();
       setViewed({ agentId, at, index: nextIndex });
       return;
     }
     const current = getOptionSessionAt(agentId, at);
     if (!current || (!current.resumed && !getOptionSession(agentId, at)) || current.at !== at || current.readOnly || current.sending || current.activeQuestion === nextIndex) return;
+    resetPopoverScroll();
     prepareQuestionSwitch();
     setActiveQuestion(agentId, nextIndex, at);
   };
@@ -576,6 +688,7 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
     const after = getOptionSessionAt(agentId, at);
     cancelUnchangedSwitch(after?.activeQuestion ?? index);
     if (!after || wasAnswered) return;
+    if (after.activeQuestion !== index) resetPopoverScroll();
     if (missingQuestion(agentId, at) === null) { if (!previewPending) focus("option-send"); }
     else focus(`option-row-${after.set.questions[after.activeQuestion]!.options[after.cursor[after.activeQuestion] ?? 0]!.letter}`);
   };
@@ -605,11 +718,19 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
         pendingCustomFocus.current = false;
         const latest = getOptionSessionAt(agentId, at);
         if (latest?.at !== at || latest.activeQuestion !== index || !latest.customOpen[index] || latest.readOnly || latest.sending) return;
-        if (Platform.OS === "web") root.current?.querySelector<HTMLElement>('[data-testid="option-custom-input"]')?.focus({ preventScroll: true });
+        if (Platform.OS === "web") {
+          const node = root.current?.querySelector<HTMLElement>('[data-testid="option-custom-input"]') ?? null;
+          node?.focus({ preventScroll: true });
+          revealPopoverRow(node);
+        }
         else customInput.current?.focus();
       }, 0);
     } else if (customInput.current && typeof customInput.current.focus === "function") {
-      if (Platform.OS === "web") (customInput.current as unknown as HTMLElement).focus({ preventScroll: true });
+      if (Platform.OS === "web") {
+        const node = customInput.current as unknown as HTMLElement;
+        node.focus({ preventScroll: true });
+        revealPopoverRow(node);
+      }
       else customInput.current.focus();
     } else focus("option-custom-input");
   };
@@ -741,14 +862,20 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
         </Animated.View>
     );
   };
+  // In the popover the saved replies move inside the question body, below the options; on the
+  // timeline and the sheet they keep their own row under the card body.
+  const savedRepliesRow = !readOnly && preferences.savedReplies.length > 0 ? <View testID="saved-replies-row" accessibilityLabel={t("answerStyle.savedRepliesLabel")} style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: pinnedPopover ? 0 : 16, paddingBottom: 12, ...(pinnedPopover ? { paddingTop: 12 } : {}) }}>
+    {preferences.savedReplies.map((phrase, index) => <Pressable key={index} testID={`saved-reply-${index}`} accessibilityRole="button" accessibilityLabel={phrase} {...(Platform.OS === "web" ? { onMouseDown: (event: React.MouseEvent) => event.preventDefault() } : {})} onPress={() => { const target = latestComposer.current; if (!target) return; const prompt = target.prompt; const selection = target.selection; if (!selection) { const last = prompt.charAt(prompt.length - 1); target.insertText(last !== "" && !/\s/.test(last) ? ` ${phrase}` : phrase); return; } const start = Math.max(0, Math.min(selection.start, prompt.length)); const previous = start > 0 ? prompt.charAt(start - 1) : ""; target.insertText(previous !== "" && !/\s/.test(previous) ? ` ${phrase}` : phrase); }} style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: 12, borderWidth: 1, borderColor: tokens.border, borderRadius: 18 }}><Text style={label}>{phrase}</Text></Pressable>)}
+  </View> : null;
   return (
-    <View {...keyboardProps} testID="option-card" accessibilityState={{ disabled: readOnly }} style={{ marginTop: surface === "timeline" ? 12 : 0, borderWidth: 1, borderColor: tokens.border, borderRadius: 12, backgroundColor: session.followupStatus === "waiting" ? (tokens.isDark ? tokens.surface0 : "#ffffff") : session.followupStatus === "ended" ? (tokens.isDark ? tokens.surface1 : "#f0f0f0") : tokens.surface1, opacity: readOnly && !session.followupStatus ? 0.55 : 1 }}>
-      <View style={{ padding: 16, gap: 12 }}>
+    <View {...keyboardProps} testID="option-card" accessibilityState={{ disabled: readOnly }} style={{ marginTop: surface === "timeline" ? 12 : 0, borderWidth: 1, borderColor: tokens.border, borderRadius: 12, backgroundColor: cardBackground, opacity: readOnly && !session.followupStatus ? 0.55 : 1, ...(pinnedPopover ? { maxHeight: popoverCardMaxHeight(height), overflow: "hidden" } : {}) }}>
+      <View style={{ padding: pinnedPopover ? 12 : 16, gap: pinnedPopover ? 8 : 12, ...(pinnedPopover ? { flexShrink: 1, minHeight: 0 } : {}) }}>
         {session.followupStatus === "waiting" ? <Text testID="option-followup-heading" style={muted}>{t("answerCard.statusWaiting", { chosen: answeredCount, total: session.set.questions.length })}</Text> : null}
         {session.followupStatus === "ended" ? <Text testID="option-followup-heading" style={muted}>{t("answerCard.statusEnded", { chosen: answeredCount, total: session.set.questions.length })}</Text> : null}
         {session.followupStatus === "waiting" ? <Text testID="option-saved-position" style={muted}>{t("answerCard.savedPosition", { question: number(session.activeQuestion) })}</Text> : null}
         {session.followupStatus === "ended" ? <Text testID="option-ended-message" style={muted}>{t("answerCard.endedMessage")}</Text> : null}
-        <View testID="option-tabs" style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        {(() => {
+          const tabs = <>
           {session.set.questions.map((q, i) => {
             const chosen = q.options.find(option => option.letter === session.choices[i]);
             const chosenText = chosen?.text.replace(/\s+/g, " ").trim();
@@ -778,31 +905,40 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
           {resumeRetry ? <Text testID="option-resume-retry" accessibilityRole="alert">{t("answerCard.tryAgain")}</Text> : null}
           {readOnly && !session.followupStatus ? <Text testID="option-read-only-status" style={{ ...muted, marginLeft: "auto" }}>{t("answerCard.readOnlyStatus")}</Text> : null}
           {!readOnly && !session.sending ? <Pressable testID="option-dismiss" accessibilityRole="button" onPress={() => { if (getOptionSessionAt(agentId, at)?.at === at) dismiss(agentId, at); }} style={{ minHeight: 44, justifyContent: "center", marginLeft: "auto" }}><Text style={muted}>{t("answerCard.notOptions")}</Text></Pressable> : null}
-        </View>
+          </>;
+          if (!pinnedPopover) return <View testID="option-tabs" style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>{tabs}</View>;
+          // A long card can name twelve questions; wrapped tabs would eat the whole card, so in
+          // the popover the tab strip keeps one row and scrolls sideways instead.
+          return <ScrollView horizontal testID="option-tabs" showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0, maxHeight: 36 }} contentContainerStyle={{ flexDirection: "row", alignItems: "center", gap: 8 }}>{tabs}</ScrollView>;
+        })()}
         {session.followupStatus === "waiting" ? <Text testID="option-current-question" style={muted}>{t("answerCard.currentQuestion", { question: number(session.activeQuestion) })}</Text> : null}
-        <Text testID="option-progress" style={muted}>{t("answerCard.progress", { chosen: answeredCount, total: session.set.questions.length, remaining: session.set.questions.length - answeredCount })}</Text>
-        {readOnly && Platform.OS === "web" ? <View style={{ backgroundColor: tokens.surface1 }} ref={(node: View | null) => {
-          const frame = node as unknown as HTMLElement | null;
-          if (!frame?.style) return;
-          frame.style.display = "grid";
-          Array.from(frame.children).forEach(child => { (child as HTMLElement).style.gridArea = "1 / 1"; });
-        }}>
-          {session.set.questions.map((_, i) => i === index ? renderQuestion(i) : <View key={i} testID="option-question-measure" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" {...({ "aria-hidden": true } as object)} style={{ visibility: "hidden", pointerEvents: "none" } as ViewStyle}>{renderQuestion(i, true)}</View>)}
-        </View> : renderQuestion(index)}
+        {pinnedPopover ? null : <Text testID="option-progress" style={muted}>{progressText}</Text>}
+        {(() => {
+          const body = readOnly && Platform.OS === "web" ? <View style={{ backgroundColor: tokens.surface1 }} ref={(node: View | null) => {
+            const frame = node as unknown as HTMLElement | null;
+            if (!frame?.style) return;
+            frame.style.display = "grid";
+            Array.from(frame.children).forEach(child => { (child as HTMLElement).style.gridArea = "1 / 1"; });
+          }}>
+            {session.set.questions.map((_, i) => i === index ? renderQuestion(i) : <View key={i} testID="option-question-measure" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" {...({ "aria-hidden": true } as object)} style={{ visibility: "hidden", pointerEvents: "none" } as ViewStyle}>{renderQuestion(i, true)}</View>)}
+          </View> : renderQuestion(index);
+          if (!pinnedPopover) return body;
+          // The host popover is one fixed box; without an inner scroll the action row at the end
+          // of a tall card sits below the fold. Only the question body scrolls here.
+          return <View style={{ flexShrink: 1, minHeight: 0, position: "relative" }}>
+            <ScrollView testID="option-question-scroll" {...popoverScrollProps} style={{ flexShrink: 1, minHeight: 0 }}>
+              {body}
+              {savedRepliesRow}
+            </ScrollView>
+            {popoverScrollCue.top ? <View testID="option-scroll-fade-top" pointerEvents="none" style={scrollFade("top")} /> : null}
+            {popoverScrollCue.bottom ? <View testID="option-scroll-fade-bottom" pointerEvents="none" style={scrollFade("bottom")} /> : null}
+          </View>;
+        })()}
         {session.error ? <Text testID="option-send-error" accessibilityRole="alert" style={{ ...muted, color: tokens.danger }}>{t("answerCard.error", { reason: session.error })}</Text> : null}
       </View>
-      {!readOnly && preferences.savedReplies.length > 0 ? <View testID="saved-replies-row" accessibilityLabel={t("answerStyle.savedRepliesLabel")} style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: 16, paddingBottom: 12 }}>
-        {preferences.savedReplies.map((phrase, index) => <Pressable key={index} testID={`saved-reply-${index}`} accessibilityRole="button" accessibilityLabel={phrase} {...(Platform.OS === "web" ? { onMouseDown: (event: React.MouseEvent) => event.preventDefault() } : {})} onPress={() => { const target = latestComposer.current; if (!target) return; const prompt = target.prompt; const selection = target.selection; if (!selection) { const last = prompt.charAt(prompt.length - 1); target.insertText(last !== "" && !/\s/.test(last) ? ` ${phrase}` : phrase); return; } const start = Math.max(0, Math.min(selection.start, prompt.length)); const previous = start > 0 ? prompt.charAt(start - 1) : ""; target.insertText(previous !== "" && !/\s/.test(previous) ? ` ${phrase}` : phrase); }} style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: 12, borderWidth: 1, borderColor: tokens.border, borderRadius: 18 }}><Text style={label}>{phrase}</Text></Pressable>)}
-      </View> : null}
-      {readOnly ? <View style={{ padding: 16, borderTopWidth: 1, borderColor: tokens.border }}><Text testID="option-answered" style={muted}>{`Answered in the chat: ${session.answeredText}`}</Text></View> : <View style={{ flexDirection: hasCustomAnswer ? "column" : "row", alignItems: hasCustomAnswer ? "stretch" : "center", justifyContent: "space-between", gap: 8, padding: 16, borderTopWidth: 1, borderColor: tokens.border, borderBottomLeftRadius: 11, borderBottomRightRadius: 11, backgroundColor: tokens.surface2 }}>
-        {hasCustomAnswer && answer !== null ? <Text testID="option-send-preview" selectable style={{ ...label, color: tokens.foregroundMuted }}>{answer}</Text> : null}
-        {/* A compact layout is a touch sheet: there is no hardware keyboard to hint at. */}
-        {(Platform.OS === "web" && !compact) || (customOpen && customConfirmed === undefined) ? <Text testID="option-hint" style={{ ...muted, lineHeight: hintHeight, minHeight: hintHeight, fontFamily: customOpen && customConfirmed === undefined ? tokens.fontUi : tokens.fontMono, flexShrink: 1 }}>{customOpen && customConfirmed === undefined
-          ? t("answerCard.hintCustom")
-          : focused === "option-send"
-          ? t("answerCard.hintSend").replace(/^Tab →\s*/, "↵ ").toLowerCase()
-          : `${t("answerCard.hintMove").replace(/^↑\s*↓/, "↑↓")} · ↵ ${t("answerCard.hintPick").replace(/^A B C D\s*/, "")}`}</Text> : <View testID="option-hint-slot" style={{ minHeight: hintHeight }} />}
-        <Pressable {...focusProps("option-send")} testID="option-send" accessibilityRole="button" accessibilityState={{ disabled: sendDisabled }} disabled={sendDisabled} focusable={!sendDisabled} onPress={() => {
+      {pinnedPopover ? null : savedRepliesRow}
+      {readOnly ? <View style={{ padding: 16, borderTopWidth: 1, borderColor: tokens.border }}><Text testID="option-answered" style={muted}>{`Answered in the chat: ${session.answeredText}`}</Text></View> : (() => {
+        const sendButton = <Pressable {...focusProps("option-send")} testID="option-send" accessibilityRole="button" accessibilityState={{ disabled: sendDisabled }} disabled={sendDisabled} focusable={!sendDisabled} onPress={() => {
           const current = getOptionSessionAt(agentId, at);
           if (!current || current.at !== at || sendDisabled) return;
           if (draftReady) {
@@ -841,8 +977,28 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
           void sendAnswer(agentId, at).then(finishSend).catch(finishSend);
         }} style={[{ minHeight: 44, justifyContent: "center", alignItems: "center", paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderStyle: "solid", borderColor: sendDisabled ? tokens.foregroundMuted : tokens.accent, backgroundColor: sendDisabled ? "transparent" : tokens.accent }, focusStyle(sendDisabled ? "" : "option-send")]}>
           <Text style={{ ...label, color: sendDisabled ? tokens.foregroundMuted : tokens.accentForeground, fontWeight: "700" }}>{customOpen && customConfirmed === undefined ? t("answerCard.sendAction") : missing === null ? t("answerCard.send", { answer: answerIndex(agentId, at) ?? "" }) : t("answerCard.missing", { question: number(missing) })}</Text>
-        </Pressable>
-      </View>}
+        </Pressable>;
+        const preview = hasCustomAnswer && answer !== null ? <Text testID="option-send-preview" selectable numberOfLines={pinnedPopover ? 2 : undefined} ellipsizeMode="tail" style={{ ...label, color: tokens.foregroundMuted, ...(pinnedPopover ? { paddingHorizontal: 12, paddingTop: 12, lineHeight: tokens.fs(18) } : {}) }}>{previewAnswer}</Text> : null;
+        const hint = (Platform.OS === "web" && !compact) || (customOpen && customConfirmed === undefined) ? <Text testID="option-hint" style={{ ...muted, lineHeight: hintHeight, minHeight: hintHeight, fontFamily: customOpen && customConfirmed === undefined ? tokens.fontUi : tokens.fontMono, flexShrink: 1 }}>{customOpen && customConfirmed === undefined
+          ? t("answerCard.hintCustom")
+          : focused === "option-send"
+          ? t("answerCard.hintSend").replace(/^Tab →\s*/, "↵ ").toLowerCase()
+          : `${t("answerCard.hintMove").replace(/^↑\s*↓/, "↑↓")} · ↵ ${t("answerCard.hintPick").replace(/^A B C D\s*/, "")}`}</Text> : <View testID="option-hint-slot" style={{ minHeight: hintHeight }} />;
+        if (!pinnedPopover) return <View style={{ flexDirection: hasCustomAnswer ? "column" : "row", alignItems: hasCustomAnswer ? "stretch" : "center", justifyContent: "space-between", gap: 8, padding: 16, borderTopWidth: 1, borderColor: tokens.border, borderBottomLeftRadius: 11, borderBottomRightRadius: 11, backgroundColor: tokens.surface2 }}>
+          {preview}
+          {hint}
+          {sendButton}
+        </View>;
+        // One bottom row: progress on the left, Send on the right, and no keyboard hint. A written
+        // answer may take its own line above that row. This leaves the question body the height.
+        return <View testID="option-footer" style={{ borderTopWidth: 1, borderColor: tokens.border, borderBottomLeftRadius: 11, borderBottomRightRadius: 11, backgroundColor: "transparent" }}>
+          {preview}
+          <View testID="option-footer-row" style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 12 }}>
+            <Text testID="option-progress" style={{ ...muted, flexShrink: 1 }}>{progressText}</Text>
+            {sendButton}
+          </View>
+        </View>;
+      })()}
     </View>
   );
 }
