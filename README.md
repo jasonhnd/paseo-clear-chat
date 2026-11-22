@@ -16,7 +16,7 @@
 
 ## This version
 
-Clear Chat 0.16.2.3 keeps **Send** in view when the answer card opens in the desktop panel. The question area scrolls inside the card and the saved replies scroll with it, while the progress line and **Send** stay in one row at the bottom; a short fade shows when more content follows. The install now uses patched versions of six transitive packages, and `npm audit` reports no advisories.
+Clear Chat 0.16.2.3 keeps **Send** in view when the answer card opens in the desktop panel. The question area scrolls inside the card and the saved replies scroll with it, while the progress line and **Send** stay in one row at the bottom; a short fade shows when more content follows. The install uses patched versions of six transitive packages; at release, `npm audit` reported 0 advisories for this lockfile.
 
 The full list of changes is in the [changelog](CHANGELOG.md).
 
@@ -30,7 +30,7 @@ A reply that asks lettered questions gets a button above the message box once th
   <img width="320" alt="The answer card as a bottom sheet on a 390-wide screen" src="docs/images/answer-sheet-narrow.png">
 </p>
 
-Open **Settings → Plugins → Clear Chat**. The page title is **Answer card**. The switch **Show an answer card under replies that ask lettered questions** is on when the settings file has no stored value. A stored on or off value still wins. The note under that switch says to reload the chat to update existing replies.
+Open **Settings → Plugins → Clear Chat**. The page heading is **Clear Chat**; the first settings card is titled **Answer card**. The switch **Show an answer card under replies that ask lettered questions** is on when the settings file has no stored value. A stored on or off value still wins. The note under that switch says to reload the chat to update existing replies.
 
 The card's controls are:
 
@@ -40,7 +40,7 @@ A reply is recognised only when it has numbered questions, each with at least tw
 2. Choosing an unanswered question moves to the next unanswered question. The last choice moves focus to **Send**. Until every question has an answer, **Send** names the missing question and cannot be used.
 3. Question tabs show a short name. An answered tab that is not current shows `✓` and the answer text. Changing an answered question stays on that question.
 4. To write your own answer, choose **Other**. Press **Enter** to confirm and move on, or **Shift+Enter** for a new line. Choosing a character with an input method does not confirm. An empty answer shows a prompt.
-5. **Send** shows the letter indexes, such as `1B 2A`. A written answer is included in the message as you confirmed it. In the desktop panel a written answer is previewed above the footer row in at most two lines: the answer index, then the start of the first written answer; the message that is sent keeps the full answer. After a successful send the button is gone and the card is no longer shown; the message in the chat, for example `1B 2A`, is your answer.
+5. **Send** shows the letter indexes, such as `1B 2A`. A written answer is included in the message as you confirmed it. In the desktop panel a written answer is previewed above the footer row in at most two lines: the whole answer index, then the start of the first written answer; the message that is sent keeps the full answer. After a successful send the button is gone and the card is no longer shown; the message in the chat, for example `1B 2A`, is your answer.
 6. If an ordinary list was mistaken for questions, press **Not options**. That reply stays dismissed after reloading. The button is not shown while sending.
 7. Saved replies that you edit on the settings page appear on the card as buttons. In the desktop panel they sit below the options and scroll with the question. Choosing one inserts the phrase at the cursor and does not send.
 
@@ -62,7 +62,7 @@ To update an existing install to this version:
 paseo plugin update clear-chat --ref v0.16.2.3 --yes
 ```
 
-Open **Settings → Plugins → Clear Chat** and read the version line under the title. A directory install keeps the version information already in that directory, so it can show an older release. If the build carries no usable version, the line shows **Unknown**.
+Open **Settings → Plugins → Clear Chat** and read the version line in the **Answer card** card. A directory install keeps the version information already in that directory, so it can show an older release. If the build carries no usable version, the line shows **Unknown**.
 
 > [!IMPORTANT]
 > Already using Beautiful Chat? Read [Upgrading from Beautiful Chat](#upgrading-from-beautiful-chat) **before** you install or remove anything. Removing a plugin in Paseo also deletes its settings.
@@ -114,14 +114,14 @@ Startup does not delete anything under the plugin's data directory. Older image 
 
 ## Settings
 
-The page title is **Answer card**.
+The page heading is **Clear Chat**; the first settings card is titled **Answer card**.
 
 | Setting | Effect |
 |---|---|
 | Show an answer card under replies that ask lettered questions | On when no value is stored. A stored value still wins. The note under the switch says to reload the chat to update existing replies. |
 | Saved replies | One phrase per line. The default phrases are `Go with the recommended`, `Leave it for now`, and `Continue`. On the answer card, choosing a phrase inserts it and does not send. Editing here is saved on blur. |
 
-**Installed version.** Under the title, Clear Chat shows the version of the build this install was made from. A directory install keeps the version information already in that directory, so it can show an older release. If the build carries no usable version, the line shows **Unknown**.
+**Installed version.** In the **Answer card** card, Clear Chat shows the version of the build this install was made from. A directory install keeps the version information already in that directory, so it can show an older release. If the build carries no usable version, the line shows **Unknown**.
 
 **Report a problem** opens a GitHub issue form in your browser. Nothing is sent unless you submit that form.
 
@@ -134,11 +134,11 @@ Clear Chat's own text follows the Paseo app language: English, Simplified Chines
 ## Known limitations
 
 - `Plan 2B` can still be read as an answer. A bare letter inside a sentence is not.
-- In the desktop panel a long written answer previews in at most two lines: the answer index, then the start of the first written answer. The message that is sent keeps the full answer, and the narrow panel shows the full preview; a long preview may need scrolling there.
+- In the desktop panel a long written answer previews in at most two lines: the whole answer index, then the start of the first written answer. The message that is sent keeps the full answer, and the narrow panel shows the full preview; a long preview may need scrolling there.
 - A window shorter than about 117 px is not supported: the panel's footer no longer fits.
 - While a reply is still being written, its button does not appear above the message box. If the card is open when the agent starts answering again, the panel says the reply is still running, and answers cannot be given until it ends.
 - At phone width, Enter in Paseo's own input box inserts a newline. Use that box's Send button. This is the host's behaviour.
-- This build was checked in the browser interface of Paseo 0.16.2 and 0.17.1 (the web UI the `paseo` command starts) with a test agent that needs no model, at 1280×900, 1280×440, and 390×844; the panel was seen in both the light and dark themes. It was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
+- This build was checked in the browser interface of Paseo 0.16.2 (the web UI the `paseo` command starts) with a test agent that needs no model, at 1280×900, 1280×440, and 390×844, and the panel was opened once in the dark theme at 1280×900; on Paseo 0.17.1 the same browser interface was checked at 1280×900 in the light theme only. It was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
 - Removing the plugin deletes its settings. Back them up first. Startup does not delete older files in the plugin data directory.
 
 ## Privacy and data on the host

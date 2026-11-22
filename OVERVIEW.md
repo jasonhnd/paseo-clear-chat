@@ -6,8 +6,8 @@ The interface text follows the app language: English, Simplified Chinese, or Jap
 
 - The answer card that opens in the desktop panel keeps **Send** in view: the question area scrolls inside the card, the saved replies scroll with it, and the progress line and **Send** stay in one row at the bottom. A short fade shows when more content follows.
 - A focused row is scrolled into view inside the question area, and choosing an answer that moves to another question returns that question to the top.
-- A long written answer previews in at most two lines in the desktop panel: the answer index, then the start of the first written answer. The message that is sent keeps the full answer.
-- The install uses patched versions of six transitive packages, and `npm audit` reports no advisories. CI fails when a production dependency has an advisory.
+- A long written answer previews in at most two lines in the desktop panel: the whole answer index, then the start of the first written answer. The message that is sent keeps the full answer.
+- The install uses patched versions of six transitive packages; at release, `npm audit` reported 0 advisories for this lockfile. CI fails when a production dependency has an advisory.
 
 ## What it does
 
@@ -23,7 +23,7 @@ The settings page can be opened.
 
 ## Setup
 
-Clear Chat 0.16.2.3 needs Paseo 0.16.0 or later. On Paseo 0.15.x this version cannot run normally; stay on Clear Chat 0.15.4.x. This build was checked in the browser interface of Paseo 0.16.2 and 0.17.1 (the web UI the `paseo` command starts) with a test agent that needs no model, at 1280×900, 1280×440, and 390×844; the panel was seen in both the light and dark themes. It was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
+Clear Chat 0.16.2.3 needs Paseo 0.16.0 or later. On Paseo 0.15.x this version cannot run normally; stay on Clear Chat 0.15.4.x. This build was checked in the browser interface of Paseo 0.16.2 (the web UI the `paseo` command starts) with a test agent that needs no model, at 1280×900, 1280×440, and 390×844, and the panel was opened once in the dark theme at 1280×900; on Paseo 0.17.1 the same browser interface was checked at 1280×900 in the light theme only. It was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
 
 Installation runs `npm ci` on the daemon host, so Node.js and npm must be available there and the host must be able to reach the npm registry.
 
@@ -36,11 +36,11 @@ If you used Beautiful Chat, its settings file is copied on first start when Clea
 
 ## Settings
 
-Open **Settings → Plugins → Clear Chat**. The page title is **Answer card**.
+Open **Settings → Plugins → Clear Chat**. The page heading is **Clear Chat**; the first settings card is titled **Answer card**.
 
 - **Show an answer card under replies that ask lettered questions** is on when no value is stored. A stored value still wins.
 - **Saved replies** is one phrase per line. The default phrases are `Go with the recommended`, `Leave it for now`, and `Continue`.
-- The installed version is shown under the title. A directory install can show an older version from that directory.
+- The installed version is shown in the **Answer card** card. A directory install can show an older version from that directory.
 - **Report a problem** opens a GitHub issue form in the browser. Nothing is sent unless you submit it.
 
 Settings are saved on the host and shared by every client connected to it.
@@ -57,10 +57,10 @@ Settings are saved on the host and shared by every client connected to it.
 
 - Clear Chat does not draw the conversation. Use Better Paseo for that view.
 - `Plan 2B` can still be read as an answer.
-- In the desktop panel a long written answer previews in at most two lines: the answer index, then the start of the first written answer. The message that is sent keeps the full answer, and the narrow panel shows the full preview.
+- In the desktop panel a long written answer previews in at most two lines: the whole answer index, then the start of the first written answer. The message that is sent keeps the full answer, and the narrow panel shows the full preview.
 - A window shorter than about 117 px is not supported: the panel's footer no longer fits.
 - While a reply is still being written, its button does not appear. If the card is open when the agent starts answering again, the panel says the reply is still running, and answers cannot be given until it ends.
-- This build was checked in the browser interface of Paseo 0.16.2 and 0.17.1 (the web UI the `paseo` command starts) with a test agent that needs no model, at 1280×900, 1280×440, and 390×844; the panel was seen in both the light and dark themes. It was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
+- This build was checked in the browser interface of Paseo 0.16.2 (the web UI the `paseo` command starts) with a test agent that needs no model, at 1280×900, 1280×440, and 390×844, and the panel was opened once in the dark theme at 1280×900; on Paseo 0.17.1 the same browser interface was checked at 1280×900 in the light theme only. It was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
 - Removing the plugin deletes its settings. Back them up first.
 
 The repository README has the install commands, the answer-card steps, and troubleshooting.
