@@ -2,10 +2,12 @@ Clear Chat is a Paseo plugin for the answer card. When a reply asks lettered que
 
 The interface text follows the app language: English, Simplified Chinese, or Japanese. The plugin list shows the English description.
 
-## What's new in 0.16.2.2
+## What's new in 0.16.2.3
 
-- Clear Chat no longer draws the conversation: no step rows, tool cards, sidebar, search, quote-and-reply, jump chips, or syntax highlighting. The **Workspace changes during this turn** card is gone.
-- The settings page is titled **Answer card**. It sets the answer card switch and saved replies, and shows the installed version and **Report a problem**.
+- The answer card that opens in the desktop panel keeps **Send** in view: the question area scrolls inside the card, the saved replies scroll with it, and the progress line and **Send** stay in one row at the bottom. A short fade shows when more content follows.
+- A focused row is scrolled into view inside the question area, and choosing an answer that moves to another question returns that question to the top.
+- A long written answer previews in at most two lines in the desktop panel: the answer index, then the start of the first written answer. The message that is sent keeps the full answer.
+- The install uses patched versions of six transitive packages, and `npm audit` reports no advisories. CI fails when a production dependency has an advisory.
 
 ## What it does
 
@@ -15,19 +17,19 @@ The interface text follows the app language: English, Simplified Chinese, or Jap
 - Saved replies are edited on the settings page. On the card they insert a phrase and do not send.
 - A bare letter inside a sentence is not treated as an answer. A numbered token such as `1A` still counts.
 
-After a reply that asks lettered questions has finished, a button above the message box opens the card. It shows the progress, for example **Answer 0/2**; a desktop tooltip and a narrow screen's panel title carry the full name, for example **Answer card · 0/2 answered**. It opens the whole card in a panel, which is a sheet on a narrow screen. Choosing answers updates the count, closing and reopening the panel keeps them, and the button is gone after **Send** until the next such reply finishes. The button belongs to the conversation on screen.
+After a reply that asks lettered questions has finished, a button above the message box opens the card. It shows the progress, for example **Answer 0/2**; a desktop tooltip and a narrow screen's panel title carry the full name, for example **Answer card · 0/2 answered**. It opens the whole card in a panel, which is a sheet on a narrow screen. In the desktop panel the question area scrolls inside the card, and the progress line and **Send** stay in one row at the bottom, so **Send** is visible without scrolling the panel. Choosing answers updates the count, closing and reopening the panel keeps them, and the button is gone after **Send** until the next such reply finishes. The button belongs to the conversation on screen.
 
 The settings page can be opened.
 
 ## Setup
 
-Clear Chat 0.16.2.2 needs Paseo 0.16.0 or later. On Paseo 0.15.x this version cannot run normally; stay on Clear Chat 0.15.4.x. This build was checked in the browser interface of Paseo 0.16.2 (the web UI the `paseo` command starts) with a test agent and no model, at 1280×900 and 390×844; it was not checked in the desktop app, in a dark theme, with a real model, or on physical iOS or Android devices.
+Clear Chat 0.16.2.3 needs Paseo 0.16.0 or later. On Paseo 0.15.x this version cannot run normally; stay on Clear Chat 0.15.4.x. This build was checked in the browser interface of Paseo 0.16.2 and 0.17.1 (the web UI the `paseo` command starts) with a test agent that needs no model, at 1280×900, 1280×440, and 390×844; the panel was seen in both the light and dark themes. It was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
 
 Installation runs `npm ci` on the daemon host, so Node.js and npm must be available there and the host must be able to reach the npm registry.
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.16.2.2
-paseo plugin update clear-chat --ref v0.16.2.2 --yes
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.16.2.3
+paseo plugin update clear-chat --ref v0.16.2.3 --yes
 ```
 
 If you used Beautiful Chat, its settings file is copied on first start when Clear Chat has none yet. Read the upgrade steps in the repository README before removing Beautiful Chat, because removing a plugin also removes its settings. Copied keys for features this version no longer shows stay in the file and have no control.
@@ -55,8 +57,10 @@ Settings are saved on the host and shared by every client connected to it.
 
 - Clear Chat does not draw the conversation. Use Better Paseo for that view.
 - `Plan 2B` can still be read as an answer.
+- In the desktop panel a long written answer previews in at most two lines: the answer index, then the start of the first written answer. The message that is sent keeps the full answer, and the narrow panel shows the full preview.
+- A window shorter than about 117 px is not supported: the panel's footer no longer fits.
 - While a reply is still being written, its button does not appear. If the card is open when the agent starts answering again, the panel says the reply is still running, and answers cannot be given until it ends.
-- This version was checked in the browser interface of Paseo 0.16.2 with a test agent that needs no model, at 1280×900 and 390×844: the button appears and opens the card; answers survive closing and reopening; sending posts the message and the button goes away, and a later card brings it back; switching conversations does not carry a card over; the settings switch hides and shows the button; the 390-wide layout is a bottom sheet without the keyboard hints; a recommendation on its own line, including the Japanese `おすすめ：B`, marks its option and stays out of the option text; the button label fits without ellipsis in all three languages; a desktop tooltip and a narrow-screen panel title carry the full name; the card's progress line, the send button, and the settings page title are translated in Simplified Chinese and Japanese. It was not checked in the desktop app, in a dark theme, with a real model, or on physical iOS or Android devices.
+- This build was checked in the browser interface of Paseo 0.16.2 and 0.17.1 (the web UI the `paseo` command starts) with a test agent that needs no model, at 1280×900, 1280×440, and 390×844; the panel was seen in both the light and dark themes. It was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
 - Removing the plugin deletes its settings. Back them up first.
 
 The repository README has the install commands, the answer-card steps, and troubleshooting.

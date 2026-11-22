@@ -16,13 +16,13 @@
 
 ## This version
 
-Clear Chat 0.16.2.2 no longer draws step rows, tool cards, the sidebar, search, quote-and-reply, jump chips, or syntax highlighting. The **Workspace changes during this turn** card is gone. Those belong to the conversation view. The settings page is titled **Answer card** and sets the answer card and saved replies.
+Clear Chat 0.16.2.3 keeps **Send** in view when the answer card opens in the desktop panel. The question area scrolls inside the card and the saved replies scroll with it, while the progress line and **Send** stay in one row at the bottom; a short fade shows when more content follows. The install now uses patched versions of six transitive packages, and `npm audit` reports no advisories.
 
 The full list of changes is in the [changelog](CHANGELOG.md).
 
 ## Answer card
 
-A reply that asks lettered questions gets a button above the message box once that reply has finished. It carries the progress, for example **Answer 0/2**. On a desktop, hovering shows the full name, **Answer card · 0/2 answered**; on a narrow screen the panel opens with that full name as its title. Press it to open the whole card in a panel; on a narrow screen the panel rises from the bottom. Choose your answers there and press **Send** on the card: the message goes to the chat as if you had sent it, and the message box keeps what you were writing. The count follows your answers (**Answer 1/2**), closing the panel keeps them, and after **Send** the button is gone until another reply asks lettered questions. The button belongs to the conversation on screen, so switching chats shows that chat's own card, or none.
+A reply that asks lettered questions gets a button above the message box once that reply has finished. It carries the progress, for example **Answer 0/2**. On a desktop, hovering shows the full name, **Answer card · 0/2 answered**; on a narrow screen the panel opens with that full name as its title. Press it to open the whole card in a panel; on a narrow screen the panel rises from the bottom. In the desktop panel the question area scrolls inside the card, and the progress line and **Send** stay in one row at the bottom, so **Send** is visible without scrolling the panel. Choose your answers there and press **Send** on the card: the message goes to the chat as if you had sent it, and the message box keeps what you were writing. The count follows your answers (**Answer 1/2**), closing the panel keeps them, and after **Send** the button is gone until another reply asks lettered questions. The button belongs to the conversation on screen, so switching chats shows that chat's own card, or none.
 
 <p align="center">
   <img width="520" alt="The answer card button above the message box, showing Answer 0/2" src="docs/images/answer-pill.png">
@@ -40,18 +40,18 @@ A reply is recognised only when it has numbered questions, each with at least tw
 2. Choosing an unanswered question moves to the next unanswered question. The last choice moves focus to **Send**. Until every question has an answer, **Send** names the missing question and cannot be used.
 3. Question tabs show a short name. An answered tab that is not current shows `✓` and the answer text. Changing an answered question stays on that question.
 4. To write your own answer, choose **Other**. Press **Enter** to confirm and move on, or **Shift+Enter** for a new line. Choosing a character with an input method does not confirm. An empty answer shows a prompt.
-5. **Send** shows the letter indexes, such as `1B 2A`. A written answer is included in the message as you confirmed it. After a successful send the button is gone and the card is no longer shown; the message in the chat, for example `1B 2A`, is your answer.
+5. **Send** shows the letter indexes, such as `1B 2A`. A written answer is included in the message as you confirmed it. In the desktop panel a written answer is previewed above the footer row in at most two lines: the answer index, then the start of the first written answer; the message that is sent keeps the full answer. After a successful send the button is gone and the card is no longer shown; the message in the chat, for example `1B 2A`, is your answer.
 6. If an ordinary list was mistaken for questions, press **Not options**. That reply stays dismissed after reloading. The button is not shown while sending.
-7. Saved replies that you edit on the settings page appear on the card as buttons. Choosing one inserts the phrase at the cursor and does not send.
+7. Saved replies that you edit on the settings page appear on the card as buttons. In the desktop panel they sit below the options and scroll with the question. Choosing one inserts the phrase at the cursor and does not send.
 
 A bare letter inside a sentence (for example “wait a moment”) is not treated as an answer. A numbered token such as `1A`, `2b`, or `Q1A` still counts, including when punctuation sits against it (`1A.`). A message that is only an answer is unchanged, including a single-question reply whose whole message is `b`. A message such as `Plan 2B` can still be read as an answer.
 
 ## Install
 
-Clear Chat 0.16.2.2 needs Paseo 0.16.0 or later. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x.
+Clear Chat 0.16.2.3 needs Paseo 0.16.0 or later. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x.
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.16.2.2
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.16.2.3
 ```
 
 Installation runs `npm ci` on the daemon host, so Node.js and npm must be available there and the host must be able to reach the npm registry.
@@ -59,7 +59,7 @@ Installation runs `npm ci` on the daemon host, so Node.js and npm must be availa
 To update an existing install to this version:
 
 ```bash
-paseo plugin update clear-chat --ref v0.16.2.2 --yes
+paseo plugin update clear-chat --ref v0.16.2.3 --yes
 ```
 
 Open **Settings → Plugins → Clear Chat** and read the version line under the title. A directory install keeps the version information already in that directory, so it can show an older release. If the build carries no usable version, the line shows **Unknown**.
@@ -101,7 +101,7 @@ A Clear Chat version is the Paseo version it is built for, plus one more number 
 ## Upgrade and rollback
 
 ```bash
-paseo plugin update clear-chat --ref v0.16.2.2 --yes
+paseo plugin update clear-chat --ref v0.16.2.3 --yes
 ```
 
 An update keeps the settings file. Values for the answer card, saved replies, dismissed false detections, and unfinished drafts are kept. Keys for features this version no longer shows stay in the file and have no control on the settings page. A rollback to an earlier ref also keeps the file, but the effect of a specific rollback on settings is not guaranteed, so back the file up first if the settings matter. Removing the plugin deletes its settings.
@@ -134,9 +134,11 @@ Clear Chat's own text follows the Paseo app language: English, Simplified Chines
 ## Known limitations
 
 - `Plan 2B` can still be read as an answer. A bare letter inside a sentence is not.
+- In the desktop panel a long written answer previews in at most two lines: the answer index, then the start of the first written answer. The message that is sent keeps the full answer, and the narrow panel shows the full preview; a long preview may need scrolling there.
+- A window shorter than about 117 px is not supported: the panel's footer no longer fits.
 - While a reply is still being written, its button does not appear above the message box. If the card is open when the agent starts answering again, the panel says the reply is still running, and answers cannot be given until it ends.
 - At phone width, Enter in Paseo's own input box inserts a newline. Use that box's Send button. This is the host's behaviour.
-- This version was checked in the browser interface of Paseo 0.16.2 (the web UI the `paseo` command starts) with a test agent that needs no model, at 1280×900 and 390×844: the button appears and opens the whole card; answers survive closing and reopening the panel; sending posts the message and the button goes away, and a later card brings it back; switching conversations does not carry a card over; the settings switch hides and shows the button; the 390-wide layout uses a bottom sheet without the keyboard hints; a recommendation on its own line, including the Japanese `おすすめ：B`, marks its option and stays out of the option text; the button label fits without ellipsis in all three languages, and in English also with a 12-question card; a desktop tooltip and a narrow-screen panel title carry the full name; the card's progress line, the send button, and the settings page title are translated in Simplified Chinese and Japanese. It was not checked in the desktop app, in a dark theme, with a real model, or on physical iOS or Android devices.
+- This build was checked in the browser interface of Paseo 0.16.2 and 0.17.1 (the web UI the `paseo` command starts) with a test agent that needs no model, at 1280×900, 1280×440, and 390×844; the panel was seen in both the light and dark themes. It was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
 - Removing the plugin deletes its settings. Back them up first. Startup does not delete older files in the plugin data directory.
 
 ## Privacy and data on the host
@@ -168,7 +170,7 @@ Clear Chat's own text follows the Paseo app language: English, Simplified Chines
 | Problem | What to do |
 |---|---|
 | Installing through the Cafe plugin fails. | Retry with the Paseo CLI command in [Install](#install), using the same repository and release ref. Clear Chat installs its dependencies with `npm ci --include=dev`, so Node.js and npm must be available on the daemon host, and its network must reach the npm registry. If you manage the checkout yourself, run `npm ci --include=dev` there before retrying. |
-| Installation stops because the plugin needs a newer Paseo version. | Clear Chat 0.16.2.2 needs Paseo 0.16.0 or newer on the daemon host and on every connected app. On Paseo 0.15.x, stay on Clear Chat 0.15.4.x. For older hosts, see the [Install](#install) section. |
+| Installation stops because the plugin needs a newer Paseo version. | Clear Chat 0.16.2.3 needs Paseo 0.16.0 or newer on the daemon host and on every connected app. On Paseo 0.15.x, stay on Clear Chat 0.15.4.x. For older hosts, see the [Install](#install) section. |
 | Clear Chat says it requires plugin RPC, a settings screen, settings registration, and a request handler. | Update Paseo on the daemon host and in every connected app, then reload Clear Chat. The Paseo version Clear Chat needs is declared in `paseo-plugin.json`. |
 | Clear Chat cannot start because plugin registration failed. | Update Paseo and reload Clear Chat. If it still fails, back up the plugin settings before you reinstall from the CLI. |
 | Clear Chat cannot read its settings from the host. | Reconnect to the host and choose **Retry** on the settings page. If it still fails, check that the daemon can access the plugin settings folder. |
@@ -203,7 +205,7 @@ If the `beautiful-chat` settings folder does not exist, you never changed Beauti
 **2. Install**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.16.2.2
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.16.2.3
 ```
 
 **3. Check, then remove the old plugin**

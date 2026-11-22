@@ -1,8 +1,46 @@
-## [Unreleased]
+## [0.16.2.3] - Unreleased
 
 ### Fixed
 
-- **The answer card's Send button stays in view on a desktop window.** The card opened from the button above the message box used to run past the bottom of the panel, so **Send** was hidden until the panel was scrolled. The question body now gets the panel's height: saved replies move below the options inside the same scroll area, and the progress line and **Send** share one row at the bottom without the keyboard hint. A typical two-question card at a common desktop window height shows its question and all four options without scrolling, with a short, light fade when more content follows. Choosing an answer that moves to the next question starts that question at the top, and a written answer previews as its index plus the start of the text; only the desktop popover shortens that preview, while the narrow sheet keeps it in full. Long cards keep **Send** visible, and the narrow-screen sheet is unchanged.
+- **The answer card's Send button stays in view in the desktop panel.** On a desktop-width window the host opens the card in a panel capped at 440 px, and a two-question card is taller than that, so the panel used to scroll as one block and **Send** sat below the fold. The card now fits the panel: the question body scrolls in its own area, and **Send** is visible without scrolling the panel ([#515](https://github.com/jasonhnd/paseo-clear-chat/issues/515), [PR #516](https://github.com/jasonhnd/paseo-clear-chat/pull/516)).
+- **The progress line and Send share one row at the bottom.** In the desktop panel the card's footer is one row with the progress on the left and **Send** on the right, and the keyboard hint is not shown ([#515](https://github.com/jasonhnd/paseo-clear-chat/issues/515), [PR #516](https://github.com/jasonhnd/paseo-clear-chat/pull/516)).
+- **The saved replies scroll with the questions.** In the desktop panel they sit below the options inside the scrolling question area instead of taking a fixed row ([#515](https://github.com/jasonhnd/paseo-clear-chat/issues/515), [PR #516](https://github.com/jasonhnd/paseo-clear-chat/pull/516)).
+- **A short fade marks more content.** A 24 px fade appears at the top or bottom edge of the question area only while content continues in that direction, and the top of the next row shows under the bottom fade ([#515](https://github.com/jasonhnd/paseo-clear-chat/issues/515), [PR #516](https://github.com/jasonhnd/paseo-clear-chat/pull/516)).
+- **A focused row scrolls into view inside the question body.** Moving the focus with the keyboard, or an automatic move to the next question, scrolls the row into the question area, clear of both fades, without scrolling the conversation behind the panel. Choosing an answer that moves to another question starts that question at the top ([#515](https://github.com/jasonhnd/paseo-clear-chat/issues/515), [PR #516](https://github.com/jasonhnd/paseo-clear-chat/pull/516)).
+- **Question tabs stay in one row.** In the desktop panel the tab strip scrolls sideways instead of wrapping, so a card with many questions keeps room for the question body ([#515](https://github.com/jasonhnd/paseo-clear-chat/issues/515), [PR #516](https://github.com/jasonhnd/paseo-clear-chat/pull/516)).
+- **The panel shrinks with a short window.** The card's height cap is `min(408, windowHeight - 16 - 32)`, so the card still fits when the window is short ([#515](https://github.com/jasonhnd/paseo-clear-chat/issues/515), [PR #516](https://github.com/jasonhnd/paseo-clear-chat/pull/516)).
+- **A long written answer previews in two lines in the desktop panel.** The first line is the answer index, such as `1C`; the second starts the first written answer, such as `1C：…`. The message that is sent keeps the full answer. The narrow panel and the timeline show the full preview; a long preview may need scrolling in the narrow panel ([#515](https://github.com/jasonhnd/paseo-clear-chat/issues/515), [PR #516](https://github.com/jasonhnd/paseo-clear-chat/pull/516)).
+- **The focus outline is inset.** Both side edges of the focused row stay visible inside the card ([#515](https://github.com/jasonhnd/paseo-clear-chat/issues/515), [PR #516](https://github.com/jasonhnd/paseo-clear-chat/pull/516)).
+- **The narrow panel and the timeline keep their layout.** The bottom sheet and the timeline card keep their single-column layout; only the desktop panel gets the inner scroll and the pinned footer. In the sheet a long written-answer preview is still shown in full, and the sheet may need scrolling to show it ([#515](https://github.com/jasonhnd/paseo-clear-chat/issues/515), [PR #516](https://github.com/jasonhnd/paseo-clear-chat/pull/516)).
+
+### Security
+
+- **The installed dependency tree has no known advisories.** `npm overrides` pin six transitive packages of the `@getpaseo/server` development dependency: `markdown-it` 15.0.3, `linkify-it` 6.1.0, `@modelcontextprotocol/sdk` 1.32.2, `@hono/node-server` 2.1.11, `uuid` 11.1.1, and `@ai-sdk/provider-utils` 3.0.30. `npm audit` goes from 9 advisories (4 high, 2 moderate, 3 low) to 0, and `npm audit --omit=dev` is 0 before and after ([#474](https://github.com/jasonhnd/paseo-clear-chat/issues/474), [PR #514](https://github.com/jasonhnd/paseo-clear-chat/pull/514)).
+
+### Changed
+
+- **CI now gates on production advisories.** After `npm ci`, the workflow runs `npm audit --omit=dev`, which fails the job when a production dependency has an advisory, and `npm audit` with `continue-on-error`, which keeps development advisories visible in the log without failing the job ([PR #514](https://github.com/jasonhnd/paseo-clear-chat/pull/514)).
+- **The install brings the pinned versions to the host.** `scripts/install.cjs` runs `npm ci --include=dev`, so these packages are installed on every host that installs the plugin; the plugin's runtime code does not load any of them ([PR #514](https://github.com/jasonhnd/paseo-clear-chat/pull/514)).
+
+### Upgrade notes
+
+- Clear Chat 0.16.2.3 needs Paseo 0.16.0 or newer. The minimum host version is unchanged. This build was checked in the browser interface of Paseo 0.16.2 and 0.17.1 (the web UI the `paseo` command starts) with a test agent that needs no model, at 1280×900, 1280×440, and 390×844; the panel was seen in both the light and dark themes. It was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
+- Update with `paseo plugin update clear-chat --ref v0.16.2.3 --yes`, or install with `paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.16.2.3`.
+- The settings file is kept. The answer card switch, saved replies, dismissed false detections, and unfinished drafts stay as they are; keys for features this version does not show stay in the file and have no controls.
+- `@hono/node-server` 2.1.11 declares Node.js 20 or newer. On an older Node, `npm ci` prints an `EBADENGINE` warning and continues, because `engine-strict` is not set; the plugin's runtime does not load this package.
+
+### Documentation
+
+- The English, Simplified Chinese, and Japanese READMEs and the overview now describe the desktop panel's scrolling question area, its pinned footer, the two-line written-answer preview, and the verification scope of this release.
+
+### Known limitations
+
+- `Plan 2B` can still be read as an answer.
+- In the desktop panel a long written answer previews in at most two lines: the answer index, then the start of the first written answer. The message that is sent keeps the full answer, and the narrow panel and the timeline show the full preview.
+- A window shorter than about 117 px is not supported: the panel's footer no longer fits.
+- While a reply is still being written, its button does not appear above the message box. If the card is open when the agent starts answering again, the panel says the reply is still running, and answers cannot be given until it ends.
+- This build was checked in the browser interface of Paseo 0.16.2 and 0.17.1 (the web UI the `paseo` command starts) with a test agent that needs no model, at 1280×900, 1280×440, and 390×844; the panel was seen in both the light and dark themes. It was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
+- Removing the plugin deletes its settings. Startup does not delete older plugin-data files.
 
 ## [0.16.2.2] - 2026-11-21
 
