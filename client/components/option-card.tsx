@@ -29,6 +29,8 @@ const focusCardKey = (agentId: string, at: number) => `${agentId}\u0000${at}`;
 // use 408 px. A short window is clamped by the host to `windowHeight - 16` before that padding
 // is removed (`menu-overlay.tsx:122-129` in both host v0.16.2 and v0.17.1).
 export function popoverCardMaxHeight(windowHeight: number): number {
+  // Below roughly 117 px the footer itself no longer fits; such a window is not supported.
+  if (!Number.isFinite(windowHeight)) return 408;
   return Math.min(408, Math.max(0, windowHeight - 16 - 32));
 }
 
@@ -508,7 +510,7 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
     let next = scroller.scrollTop;
     // Keep the row clear of the 24 px bottom fade, not merely inside the viewport.
     const fadeInset = 24;
-    if (row.top < view.top) next -= view.top - row.top + 4;
+    if (row.top < view.top + fadeInset) next -= view.top + fadeInset - row.top + 4;
     else if (row.bottom > view.bottom - fadeInset) next += row.bottom - (view.bottom - fadeInset) + 4;
     const max = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
     if (next !== scroller.scrollTop) scroller.scrollTop = Math.max(0, Math.min(next, max));
@@ -553,6 +555,12 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
   const draftReady = customOpen && customConfirmed === undefined && !!session.customDrafts[index]?.trim();
   const sendDisabled = disabled || (answer === null && !draftReady);
   const number = (i: number) => questionNumber(session.set, i);
+  const firstCustomIndex = session.set.questions.findIndex((_, i) => session.customConfirmed[i] !== undefined);
+  const firstCustomContent = firstCustomIndex >= 0 ? session.customConfirmed[firstCustomIndex] : undefined;
+  const customPreviewLine = firstCustomContent === undefined ? null
+    : `${number(firstCustomIndex)}${customLetterFor(agentId, firstCustomIndex, at) ?? customAnswerLetter(session.set.questions[firstCustomIndex]!)}：${firstCustomContent.replace(/\s+/g, " ").trim()}`;
+  // Display only: the sent message still comes from `answerText`/`formatCustomAnswers`.
+  const previewAnswer = pinnedPopover && customPreviewLine ? `${answerIndex(agentId, at) ?? ""}\n${customPreviewLine}` : answer;
   const label = { color: tokens.foreground, fontFamily: tokens.fontUi, fontSize: tokens.fs(13) };
   const muted = { ...label, color: tokens.foregroundMuted, fontSize: tokens.fs(12) };
   // Reserve one hint row so the card does not jump when the hint appears or clears.
@@ -563,7 +571,7 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
     onBlur: () => setFocused(current => current === id ? null : current),
   } : {};
   const focusStyle = (id: string) => Platform.OS === "web" ? {
-    outlineStyle: focused === id ? "solid" : "none", outlineWidth: 2, outlineOffset: 1, outlineColor: tokens.accent,
+    outlineStyle: focused === id ? "solid" : "none", outlineWidth: 2, outlineOffset: -2, outlineColor: tokens.accent,
   } as ViewStyle : undefined;
   const focus = (testId: string) => {
     setTimeout(() => {
@@ -680,6 +688,7 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
     const after = getOptionSessionAt(agentId, at);
     cancelUnchangedSwitch(after?.activeQuestion ?? index);
     if (!after || wasAnswered) return;
+    if (after.activeQuestion !== index) resetPopoverScroll();
     if (missingQuestion(agentId, at) === null) { if (!previewPending) focus("option-send"); }
     else focus(`option-row-${after.set.questions[after.activeQuestion]!.options[after.cursor[after.activeQuestion] ?? 0]!.letter}`);
   };
@@ -969,7 +978,7 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
         }} style={[{ minHeight: 44, justifyContent: "center", alignItems: "center", paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderStyle: "solid", borderColor: sendDisabled ? tokens.foregroundMuted : tokens.accent, backgroundColor: sendDisabled ? "transparent" : tokens.accent }, focusStyle(sendDisabled ? "" : "option-send")]}>
           <Text style={{ ...label, color: sendDisabled ? tokens.foregroundMuted : tokens.accentForeground, fontWeight: "700" }}>{customOpen && customConfirmed === undefined ? t("answerCard.sendAction") : missing === null ? t("answerCard.send", { answer: answerIndex(agentId, at) ?? "" }) : t("answerCard.missing", { question: number(missing) })}</Text>
         </Pressable>;
-        const preview = hasCustomAnswer && answer !== null ? <Text testID="option-send-preview" selectable numberOfLines={2} ellipsizeMode="tail" style={{ ...label, color: tokens.foregroundMuted, ...(pinnedPopover ? { paddingHorizontal: 12, paddingTop: 12, maxHeight: tokens.fs(40) } : {}) }}>{answer}</Text> : null;
+        const preview = hasCustomAnswer && answer !== null ? <Text testID="option-send-preview" selectable numberOfLines={pinnedPopover ? 2 : undefined} ellipsizeMode="tail" style={{ ...label, color: tokens.foregroundMuted, ...(pinnedPopover ? { paddingHorizontal: 12, paddingTop: 12, maxHeight: tokens.fs(40) } : {}) }}>{previewAnswer}</Text> : null;
         const hint = (Platform.OS === "web" && !compact) || (customOpen && customConfirmed === undefined) ? <Text testID="option-hint" style={{ ...muted, lineHeight: hintHeight, minHeight: hintHeight, fontFamily: customOpen && customConfirmed === undefined ? tokens.fontUi : tokens.fontMono, flexShrink: 1 }}>{customOpen && customConfirmed === undefined
           ? t("answerCard.hintCustom")
           : focused === "option-send"

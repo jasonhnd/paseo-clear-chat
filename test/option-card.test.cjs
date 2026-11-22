@@ -260,7 +260,7 @@ test("web focus follows first choices and arrows stay scoped to option rows", as
   byId(h, tree, "option-row-B").props.onFocus();
   tree = draw();
   assert.equal(byId(h, tree, "option-row-B").props.style[1].outlineStyle, "solid");
-  assert.equal(byId(h, tree, "option-row-B").props.style[1].outlineOffset, 1);
+  assert.equal(byId(h, tree, "option-row-B").props.style[1].outlineOffset, -2);
   byId(h, tree, "option-card").props.ref({ querySelector: selector => ({ focus: () => focused.push(selector) }) });
   byId(h, tree, "option-row-B").props.onPress();
   await new Promise(resolve => setTimeout(resolve, 5));
