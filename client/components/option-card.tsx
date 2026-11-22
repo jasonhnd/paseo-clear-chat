@@ -790,7 +790,8 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
         {session.followupStatus === "ended" ? <Text testID="option-followup-heading" style={muted}>{t("answerCard.statusEnded", { chosen: answeredCount, total: session.set.questions.length })}</Text> : null}
         {session.followupStatus === "waiting" ? <Text testID="option-saved-position" style={muted}>{t("answerCard.savedPosition", { question: number(session.activeQuestion) })}</Text> : null}
         {session.followupStatus === "ended" ? <Text testID="option-ended-message" style={muted}>{t("answerCard.endedMessage")}</Text> : null}
-        <View testID="option-tabs" style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        {(() => {
+          const tabs = <>
           {session.set.questions.map((q, i) => {
             const chosen = q.options.find(option => option.letter === session.choices[i]);
             const chosenText = chosen?.text.replace(/\s+/g, " ").trim();
@@ -820,7 +821,12 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
           {resumeRetry ? <Text testID="option-resume-retry" accessibilityRole="alert">{t("answerCard.tryAgain")}</Text> : null}
           {readOnly && !session.followupStatus ? <Text testID="option-read-only-status" style={{ ...muted, marginLeft: "auto" }}>{t("answerCard.readOnlyStatus")}</Text> : null}
           {!readOnly && !session.sending ? <Pressable testID="option-dismiss" accessibilityRole="button" onPress={() => { if (getOptionSessionAt(agentId, at)?.at === at) dismiss(agentId, at); }} style={{ minHeight: 44, justifyContent: "center", marginLeft: "auto" }}><Text style={muted}>{t("answerCard.notOptions")}</Text></Pressable> : null}
-        </View>
+          </>;
+          if (!pinnedPopover) return <View testID="option-tabs" style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>{tabs}</View>;
+          // A long card can name twelve questions; wrapped tabs would eat the whole card, so in
+          // the popover the tab strip keeps one row and scrolls sideways instead.
+          return <ScrollView horizontal testID="option-tabs" showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0, maxHeight: 44 }} contentContainerStyle={{ flexDirection: "row", alignItems: "center", gap: 8 }}>{tabs}</ScrollView>;
+        })()}
         {session.followupStatus === "waiting" ? <Text testID="option-current-question" style={muted}>{t("answerCard.currentQuestion", { question: number(session.activeQuestion) })}</Text> : null}
         {pinnedPopover ? null : <Text testID="option-progress" style={muted}>{progressText}</Text>}
         {(() => {
