@@ -11,12 +11,12 @@
 <p align="center">
   <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="バージョン" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=date"></a>
   <a href="LICENSE"><img alt="ライセンス: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <a href="https://paseo.sh"><img alt="Paseo 0.16.0 以降。バッジは 0.16.2" src="https://img.shields.io/badge/Paseo-%3E%3D0.16.0%20%C2%B7%20tested%200.16.2-5b5bd6"></a>
+  <a href="https://paseo.sh"><img alt="Paseo 0.16.0 以降。バッジは 0.17.1" src="https://img.shields.io/badge/Paseo-%3E%3D0.16.0%20%C2%B7%20tested%200.17.1-5b5bd6"></a>
 </p>
 
 ## この版
 
-Clear Chat 0.16.2.3 では、デスクトップで回答カードのパネルを開いても **送信** が常に見えます。質問の部分はカードの中でスクロールし、よく使う回答も一緒にスクロールします。進み具合の行と **送信** は下の 1 行に固定されます。続きがあるときは短いフェードが出ます。インストールで使う 6 つの間接的な依存パッケージは修正済みの版になり、リリース時点で `npm audit` はこの lockfile について 0 件でした。
+Clear Chat 0.17.1.1 は Paseo 0.17.1 に合わせた版です。バージョンの最初の 3 つは、この版を確認したときの Paseo のバージョンです。回答カードのコードは前の版と同じで、カードの動きは変わりません。前の版では、デスクトップで回答カードのパネルを開いても **送信** が常に見えました。質問の部分はカードの中でスクロールし、よく使う回答も一緒にスクロールします。進み具合の行と **送信** は下の 1 行に固定されます。依存パッケージの固定は変わらず、インストールで使う 6 つの間接的な依存パッケージは修正済みの版のままです。
 
 変更の一覧は [変更履歴](CHANGELOG.md) にあります。
 
@@ -48,10 +48,10 @@ Clear Chat 0.16.2.3 では、デスクトップで回答カードのパネルを
 
 ## インストール
 
-Clear Chat 0.16.2.3 には Paseo 0.16.0 以降が必要です。Paseo 0.15.x ではこの版を通常どおりインストールまたは実行できないので、Clear Chat 0.15.4.x のままにしてください。
+Clear Chat 0.17.1.1 には Paseo 0.16.0 以降が必要です。Paseo 0.15.x ではこの版を通常どおりインストールまたは実行できないので、Clear Chat 0.15.4.x のままにしてください。
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.16.2.3
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.1.1
 ```
 
 インストールは daemon のホストで `npm ci` を実行します。そのマシンに Node.js と npm があり、npm レジストリへ届く必要があります。
@@ -59,7 +59,7 @@ paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.16.2.3
 すでに入っている Clear Chat をこの版へ更新するには:
 
 ```bash
-paseo plugin update clear-chat --ref v0.16.2.3 --yes
+paseo plugin update clear-chat --ref v0.17.1.1 --yes
 ```
 
 **Settings → Plugins → Clear Chat** を開き、**回答カード** カード内のバージョン行を見てください。ディレクトリからのインストールでは、そのディレクトリにあるバージョン情報がそのまま使われるため、古いリリースが表示されることがあります。使えるバージョン情報がないときは **不明** と出ます。
@@ -101,7 +101,7 @@ Clear Chat のバージョンは、対応する Paseo のバージョンに、�
 ## アップグレードとロールバック
 
 ```bash
-paseo plugin update clear-chat --ref v0.16.2.3 --yes
+paseo plugin update clear-chat --ref v0.17.1.1 --yes
 ```
 
 更新しても設定ファイルは残ります。回答カード、よく使う回答、誤検出を閉じた記録、書きかけの下書きは残ります。この版が表示しない機能のキーはファイルに残り、設定ページに操作はありません。以前の ref へ戻してもファイルは通常残りますが、その回の設定への影響は保証されないので、設定が重要なら先にバックアップしてください。プラグインを削除すると設定も削除されます。
@@ -138,7 +138,7 @@ Clear Chat 自身の文字は Paseo のアプリの言語（英語、簡体字�
 - 高さが約 117px 未満のウィンドウには対応しません。パネルの下の行が収まりません。
 - 返信を生成している間は、その返信のボタンは入力欄の上に出ません。カードを開いているときに agent がまた答え始めると、パネルは返信を生成中だと伝え、終わるまで答えられません。
 - スマートフォンの幅では、Paseo 自身の入力欄で Enter を押すと改行になります。送るにはその入力欄の送信ボタンを使ってください。これはホストの動作です。
-- この版は Paseo 0.16.2 のブラウザー画面（`paseo` コマンドで起動する web UI）で、モデルを使わないテスト agent により、1280×900、1280×440、390×844 で確認しました。パネルは 1280×900 でダークテーマでも一度開いています。Paseo 0.17.1 の同じ画面では 1280×900 のライトテーマだけを確認しました。デスクトップアプリ、実モデル、実機の iOS と Android では確認していません。
+- この版は Paseo 0.17.1 のブラウザー画面（`paseo` コマンドで起動する web UI）で、モデルを使わないテスト agent により、1280×900、1280×440、390×844 で確認しました。パネルは 1280×900 でダークテーマでも一度開いています。回答カードのコードは前の版と同じで、前の版は Paseo 0.16.2 で同じ方法で確認しました。デスクトップアプリ、実モデル、実機の iOS と Android では確認していません。
 - プラグインを外すと設定も消えます。先にバックアップしてください。起動時に、プラグインのデータディレクトリにある古いファイルは消しません。
 
 ## プライバシーとホスト上のデータ
@@ -170,7 +170,7 @@ Clear Chat 自身の文字は Paseo のアプリの言語（英語、簡体字�
 | 症状 | 対処 |
 |---|---|
 | Cafe プラグインからのインストールに失敗する。 | [インストール](#インストール) の Paseo CLI のコマンドで、同じリポジトリとリリースの ref を指定してやり直してください。Clear Chat は `npm ci --include=dev` で依存パッケージを入れるので、daemon のホストに Node.js と npm があり、npm レジストリへ届く必要があります。チェックアウトを自分で管理している場合は、先にそこで `npm ci --include=dev` を実行してからやり直してください。 |
-| プラグインに新しい Paseo が必要なため、インストールが止まる。 | Clear Chat 0.16.2.3 には、daemon のホストと接続するすべてのアプリで Paseo 0.16.0 以降が必要です。Paseo 0.15.x では Clear Chat 0.15.4.x のままにしてください。それより古いホストは [インストール](#インストール) を見てください。 |
+| プラグインに新しい Paseo が必要なため、インストールが止まる。 | Clear Chat 0.17.1.1 には、daemon のホストと接続するすべてのアプリで Paseo 0.16.0 以降が必要です。Paseo 0.15.x では Clear Chat 0.15.4.x のままにしてください。それより古いホストは [インストール](#インストール) を見てください。 |
 | Clear Chat が、プラグイン RPC、設定画面、設定の登録、リクエスト処理が必要だと表示する。 | daemon のホストと、つないでいるすべてのアプリの Paseo を更新してから、Clear Chat を再読み込みしてください。必要なバージョンは `paseo-plugin.json` に書いてあります。 |
 | プラグインの登録に失敗し、Clear Chat が起動しない。 | Paseo を更新して Clear Chat を再読み込みしてください。それでも直らない場合は、プラグインの設定をバックアップしてから CLI で入れ直してください。 |
 | Clear Chat がホストの設定を読み込めない。 | ホストにつなぎ直し、設定ページで **再試行** を選んでください。それでも直らない場合は、daemon がプラグインの設定フォルダーにアクセスできるか確認してください。 |
@@ -205,7 +205,7 @@ cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_back
 **2. インストール**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.16.2.3
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.1.1
 ```
 
 **3. 確認してから古いプラグインを削除**

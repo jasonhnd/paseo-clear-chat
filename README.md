@@ -11,12 +11,12 @@
 <p align="center">
   <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=date"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <a href="https://paseo.sh"><img alt="Paseo 0.16.0+, tested on 0.16.2" src="https://img.shields.io/badge/Paseo-%3E%3D0.16.0%20%C2%B7%20tested%200.16.2-5b5bd6"></a>
+  <a href="https://paseo.sh"><img alt="Paseo 0.16.0+, tested on 0.17.1" src="https://img.shields.io/badge/Paseo-%3E%3D0.16.0%20%C2%B7%20tested%200.17.1-5b5bd6"></a>
 </p>
 
 ## This version
 
-Clear Chat 0.16.2.3 keeps **Send** in view when the answer card opens in the desktop panel. The question area scrolls inside the card and the saved replies scroll with it, while the progress line and **Send** stay in one row at the bottom; a short fade shows when more content follows. The install uses patched versions of six transitive packages; at release, `npm audit` reported 0 advisories for this lockfile.
+Clear Chat 0.17.1.1 follows Paseo 0.17.1: the first three parts of the version are the Paseo version this build was checked with. The answer card code is the same as the previous release, so the card works exactly as before. That release kept **Send** in view when the card opens in the desktop panel: the question area scrolls inside the card and the saved replies scroll with it, while the progress line and **Send** stay in one row at the bottom. The dependency pins are unchanged: the install still uses the patched versions of six transitive packages.
 
 The full list of changes is in the [changelog](CHANGELOG.md).
 
@@ -48,10 +48,10 @@ A bare letter inside a sentence (for example “wait a moment”) is not treated
 
 ## Install
 
-Clear Chat 0.16.2.3 needs Paseo 0.16.0 or later. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x.
+Clear Chat 0.17.1.1 needs Paseo 0.16.0 or later. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x.
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.16.2.3
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.1.1
 ```
 
 Installation runs `npm ci` on the daemon host, so Node.js and npm must be available there and the host must be able to reach the npm registry.
@@ -59,7 +59,7 @@ Installation runs `npm ci` on the daemon host, so Node.js and npm must be availa
 To update an existing install to this version:
 
 ```bash
-paseo plugin update clear-chat --ref v0.16.2.3 --yes
+paseo plugin update clear-chat --ref v0.17.1.1 --yes
 ```
 
 Open **Settings → Plugins → Clear Chat** and read the version line in the **Answer card** card. A directory install keeps the version information already in that directory, so it can show an older release. If the build carries no usable version, the line shows **Unknown**.
@@ -101,7 +101,7 @@ A Clear Chat version is the Paseo version it is built for, plus one more number 
 ## Upgrade and rollback
 
 ```bash
-paseo plugin update clear-chat --ref v0.16.2.3 --yes
+paseo plugin update clear-chat --ref v0.17.1.1 --yes
 ```
 
 An update keeps the settings file. Values for the answer card, saved replies, dismissed false detections, and unfinished drafts are kept. Keys for features this version no longer shows stay in the file and have no control on the settings page. A rollback to an earlier ref also keeps the file, but the effect of a specific rollback on settings is not guaranteed, so back the file up first if the settings matter. Removing the plugin deletes its settings.
@@ -138,7 +138,7 @@ Clear Chat's own text follows the Paseo app language: English, Simplified Chines
 - A window shorter than about 117 px is not supported: the panel's footer no longer fits.
 - While a reply is still being written, its button does not appear above the message box. If the card is open when the agent starts answering again, the panel says the reply is still running, and answers cannot be given until it ends.
 - At phone width, Enter in Paseo's own input box inserts a newline. Use that box's Send button. This is the host's behaviour.
-- This build was checked in the browser interface of Paseo 0.16.2 (the web UI the `paseo` command starts) with a test agent that needs no model, at 1280×900, 1280×440, and 390×844, and the panel was opened once in the dark theme at 1280×900; on Paseo 0.17.1 the same browser interface was checked at 1280×900 in the light theme only. It was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
+- This build was checked in the browser interface of Paseo 0.17.1 (the web UI the `paseo` command starts) with a test agent that needs no model, at 1280×900, 1280×440, and 390×844, and the panel was opened once in the dark theme at 1280×900. Its answer card code is the same as the previous release, which was checked the same way in Paseo 0.16.2. It was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
 - Removing the plugin deletes its settings. Back them up first. Startup does not delete older files in the plugin data directory.
 
 ## Privacy and data on the host
@@ -170,7 +170,7 @@ Clear Chat's own text follows the Paseo app language: English, Simplified Chines
 | Problem | What to do |
 |---|---|
 | Installing through the Cafe plugin fails. | Retry with the Paseo CLI command in [Install](#install), using the same repository and release ref. Clear Chat installs its dependencies with `npm ci --include=dev`, so Node.js and npm must be available on the daemon host, and its network must reach the npm registry. If you manage the checkout yourself, run `npm ci --include=dev` there before retrying. |
-| Installation stops because the plugin needs a newer Paseo version. | Clear Chat 0.16.2.3 needs Paseo 0.16.0 or newer on the daemon host and on every connected app. On Paseo 0.15.x, stay on Clear Chat 0.15.4.x. For older hosts, see the [Install](#install) section. |
+| Installation stops because the plugin needs a newer Paseo version. | Clear Chat 0.17.1.1 needs Paseo 0.16.0 or newer on the daemon host and on every connected app. On Paseo 0.15.x, stay on Clear Chat 0.15.4.x. For older hosts, see the [Install](#install) section. |
 | Clear Chat says it requires plugin RPC, a settings screen, settings registration, and a request handler. | Update Paseo on the daemon host and in every connected app, then reload Clear Chat. The Paseo version Clear Chat needs is declared in `paseo-plugin.json`. |
 | Clear Chat cannot start because plugin registration failed. | Update Paseo and reload Clear Chat. If it still fails, back up the plugin settings before you reinstall from the CLI. |
 | Clear Chat cannot read its settings from the host. | Reconnect to the host and choose **Retry** on the settings page. If it still fails, check that the daemon can access the plugin settings folder. |
@@ -205,7 +205,7 @@ If the `beautiful-chat` settings folder does not exist, you never changed Beauti
 **2. Install**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.16.2.3
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.1.1
 ```
 
 **3. Check, then remove the old plugin**
