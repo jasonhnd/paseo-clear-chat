@@ -65,7 +65,8 @@ test("the popover scroll cue is a short, faint shadow", t => {
   tree = draw("popover");
   const cue = byId(h, tree, "option-scroll-fade-bottom");
   assert.ok(cue, "the cue appears when the body overflows");
-  assert.equal(cue.props.style.height, 12, "the cue stays short so it cannot look like a grey band");
+  assert.equal(cue.props.style.height, 24, "the cue is a 24 px fade that ends on the panel colour");
+  assert.equal(cue.props.style.position, "absolute", "the cue overlays the scroll area instead of taking a row");
   assert.match(String(cue.props.style.backgroundImage), /^linear-gradient\(/, "the cue is a gradient, not a solid strip");
 });
 

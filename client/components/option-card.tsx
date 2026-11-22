@@ -84,6 +84,33 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
   // viewport and its content. The values live in a ref until a scroll or layout event arrives.
   const [popoverScrollCue, setPopoverScrollCue] = useState({ top: false, bottom: false });
   const popoverScrollMetrics = useRef({ viewport: 0, content: 0, offset: 0 });
+  // The popover panel colour behind the card, with the card's own 2% overlay baked in. The scroll
+  // fade must end on this opaque colour: fading to a translucent overlay leaves a visible edge.
+  const [popoverBackdrop, setPopoverBackdrop] = useState<string | null>(null);
+  const wantsPinnedSurface = Platform.OS === "web" && surface === "popover" && !compact;
+  useEffect(() => {
+    if (!wantsPinnedSurface) { setPopoverBackdrop(null); return; }
+    const card = root.current as unknown as HTMLElement | null;
+    if (!card?.parentElement || typeof globalThis.getComputedStyle !== "function") return;
+    const parse = (value: string) => {
+      const match = /rgba?\(([^)]+)\)/.exec(value);
+      if (!match) return null;
+      const parts = match[1]!.split(",").map(part => Number.parseFloat(part.trim()));
+      return { r: parts[0] ?? 0, g: parts[1] ?? 0, b: parts[2] ?? 0, a: parts[3] ?? 1 };
+    };
+    let backdrop: { r: number; g: number; b: number; a: number } | null = null;
+    let node: HTMLElement | null = card.parentElement;
+    while (node && node !== globalThis.document.body) {
+      const color = parse(globalThis.getComputedStyle(node).backgroundColor);
+      if (color && color.a > 0) { backdrop = color; break; }
+      node = node.parentElement;
+    }
+    const own = parse(globalThis.getComputedStyle(card).backgroundColor);
+    if (!backdrop || !own) return;
+    const alpha = own.a;
+    const mix = (front: number, back: number) => Math.round(front * alpha + back * (1 - alpha));
+    setPopoverBackdrop(`rgb(${mix(own.r, backdrop.r)}, ${mix(own.g, backdrop.g)}, ${mix(own.b, backdrop.b)})`);
+  }, [wantsPinnedSurface, surface, compact]);
   const clearScrollSpace = () => {
     const space = scrollSpace.current;
     if (!space) return;
@@ -480,14 +507,15 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
     },
     scrollEventThrottle: 16,
   } : {};
-  // A light shadow cue: fading to the card's 2% overlay would be invisible, and a strong
-  // foreground tint reads as a grey band. Keep it short and faint so a peeking row stays legible.
-  const scrollFade = (edge: "top" | "bottom"): ViewStyle => Platform.OS === "web" ? {
-    position: "absolute", left: 0, right: 0, [edge]: 0, height: 12, pointerEvents: "none", zIndex: 2,
+  // The card background is a 2% overlay; fading to it leaves a visible edge. Fade to the opaque
+  // panel colour behind the card instead, so the lower end disappears into the background.
+  const fadeBackdrop = popoverBackdrop ?? (tokens.isDark ? "#1a1a1e" : "#fafafa");
+  const scrollFade = (edge: "top" | "bottom"): ViewStyle => ({
+    position: "absolute", left: 0, right: 0, [edge]: 0, height: 24, pointerEvents: "none", zIndex: 2,
     backgroundImage: edge === "bottom"
-      ? `linear-gradient(to bottom, ${withAlpha(tokens.foregroundMuted, 0)}, ${withAlpha(tokens.foregroundMuted, 0.20)})`
-      : `linear-gradient(to top, ${withAlpha(tokens.foregroundMuted, 0)}, ${withAlpha(tokens.foregroundMuted, 0.20)})`,
-  } as unknown as ViewStyle : { position: "absolute", left: 0, right: 0, [edge]: 0, height: 12, pointerEvents: "none", zIndex: 2, backgroundColor: withAlpha(tokens.foregroundMuted, 0.20) };
+      ? `linear-gradient(to bottom, ${withAlpha(fadeBackdrop, 0)}, ${fadeBackdrop})`
+      : `linear-gradient(to top, ${withAlpha(fadeBackdrop, 0)}, ${fadeBackdrop})`,
+  } as unknown as ViewStyle);
   const disabled = readOnly || session.sending || status === "running";
   const missing = missingQuestion(agentId, at);
   const answer = answerText(agentId, at);
@@ -764,7 +792,7 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
           {(() => {
             const rowId = `option-row-${customLetter}`;
             const customFocused = focused === rowId || focused === "option-custom-input";
-            const rowStyle = { minHeight: 44, marginTop: pinnedPopover ? 20 : 0, flexDirection: "row" as const, alignItems: "flex-start" as const, gap: 10, paddingHorizontal: customFocused ? 9 : 10, paddingVertical: 0, borderRadius: 8, borderWidth: customFocused ? 2 : 1, borderColor: readOnly ? tokens.border : customFocused ? (tokens.isDark ? tokens.foreground : tokens.accent) : customOpen ? (tokens.isDark ? tokens.foreground : withAlpha(tokens.accent, 0.55)) : tokens.border, backgroundColor: readOnly ? tokens.surface2 : customOpen ? tokens.accentBg : tokens.surface1 };
+            const rowStyle = { minHeight: 44, flexDirection: "row" as const, alignItems: "flex-start" as const, gap: 10, paddingHorizontal: customFocused ? 9 : 10, paddingVertical: 0, borderRadius: 8, borderWidth: customFocused ? 2 : 1, borderColor: readOnly ? tokens.border : customFocused ? (tokens.isDark ? tokens.foreground : tokens.accent) : customOpen ? (tokens.isDark ? tokens.foreground : withAlpha(tokens.accent, 0.55)) : tokens.border, backgroundColor: readOnly ? tokens.surface2 : customOpen ? tokens.accentBg : tokens.surface1 };
             const contents = <>
               <Text style={{ ...label, color: !readOnly && customOpen ? tokens.accent : tokens.foregroundMuted, fontWeight: "700", overflow: "hidden", borderWidth: 1, borderColor: !readOnly && customOpen ? tokens.accent : tokens.border, borderRadius: 5, paddingHorizontal: 7, paddingVertical: 3, marginTop: customFocused ? 8 : 9 }}>{customLetter}</Text>
               <View style={{ flex: 1, minWidth: 0 }}>
@@ -853,7 +881,6 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
             </ScrollView>
             {popoverScrollCue.top ? <View testID="option-scroll-fade-top" pointerEvents="none" style={scrollFade("top")} /> : null}
             {popoverScrollCue.bottom ? <View testID="option-scroll-fade-bottom" pointerEvents="none" style={scrollFade("bottom")} /> : null}
-            {popoverScrollCue.bottom ? <View testID="option-scroll-more" pointerEvents="none" style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 14, alignItems: "center", justifyContent: "flex-end" }}><Text style={{ color: tokens.foregroundMuted, fontSize: 14, lineHeight: 14, fontWeight: "700" }}>⌄</Text></View> : null}
           </View>;
         })()}
         {session.error ? <Text testID="option-send-error" accessibilityRole="alert" style={{ ...muted, color: tokens.danger }}>{t("answerCard.error", { reason: session.error })}</Text> : null}
