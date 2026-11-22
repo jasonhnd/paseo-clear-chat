@@ -23,7 +23,7 @@ The settings page can be opened.
 
 ## Setup
 
-Clear Chat 0.17.2.1 needs Paseo 0.16.0 or later. On Paseo 0.15.x this version cannot run normally; stay on Clear Chat 0.15.4.x. This build was checked in the browser interface of Paseo 0.17.2 (the web UI the `paseo` command starts) with a test agent that needs no model, using a two-question card at 1280×900 and 390×844, and the version line on the settings page was checked. Its answer card code is the same as the previous release, which was checked the same way in Paseo 0.16.2. It was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
+Clear Chat 0.17.2.1 needs Paseo 0.16.0 or later. On Paseo 0.15.x this version cannot run normally; stay on Clear Chat 0.15.4.x. This build was checked in the browser interface of Paseo 0.17.2 (the web UI the `paseo` command starts) with a test agent that needs no model, using a two-question card at 1280×900 and 390×844, and the version line on the settings page was checked. Its answer card code is the same as the previous release, which was checked in Paseo 0.17.1 at 1280×900, 1280×440, and 390×844, including once in the dark theme. It was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
 
 Installation runs `npm ci --include=dev --ignore-scripts` on the daemon host, so Node.js and npm must be available there and the host must be able to reach the npm registry.
 
@@ -60,7 +60,7 @@ Settings are saved on the host and shared by every client connected to it.
 - In the desktop panel a long written answer previews in at most two lines: the whole answer index, then the start of the first written answer. The message that is sent keeps the full answer, and the narrow panel shows the full preview.
 - A window shorter than about 117 px is not supported: the panel's footer no longer fits.
 - While a reply is still being written, its button does not appear. If the card is open when the agent starts answering again, the panel says the reply is still running, and answers cannot be given until it ends.
-- This build was checked in the browser interface of Paseo 0.17.2 (the web UI the `paseo` command starts) with a test agent that needs no model, using a two-question card at 1280×900 and 390×844, and the version line on the settings page was checked. Its answer card code is the same as the previous release, which was checked the same way in Paseo 0.16.2. It was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
+- This build was checked in the browser interface of Paseo 0.17.2 (the web UI the `paseo` command starts) with a test agent that needs no model, using a two-question card at 1280×900 and 390×844, and the version line on the settings page was checked. Its answer card code is the same as the previous release, which was checked in Paseo 0.17.1 at 1280×900, 1280×440, and 390×844, including once in the dark theme. It was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
 - Removing the plugin deletes its settings. Back them up first.
 
 The repository README has the install commands, the answer-card steps, and troubleshooting.

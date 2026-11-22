@@ -14,11 +14,11 @@
 
 ### Upgrade notes
 
-- Clear Chat 0.17.2.1 needs Paseo 0.16.0 or newer. The minimum host version is unchanged. This build was checked in the browser interface of Paseo 0.17.2 (the web UI the `paseo` command starts) with a test agent that needs no model, using a two-question card at 1280×900 and 390×844, and the version line on the settings page was checked. Its answer card code is the same as the previous release, which was checked the same way in Paseo 0.16.2. It was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
+- Clear Chat 0.17.2.1 needs Paseo 0.16.0 or newer. The minimum host version is unchanged. This build was checked in the browser interface of Paseo 0.17.2 (the web UI the `paseo` command starts) with a test agent that needs no model, using a two-question card at 1280×900 and 390×844, and the version line on the settings page was checked. Its answer card code is the same as the previous release, which was checked in Paseo 0.17.1 at 1280×900, 1280×440, and 390×844, including once in the dark theme. It was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
 - Update with `paseo plugin update clear-chat --ref v0.17.2.1 --yes`, or install with `paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.2.1`.
 - The settings file is kept. The answer card switch, saved replies, dismissed false detections, and unfinished drafts stay as they are; keys for features this version does not show stay in the file and have no controls.
 - If the install stops with the setup message, run `npm ci --include=dev --ignore-scripts` in the plugin checkout on the daemon host, then retry with the Paseo CLI.
-- On Paseo 0.16.x the install requirement still allows this build. Its code is the same as the previous release, which was checked in Paseo 0.16.2; Paseo 0.16.0 and 0.16.1 were not checked. On Paseo 0.15.x, stay on Clear Chat 0.15.4.x.
+- On Paseo 0.16.x the install requirement still allows this build. The same answer card code was checked in Paseo 0.16.2 in an earlier release. The new install command was not checked on Paseo 0.16.x, and Paseo 0.16.0 and 0.16.1 were not checked. On Paseo 0.15.x, stay on Clear Chat 0.15.4.x.
 
 ### Known limitations
 
@@ -26,7 +26,7 @@
 - In the desktop panel a long written answer previews in at most two lines: the whole answer index, then the start of the first written answer. The message that is sent keeps the full answer, and the narrow panel and the timeline show the full preview.
 - A window shorter than about 117 px is not supported: the panel's footer no longer fits.
 - While a reply is still being written, its button does not appear above the message box. If the card is open when the agent starts answering again, the panel says the reply is still running, and answers cannot be given until it ends.
-- This build was checked in the browser interface of Paseo 0.17.2 (the web UI the `paseo` command starts) with a test agent that needs no model, using a two-question card at 1280×900 and 390×844, and the version line on the settings page was checked. Its answer card code is the same as the previous release, which was checked the same way in Paseo 0.16.2. It was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
+- This build was checked in the browser interface of Paseo 0.17.2 (the web UI the `paseo` command starts) with a test agent that needs no model, using a two-question card at 1280×900 and 390×844, and the version line on the settings page was checked. Its answer card code is the same as the previous release, which was checked in Paseo 0.17.1 at 1280×900, 1280×440, and 390×844, including once in the dark theme. It was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
 - Removing the plugin deletes its settings. Startup does not delete older plugin-data files.
 
 ## [0.17.1.1] - 2026-11-22
