@@ -506,8 +506,10 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
     const row = node.getBoundingClientRect();
     const view = scroller.getBoundingClientRect();
     let next = scroller.scrollTop;
+    // Keep the row clear of the 24 px bottom fade, not merely inside the viewport.
+    const fadeInset = 24;
     if (row.top < view.top) next -= view.top - row.top + 4;
-    else if (row.bottom > view.bottom) next += row.bottom - view.bottom + 4;
+    else if (row.bottom > view.bottom - fadeInset) next += row.bottom - (view.bottom - fadeInset) + 4;
     const max = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
     if (next !== scroller.scrollTop) scroller.scrollTop = Math.max(0, Math.min(next, max));
     updatePopoverScrollCue(scroller.scrollTop, scroller.clientHeight, scroller.scrollHeight);
