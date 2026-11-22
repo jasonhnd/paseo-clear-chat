@@ -1,3 +1,9 @@
+## [Unreleased]
+
+### Fixed
+
+- **The answer card's Send button stays in view on a desktop window.** The card opened from the button above the message box used to run past the bottom of the panel, so **Send** was hidden until the panel was scrolled. The question body now scrolls inside the card, with the progress line and **Send** always at the bottom, and a fade marks when more questions or options are below. Long cards scroll only in the question body, and the narrow-screen sheet is unchanged.
+
 ## [0.16.2.2] - 2026-11-21
 
 ### Upgrade notes

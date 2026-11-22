@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Animated, Platform, Pressable, Text, View, useWindowDimensions, type TextInput as NativeTextInput, type ViewStyle } from "react-native";
+import { Animated, Platform, Pressable, ScrollView, Text, View, useWindowDimensions, type TextInput as NativeTextInput, type ViewStyle } from "react-native";
 import * as pluginClient from "@getpaseo/plugin/client";
 import { useAgent, useTranslation } from "@getpaseo/plugin/client";
 import { TextInput } from "@getpaseo/plugin/client/ui";
@@ -23,6 +23,12 @@ const useComposers = (pluginClient as unknown as { useComposers?: (selector: { a
 
 const pendingSendFocusAgents = new Map<string, number>();
 const focusCardKey = (agentId: string, at: number) => `${agentId}\u0000${at}`;
+
+// The host opens a composer pill in a popover capped at 440 px (host `PluginPopoverSurface`)
+// and pads its body by 12 px on each side, so the card may use 416 px. Keeping the card under
+// that cap leaves no outer scroll: the question body scrolls inside the card while the progress
+// line and Send stay pinned below it, in view without scrolling.
+const POPOVER_CARD_MAX_HEIGHT = 416;
 
 /**
  * The Recommended badge sits on a tinted accent background. On dark themes the
@@ -74,6 +80,10 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
   const pendingPreview = useRef<{ card: HTMLElement; height: number; scroller: HTMLElement | null; scrollTop: number; anchor: string; previousHeight: string; previousOverflow: string } | null>(null);
   const pendingResize = useRef<{ card: HTMLElement; row: HTMLElement; input: HTMLElement | null; opening: boolean; height: number; rowHeight: number; inputHeight: number; scroller: HTMLElement | null; scrollTop: number; anchor: string; previousHeight: string; previousOverflow: string } | null>(null);
   const scrollSpace = useRef<{ card: HTMLElement; scroller: HTMLElement; original: string; base: number; amount: number; stop: () => void; trim: () => void } | null>(null);
+  // Popover layout: the question body scrolls inside the card, so the cue must follow both its
+  // viewport and its content. The values live in a ref until a scroll or layout event arrives.
+  const [popoverScrollCue, setPopoverScrollCue] = useState({ top: false, bottom: false });
+  const popoverScrollMetrics = useRef({ viewport: 0, content: 0, offset: 0 });
   const clearScrollSpace = () => {
     const space = scrollSpace.current;
     if (!space) return;
@@ -447,10 +457,41 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
       ? state : { agentId, at, index, height: 0, empty: false }), ...change }));
   };
   const readOnly = session.readOnly;
+  // The desktop popover hands the card a 440 px box (the host caps `PluginPopoverSurface` and
+  // pads it by 12 px a side). The narrow sheet and the timeline keep their single-column layout;
+  // only the desktop popover gets an inner scroll and a pinned footer.
+  const pinnedPopover = Platform.OS === "web" && surface === "popover" && !compact && !readOnly;
+  const cardBackground = session.followupStatus === "waiting" ? (tokens.isDark ? tokens.surface0 : "#ffffff") : session.followupStatus === "ended" ? (tokens.isDark ? tokens.surface1 : "#f0f0f0") : tokens.surface1;
+  const updatePopoverScrollCue = (offset: number, viewport: number, content: number) => {
+    popoverScrollMetrics.current = { viewport, content, offset };
+    const next = { top: offset > 1, bottom: viewport > 0 && content > 0 && offset + viewport < content - 1 };
+    setPopoverScrollCue(current => current.top === next.top && current.bottom === next.bottom ? current : next);
+  };
+  const popoverScrollProps = pinnedPopover ? {
+    onScroll: (event: { nativeEvent: { contentOffset: { y: number }; contentSize: { height: number }; layoutMeasurement: { height: number } } }) => {
+      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+      updatePopoverScrollCue(contentOffset.y, layoutMeasurement.height, contentSize.height);
+    },
+    onLayout: (event: { nativeEvent: { layout: { height: number } } }) => {
+      updatePopoverScrollCue(popoverScrollMetrics.current.offset, event.nativeEvent.layout.height, popoverScrollMetrics.current.content);
+    },
+    onContentSizeChange: (_width: number, height: number) => {
+      updatePopoverScrollCue(popoverScrollMetrics.current.offset, popoverScrollMetrics.current.viewport, height);
+    },
+    scrollEventThrottle: 16,
+  } : {};
+  // The fade sits on the card's own background, so it reads as "more here" without a border.
+  const scrollFade = (edge: "top" | "bottom"): ViewStyle => Platform.OS === "web" ? {
+    position: "absolute", left: 0, right: 0, [edge]: 0, height: 24, pointerEvents: "none", zIndex: 2,
+    backgroundImage: edge === "bottom"
+      ? `linear-gradient(to bottom, ${withAlpha(cardBackground, 0)}, ${cardBackground})`
+      : `linear-gradient(to top, ${withAlpha(cardBackground, 0)}, ${cardBackground})`,
+  } as unknown as ViewStyle : { position: "absolute", left: 0, right: 0, [edge]: 0, height: 24, pointerEvents: "none", zIndex: 2, backgroundColor: cardBackground };
   const disabled = readOnly || session.sending || status === "running";
   const missing = missingQuestion(agentId, at);
   const answer = answerText(agentId, at);
   const answeredCount = session.set.questions.filter((_, i) => session.choices[i] !== undefined || session.customConfirmed[i] !== undefined).length;
+  const progressText = t("answerCard.progress", { chosen: answeredCount, total: session.set.questions.length, remaining: session.set.questions.length - answeredCount });
   const hasCustomAnswer = Object.keys(session.customConfirmed).length > 0;
   const draftReady = customOpen && customConfirmed === undefined && !!session.customDrafts[index]?.trim();
   const sendDisabled = disabled || (answer === null && !draftReady);
@@ -742,8 +783,8 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
     );
   };
   return (
-    <View {...keyboardProps} testID="option-card" accessibilityState={{ disabled: readOnly }} style={{ marginTop: surface === "timeline" ? 12 : 0, borderWidth: 1, borderColor: tokens.border, borderRadius: 12, backgroundColor: session.followupStatus === "waiting" ? (tokens.isDark ? tokens.surface0 : "#ffffff") : session.followupStatus === "ended" ? (tokens.isDark ? tokens.surface1 : "#f0f0f0") : tokens.surface1, opacity: readOnly && !session.followupStatus ? 0.55 : 1 }}>
-      <View style={{ padding: 16, gap: 12 }}>
+    <View {...keyboardProps} testID="option-card" accessibilityState={{ disabled: readOnly }} style={{ marginTop: surface === "timeline" ? 12 : 0, borderWidth: 1, borderColor: tokens.border, borderRadius: 12, backgroundColor: cardBackground, opacity: readOnly && !session.followupStatus ? 0.55 : 1, ...(pinnedPopover ? { maxHeight: POPOVER_CARD_MAX_HEIGHT, overflow: "hidden" } : {}) }}>
+      <View style={{ padding: 16, gap: 12, ...(pinnedPopover ? { flexShrink: 1, minHeight: 0 } : {}) }}>
         {session.followupStatus === "waiting" ? <Text testID="option-followup-heading" style={muted}>{t("answerCard.statusWaiting", { chosen: answeredCount, total: session.set.questions.length })}</Text> : null}
         {session.followupStatus === "ended" ? <Text testID="option-followup-heading" style={muted}>{t("answerCard.statusEnded", { chosen: answeredCount, total: session.set.questions.length })}</Text> : null}
         {session.followupStatus === "waiting" ? <Text testID="option-saved-position" style={muted}>{t("answerCard.savedPosition", { question: number(session.activeQuestion) })}</Text> : null}
@@ -780,21 +821,34 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
           {!readOnly && !session.sending ? <Pressable testID="option-dismiss" accessibilityRole="button" onPress={() => { if (getOptionSessionAt(agentId, at)?.at === at) dismiss(agentId, at); }} style={{ minHeight: 44, justifyContent: "center", marginLeft: "auto" }}><Text style={muted}>{t("answerCard.notOptions")}</Text></Pressable> : null}
         </View>
         {session.followupStatus === "waiting" ? <Text testID="option-current-question" style={muted}>{t("answerCard.currentQuestion", { question: number(session.activeQuestion) })}</Text> : null}
-        <Text testID="option-progress" style={muted}>{t("answerCard.progress", { chosen: answeredCount, total: session.set.questions.length, remaining: session.set.questions.length - answeredCount })}</Text>
-        {readOnly && Platform.OS === "web" ? <View style={{ backgroundColor: tokens.surface1 }} ref={(node: View | null) => {
-          const frame = node as unknown as HTMLElement | null;
-          if (!frame?.style) return;
-          frame.style.display = "grid";
-          Array.from(frame.children).forEach(child => { (child as HTMLElement).style.gridArea = "1 / 1"; });
-        }}>
-          {session.set.questions.map((_, i) => i === index ? renderQuestion(i) : <View key={i} testID="option-question-measure" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" {...({ "aria-hidden": true } as object)} style={{ visibility: "hidden", pointerEvents: "none" } as ViewStyle}>{renderQuestion(i, true)}</View>)}
-        </View> : renderQuestion(index)}
+        {pinnedPopover ? null : <Text testID="option-progress" style={muted}>{progressText}</Text>}
+        {(() => {
+          const body = readOnly && Platform.OS === "web" ? <View style={{ backgroundColor: tokens.surface1 }} ref={(node: View | null) => {
+            const frame = node as unknown as HTMLElement | null;
+            if (!frame?.style) return;
+            frame.style.display = "grid";
+            Array.from(frame.children).forEach(child => { (child as HTMLElement).style.gridArea = "1 / 1"; });
+          }}>
+            {session.set.questions.map((_, i) => i === index ? renderQuestion(i) : <View key={i} testID="option-question-measure" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" {...({ "aria-hidden": true } as object)} style={{ visibility: "hidden", pointerEvents: "none" } as ViewStyle}>{renderQuestion(i, true)}</View>)}
+          </View> : renderQuestion(index);
+          if (!pinnedPopover) return body;
+          // The host popover is one fixed box; without an inner scroll the action row at the end
+          // of a tall card sits below the fold. Only the question body scrolls here.
+          return <View style={{ flexShrink: 1, minHeight: 0, position: "relative" }}>
+            <ScrollView testID="option-question-scroll" {...popoverScrollProps} style={{ flexShrink: 1, minHeight: 0 }}>
+              {body}
+            </ScrollView>
+            {popoverScrollCue.top ? <View testID="option-scroll-fade-top" pointerEvents="none" style={scrollFade("top")} /> : null}
+            {popoverScrollCue.bottom ? <View testID="option-scroll-fade-bottom" pointerEvents="none" style={scrollFade("bottom")} /> : null}
+          </View>;
+        })()}
         {session.error ? <Text testID="option-send-error" accessibilityRole="alert" style={{ ...muted, color: tokens.danger }}>{t("answerCard.error", { reason: session.error })}</Text> : null}
       </View>
       {!readOnly && preferences.savedReplies.length > 0 ? <View testID="saved-replies-row" accessibilityLabel={t("answerStyle.savedRepliesLabel")} style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: 16, paddingBottom: 12 }}>
         {preferences.savedReplies.map((phrase, index) => <Pressable key={index} testID={`saved-reply-${index}`} accessibilityRole="button" accessibilityLabel={phrase} {...(Platform.OS === "web" ? { onMouseDown: (event: React.MouseEvent) => event.preventDefault() } : {})} onPress={() => { const target = latestComposer.current; if (!target) return; const prompt = target.prompt; const selection = target.selection; if (!selection) { const last = prompt.charAt(prompt.length - 1); target.insertText(last !== "" && !/\s/.test(last) ? ` ${phrase}` : phrase); return; } const start = Math.max(0, Math.min(selection.start, prompt.length)); const previous = start > 0 ? prompt.charAt(start - 1) : ""; target.insertText(previous !== "" && !/\s/.test(previous) ? ` ${phrase}` : phrase); }} style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: 12, borderWidth: 1, borderColor: tokens.border, borderRadius: 18 }}><Text style={label}>{phrase}</Text></Pressable>)}
       </View> : null}
-      {readOnly ? <View style={{ padding: 16, borderTopWidth: 1, borderColor: tokens.border }}><Text testID="option-answered" style={muted}>{`Answered in the chat: ${session.answeredText}`}</Text></View> : <View style={{ flexDirection: hasCustomAnswer ? "column" : "row", alignItems: hasCustomAnswer ? "stretch" : "center", justifyContent: "space-between", gap: 8, padding: 16, borderTopWidth: 1, borderColor: tokens.border, borderBottomLeftRadius: 11, borderBottomRightRadius: 11, backgroundColor: tokens.surface2 }}>
+      {readOnly ? <View style={{ padding: 16, borderTopWidth: 1, borderColor: tokens.border }}><Text testID="option-answered" style={muted}>{`Answered in the chat: ${session.answeredText}`}</Text></View> : (() => {
+        const sendRow = <View style={{ flexDirection: hasCustomAnswer ? "column" : "row", alignItems: hasCustomAnswer ? "stretch" : "center", justifyContent: "space-between", gap: 8, padding: 16, borderTopWidth: pinnedPopover ? 0 : 1, borderColor: tokens.border, ...(pinnedPopover ? {} : { borderBottomLeftRadius: 11, borderBottomRightRadius: 11, backgroundColor: tokens.surface2 }) }}>
         {hasCustomAnswer && answer !== null ? <Text testID="option-send-preview" selectable style={{ ...label, color: tokens.foregroundMuted }}>{answer}</Text> : null}
         {/* A compact layout is a touch sheet: there is no hardware keyboard to hint at. */}
         {(Platform.OS === "web" && !compact) || (customOpen && customConfirmed === undefined) ? <Text testID="option-hint" style={{ ...muted, lineHeight: hintHeight, minHeight: hintHeight, fontFamily: customOpen && customConfirmed === undefined ? tokens.fontUi : tokens.fontMono, flexShrink: 1 }}>{customOpen && customConfirmed === undefined
@@ -842,7 +896,13 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
         }} style={[{ minHeight: 44, justifyContent: "center", alignItems: "center", paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderStyle: "solid", borderColor: sendDisabled ? tokens.foregroundMuted : tokens.accent, backgroundColor: sendDisabled ? "transparent" : tokens.accent }, focusStyle(sendDisabled ? "" : "option-send")]}>
           <Text style={{ ...label, color: sendDisabled ? tokens.foregroundMuted : tokens.accentForeground, fontWeight: "700" }}>{customOpen && customConfirmed === undefined ? t("answerCard.sendAction") : missing === null ? t("answerCard.send", { answer: answerIndex(agentId, at) ?? "" }) : t("answerCard.missing", { question: number(missing) })}</Text>
         </Pressable>
-      </View>}
+      </View>;
+        if (!pinnedPopover) return sendRow;
+        return <View testID="option-footer" style={{ borderTopWidth: 1, borderColor: tokens.border, borderBottomLeftRadius: 11, borderBottomRightRadius: 11, backgroundColor: tokens.surface2 }}>
+          <Text testID="option-progress" style={{ ...muted, paddingHorizontal: 16, paddingTop: 12 }}>{progressText}</Text>
+          {sendRow}
+        </View>;
+      })()}
     </View>
   );
 }
