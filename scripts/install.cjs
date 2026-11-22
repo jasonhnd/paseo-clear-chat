@@ -14,9 +14,14 @@ function install({ run = spawnSync, resolveDependency = require.resolve, report 
     report(`Clear Chat manifest version check failed: ${error.message}`);
     return 1;
   }
+  // Install from the committed lockfile only. Dependency lifecycle scripts stay off:
+  // every package in the lock that declares one (esbuild, fsevents, msgpackr-extract,
+  // node-pty) is development-only tooling pulled in by @getpaseo/server and the test
+  // toolchain. The plugin runtime loads host-provided libraries plus zod, all plain
+  // JavaScript, so no native binary is required and npm must not fetch or build one.
   let result;
   try {
-    result = run(process.platform === "win32" ? "npm.cmd" : "npm", ["ci", "--include=dev"], {
+    result = run(process.platform === "win32" ? "npm.cmd" : "npm", ["ci", "--include=dev", "--ignore-scripts"], {
       cwd: checkout, encoding: "utf8", maxBuffer: 8 * 1024 * 1024, shell: process.platform === "win32",
     });
   } catch (error) {
@@ -48,7 +53,7 @@ function install({ run = spawnSync, resolveDependency = require.resolve, report 
     try {
       resolveDependency(name);
     } catch {
-      report(`Clear Chat could not find ${name}. Run npm ci --include=dev in the plugin checkout on the daemon host, then retry the installation with the Paseo CLI.`);
+      report(`Clear Chat could not find ${name}. Run npm ci --include=dev --ignore-scripts in the plugin checkout on the daemon host, then retry the installation with the Paseo CLI.`);
       return 1;
     }
   }

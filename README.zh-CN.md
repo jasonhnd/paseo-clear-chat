@@ -11,12 +11,12 @@
 <p align="center">
   <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="版本" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=date"></a>
   <a href="LICENSE"><img alt="许可证：MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <a href="https://paseo.sh"><img alt="Paseo 0.16.0 或更新，徽章标注 0.17.1" src="https://img.shields.io/badge/Paseo-%3E%3D0.16.0%20%C2%B7%20tested%200.17.1-5b5bd6"></a>
+  <a href="https://paseo.sh"><img alt="Paseo 0.16.0 或更新，徽章标注 0.17.2" src="https://img.shields.io/badge/Paseo-%3E%3D0.16.0%20%C2%B7%20tested%200.17.2-5b5bd6"></a>
 </p>
 
 ## 这一版
 
-Clear Chat 0.17.1.1 跟上 Paseo 0.17.1：版本号前三段就是这个版本检查时用的 Paseo 版本。答题卡代码与上一版相同，卡片的行为没有变化。上一版在桌面上打开回答卡片面板时一直显示 **发送**：题目区在卡片内滚动，常用回答跟着一起滚动，进度行和 **发送** 固定在底部同一行。依赖的版本固定没有变：安装时用到的六个间接依赖仍是已修补的版本。
+Clear Chat 0.17.2.1 跟上 Paseo 0.17.2：版本号前三段就是这个版本检查时用的 Paseo 版本。答题卡代码与上一版相同，卡片的行为没有变化：在桌面上打开回答卡片面板时一直显示 **发送**，题目区在卡片内滚动，常用回答跟着一起滚动，进度行和 **发送** 固定在底部同一行。唯一的变化在安装：现在跑 `npm ci --include=dev --ignore-scripts`，只装 lockfile 里写明的包，不跑包自带的安装脚本。用户能看到的影响有两个：安装不会再下载 lockfile 以外的东西，包括包在安装脚本里原本会去取的二进制；装完缺少必需的依赖时，安装会失败并给出 setup 提示，写明缺哪个包、要跑哪条命令，而不是带着一张用不了的卡片启动。依赖的版本固定没有变：安装时用到的六个间接依赖仍是已修补的版本。
 
 完整改动见 [变更记录](CHANGELOG.md)。
 
@@ -48,18 +48,18 @@ Clear Chat 0.17.1.1 跟上 Paseo 0.17.1：版本号前三段就是这个版本�
 
 ## 安装
 
-Clear Chat 0.17.1.1 需要 Paseo 0.16.0 或更新。在 Paseo 0.15.x 上这一版无法正常安装或运行，请留在 Clear Chat 0.15.4.x。
+Clear Chat 0.17.2.1 需要 Paseo 0.16.0 或更新。在 Paseo 0.15.x 上这一版无法正常安装或运行，请留在 Clear Chat 0.15.4.x。
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.1.1
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.2.1
 ```
 
-安装会在 daemon 主机上运行 `npm ci`，所以那台机器要有 Node.js 和 npm，并且能连到 npm 仓库。
+安装会在 daemon 主机上运行 `npm ci --include=dev --ignore-scripts`，所以那台机器要有 Node.js 和 npm，并且能连到 npm 仓库。
 
 把已经安装的 Clear Chat 更新到这一版：
 
 ```bash
-paseo plugin update clear-chat --ref v0.17.1.1 --yes
+paseo plugin update clear-chat --ref v0.17.2.1 --yes
 ```
 
 打开 **Settings → Plugins → Clear Chat**，看 **回答卡片** 卡片里的版本行。从目录安装时会沿用该目录里已有的版本信息，因此可能显示旧版本。构建里没有可用版本时，这一行显示 **未知**。
@@ -101,7 +101,7 @@ Clear Chat 的版本号是它所对应的 Paseo 版本，再加一位，表示�
 ## 升级与回退
 
 ```bash
-paseo plugin update clear-chat --ref v0.17.1.1 --yes
+paseo plugin update clear-chat --ref v0.17.2.1 --yes
 ```
 
 升级会保留设置文件。回答卡片、常用回答、被收起的误认，以及没写完的草稿都会留下。这一版不再显示的功能，它们的键还在文件里，设置页上没有对应控件。退回更早的 ref 一般也保留文件，但某一次回退对设置的影响没有保证，设置重要的话先备份。卸载插件会删掉它的设置。
@@ -138,7 +138,7 @@ Clear Chat 自己的文字跟随 Paseo 的应用语言：英文、简体中文�
 - 窗口矮于约 117px 时不支持：面板的底栏已经放不下。
 - 回复还在生成时，输入框上方不会出现这段回复的按钮。如果卡片开着时 agent 又开始回答，面板会说明回复还在生成，结束前不能作答。
 - 手机宽度下，在 Paseo 自己的输入框里按 Enter 是换行，请用它的发送按钮。这是宿主的行为。
-- 这一版在 Paseo 0.17.1 的浏览器界面（`paseo` 命令启动的 web UI）里、用不需要模型的测试 agent 检查过，窗口 1280×900、1280×440 和 390×844，并在 1280×900 下用深色主题打开过一次弹层。答题卡代码与上一版相同，上一版用同样的方法在 Paseo 0.16.2 上检查过。没有在桌面 app、真实模型、或真实的 iOS／Android 设备上检查。
+- 这一版在 Paseo 0.17.2 的浏览器界面（`paseo` 命令启动的 web UI）里、用不需要模型的测试 agent 检查过，窗口 1280×900 和 390×844 下都用两题卡检查，并看了设置页的版本行。答题卡代码与上一版相同，上一版在 Paseo 0.17.1 上检查过，窗口 1280×900、1280×440 和 390×844，并在深色主题下打开过一次。没有在桌面 app、真实模型、或真实的 iOS／Android 设备上检查。
 - 卸载插件会删掉它的设置，请先备份。启动不会删除插件数据目录里的旧文件。
 
 ## 隐私与主机上的数据
@@ -169,8 +169,8 @@ Clear Chat 自己的文字跟随 Paseo 的应用语言：英文、简体中文�
 
 | 问题 | 怎么办 |
 |---|---|
-| 用 Cafe 插件安装失败。 | 用[安装](#安装)里的 Paseo CLI 命令重试，仓库和版本标签保持不变。Clear Chat 用 `npm ci --include=dev` 安装依赖，所以运行 daemon 的主机上要有 Node.js 和 npm，网络也要能连到 npm 仓库。如果代码目录是你自己管理的，请先在那里运行 `npm ci --include=dev` 再重试。 |
-| 安装停止，提示插件需要更新的 Paseo 版本。 | Clear Chat 0.17.1.1 需要 daemon 主机和所有连接的应用都用 Paseo 0.16.0 或更新版本。在 Paseo 0.15.x 上请留在 Clear Chat 0.15.4.x。更旧的宿主见[安装](#安装)。 |
+| 用 Cafe 插件安装失败。 | 用[安装](#安装)里的 Paseo CLI 命令重试，仓库和版本标签保持不变。Clear Chat 用 `npm ci --include=dev --ignore-scripts` 安装依赖，所以运行 daemon 的主机上要有 Node.js 和 npm，网络也要能连到 npm 仓库。如果代码目录是你自己管理的，请先在那里运行 `npm ci --include=dev --ignore-scripts` 再重试。 |
+| 安装停止，提示插件需要更新的 Paseo 版本。 | Clear Chat 0.17.2.1 需要 daemon 主机和所有连接的应用都用 Paseo 0.16.0 或更新版本。在 Paseo 0.15.x 上请留在 Clear Chat 0.15.4.x。更旧的宿主见[安装](#安装)。 |
 | Clear Chat 提示需要插件 RPC、设置页面、设置注册和请求处理。 | 把运行 daemon 的主机和所有连着的应用都更新 Paseo，再重新加载 Clear Chat。需要的版本写在 `paseo-plugin.json` 里。 |
 | 插件注册失败，Clear Chat 启动不了。 | 更新 Paseo，再重新加载 Clear Chat。还不行的话，先备份插件设置，再用 CLI 重新安装。 |
 | Clear Chat 读不到主机上的设置。 | 重新连接主机，在设置页点 **重试**。还不行的话，检查 daemon 能不能访问插件设置文件夹。 |
@@ -205,7 +205,7 @@ cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_back
 **2. 安装**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.1.1
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.2.1
 ```
 
 **3. 确认后卸载旧插件**
