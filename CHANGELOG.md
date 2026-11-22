@@ -2,7 +2,7 @@
 
 ### Fixed
 
-- **The answer card's Send button stays in view on a desktop window.** The card opened from the button above the message box used to run past the bottom of the panel, so **Send** was hidden until the panel was scrolled. The question body now scrolls inside the card, with the progress line and **Send** always at the bottom, and a fade marks when more questions or options are below. Long cards scroll only in the question body, and the narrow-screen sheet is unchanged.
+- **The answer card's Send button stays in view on a desktop window.** The card opened from the button above the message box used to run past the bottom of the panel, so **Send** was hidden until the panel was scrolled. The question body now gets the panel's height: saved replies move below the options inside the same scroll area, and the progress line and **Send** share one row at the bottom without the keyboard hint. A two-question card shows its question and all four options without scrolling, with a short, light fade when more content follows. Long cards keep **Send** visible, and the narrow-screen sheet is unchanged.
 
 ## [0.16.2.2] - 2026-11-21
 

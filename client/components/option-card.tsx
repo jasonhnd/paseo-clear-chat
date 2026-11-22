@@ -480,14 +480,14 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
     },
     scrollEventThrottle: 16,
   } : {};
-  // The card background is a 2% overlay, so fading to it would be invisible. Fade toward the
-  // muted foreground instead: it reads on both light and dark themes without a hard divider.
+  // A light shadow cue: fading to the card's 2% overlay would be invisible, and a strong
+  // foreground tint reads as a grey band. Keep it short and faint so a peeking row stays legible.
   const scrollFade = (edge: "top" | "bottom"): ViewStyle => Platform.OS === "web" ? {
-    position: "absolute", left: 0, right: 0, [edge]: 0, height: 24, pointerEvents: "none", zIndex: 2,
+    position: "absolute", left: 0, right: 0, [edge]: 0, height: 12, pointerEvents: "none", zIndex: 2,
     backgroundImage: edge === "bottom"
-      ? `linear-gradient(to bottom, ${withAlpha(tokens.foregroundMuted, 0)}, ${withAlpha(tokens.foregroundMuted, 0.35)})`
-      : `linear-gradient(to top, ${withAlpha(tokens.foregroundMuted, 0)}, ${withAlpha(tokens.foregroundMuted, 0.35)})`,
-  } as unknown as ViewStyle : { position: "absolute", left: 0, right: 0, [edge]: 0, height: 24, pointerEvents: "none", zIndex: 2, backgroundColor: withAlpha(tokens.foregroundMuted, 0.35) };
+      ? `linear-gradient(to bottom, ${withAlpha(tokens.foregroundMuted, 0)}, ${withAlpha(tokens.foregroundMuted, 0.10)})`
+      : `linear-gradient(to top, ${withAlpha(tokens.foregroundMuted, 0)}, ${withAlpha(tokens.foregroundMuted, 0.10)})`,
+  } as unknown as ViewStyle : { position: "absolute", left: 0, right: 0, [edge]: 0, height: 12, pointerEvents: "none", zIndex: 2, backgroundColor: withAlpha(tokens.foregroundMuted, 0.10) };
   const disabled = readOnly || session.sending || status === "running";
   const missing = missingQuestion(agentId, at);
   const answer = answerText(agentId, at);
@@ -783,9 +783,14 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
         </Animated.View>
     );
   };
+  // In the popover the saved replies move inside the question body, below the options; on the
+  // timeline and the sheet they keep their own row under the card body.
+  const savedRepliesRow = !readOnly && preferences.savedReplies.length > 0 ? <View testID="saved-replies-row" accessibilityLabel={t("answerStyle.savedRepliesLabel")} style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: pinnedPopover ? 0 : 16, paddingBottom: 12, ...(pinnedPopover ? { paddingTop: 12 } : {}) }}>
+    {preferences.savedReplies.map((phrase, index) => <Pressable key={index} testID={`saved-reply-${index}`} accessibilityRole="button" accessibilityLabel={phrase} {...(Platform.OS === "web" ? { onMouseDown: (event: React.MouseEvent) => event.preventDefault() } : {})} onPress={() => { const target = latestComposer.current; if (!target) return; const prompt = target.prompt; const selection = target.selection; if (!selection) { const last = prompt.charAt(prompt.length - 1); target.insertText(last !== "" && !/\s/.test(last) ? ` ${phrase}` : phrase); return; } const start = Math.max(0, Math.min(selection.start, prompt.length)); const previous = start > 0 ? prompt.charAt(start - 1) : ""; target.insertText(previous !== "" && !/\s/.test(previous) ? ` ${phrase}` : phrase); }} style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: 12, borderWidth: 1, borderColor: tokens.border, borderRadius: 18 }}><Text style={label}>{phrase}</Text></Pressable>)}
+  </View> : null;
   return (
     <View {...keyboardProps} testID="option-card" accessibilityState={{ disabled: readOnly }} style={{ marginTop: surface === "timeline" ? 12 : 0, borderWidth: 1, borderColor: tokens.border, borderRadius: 12, backgroundColor: cardBackground, opacity: readOnly && !session.followupStatus ? 0.55 : 1, ...(pinnedPopover ? { maxHeight: POPOVER_CARD_MAX_HEIGHT, overflow: "hidden" } : {}) }}>
-      <View style={{ padding: 16, gap: 12, ...(pinnedPopover ? { flexShrink: 1, minHeight: 0 } : {}) }}>
+      <View style={{ padding: pinnedPopover ? 12 : 16, gap: pinnedPopover ? 8 : 12, ...(pinnedPopover ? { flexShrink: 1, minHeight: 0 } : {}) }}>
         {session.followupStatus === "waiting" ? <Text testID="option-followup-heading" style={muted}>{t("answerCard.statusWaiting", { chosen: answeredCount, total: session.set.questions.length })}</Text> : null}
         {session.followupStatus === "ended" ? <Text testID="option-followup-heading" style={muted}>{t("answerCard.statusEnded", { chosen: answeredCount, total: session.set.questions.length })}</Text> : null}
         {session.followupStatus === "waiting" ? <Text testID="option-saved-position" style={muted}>{t("answerCard.savedPosition", { question: number(session.activeQuestion) })}</Text> : null}
@@ -825,7 +830,7 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
           if (!pinnedPopover) return <View testID="option-tabs" style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>{tabs}</View>;
           // A long card can name twelve questions; wrapped tabs would eat the whole card, so in
           // the popover the tab strip keeps one row and scrolls sideways instead.
-          return <ScrollView horizontal testID="option-tabs" showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0, maxHeight: 44 }} contentContainerStyle={{ flexDirection: "row", alignItems: "center", gap: 8 }}>{tabs}</ScrollView>;
+          return <ScrollView horizontal testID="option-tabs" showsHorizontalScrollIndicator={false} style={{ flexGrow: 0, flexShrink: 0, maxHeight: 36 }} contentContainerStyle={{ flexDirection: "row", alignItems: "center", gap: 8 }}>{tabs}</ScrollView>;
         })()}
         {session.followupStatus === "waiting" ? <Text testID="option-current-question" style={muted}>{t("answerCard.currentQuestion", { question: number(session.activeQuestion) })}</Text> : null}
         {pinnedPopover ? null : <Text testID="option-progress" style={muted}>{progressText}</Text>}
@@ -844,6 +849,7 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
           return <View style={{ flexShrink: 1, minHeight: 0, position: "relative" }}>
             <ScrollView testID="option-question-scroll" {...popoverScrollProps} style={{ flexShrink: 1, minHeight: 0 }}>
               {body}
+              {savedRepliesRow}
             </ScrollView>
             {popoverScrollCue.top ? <View testID="option-scroll-fade-top" pointerEvents="none" style={scrollFade("top")} /> : null}
             {popoverScrollCue.bottom ? <View testID="option-scroll-fade-bottom" pointerEvents="none" style={scrollFade("bottom")} /> : null}
@@ -851,19 +857,9 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
         })()}
         {session.error ? <Text testID="option-send-error" accessibilityRole="alert" style={{ ...muted, color: tokens.danger }}>{t("answerCard.error", { reason: session.error })}</Text> : null}
       </View>
-      {!readOnly && preferences.savedReplies.length > 0 ? <View testID="saved-replies-row" accessibilityLabel={t("answerStyle.savedRepliesLabel")} style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: 16, paddingBottom: 12 }}>
-        {preferences.savedReplies.map((phrase, index) => <Pressable key={index} testID={`saved-reply-${index}`} accessibilityRole="button" accessibilityLabel={phrase} {...(Platform.OS === "web" ? { onMouseDown: (event: React.MouseEvent) => event.preventDefault() } : {})} onPress={() => { const target = latestComposer.current; if (!target) return; const prompt = target.prompt; const selection = target.selection; if (!selection) { const last = prompt.charAt(prompt.length - 1); target.insertText(last !== "" && !/\s/.test(last) ? ` ${phrase}` : phrase); return; } const start = Math.max(0, Math.min(selection.start, prompt.length)); const previous = start > 0 ? prompt.charAt(start - 1) : ""; target.insertText(previous !== "" && !/\s/.test(previous) ? ` ${phrase}` : phrase); }} style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: 12, borderWidth: 1, borderColor: tokens.border, borderRadius: 18 }}><Text style={label}>{phrase}</Text></Pressable>)}
-      </View> : null}
+      {pinnedPopover ? null : savedRepliesRow}
       {readOnly ? <View style={{ padding: 16, borderTopWidth: 1, borderColor: tokens.border }}><Text testID="option-answered" style={muted}>{`Answered in the chat: ${session.answeredText}`}</Text></View> : (() => {
-        const sendRow = <View style={{ flexDirection: hasCustomAnswer ? "column" : "row", alignItems: hasCustomAnswer ? "stretch" : "center", justifyContent: "space-between", gap: 8, padding: 16, borderTopWidth: pinnedPopover ? 0 : 1, borderColor: tokens.border, ...(pinnedPopover ? {} : { borderBottomLeftRadius: 11, borderBottomRightRadius: 11, backgroundColor: tokens.surface2 }) }}>
-        {hasCustomAnswer && answer !== null ? <Text testID="option-send-preview" selectable style={{ ...label, color: tokens.foregroundMuted }}>{answer}</Text> : null}
-        {/* A compact layout is a touch sheet: there is no hardware keyboard to hint at. */}
-        {(Platform.OS === "web" && !compact) || (customOpen && customConfirmed === undefined) ? <Text testID="option-hint" style={{ ...muted, lineHeight: hintHeight, minHeight: hintHeight, fontFamily: customOpen && customConfirmed === undefined ? tokens.fontUi : tokens.fontMono, flexShrink: 1 }}>{customOpen && customConfirmed === undefined
-          ? t("answerCard.hintCustom")
-          : focused === "option-send"
-          ? t("answerCard.hintSend").replace(/^Tab →\s*/, "↵ ").toLowerCase()
-          : `${t("answerCard.hintMove").replace(/^↑\s*↓/, "↑↓")} · ↵ ${t("answerCard.hintPick").replace(/^A B C D\s*/, "")}`}</Text> : <View testID="option-hint-slot" style={{ minHeight: hintHeight }} />}
-        <Pressable {...focusProps("option-send")} testID="option-send" accessibilityRole="button" accessibilityState={{ disabled: sendDisabled }} disabled={sendDisabled} focusable={!sendDisabled} onPress={() => {
+        const sendButton = <Pressable {...focusProps("option-send")} testID="option-send" accessibilityRole="button" accessibilityState={{ disabled: sendDisabled }} disabled={sendDisabled} focusable={!sendDisabled} onPress={() => {
           const current = getOptionSessionAt(agentId, at);
           if (!current || current.at !== at || sendDisabled) return;
           if (draftReady) {
@@ -902,12 +898,26 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
           void sendAnswer(agentId, at).then(finishSend).catch(finishSend);
         }} style={[{ minHeight: 44, justifyContent: "center", alignItems: "center", paddingHorizontal: 16, borderRadius: 8, borderWidth: 1, borderStyle: "solid", borderColor: sendDisabled ? tokens.foregroundMuted : tokens.accent, backgroundColor: sendDisabled ? "transparent" : tokens.accent }, focusStyle(sendDisabled ? "" : "option-send")]}>
           <Text style={{ ...label, color: sendDisabled ? tokens.foregroundMuted : tokens.accentForeground, fontWeight: "700" }}>{customOpen && customConfirmed === undefined ? t("answerCard.sendAction") : missing === null ? t("answerCard.send", { answer: answerIndex(agentId, at) ?? "" }) : t("answerCard.missing", { question: number(missing) })}</Text>
-        </Pressable>
-      </View>;
-        if (!pinnedPopover) return sendRow;
+        </Pressable>;
+        const preview = hasCustomAnswer && answer !== null ? <Text testID="option-send-preview" selectable style={{ ...label, color: tokens.foregroundMuted, ...(pinnedPopover ? { paddingHorizontal: 12, paddingTop: 12 } : {}) }}>{answer}</Text> : null;
+        const hint = (Platform.OS === "web" && !compact) || (customOpen && customConfirmed === undefined) ? <Text testID="option-hint" style={{ ...muted, lineHeight: hintHeight, minHeight: hintHeight, fontFamily: customOpen && customConfirmed === undefined ? tokens.fontUi : tokens.fontMono, flexShrink: 1 }}>{customOpen && customConfirmed === undefined
+          ? t("answerCard.hintCustom")
+          : focused === "option-send"
+          ? t("answerCard.hintSend").replace(/^Tab →\s*/, "↵ ").toLowerCase()
+          : `${t("answerCard.hintMove").replace(/^↑\s*↓/, "↑↓")} · ↵ ${t("answerCard.hintPick").replace(/^A B C D\s*/, "")}`}</Text> : <View testID="option-hint-slot" style={{ minHeight: hintHeight }} />;
+        if (!pinnedPopover) return <View style={{ flexDirection: hasCustomAnswer ? "column" : "row", alignItems: hasCustomAnswer ? "stretch" : "center", justifyContent: "space-between", gap: 8, padding: 16, borderTopWidth: 1, borderColor: tokens.border, borderBottomLeftRadius: 11, borderBottomRightRadius: 11, backgroundColor: tokens.surface2 }}>
+          {preview}
+          {hint}
+          {sendButton}
+        </View>;
+        // One bottom row: progress on the left, Send on the right, and no keyboard hint. A written
+        // answer may take its own line above that row. This leaves the question body the height.
         return <View testID="option-footer" style={{ borderTopWidth: 1, borderColor: tokens.border, borderBottomLeftRadius: 11, borderBottomRightRadius: 11, backgroundColor: tokens.surface2 }}>
-          <Text testID="option-progress" style={{ ...muted, paddingHorizontal: 16, paddingTop: 12 }}>{progressText}</Text>
-          {sendRow}
+          {preview}
+          <View testID="option-footer-row" style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 12 }}>
+            <Text testID="option-progress" style={{ ...muted, flexShrink: 1 }}>{progressText}</Text>
+            {sendButton}
+          </View>
         </View>;
       })()}
     </View>
