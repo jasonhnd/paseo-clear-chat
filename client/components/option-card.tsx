@@ -853,7 +853,7 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
             </ScrollView>
             {popoverScrollCue.top ? <View testID="option-scroll-fade-top" pointerEvents="none" style={scrollFade("top")} /> : null}
             {popoverScrollCue.bottom ? <View testID="option-scroll-fade-bottom" pointerEvents="none" style={scrollFade("bottom")} /> : null}
-            {popoverScrollCue.bottom ? <View testID="option-scroll-more" pointerEvents="none" style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 14, alignItems: "center", justifyContent: "flex-end" }}><Text style={{ color: tokens.foregroundMuted, fontSize: 10, lineHeight: 10 }}>▾</Text></View> : null}
+            {popoverScrollCue.bottom ? <View testID="option-scroll-more" pointerEvents="none" style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 14, alignItems: "center", justifyContent: "flex-end" }}><Text style={{ color: tokens.foregroundMuted, fontSize: 14, lineHeight: 14, fontWeight: "700" }}>⌄</Text></View> : null}
           </View>;
         })()}
         {session.error ? <Text testID="option-send-error" accessibilityRole="alert" style={{ ...muted, color: tokens.danger }}>{t("answerCard.error", { reason: session.error })}</Text> : null}
