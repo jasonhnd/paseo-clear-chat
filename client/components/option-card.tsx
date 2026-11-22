@@ -24,11 +24,11 @@ const useComposers = (pluginClient as unknown as { useComposers?: (selector: { a
 const pendingSendFocusAgents = new Map<string, number>();
 const focusCardKey = (agentId: string, at: number) => `${agentId}\u0000${at}`;
 
-// The host opens a composer pill in a popover capped at 440 px (host `PluginPopoverSurface`)
-// and pads its body by 12 px on each side, so the card may use 416 px. Keeping the card under
-// that cap leaves no outer scroll: the question body scrolls inside the card while the progress
-// line and Send stay pinned below it, in view without scrolling.
-const POPOVER_CARD_MAX_HEIGHT = 416;
+// The host opens a composer pill in a popover capped at 440 px (host `PluginPopoverSurface`).
+// Its body pads 12 px a side and the scroll content adds 4 px top and bottom, so the card may
+// use 408 px. Keeping the card under that cap leaves no outer scroll: the question body scrolls
+// inside the card while the progress line and Send stay pinned below it, in view without scrolling.
+const POPOVER_CARD_MAX_HEIGHT = 408;
 
 /**
  * The Recommended badge sits on a tinted accent background. On dark themes the
@@ -480,13 +480,14 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
     },
     scrollEventThrottle: 16,
   } : {};
-  // The fade sits on the card's own background, so it reads as "more here" without a border.
+  // The card background is a 2% overlay, so fading to it would be invisible. Fade toward the
+  // muted foreground instead: it reads on both light and dark themes without a hard divider.
   const scrollFade = (edge: "top" | "bottom"): ViewStyle => Platform.OS === "web" ? {
     position: "absolute", left: 0, right: 0, [edge]: 0, height: 24, pointerEvents: "none", zIndex: 2,
     backgroundImage: edge === "bottom"
-      ? `linear-gradient(to bottom, ${withAlpha(cardBackground, 0)}, ${cardBackground})`
-      : `linear-gradient(to top, ${withAlpha(cardBackground, 0)}, ${cardBackground})`,
-  } as unknown as ViewStyle : { position: "absolute", left: 0, right: 0, [edge]: 0, height: 24, pointerEvents: "none", zIndex: 2, backgroundColor: cardBackground };
+      ? `linear-gradient(to bottom, ${withAlpha(tokens.foregroundMuted, 0)}, ${withAlpha(tokens.foregroundMuted, 0.35)})`
+      : `linear-gradient(to top, ${withAlpha(tokens.foregroundMuted, 0)}, ${withAlpha(tokens.foregroundMuted, 0.35)})`,
+  } as unknown as ViewStyle : { position: "absolute", left: 0, right: 0, [edge]: 0, height: 24, pointerEvents: "none", zIndex: 2, backgroundColor: withAlpha(tokens.foregroundMuted, 0.35) };
   const disabled = readOnly || session.sending || status === "running";
   const missing = missingQuestion(agentId, at);
   const answer = answerText(agentId, at);
