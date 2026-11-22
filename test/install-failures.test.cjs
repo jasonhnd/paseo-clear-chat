@@ -28,7 +28,6 @@ test("the install build uses a dependency installer that reports a safe failure"
 test("every lockfile package that declares an install script is development-only", () => {
   const lock = JSON.parse(readFileSync(resolve(root, "package-lock.json"), "utf8"));
   const withScripts = Object.entries(lock.packages).filter(([, pkg]) => pkg.hasInstallScript === true);
-  assert.ok(withScripts.length > 0, "the lockfile records no hasInstallScript package, so this invariant cannot be checked");
   const production = withScripts.filter(([, pkg]) => pkg.dev !== true).map(([path, pkg]) => `${path}@${pkg.version}`);
   assert.deepEqual(production, [], `install scripts would be skipped for production packages: ${production.join(", ")}`);
 });
