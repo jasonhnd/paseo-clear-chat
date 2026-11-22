@@ -764,7 +764,7 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
           {(() => {
             const rowId = `option-row-${customLetter}`;
             const customFocused = focused === rowId || focused === "option-custom-input";
-            const rowStyle = { minHeight: 44, marginTop: pinnedPopover ? 12 : 0, flexDirection: "row" as const, alignItems: "flex-start" as const, gap: 10, paddingHorizontal: customFocused ? 9 : 10, paddingVertical: 0, borderRadius: 8, borderWidth: customFocused ? 2 : 1, borderColor: readOnly ? tokens.border : customFocused ? (tokens.isDark ? tokens.foreground : tokens.accent) : customOpen ? (tokens.isDark ? tokens.foreground : withAlpha(tokens.accent, 0.55)) : tokens.border, backgroundColor: readOnly ? tokens.surface2 : customOpen ? tokens.accentBg : tokens.surface1 };
+            const rowStyle = { minHeight: 44, marginTop: pinnedPopover ? 20 : 0, flexDirection: "row" as const, alignItems: "flex-start" as const, gap: 10, paddingHorizontal: customFocused ? 9 : 10, paddingVertical: 0, borderRadius: 8, borderWidth: customFocused ? 2 : 1, borderColor: readOnly ? tokens.border : customFocused ? (tokens.isDark ? tokens.foreground : tokens.accent) : customOpen ? (tokens.isDark ? tokens.foreground : withAlpha(tokens.accent, 0.55)) : tokens.border, backgroundColor: readOnly ? tokens.surface2 : customOpen ? tokens.accentBg : tokens.surface1 };
             const contents = <>
               <Text style={{ ...label, color: !readOnly && customOpen ? tokens.accent : tokens.foregroundMuted, fontWeight: "700", overflow: "hidden", borderWidth: 1, borderColor: !readOnly && customOpen ? tokens.accent : tokens.border, borderRadius: 5, paddingHorizontal: 7, paddingVertical: 3, marginTop: customFocused ? 8 : 9 }}>{customLetter}</Text>
               <View style={{ flex: 1, minWidth: 0 }}>
@@ -853,6 +853,7 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
             </ScrollView>
             {popoverScrollCue.top ? <View testID="option-scroll-fade-top" pointerEvents="none" style={scrollFade("top")} /> : null}
             {popoverScrollCue.bottom ? <View testID="option-scroll-fade-bottom" pointerEvents="none" style={scrollFade("bottom")} /> : null}
+            {popoverScrollCue.bottom ? <View testID="option-scroll-more" pointerEvents="none" style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: 14, alignItems: "center", justifyContent: "flex-end" }}><Text style={{ color: tokens.foregroundMuted, fontSize: 10, lineHeight: 10 }}>▾</Text></View> : null}
           </View>;
         })()}
         {session.error ? <Text testID="option-send-error" accessibilityRole="alert" style={{ ...muted, color: tokens.danger }}>{t("answerCard.error", { reason: session.error })}</Text> : null}
