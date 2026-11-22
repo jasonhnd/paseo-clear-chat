@@ -54,7 +54,7 @@ Clear Chat 0.17.1.1 需要 Paseo 0.16.0 或更新。在 Paseo 0.15.x 上这一�
 paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.1.1
 ```
 
-安装会在 daemon 主机上运行 `npm ci`，所以那台机器要有 Node.js 和 npm，并且能连到 npm 仓库。
+安装会在 daemon 主机上运行 `npm ci --include=dev --ignore-scripts`，所以那台机器要有 Node.js 和 npm，并且能连到 npm 仓库。
 
 把已经安装的 Clear Chat 更新到这一版：
 

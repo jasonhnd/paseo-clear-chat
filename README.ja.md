@@ -54,7 +54,7 @@ Clear Chat 0.17.1.1 には Paseo 0.16.0 以降が必要です。Paseo 0.15.x で
 paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.1.1
 ```
 
-インストールは daemon のホストで `npm ci` を実行します。そのマシンに Node.js と npm があり、npm レジストリへ届く必要があります。
+インストールは daemon のホストで `npm ci --include=dev --ignore-scripts` を実行します。そのマシンに Node.js と npm があり、npm レジストリへ届く必要があります。
 
 すでに入っている Clear Chat をこの版へ更新するには:
 
