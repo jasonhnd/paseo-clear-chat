@@ -485,9 +485,9 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
   const scrollFade = (edge: "top" | "bottom"): ViewStyle => Platform.OS === "web" ? {
     position: "absolute", left: 0, right: 0, [edge]: 0, height: 12, pointerEvents: "none", zIndex: 2,
     backgroundImage: edge === "bottom"
-      ? `linear-gradient(to bottom, ${withAlpha(tokens.foregroundMuted, 0)}, ${withAlpha(tokens.foregroundMuted, 0.10)})`
-      : `linear-gradient(to top, ${withAlpha(tokens.foregroundMuted, 0)}, ${withAlpha(tokens.foregroundMuted, 0.10)})`,
-  } as unknown as ViewStyle : { position: "absolute", left: 0, right: 0, [edge]: 0, height: 12, pointerEvents: "none", zIndex: 2, backgroundColor: withAlpha(tokens.foregroundMuted, 0.10) };
+      ? `linear-gradient(to bottom, ${withAlpha(tokens.foregroundMuted, 0)}, ${withAlpha(tokens.foregroundMuted, 0.20)})`
+      : `linear-gradient(to top, ${withAlpha(tokens.foregroundMuted, 0)}, ${withAlpha(tokens.foregroundMuted, 0.20)})`,
+  } as unknown as ViewStyle : { position: "absolute", left: 0, right: 0, [edge]: 0, height: 12, pointerEvents: "none", zIndex: 2, backgroundColor: withAlpha(tokens.foregroundMuted, 0.20) };
   const disabled = readOnly || session.sending || status === "running";
   const missing = missingQuestion(agentId, at);
   const answer = answerText(agentId, at);
