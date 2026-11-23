@@ -129,10 +129,24 @@ function registerAnswerPill(client: PluginClientContext): () => void {
     try { return composers({ focused: true })[0] ?? null; } catch { return null; }
   };
   // The agent list is only read when the composer in front is not the cached one, so typing
-  // (which rebuilds the composer handle) costs no round trip.
+  // (which rebuilds the composer handle) costs no round trip. The first read also opens
+  // `list({ subscribe })`: `handle.subscribe` only hears `agent_update` while that stream
+  // is held on this same API object, and the host's own list does not feed the plugin's listeners.
+  let agentStream: { release?: () => Promise<void> } | null = null;
+  let agentStreamOpened = false;
   const agentList = async (): Promise<{ id: string; workspaceId: string }[]> => {
     try {
-      const result = await (client.paseo.agents as unknown as { list?: () => Promise<{ entries?: readonly { agent?: { id?: string; workspaceId?: string } }[] }> }).list?.();
+      const list = (client.paseo.agents as unknown as {
+        list?: (options?: { subscribe: Record<string, never> }) => Promise<{
+          entries?: readonly { agent?: { id?: string; workspaceId?: string } }[];
+          subscription?: { release?: () => Promise<void> };
+        }>;
+      }).list;
+      const result = await list?.(agentStreamOpened ? undefined : { subscribe: {} });
+      if (!agentStreamOpened) {
+        agentStreamOpened = true;
+        agentStream = result?.subscription ?? null;
+      }
       const entries = result?.entries ?? [];
       const found: { id: string; workspaceId: string }[] = [];
       for (const entry of entries) {
@@ -221,12 +235,14 @@ function registerAnswerPill(client: PluginClientContext): () => void {
     agentStatus: watchAgentStatus,
   });
 
-  // `useAgent` is React-only. The pin is not, so it reads the same status from the agent
-  // handle the host already keeps: `current()` when a snapshot is cached, otherwise one
-  // refresh and the handle's own updates. An unknown status does not hide the button.
+  // `useAgent` is React-only. The pin reads the same status from the agent handle, and
+  // only after `list({ subscribe })` is open do those listeners see idle become running.
+  // A focus change drops the cached string and always refreshes; an unknown status
+  // leaves the button visible until that refresh answers.
   const agentStatuses = new Map<string, string>();
   let watchedAgentId: string | null = null;
   let stopStatusWatch: (() => void) | null = null;
+  let refreshGeneration = 0;
   interface AgentStatusHandle {
     readonly status?: string | null;
     current?: () => { readonly status?: string | null } | null;
@@ -242,18 +258,26 @@ function registerAnswerPill(client: PluginClientContext): () => void {
     if (watchedAgentId !== agentId) {
       stopStatusWatch?.();
       stopStatusWatch = null;
+      if (watchedAgentId) agentStatuses.delete(watchedAgentId);
+      agentStatuses.delete(agentId);
       watchedAgentId = agentId;
+      refreshGeneration += 1;
+      const generation = refreshGeneration;
       let handle: AgentStatusHandle | null = null;
       try { handle = client.paseo.agents.ref(agentId) as AgentStatusHandle; } catch { handle = null; }
       if (handle) {
-        const known = handle.current?.()?.status ?? handle.status;
-        if (typeof known === "string") agentStatuses.set(agentId, known);
         try {
-          const stop = handle.subscribe?.(update => rememberStatus(agentId, update?.agent?.status));
+          const stop = handle.subscribe?.(update => {
+            if (watchedAgentId !== agentId || refreshGeneration !== generation) return;
+            rememberStatus(agentId, update?.agent?.status);
+          });
           if (typeof stop === "function") stopStatusWatch = stop;
-        } catch { /* A host that does not stream updates still answers `current()`. */ }
-        if (!agentStatuses.has(agentId) && handle.refresh) {
-          void handle.refresh().then(result => rememberStatus(agentId, result?.agent?.status ?? handle?.current?.()?.status)).catch(() => {});
+        } catch { /* A host that cannot stream updates still answers refresh(). */ }
+        if (handle.refresh) {
+          void handle.refresh().then(result => {
+            if (watchedAgentId !== agentId || refreshGeneration !== generation) return;
+            rememberStatus(agentId, result?.agent?.status ?? handle?.current?.()?.status);
+          }).catch(() => {});
         }
       }
     }
@@ -277,6 +301,11 @@ function registerAnswerPill(client: PluginClientContext): () => void {
     timer = null;
     stopStatusWatch?.();
     stopStatusWatch = null;
+    agentStatuses.clear();
+    watchedAgentId = null;
+    const stream = agentStream;
+    agentStream = null;
+    if (stream?.release) void stream.release().catch(() => {});
     pill.stop();
   };
 }

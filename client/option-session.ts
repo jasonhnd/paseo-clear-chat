@@ -90,12 +90,12 @@ function inspectDraft(agentId: string, at: number): DraftRead {
  * Fill what history left open from a draft. History wins on any question it
  * answered; nothing is invented for a question the user never touched.
  */
-function mergeDraft(session: OptionSession, draft: AnswerDraftV1): OptionSession | null {
+function mergeDraft(session: OptionSession, draft: AnswerDraftV1, skipChoices?: ReadonlySet<number>): OptionSession | null {
   let touched = false;
   const choices = { ...session.choices };
   for (const [index, letter] of Object.entries(draft.choices)) {
     const i = Number(index);
-    if (choices[i] !== undefined || !session.set.questions[i]) continue;
+    if (skipChoices?.has(i) || choices[i] !== undefined || !session.set.questions[i]) continue;
     if (!session.set.questions[i]!.options.some(option => option.letter === letter)) continue;
     choices[i] = letter;
     touched = true;
@@ -122,6 +122,8 @@ function mergeDraft(session: OptionSession, draft: AnswerDraftV1): OptionSession
 
 /** Restore a draft onto a freshly published card. A read that cannot answer is marked and tried again. */
 const pendingDraftReads = new Set<string>();
+/** Indexes the reader cleared, so a late draft must not put that letter back. */
+const clearedDraftChoices = new Map<string, Set<number>>();
 
 /** The reader has moved this card since it was published, so a late draft must not take their place. */
 function readerHasAnswered(session: OptionSession): boolean {
@@ -151,7 +153,7 @@ function restoreDraft(agentId: string, at: number): boolean {
   }
   pendingDraftReads.delete(key);
   if (inspected.kind !== "valid") return false;
-  const merged = mergeDraft(session, inspected.value);
+  const merged = mergeDraft(session, inspected.value, clearedDraftChoices.get(key));
   if (!merged) return false;
   sessions.set(at, readerHasAnswered(session) ? { ...merged, activeQuestion: session.activeQuestion } : merged);
   return true;
@@ -351,6 +353,7 @@ onEnhancerPreferencesReady(() => {
     }
   }
   if (retryPendingDraftReads()) changed = true;
+  for (const agentId of snapshots.keys()) if (reconcileAnswers(agentId)) changed = true;
   if (changed) notify();
 });
 
@@ -613,6 +616,9 @@ export function customLetterFor(agentId: string, questionIndex: number, at?: num
 export function clearChoice(agentId: string, questionIndex: number, at?: number): void {
   update(agentId, snapshot => {
     if (snapshot.readOnly || snapshot.sending || snapshot.choices[questionIndex] === undefined) return snapshot;
+    const cleared = clearedDraftChoices.get(answerDraftKey(agentId, snapshot.at)) ?? new Set<number>();
+    cleared.add(questionIndex);
+    clearedDraftChoices.set(answerDraftKey(agentId, snapshot.at), cleared);
     const choices = { ...snapshot.choices };
     const customConfirmed = { ...snapshot.customConfirmed };
     delete choices[questionIndex];
@@ -655,6 +661,8 @@ export function retireOptionSession(agentId: string, at = replies.get(agentId)):
 export function dismiss(agentId: string, at?: number): void {
   const session = sessionForOperation(agentId, at);
   if (!session || session.readOnly || session.sending) return;
+  pendingDraftReads.delete(answerDraftKey(agentId, session.at));
+  clearedDraftChoices.delete(answerDraftKey(agentId, session.at));
   retireOptionSession(agentId, session.at);
   void saveDismissedOptionReply(agentId, session.at);
 }
