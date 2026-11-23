@@ -1,6 +1,6 @@
 {
   "name": "clear-chat",
-  "version": "0.17.3.1",
+  "version": "0.17.3.2",
   "private": true,
   "description": "Answer an agent's lettered questions with a card: pick an option or write your own, preview, and send.",
   "license": "MIT",
