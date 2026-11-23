@@ -51,7 +51,9 @@ Settings are saved on the host and shared by every client connected to it.
 - A window shorter than about 117 px is not supported: the panel's footer no longer fits.
 - While a reply is still being written, its button does not appear. If the card is open when the agent starts answering again, the panel says the reply is still running, and answers cannot be given until it ends.
 - A card you continued after an ordinary message can still show its button while the card itself says the reply is still running: the button does not read the agent's running state.
-- This build was checked in the browser interface of Paseo 0.17.3 (the web UI the `paseo` command starts), in a headless browser, with a test agent that needs no model: the follow-up-draft checks and the tablet and foldable layouts at 820 and 1024 width. It was not checked in the desktop app, with a real model, on physical iOS or Android devices, or on Paseo 0.16.x, 0.17.1, and 0.17.2.
+- At phone width, Esc does not close the card; tap outside the panel to close it. **Not options** dismisses that reply for good, card and button alike.
+- A draft that could not be read comes back on the next event in the conversation; until then the card stays out of reach. The draft itself is not lost.
+- This build was checked in the browser interface of Paseo 0.17.3, in a headless browser, with a test agent that needs no model: the follow-up-draft checks, including one pass in Chinese, and the tablet and foldable layouts at 820×1180, 1024×1366, 717×512 and 884×1104, in English and Chinese. It was not checked in the desktop app, with a real model, on physical iOS or Android devices, on Paseo 0.16.x, 0.17.1 and 0.17.2, in the dark theme, or with a draft store that fails to answer on a real host.
 - Removing the plugin deletes its settings. Back them up first.
 
 The repository README has the answer-card steps and troubleshooting.
