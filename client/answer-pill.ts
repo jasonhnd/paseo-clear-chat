@@ -1,6 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { currentAnswerCard, type AnswerCardSummary } from "./answer-feed";
-import { getOptionSession, subscribeOptionSession } from "./option-session";
+import { getOptionSession, getOptionSessionAt, subscribeOptionSession } from "./option-session";
 
 /**
  * The answer card as a composer pill.
@@ -16,13 +16,14 @@ import { getOptionSession, subscribeOptionSession } from "./option-session";
 
 export const ANSWER_PILL_ID = "clear-chat-answer-card";
 
-/** The newest unanswered card the card body can actually draw. */
+/** The newest card the card body can actually draw. */
 export function currentPillCard(agentId: string): AnswerCardSummary | null {
   const card = currentAnswerCard(agentId);
   if (!card) return null;
-  // `getOptionSession` is null for a card whose reply is no longer the conversation's last
-  // one; `OptionCard` refuses to render that card, so neither does the pin.
-  return getOptionSession(agentId, card.at) ? card : null;
+  // The card body refuses a card whose reply is no longer the conversation's last one,
+  // except a card the reader has explicitly continued. Neither may open onto nothing.
+  if (!getOptionSession(agentId, card.at) && getOptionSessionAt(agentId, card.at)?.resumed !== true) return null;
+  return card;
 }
 
 export function useCurrentPillCard(agentId: string): AnswerCardSummary | null {

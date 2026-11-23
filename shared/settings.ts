@@ -60,10 +60,27 @@ export const answerDraftSchema = z.object({
 
 export type AnswerDraft = z.output<typeof answerDraftSchema>;
 
+// One draft entry that is not this version's shape is dropped on its own. A single
+// bad or older entry must not invalidate the rest of the document: the other drafts
+// and the stored preferences keep loading, and the settings page shows no error.
+// The record itself is built without a prototype so a stored key such as `__proto__`
+// can never reach a setter instead of being kept or dropped.
+const answerDraftsSchema = z.record(z.string(), z.unknown()).transform((entries) => {
+  const kept = Object.create(null) as Record<string, AnswerDraft>;
+  for (const [key, value] of Object.entries(entries)) {
+    const parsed = answerDraftSchema.safeParse(value);
+    if (parsed.success) kept[key] = parsed.data;
+  }
+  return kept;
+});
+
 const presentationSchema = z.object({
   preferences: preferenceOverridesSchema.default({}),
   legacyMigrated: z.boolean().default(false),
-  answerDrafts: z.record(z.string(), answerDraftSchema).optional(),
+  // A half-written or hand-edited block (null, an array, a string, a number) degrades to
+  // "no drafts" instead of rejecting the whole document. The fallback is created per
+  // parse: a shared object would let one degraded document write into the next.
+  answerDrafts: answerDraftsSchema.optional().catch(() => ({})),
 });
 
 export const presentationSettings = defineSettings({
