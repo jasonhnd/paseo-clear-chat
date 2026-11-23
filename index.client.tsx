@@ -218,7 +218,47 @@ function registerAnswerPill(client: PluginClientContext): () => void {
       const stopPreferences = subscribeEnhancerPreferences(listener);
       return () => { stopSessions(); stopPreferences(); };
     },
+    agentStatus: watchAgentStatus,
   });
+
+  // `useAgent` is React-only. The pin is not, so it reads the same status from the agent
+  // handle the host already keeps: `current()` when a snapshot is cached, otherwise one
+  // refresh and the handle's own updates. An unknown status does not hide the button.
+  const agentStatuses = new Map<string, string>();
+  let watchedAgentId: string | null = null;
+  let stopStatusWatch: (() => void) | null = null;
+  interface AgentStatusHandle {
+    readonly status?: string | null;
+    current?: () => { readonly status?: string | null } | null;
+    refresh?: () => Promise<{ agent?: { readonly status?: string | null } } | null>;
+    subscribe?: (handler: (update: { agent?: { readonly status?: string | null } }) => void) => () => void;
+  }
+  function rememberStatus(agentId: string, status: unknown): void {
+    if (typeof status !== "string" || agentStatuses.get(agentId) === status) return;
+    agentStatuses.set(agentId, status);
+    void pill.refresh();
+  }
+  function watchAgentStatus(agentId: string): string | null {
+    if (watchedAgentId !== agentId) {
+      stopStatusWatch?.();
+      stopStatusWatch = null;
+      watchedAgentId = agentId;
+      let handle: AgentStatusHandle | null = null;
+      try { handle = client.paseo.agents.ref(agentId) as AgentStatusHandle; } catch { handle = null; }
+      if (handle) {
+        const known = handle.current?.()?.status ?? handle.status;
+        if (typeof known === "string") agentStatuses.set(agentId, known);
+        try {
+          const stop = handle.subscribe?.(update => rememberStatus(agentId, update?.agent?.status));
+          if (typeof stop === "function") stopStatusWatch = stop;
+        } catch { /* A host that does not stream updates still answers `current()`. */ }
+        if (!agentStatuses.has(agentId) && handle.refresh) {
+          void handle.refresh().then(result => rememberStatus(agentId, result?.agent?.status ?? handle?.current?.()?.status)).catch(() => {});
+        }
+      }
+    }
+    return agentStatuses.get(agentId) ?? null;
+  }
 
   let timer: ReturnType<typeof setTimeout> | null = null;
   let stopped = false;
@@ -235,6 +275,8 @@ function registerAnswerPill(client: PluginClientContext): () => void {
     stopped = true;
     if (timer) clearTimeout(timer);
     timer = null;
+    stopStatusWatch?.();
+    stopStatusWatch = null;
     pill.stop();
   };
 }

@@ -16,13 +16,28 @@ import { getOptionSession, getOptionSessionAt, subscribeOptionSession } from "./
 
 export const ANSWER_PILL_ID = "clear-chat-answer-card";
 
-/** The newest card the card body can actually draw. */
-export function currentPillCard(agentId: string): AnswerCardSummary | null {
+/**
+ * The card body refuses to draw an editable card while the agent is replying
+ * (`option-card.tsx`). The button must use this same gate: otherwise a continued
+ * card stays pinned and opens onto the "still running" message.
+ * A read-only card is still drawn, and an unknown status does not hide the button.
+ */
+export function answerCardHiddenWhileAgentRuns(
+  session: { readOnly?: boolean } | null | undefined,
+  status: string | null | undefined,
+): boolean {
+  return status === "running" && session != null && session.readOnly !== true;
+}
+
+/** The newest card the card body can actually draw. `status` is the agent's running state. */
+export function currentPillCard(agentId: string, status?: string | null): AnswerCardSummary | null {
   const card = currentAnswerCard(agentId);
   if (!card) return null;
   // The card body refuses a card whose reply is no longer the conversation's last one,
   // except a card the reader has explicitly continued. Neither may open onto nothing.
-  if (!getOptionSession(agentId, card.at) && getOptionSessionAt(agentId, card.at)?.resumed !== true) return null;
+  const session = getOptionSessionAt(agentId, card.at);
+  if (!getOptionSession(agentId, card.at) && session?.resumed !== true) return null;
+  if (answerCardHiddenWhileAgentRuns(session, status)) return null;
   return card;
 }
 
@@ -77,6 +92,11 @@ export interface AnswerPillDeps {
   content: unknown;
   /** Card store changes: an answer, a send, a new reply. */
   subscribe(listener: () => void): () => void;
+  /**
+   * The same agent status the card body reads. Omitted or null means the host has not
+   * reported one yet, and the button stays under the rules above.
+   */
+  agentStatus?(agentId: string): string | null | undefined;
 }
 
 export interface AnswerPillController {
@@ -132,7 +152,7 @@ export function createAnswerPill(deps: AnswerPillDeps): AnswerPillController {
     if (registeredFor && (registeredFor.agentId !== focus.agentId || registeredFor.workspaceId !== focus.workspaceId)) {
       dropRegistration();
     }
-    const card = currentPillCard(focus.agentId);
+    const card = currentPillCard(focus.agentId, deps.agentStatus?.(focus.agentId) ?? null);
     if (!card) {
       dropRegistration();
       return;

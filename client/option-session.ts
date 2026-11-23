@@ -85,10 +85,6 @@ function inspectDraft(agentId: string, at: number): DraftRead {
     return value ? { kind: "valid", value } : { kind: "invalid" };
   } catch { return { kind: "unavailable" }; }
 }
-function readDraft(agentId: string, at: number): AnswerDraftV1 | null {
-  const result = inspectDraft(agentId, at);
-  return result.kind === "valid" ? result.value : null;
-}
 
 /**
  * Fill what history left open from a draft. History wins on any question it
@@ -124,17 +120,58 @@ function mergeDraft(session: OptionSession, draft: AnswerDraftV1): OptionSession
   return { ...session, choices, customDrafts, customOpen, activeQuestion: active };
 }
 
-/** Restore a draft onto a freshly published card. */
+/** Restore a draft onto a freshly published card. A read that cannot answer is marked and tried again. */
+const pendingDraftReads = new Set<string>();
+
+/** The reader has moved this card since it was published, so a late draft must not take their place. */
+function readerHasAnswered(session: OptionSession): boolean {
+  if (session.activeQuestion !== 0) return true;
+  if (Object.values(session.customOpen).some(Boolean)) return true;
+  for (const value of Object.values(session.choices)) if (value !== undefined) return true;
+  for (const value of Object.values(session.customConfirmed)) if (value !== undefined) return true;
+  for (const value of Object.values(session.customDrafts)) if (value) return true;
+  for (const value of Object.values(session.notes)) if (value) return true;
+  return false;
+}
+
 function restoreDraft(agentId: string, at: number): boolean {
+  const key = answerDraftKey(agentId, at);
   const sessions = snapshots.get(agentId);
   const session = sessions?.get(at);
-  if (!session || session.readOnly || session.dismissed) return false;
-  const draft = readDraft(agentId, at);
-  if (!draft) return false;
-  const merged = mergeDraft(session, draft);
+  if (!sessions || !session || session.readOnly || session.dismissed) {
+    pendingDraftReads.delete(key);
+    return false;
+  }
+  const inspected = inspectDraft(agentId, at);
+  // A failed read is not "no draft". Remember the card and try again when the
+  // store can answer. A successful absence or a rejected shape is final.
+  if (inspected.kind === "unavailable") {
+    pendingDraftReads.add(key);
+    return false;
+  }
+  pendingDraftReads.delete(key);
+  if (inspected.kind !== "valid") return false;
+  const merged = mergeDraft(session, inspected.value);
   if (!merged) return false;
-  sessions!.set(at, merged);
+  sessions.set(at, readerHasAnswered(session) ? { ...merged, activeQuestion: session.activeQuestion } : merged);
   return true;
+}
+
+/** Re-read cards whose first draft read failed. Skips a card this turn already read. */
+function retryPendingDraftReads(skipAgentId?: string, skipAt?: number): boolean {
+  let changed = false;
+  for (const key of [...pendingDraftReads]) {
+    const splitAt = key.lastIndexOf("\u0000");
+    const agentId = splitAt > 0 ? key.slice(0, splitAt) : "";
+    const at = Number(key.slice(splitAt + 1));
+    if (!agentId || !Number.isFinite(at)) {
+      pendingDraftReads.delete(key);
+      continue;
+    }
+    if (agentId === skipAgentId && at === skipAt) continue;
+    if (restoreDraft(agentId, at)) changed = true;
+  }
+  return changed;
 }
 
 /** Sidebar hint: how many questions of this card are still open. Carries no draft text. */
@@ -313,6 +350,7 @@ onEnhancerPreferencesReady(() => {
       if (isDismissed(agentId, at)) changed = sessions.delete(at) || changed;
     }
   }
+  if (retryPendingDraftReads()) changed = true;
   if (changed) notify();
 });
 
@@ -479,6 +517,7 @@ export function publishAssistantReply(agentId: string, reply: { at: number; text
     });
   }
   let changed = !!set && restoreDraft(agentId, reply.at);
+  if (retryPendingDraftReads(set ? agentId : undefined, set ? reply.at : undefined)) changed = true;
   if (reconcileAnswers(agentId)) changed = true;
   if (reply.at > latest || changed) notify();
 }
@@ -489,7 +528,7 @@ export function publishUserMessage(agentId: string, at: number, text = ""): void
   if (!userMessages) messages.set(agentId, userMessages = new Map());
   if (userMessages.get(at) === text) return;
   userMessages.set(at, text);
-  if (reconcileAnswers(agentId)) notify();
+  if (reconcileAnswers(agentId) || retryPendingDraftReads()) notify();
 }
 
 function update(agentId: string, change: (snapshot: OptionSession) => OptionSession, at?: number): void {

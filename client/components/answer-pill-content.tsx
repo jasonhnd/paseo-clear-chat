@@ -2,7 +2,7 @@ import React from "react";
 import { Text } from "react-native";
 import type { PluginButtonContentProps } from "@getpaseo/plugin/client";
 import { useAgent, useTranslation } from "@getpaseo/plugin/client";
-import { useCurrentPillCard } from "../answer-pill";
+import { answerCardHiddenWhileAgentRuns, useCurrentPillCard } from "../answer-pill";
 import { useOptionSession } from "../option-session";
 import { messages } from "../messages";
 import { useEnhancerPreferences } from "../preferences";
@@ -31,7 +31,7 @@ export function AnswerPillContent(props: PluginButtonContentProps) {
   const preferences = useEnhancerPreferences();
   const tokens = React.useMemo(() => buildThemeTokens(props.theme.colors, preferences), [props.theme, preferences]);
   if (!agentId || !card) return null;
-  if (status === "running" && session && !session.readOnly) {
+  if (answerCardHiddenWhileAgentRuns(session, status)) {
     return <Text testID="option-pill-waiting" style={{ color: tokens.foregroundMuted, fontFamily: tokens.fontUi, fontSize: tokens.fs(13), paddingVertical: 8 }}>{t("answerCard.waitingForReply")}</Text>;
   }
   return <OptionCard agentId={agentId} at={card.at} tokens={tokens} surface="popover" compact={compact} />;
