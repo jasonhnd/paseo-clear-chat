@@ -1,3 +1,43 @@
+## [0.17.3.1] - 2026-11-23
+
+### Fixed
+
+- **A drafted card stays reachable after an ordinary message.** Answer part of a two-question card, close it, then send an ordinary message such as “wait a moment”. The composer button used to disappear, the card could not be opened again, and the saved draft stayed in the settings document with no way back to it. The button now stays above the message box with the saved progress, for example **Answer 1/2**; pressing it opens the card with **You stopped at Q1. Your progress is saved.** and **Continue answering**, and the draft is kept ([#458](https://github.com/jasonhnd/paseo-clear-chat/issues/458), [PR #525](https://github.com/jasonhnd/paseo-clear-chat/pull/525)).
+- **One damaged saved draft no longer rejects the whole settings document.** A stored draft entry with a future `schema`, an older shape without `schema`, a bare string, or a wrong value type is dropped on its own, and so is an `answerDrafts` block that is not a record at all (`null`, an array, a string, a number). The settings page no longer reports “Clear Chat settings are invalid or use an unsupported format”, and the stored preferences and every other draft still load. An invalid preference value still rejects the document, as before ([#458](https://github.com/jasonhnd/paseo-clear-chat/issues/458), [PR #525](https://github.com/jasonhnd/paseo-clear-chat/pull/525)).
+- **A draft that could not be read no longer hides the card for the rest of the session.** A card whose draft could not be read when the follow-up message was classified is read again on later events in the conversation. When a readable draft comes back, the card returns to waiting with that draft restored. A store that still cannot answer keeps the card read-only with no Continue control, so a failed read is never shown as “no draft” ([#458](https://github.com/jasonhnd/paseo-clear-chat/issues/458), [PR #525](https://github.com/jasonhnd/paseo-clear-chat/pull/525)).
+
+### Changed
+
+- **The version follows Paseo 0.17.3.** The first three parts of the Clear Chat version are the Paseo version this build was checked with, and the fourth counts Clear Chat's releases for that host version. The minimum host version is unchanged at Paseo 0.16.0: the plugin uses no host interface that appeared after 0.16.0.
+- **The host badge reads tested 0.17.3.** The README badge in all three languages names Paseo 0.17.3, the browser interface this build was checked in, while the minimum stays Paseo 0.16.0.
+- **The install notes match the command, and the lockfile invariant is tested.** `test/install-failures.test.cjs` now asserts that every lockfile package with `hasInstallScript: true` is development-only, so the invariant behind `npm ci --include=dev --ignore-scripts` fails loudly if a production dependency ever needs an install script; the test also fails when the lockfile records no such package. The comment in `scripts/install.cjs`, the `scripts/install.cjs` line in `docs/DEVELOPMENT.md`, and the sample install output name the same command. No behaviour change ([PR #523](https://github.com/jasonhnd/paseo-clear-chat/pull/523)).
+- **The three READMEs say what was not checked.** Each install section says that the command from the previous release was not checked on Paseo 0.16.x, and that Paseo 0.16.0 and 0.16.1 were not checked. The answer-card bullet in the previous section of this changelog now describes the current behaviour ([PR #523](https://github.com/jasonhnd/paseo-clear-chat/pull/523)).
+
+### Documentation
+
+- **The plugin listing keeps to the card.** `OVERVIEW.md` and `OVERVIEW.zh-CN.md` no longer carry the install and update commands or the release history. Each points to the repository README for the commands and for the changes in each release, and keeps what the card does, how to use it, requirements, settings, privacy, and known limitations ([PR #524](https://github.com/jasonhnd/paseo-clear-chat/pull/524)).
+- The three READMEs give the version, the install and update commands, a “This version” section, and the known limitations for 0.17.3.1. `OVERVIEW.md` and `OVERVIEW.zh-CN.md` name Paseo 0.17.3 in the check scope.
+
+### Upgrade notes
+
+- Clear Chat 0.17.3.1 needs Paseo 0.16.0 or newer. The minimum host version is unchanged. This build was checked on Paseo 0.17.3 only; it was not checked on Paseo 0.16.x, 0.17.1, or 0.17.2. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x.
+- Update with `paseo plugin update clear-chat --ref v0.17.3.1 --yes`, or install with `paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.3.1`.
+- The settings file is kept. The answer card switch, saved replies, dismissed false detections, and unfinished drafts stay as they are. A stored draft entry that is damaged, of an older shape, or of an unknown shape is dropped when the file is read; the other drafts and the preferences still load. Keys for features this version does not show stay in the file and have no controls.
+- This build was checked in the browser interface of Paseo 0.17.3 (the web UI the `paseo` command starts), in a headless browser, with a test agent that needs no model: every cell of the follow-up-draft checks ([#458](https://github.com/jasonhnd/paseo-clear-chat/issues/458)) and the tablet and foldable layouts ([#467](https://github.com/jasonhnd/paseo-clear-chat/issues/467), eight cells) at 820 and 1024 width, including touch sizes and the keyboard paths. It was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
+
+### Known limitations
+
+- `Plan 2B` can still be read as an answer.
+- In the desktop panel a long written answer previews in at most two lines: the whole answer index, then the start of the first written answer. The message that is sent keeps the full answer, and the narrow panel and the timeline show the full preview.
+- A window shorter than about 117 px is not supported: the panel's footer no longer fits.
+- While a reply is still being written, its button does not appear above the message box. If the card is open when the agent starts answering again, the panel says the reply is still running, and answers cannot be given until it ends.
+- The composer button does not read the agent's running state. A continued card that is no longer the conversation's last reply can therefore be pinned while its body shows the wait message.
+- Reconciliation only considers the first user message between a card and the next reply, so an answer typed after a prose message in the same turn is not associated with that card. Nothing is lost: the card stays continuable and the draft is retained.
+- The recovery of an unreadable draft happens on the next event in the conversation. If the run ends after the ordinary message and no further event arrives, the card stays out of reach until the view is reloaded; the draft is intact either way.
+- Draft restore is still one-shot when a reply is first published. A first read that fails before the preferences cache is authoritative is not retried, so that card can render with no answers while the draft is still in storage.
+- At phone width, Esc does not close the answer card; use the panel's close control or tap outside the panel. This is the host's behaviour.
+- Removing the plugin deletes its settings. Startup does not delete older plugin-data files.
+
 ## [0.17.2.1] - 2026-11-22
 
 ### Fixed
@@ -769,6 +809,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.17.3.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.17.2.1...v0.17.3.1
 [0.17.2.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.17.1.1...v0.17.2.1
 [0.17.1.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.16.2.3...v0.17.1.1
 [0.16.2.3]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.16.2.2...v0.16.2.3

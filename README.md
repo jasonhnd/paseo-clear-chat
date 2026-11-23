@@ -11,18 +11,18 @@
 <p align="center">
   <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=date"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <a href="https://paseo.sh"><img alt="Paseo 0.16.0+, tested on 0.17.2" src="https://img.shields.io/badge/Paseo-%3E%3D0.16.0%20%C2%B7%20tested%200.17.2-5b5bd6"></a>
+  <a href="https://paseo.sh"><img alt="Paseo 0.16.0+, tested on 0.17.3" src="https://img.shields.io/badge/Paseo-%3E%3D0.16.0%20%C2%B7%20tested%200.17.3-5b5bd6"></a>
 </p>
 
 ## This version
 
-Clear Chat 0.17.2.1 follows Paseo 0.17.2: the first three parts of the version are the Paseo version this build was checked with. The answer card code is the same as the previous release, so the card works exactly as before: **Send** stays in view when the card opens in the desktop panel, the question area scrolls inside the card and the saved replies scroll with it, and the progress line and **Send** stay in one row at the bottom. The one change is in the install. It now runs `npm ci --include=dev --ignore-scripts`, so it installs only what the committed lockfile names and runs no install script that a package declares. What you see: the install no longer downloads anything outside the lockfile, including binaries a package would fetch in its own install script; and when a required dependency is missing after the install, the installation fails with a setup message that names the package and the command to run, instead of starting a card that cannot work. The dependency pins are unchanged: the install still uses the patched versions of six transitive packages.
+Clear Chat 0.17.3.1 follows Paseo 0.17.3: the first three parts of the version are the Paseo version this build was checked with. The answer card now keeps a draft within reach after an ordinary message. Answer part of the card, close it, send an ordinary message such as “wait a moment”, and the button above the message box is still there with your progress, for example **Answer 1/2**. Press it and the card opens with **You stopped at Q1. Your progress is saved.** and **Continue answering**, and the saved draft is kept. A stored draft that is damaged, written by an older version, or of an unknown shape is now dropped on its own: the settings page no longer reports that the settings are invalid, and your stored preferences and the other drafts still load. When the saved drafts cannot be read at that moment, the card is no longer locked away for the rest of the session; it reads them again on the next event in the conversation and comes back with the draft once they can be read. Everything else is unchanged: **Send** stays in view when the card opens in the desktop panel, the question area scrolls inside the card, the saved replies scroll with it, and the progress line and **Send** share one row at the bottom. The limits of this change are listed in [Known limitations](#known-limitations): the button does not follow whether the agent is still answering, an unreadable draft comes back only on the next event in the conversation, and an answer typed after an ordinary message in the same turn is not linked to the card.
 
 The full list of changes is in the [changelog](CHANGELOG.md).
 
 ## Answer card
 
-A reply that asks lettered questions gets a button above the message box once that reply has finished. It carries the progress, for example **Answer 0/2**. On a desktop, hovering shows the full name, **Answer card · 0/2 answered**; on a narrow screen the panel opens with that full name as its title. Press it to open the whole card in a panel; on a narrow screen the panel rises from the bottom. In the desktop panel the question area scrolls inside the card, and the progress line and **Send** stay in one row at the bottom, so **Send** is visible without scrolling the panel. Choose your answers there and press **Send** on the card: the message goes to the chat as if you had sent it, and the message box keeps what you were writing. The count follows your answers (**Answer 1/2**), closing the panel keeps them, and after **Send** the button is gone until another reply asks lettered questions. The button belongs to the conversation on screen, so switching chats shows that chat's own card, or none.
+A reply that asks lettered questions gets a button above the message box once that reply has finished. It carries the progress, for example **Answer 0/2**. On a desktop, hovering shows the full name, **Answer card · 0/2 answered**; on a narrow screen the panel opens with that full name as its title. Press it to open the whole card in a panel; on a narrow screen the panel rises from the bottom. In the desktop panel the question area scrolls inside the card, and the progress line and **Send** stay in one row at the bottom, so **Send** is visible without scrolling the panel. Choose your answers there and press **Send** on the card: the message goes to the chat as if you had sent it, and the message box keeps what you were writing. The count follows your answers (**Answer 1/2**), closing the panel keeps them, and after **Send** the button is gone until another reply asks lettered questions. If you send an ordinary message with part of the card answered, the button stays above the message box with that progress; pressing it opens the card with **Continue answering**, and that button restores the saved draft. The button belongs to the conversation on screen, so switching chats shows that chat's own card, or none.
 
 <p align="center">
   <img width="520" alt="The answer card button above the message box, showing Answer 0/2" src="docs/images/answer-pill.png">
@@ -48,10 +48,10 @@ A bare letter inside a sentence (for example “wait a moment”) is not treated
 
 ## Install
 
-Clear Chat 0.17.2.1 needs Paseo 0.16.0 or later. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x. The new install command was not checked on Paseo 0.16.x; Paseo 0.16.0 and 0.16.1 were not checked.
+Clear Chat 0.17.3.1 needs Paseo 0.16.0 or later. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x. This build was checked on Paseo 0.17.3 only; it was not checked on Paseo 0.16.x, 0.17.1, or 0.17.2. The install command from the previous release was not checked on Paseo 0.16.x; Paseo 0.16.0 and 0.16.1 were not checked.
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.2.1
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.3.1
 ```
 
 Installation runs `npm ci --include=dev --ignore-scripts` on the daemon host, so Node.js and npm must be available there and the host must be able to reach the npm registry.
@@ -59,7 +59,7 @@ Installation runs `npm ci --include=dev --ignore-scripts` on the daemon host, so
 To update an existing install to this version:
 
 ```bash
-paseo plugin update clear-chat --ref v0.17.2.1 --yes
+paseo plugin update clear-chat --ref v0.17.3.1 --yes
 ```
 
 Open **Settings → Plugins → Clear Chat** and read the version line in the **Answer card** card. A directory install keeps the version information already in that directory, so it can show an older release. If the build carries no usable version, the line shows **Unknown**.
@@ -101,10 +101,10 @@ A Clear Chat version is the Paseo version it is built for, plus one more number 
 ## Upgrade and rollback
 
 ```bash
-paseo plugin update clear-chat --ref v0.17.2.1 --yes
+paseo plugin update clear-chat --ref v0.17.3.1 --yes
 ```
 
-An update keeps the settings file. Values for the answer card, saved replies, dismissed false detections, and unfinished drafts are kept. Keys for features this version no longer shows stay in the file and have no control on the settings page. A rollback to an earlier ref also keeps the file, but the effect of a specific rollback on settings is not guaranteed, so back the file up first if the settings matter. Removing the plugin deletes its settings.
+An update keeps the settings file. Values for the answer card, saved replies, dismissed false detections, and unfinished drafts are kept. A stored draft entry that is damaged, of an older shape, or of an unknown shape is dropped when the file is read; the other drafts and your preferences still load, and the settings page no longer reports the whole file as invalid because of it. Keys for features this version no longer shows stay in the file and have no control on the settings page. A rollback to an earlier ref also keeps the file, but the effect of a specific rollback on settings is not guaranteed, so back the file up first if the settings matter. Removing the plugin deletes its settings.
 
 After this update the conversation is no longer drawn by Clear Chat. Use [Better Paseo](https://paseo.sh/plugins/roundreddot/better-paseo) for that view. You will not see Clear Chat's step rows, tool cards, or sidebar.
 
@@ -137,8 +137,12 @@ Clear Chat's own text follows the Paseo app language: English, Simplified Chines
 - In the desktop panel a long written answer previews in at most two lines: the whole answer index, then the start of the first written answer. The message that is sent keeps the full answer, and the narrow panel shows the full preview; a long preview may need scrolling there.
 - A window shorter than about 117 px is not supported: the panel's footer no longer fits.
 - While a reply is still being written, its button does not appear above the message box. If the card is open when the agent starts answering again, the panel says the reply is still running, and answers cannot be given until it ends.
+- The button does not follow whether the agent is answering. A card you have continued, and that is no longer the conversation's last reply, can show the button while the card itself says the reply is still running.
+- After an ordinary message, a draft that could not be read comes back on the next event in the conversation. If the run ends and nothing else arrives, the card stays out of reach until the view is reloaded; the draft is intact either way. A reply's draft is read once when the reply is first shown, so a first read that fails can leave that card with no answers while the draft is still stored.
+- An answer typed after an ordinary message in the same turn is not linked to the card. Nothing is lost: the card stays continuable and the draft is kept.
 - At phone width, Enter in Paseo's own input box inserts a newline. Use that box's Send button. This is the host's behaviour.
-- This build was checked in the browser interface of Paseo 0.17.2 (the web UI the `paseo` command starts) with a test agent that needs no model, using a two-question card at 1280×900 and 390×844, and the version line on the settings page was checked. Its answer card code is the same as the previous release, which was checked in Paseo 0.17.1 at 1280×900, 1280×440, and 390×844, including once in the dark theme. It was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
+- At phone width, Esc does not close the answer card; use the panel's close control or tap outside the panel. This is the host's behaviour.
+- This build was checked in the browser interface of Paseo 0.17.3 (the web UI the `paseo` command starts), in a headless browser, with a test agent that needs no model: every cell of the follow-up-draft checks, and the tablet and foldable layouts at 820 and 1024 width, including touch sizes and the keyboard paths. It was not checked in the desktop app, with a real model, on physical iOS or Android devices, or on Paseo 0.16.x, 0.17.1, and 0.17.2.
 - Removing the plugin deletes its settings. Back them up first. Startup does not delete older files in the plugin data directory.
 
 ## Privacy and data on the host
@@ -170,7 +174,7 @@ Clear Chat's own text follows the Paseo app language: English, Simplified Chines
 | Problem | What to do |
 |---|---|
 | Installing through the Cafe plugin fails. | Retry with the Paseo CLI command in [Install](#install), using the same repository and release ref. Clear Chat installs its dependencies with `npm ci --include=dev --ignore-scripts`, so Node.js and npm must be available on the daemon host, and its network must reach the npm registry. If you manage the checkout yourself, run `npm ci --include=dev --ignore-scripts` there before retrying. |
-| Installation stops because the plugin needs a newer Paseo version. | Clear Chat 0.17.2.1 needs Paseo 0.16.0 or newer on the daemon host and on every connected app. On Paseo 0.15.x, stay on Clear Chat 0.15.4.x. For older hosts, see the [Install](#install) section. |
+| Installation stops because the plugin needs a newer Paseo version. | Clear Chat 0.17.3.1 needs Paseo 0.16.0 or newer on the daemon host and on every connected app. On Paseo 0.15.x, stay on Clear Chat 0.15.4.x. For older hosts, see the [Install](#install) section. |
 | Clear Chat says it requires plugin RPC, a settings screen, settings registration, and a request handler. | Update Paseo on the daemon host and in every connected app, then reload Clear Chat. The Paseo version Clear Chat needs is declared in `paseo-plugin.json`. |
 | Clear Chat cannot start because plugin registration failed. | Update Paseo and reload Clear Chat. If it still fails, back up the plugin settings before you reinstall from the CLI. |
 | Clear Chat cannot read its settings from the host. | Reconnect to the host and choose **Retry** on the settings page. If it still fails, check that the daemon can access the plugin settings folder. |
@@ -205,7 +209,7 @@ If the `beautiful-chat` settings folder does not exist, you never changed Beauti
 **2. Install**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.2.1
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.3.1
 ```
 
 **3. Check, then remove the old plugin**

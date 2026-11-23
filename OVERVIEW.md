@@ -50,7 +50,8 @@ Settings are saved on the host and shared by every client connected to it.
 - In the desktop panel a long written answer previews in at most two lines: the whole answer index, then the start of the first written answer. The message that is sent keeps the full answer, and the narrow panel shows the full preview.
 - A window shorter than about 117 px is not supported: the panel's footer no longer fits.
 - While a reply is still being written, its button does not appear. If the card is open when the agent starts answering again, the panel says the reply is still running, and answers cannot be given until it ends.
-- This build was checked in the browser interface of Paseo 0.17.2 (the web UI the `paseo` command starts) with a test agent that needs no model, using a two-question card at 1280×900 and 390×844, and the version line on the settings page was checked. It was not checked in the desktop app, with a real model, or on physical iOS or Android devices.
+- A card you continued after an ordinary message can still show its button while the card itself says the reply is still running: the button does not read the agent's running state.
+- This build was checked in the browser interface of Paseo 0.17.3 (the web UI the `paseo` command starts), in a headless browser, with a test agent that needs no model: the follow-up-draft checks and the tablet and foldable layouts at 820 and 1024 width. It was not checked in the desktop app, with a real model, on physical iOS or Android devices, or on Paseo 0.16.x, 0.17.1, and 0.17.2.
 - Removing the plugin deletes its settings. Back them up first.
 
 The repository README has the answer-card steps and troubleshooting.
