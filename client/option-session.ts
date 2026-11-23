@@ -91,16 +91,10 @@ function readDraft(agentId: string, at: number): AnswerDraftV1 | null {
 }
 
 /**
- * Restore a draft on top of what history already reconstructed. History wins on
- * any question it answered; nothing is invented for a question the user never
- * touched.
+ * Fill what history left open from a draft. History wins on any question it
+ * answered; nothing is invented for a question the user never touched.
  */
-function restoreDraft(agentId: string, at: number): boolean {
-  const sessions = snapshots.get(agentId);
-  const session = sessions?.get(at);
-  if (!session || session.readOnly || session.dismissed) return false;
-  const draft = readDraft(agentId, at);
-  if (!draft) return false;
+function mergeDraft(session: OptionSession, draft: AnswerDraftV1): OptionSession | null {
   let touched = false;
   const choices = { ...session.choices };
   for (const [index, letter] of Object.entries(draft.choices)) {
@@ -126,8 +120,20 @@ function restoreDraft(agentId: string, at: number): boolean {
   }
   const active = draft.activeQuestion < session.set.questions.length ? draft.activeQuestion : session.activeQuestion;
   if (active !== session.activeQuestion) touched = true;
-  if (!touched) return false;
-  sessions!.set(at, { ...session, choices, customDrafts, customOpen, activeQuestion: active });
+  if (!touched) return null;
+  return { ...session, choices, customDrafts, customOpen, activeQuestion: active };
+}
+
+/** Restore a draft onto a freshly published card. */
+function restoreDraft(agentId: string, at: number): boolean {
+  const sessions = snapshots.get(agentId);
+  const session = sessions?.get(at);
+  if (!session || session.readOnly || session.dismissed) return false;
+  const draft = readDraft(agentId, at);
+  if (!draft) return false;
+  const merged = mergeDraft(session, draft);
+  if (!merged) return false;
+  sessions!.set(at, merged);
   return true;
 }
 
@@ -221,7 +227,7 @@ export async function resumeAnswerDraft(agentId: string, at: number): Promise<bo
   }
   const sessions = snapshots.get(agentId);
   if (!sessions || sessions.get(at) !== original) return false;
-  sessions.set(at, { ...original, readOnly: false, followupStatus: undefined, resumed: true });
+  sessions.set(at, { ...original, readOnly: false, followupStatus: undefined, draftUnread: false, resumed: true });
   notify();
   return true;
 }
@@ -239,6 +245,8 @@ export interface OptionSession {
   dismissed: boolean;
   readOnly: boolean;
   followupStatus?: "waiting" | "ended" | "unsafe";
+  /** The `unsafe` state came from an unreadable draft store, not from a parsing failure. */
+  draftUnread?: boolean;
   resumed?: boolean;
   superseded?: boolean;
   sending: boolean;
@@ -345,6 +353,17 @@ function containsAnswerShape(text: string): boolean {
   return text.split(/\s+/).some(raw => /^[A-Z]?[0-9]+[A-H]$/i.test(raw.replace(/^[.,;:!?()[\]"']+|[.,;:!?()[\]"']+$/g, "")));
 }
 
+/** How a card with a later ordinary user message is presented.
+ * `waiting` needs the reader's explicit Continue; `ended` is the legacy read-only history.
+ * `unsafe` means the draft could not be read, so neither is claimed yet. */
+function inspectFollowup(agentId: string, at: number): { status: "waiting" | "ended" | "unsafe"; draft: AnswerDraftV1 | null } {
+  if (hasNewerAnswerCard(agentId, at)) return { status: "ended", draft: null };
+  const draft = inspectDraft(agentId, at);
+  if (draft.kind === "valid") return { status: "waiting", draft: draft.value };
+  if (draftTimers.has(answerDraftKey(agentId, at))) return { status: "waiting", draft: null };
+  return { status: draft.kind === "unavailable" ? "unsafe" : "ended", draft: null };
+}
+
 function reconcileAnswers(agentId: string): boolean {
   const sessions = snapshots.get(agentId);
   if (!sessions) return false;
@@ -359,19 +378,40 @@ function reconcileAnswers(agentId: string): boolean {
       changed = true;
       continue;
     }
+    // A draft that could not be read at classification time is re-read on every later
+    // timeline event: a read failure while another draft write is in flight must not
+    // hold the card out of reach for the rest of the session. The card keeps the
+    // read-only presentation until that read succeeds, then rebuilds exactly the saved
+    // draft, never what was once selected in memory.
+    if (answer && session.followupStatus === "unsafe" && session.draftUnread === true && session.answerAt === answer[0] && session.answeredText === answer[1]) {
+      const { status, draft } = inspectFollowup(agentId, at);
+      // Only a draft that was actually read may lift the card: a pending write keeps the
+      // unsafe state for the next event instead of offering a card with nothing in it.
+      if (status === "waiting" && draft) {
+        const merged = mergeDraft(session, draft);
+        sessions.set(at, { ...(merged ?? session), readOnly: true, followupStatus: "waiting", draftUnread: false });
+        changed = true;
+      } else if (status === "ended") {
+        sessions.set(at, { ...session, choices: {}, customConfirmed: {}, customOpen: {}, readOnly: true, followupStatus: "ended", draftUnread: false });
+        changed = true;
+      }
+      continue;
+    }
     if (answer && (session.answerAt !== answer[0] || session.answeredText !== answer[1])) {
       try {
         const parsed = parseCustomAnswerHistory(session.set, answer[1]);
         const typed = typedChoices(session.set, answer[1]);
         const sent = (session.sending || (session.answerAt === null && session.answeredText === answer[1])) && sessionAnswerText(session) === answer[1];
         if (!parsed && !Object.keys(typed).length && !sent && !containsAnswerShape(answer[1])) {
-          const draft = inspectDraft(agentId, at);
-          const status = hasNewerAnswerCard(agentId, at) ? "ended" : draft.kind === "valid" || draftTimers.has(answerDraftKey(agentId, at)) ? "waiting" : draft.kind === "unavailable" ? "unsafe" : "ended";
-          sessions.set(at, { ...session, ...(status === "waiting" ? {} : { choices: {}, customConfirmed: {}, customOpen: {} }), readOnly: true, superseded: false, followupStatus: status, answeredText: answer[1], answerAt: answer[0], error: null });
+          const { status } = inspectFollowup(agentId, at);
+          sessions.set(at, { ...session, ...(status === "waiting" ? {} : { choices: {}, customConfirmed: {}, customOpen: {} }), readOnly: true, superseded: false, followupStatus: status, draftUnread: status === "unsafe", answeredText: answer[1], answerAt: answer[0], error: null });
           changed = true;
           continue;
         }
       } catch {
+        // The message could not be classified. This is intentionally not `draftUnread`:
+        // the draft may be perfectly readable, so re-reading it must never lift the card
+        // out of the read-only presentation. It stays until the conversation changes.
         sessions.set(at, { ...session, readOnly: true, followupStatus: "unsafe", answeredText: answer[1], answerAt: answer[0] });
         changed = true;
         continue;

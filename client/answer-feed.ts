@@ -2,6 +2,7 @@ import { useCallback, useSyncExternalStore } from "react";
 import { getPaseoClient } from "@getpaseo/plugin/client";
 import type { PaseoAgentTimelineEvent, PaseoApi } from "@getpaseo/client";
 import {
+  hasNewerAnswerCard,
   listOptionSessions,
   publishAssistantReply,
   publishUserMessage,
@@ -72,7 +73,12 @@ function answeredCount(session: OptionSession): number {
 export function currentAnswerCard(agentId: string): AnswerCardSummary | null {
   let best: OptionSession | null = null;
   for (const session of listOptionSessions(agentId)) {
-    if (session.dismissed || session.superseded || session.readOnly) continue;
+    if (session.dismissed || session.superseded) continue;
+    // A card with a valid draft that an ordinary follow-up message pushed into the
+    // waiting state is read-only until the reader continues it, but it must stay
+    // reachable: the composer button is the only way back to the card. A card that a
+    // newer answer card replaced is ended and stays off the button.
+    if (session.readOnly && !(session.followupStatus === "waiting" && !hasNewerAnswerCard(agentId, session.at))) continue;
     if (!best || session.at > best.at) best = session;
   }
   const next = best ? { agentId, at: best.at, questionCount: best.set.questions.length, answeredCount: answeredCount(best) } : null;

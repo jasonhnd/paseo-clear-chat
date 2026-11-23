@@ -226,7 +226,10 @@ test("a later user answer makes the card read-only and a prose note keeps the dr
   const held = session.getOptionSessionAt("a", 10);
   assert.equal(held.readOnly, true);
   assert.equal(held.answeredText, "wait a moment");
-  assert.equal(watched.currentCard(), null);
+  // The card is read-only until the reader continues it, but its saved draft must stay
+  // reachable from the composer button: the pill is the only way back to the card.
+  assert.equal(watched.currentCard()?.at, 10);
+  assert.equal(watched.currentCard()?.answeredCount, 1);
   assert.equal(drafts.get("a\u000010").choices["0"], "A");
 
   const answered = host.agent("b");
