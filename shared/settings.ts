@@ -60,10 +60,22 @@ export const answerDraftSchema = z.object({
 
 export type AnswerDraft = z.output<typeof answerDraftSchema>;
 
+// One draft entry that is not this version's shape is dropped on its own. A single
+// bad or older entry must not invalidate the rest of the document: the other drafts
+// and the stored preferences keep loading, and the settings page shows no error.
+const answerDraftsSchema = z.record(z.string(), z.unknown()).transform((entries) => {
+  const kept: Record<string, AnswerDraft> = {};
+  for (const [key, value] of Object.entries(entries)) {
+    const parsed = answerDraftSchema.safeParse(value);
+    if (parsed.success) kept[key] = parsed.data;
+  }
+  return kept;
+});
+
 const presentationSchema = z.object({
   preferences: preferenceOverridesSchema.default({}),
   legacyMigrated: z.boolean().default(false),
-  answerDrafts: z.record(z.string(), answerDraftSchema).optional(),
+  answerDrafts: answerDraftsSchema.optional(),
 });
 
 export const presentationSettings = defineSettings({
