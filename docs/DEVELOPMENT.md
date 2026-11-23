@@ -37,7 +37,7 @@ clear-chat/
   client/option-session.ts
   client/answer-feed.ts
   client/locales/            # en, zh-CN, ja
-  scripts/install.cjs        # npm ci, then resolve @getpaseo/plugin and zod
+  scripts/install.cjs        # npm ci --include=dev --ignore-scripts, then resolve @getpaseo/plugin and zod
 ```
 
 ## Checks

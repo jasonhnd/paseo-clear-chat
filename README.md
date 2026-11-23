@@ -16,7 +16,7 @@
 
 ## This version
 
-Clear Chat 0.17.2.1 follows Paseo 0.17.2: the first three parts of the version are the Paseo version this build was checked with. The answer card code is the same as the previous release, so the card works exactly as before: **Send** stays in view when the card opens in the desktop panel, the question area scrolls inside the card and the saved replies scroll with it. The one change is in the install. It now runs `npm ci --include=dev --ignore-scripts`, so it installs only what the committed lockfile names and runs no install script that a package declares. What you see: the install no longer downloads anything outside the lockfile, including binaries a package would fetch in its own install script; and when a required dependency is missing after the install, the installation fails with a setup message that names the package and the command to run, instead of starting a card that cannot work. The dependency pins are unchanged: the install still uses the patched versions of six transitive packages.
+Clear Chat 0.17.2.1 follows Paseo 0.17.2: the first three parts of the version are the Paseo version this build was checked with. The answer card code is the same as the previous release, so the card works exactly as before: **Send** stays in view when the card opens in the desktop panel, the question area scrolls inside the card and the saved replies scroll with it, and the progress line and **Send** stay in one row at the bottom. The one change is in the install. It now runs `npm ci --include=dev --ignore-scripts`, so it installs only what the committed lockfile names and runs no install script that a package declares. What you see: the install no longer downloads anything outside the lockfile, including binaries a package would fetch in its own install script; and when a required dependency is missing after the install, the installation fails with a setup message that names the package and the command to run, instead of starting a card that cannot work. The dependency pins are unchanged: the install still uses the patched versions of six transitive packages.
 
 The full list of changes is in the [changelog](CHANGELOG.md).
 
@@ -48,7 +48,7 @@ A bare letter inside a sentence (for example “wait a moment”) is not treated
 
 ## Install
 
-Clear Chat 0.17.2.1 needs Paseo 0.16.0 or later. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x.
+Clear Chat 0.17.2.1 needs Paseo 0.16.0 or later. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x. The new install command was not checked on Paseo 0.16.x; Paseo 0.16.0 and 0.16.1 were not checked.
 
 ```bash
 paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.2.1

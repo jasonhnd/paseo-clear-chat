@@ -48,7 +48,7 @@ Clear Chat 0.17.2.1 跟上 Paseo 0.17.2：版本号前三段就是这个版本�
 
 ## 安装
 
-Clear Chat 0.17.2.1 需要 Paseo 0.16.0 或更新。在 Paseo 0.15.x 上这一版无法正常安装或运行，请留在 Clear Chat 0.15.4.x。
+Clear Chat 0.17.2.1 需要 Paseo 0.16.0 或更新。在 Paseo 0.15.x 上这一版无法正常安装或运行，请留在 Clear Chat 0.15.4.x。新的安装命令没有在 Paseo 0.16.x 上检查过；Paseo 0.16.0 和 0.16.1 没有检查。
 
 ```bash
 paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.2.1

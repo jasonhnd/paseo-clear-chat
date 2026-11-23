@@ -4,7 +4,7 @@
   "name": "execute",
   "detail": {
     "type": "shell",
-    "command": "npm ci --include=dev",
+    "command": "npm ci --include=dev --ignore-scripts",
     "output": {
       "stdout": "npm diagnostic from stdout",
       "stderr": " \t\r\n "
