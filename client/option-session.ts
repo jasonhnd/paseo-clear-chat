@@ -416,6 +416,8 @@ function reconcileAnswers(agentId: string): boolean {
     const answer = userMessages.find(([time]) => time > at && time < nextReply);
     if (answer && session.answerAt === answer[0] && session.answeredText === answer[1] && (session.followupStatus === "waiting" || session.resumed) && hasNewerAnswerCard(agentId, at)) {
       sessions.set(at, { ...session, readOnly: true, resumed: false, followupStatus: "ended" });
+      clearedDraftChoices.delete(answerDraftKey(agentId, at));
+      pendingDraftReads.delete(answerDraftKey(agentId, at));
       changed = true;
       continue;
     }
@@ -429,7 +431,7 @@ function reconcileAnswers(agentId: string): boolean {
       // Only a draft that was actually read may lift the card: a pending write keeps the
       // unsafe state for the next event instead of offering a card with nothing in it.
       if (status === "waiting" && draft) {
-        const merged = mergeDraft(session, draft);
+        const merged = mergeDraft(session, draft, clearedDraftChoices.get(answerDraftKey(agentId, at)));
         sessions.set(at, { ...(merged ?? session), readOnly: true, followupStatus: "waiting", draftUnread: false });
         changed = true;
       } else if (status === "ended") {
@@ -548,6 +550,11 @@ function update(agentId: string, change: (snapshot: OptionSession) => OptionSess
 export function choose(agentId: string, questionIndex: number, letter: string, at?: number): void {
   update(agentId, snapshot => {
     if (snapshot.readOnly || snapshot.sending || !snapshot.set.questions[questionIndex]?.options.some(option => option.letter === letter) || snapshot.choices[questionIndex] === letter) return snapshot;
+    const cleared = clearedDraftChoices.get(answerDraftKey(agentId, snapshot.at));
+    if (cleared) {
+      cleared.delete(questionIndex);
+      if (cleared.size === 0) clearedDraftChoices.delete(answerDraftKey(agentId, snapshot.at));
+    }
     const wasAnswered = snapshot.choices[questionIndex] !== undefined;
     const choices = { ...snapshot.choices, [questionIndex]: letter };
     const count = snapshot.set.questions.length;
@@ -719,6 +726,8 @@ export async function sendAnswer(agentId: string, at?: number): Promise<void> {
     if (current) {
       const settled = { ...current, sending: false, readOnly: true, answeredText: current.answeredText ?? text, error: null };
       snapshots.get(agentId)!.set(snapshot.at, settled);
+      clearedDraftChoices.delete(answerDraftKey(agentId, snapshot.at));
+      pendingDraftReads.delete(answerDraftKey(agentId, snapshot.at));
       persistDraft(agentId, settled);
       publishAnswerState(agentId, settled);
       notify();

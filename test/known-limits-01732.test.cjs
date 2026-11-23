@@ -396,3 +396,279 @@ test("leaving a conversation and coming back does not keep the old running state
   assert.equal(released, true, "stopping the pin releases the agent list stream");
 });
 
+test("stopping the pin releases a list subscription that resolves later", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let finishList = () => {};
+  const pending = new Promise(resolve => { finishList = resolve; });
+  let releases = 0;
+  const composer = { context: "agent", prompt: "", attachments: [], agent: { metadata: {} } };
+  const h = createToolHarness("web", {
+    locale: "en",
+    composers: selector => ("focused" in selector || selector.agentId === "a") ? [composer] : [],
+    paseo: {
+      agents: {
+        ref() {
+          return {
+            current: () => null,
+            refresh: async () => ({ agent: { status: "idle", activeTurn: null } }),
+            subscribe: () => () => {},
+            timeline: {
+              refetch: async () => ({ entries: [], hasOlder: false }),
+              subscribe: () => Object.assign(() => {}, { ready: Promise.resolve() }),
+            },
+          };
+        },
+        list: () => pending.then(() => ({
+          entries: [{ agent: { id: "a", workspaceId: "w1" } }],
+          subscription: { release: async () => { releases += 1; } },
+        })),
+      },
+    },
+  });
+  await Promise.resolve();
+  h.dispose();
+  finishList();
+  for (let i = 0; i < 20; i += 1) await Promise.resolve();
+  assert.equal(releases, 1, "a list that returns after stop is still released");
+});
+
+test("turning the answer card off releases the stream and turning it on opens it again", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const listOptions = [];
+  let releases = 0;
+  const composer = { context: "agent", prompt: "", attachments: [], agent: { metadata: {} } };
+  const h = createToolHarness("web", {
+    locale: "en",
+    preferences: { showAnswerCard: true },
+    composers: selector => ("focused" in selector || selector.agentId === "a") ? [composer] : [],
+    paseo: {
+      agents: {
+        ref() {
+          return {
+            current: () => null,
+            refresh: async () => ({ agent: { status: "idle", activeTurn: null } }),
+            subscribe: () => () => {},
+            timeline: {
+              refetch: async () => ({ entries: [replyEntry(Date.parse("2026-01-01T10:00:00Z"), questions)], hasOlder: false }),
+              subscribe: () => Object.assign(() => {}, { ready: Promise.resolve() }),
+            },
+          };
+        },
+        async list(options) {
+          listOptions.push(options ?? null);
+          return {
+            entries: [{ agent: { id: "a", workspaceId: "w1" } }],
+            subscription: options?.subscribe ? { release: async () => { releases += 1; } } : undefined,
+          };
+        },
+      },
+    },
+  });
+  t.after(() => h.dispose());
+  const flush = async () => { for (let i = 0; i < 30; i += 1) await Promise.resolve(); };
+  await flush();
+  assert.equal(listOptions.filter(options => options && options.subscribe).length, 1);
+  h.preferences.showAnswerCard = false;
+  h.notifyPreferences();
+  await flush();
+  assert.equal(releases, 1, "turning the card off releases the agent list stream");
+  h.preferences.showAnswerCard = true;
+  h.notifyPreferences();
+  t.mock.timers.tick(750);
+  await flush();
+  assert.equal(listOptions.filter(options => options && options.subscribe).length, 2, "turning the card on opens the stream again");
+});
+
+test("an unread card does not refill a choice the reader cleared", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const h = createToolHarness("ios", { agents: { a: { status: "idle" } } });
+  const session = h.load("client/option-session.ts");
+  const key = session.answerDraftKey("a", 10);
+  const data = { [key]: { schema: 1, choices: { 0: "B" }, customDrafts: {}, customOpen: {}, activeQuestion: 0 } };
+  let mode = "throw";
+  session.setAnswerDraftStore({
+    read() {
+      if (mode === "throw") throw new Error("preferences are not ready");
+      return data[key];
+    },
+    write() { /* the seeded draft stays; the debounce must not replace it */ },
+    clear() {},
+  });
+  t.after(() => { session.setAnswerDraftStore(null); h.unmount(); h.dispose(); });
+  session.publishAssistantReply("a", { at: 10, text: questions });
+  session.choose("a", 0, "A");
+  session.clearChoice("a", 0);
+  t.mock.timers.tick(400);
+  await Promise.resolve();
+  await Promise.resolve();
+  session.publishUserMessage("a", 11, "wait");
+  assert.equal(session.getOptionSessionAt("a", 10).draftUnread, true);
+  mode = "ready";
+  session.publishAssistantReply("a", { at: 20, text: "Still thinking." });
+  assert.equal(session.getOptionSessionAt("a", 10).choices[0], undefined, "the cleared question stays empty");
+  assert.equal(session.getOptionSessionAt("a", 10).followupStatus, "waiting");
+});
+
+test("a running update received while away is not replaced by a stale refresh", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const listeners = new Set();
+  let refreshStatus = "idle";
+  const composerA = { context: "agent", prompt: "", attachments: [], agent: { metadata: {} } };
+  const composerB = { context: "agent", prompt: "", attachments: [], agent: { metadata: {} } };
+  let current = composerA;
+  const h = createToolHarness("web", {
+    locale: "en",
+    composers: selector => {
+      if ("focused" in selector) return [current];
+      if (selector.agentId === "a" && current === composerA) return [composerA];
+      if (selector.agentId === "b" && current === composerB) return [composerB];
+      return [];
+    },
+    paseo: {
+      agents: {
+        subscribe(handler) {
+          listeners.add(handler);
+          return () => listeners.delete(handler);
+        },
+        ref() {
+          return {
+            current: () => null,
+            refresh: async () => ({ agent: { status: refreshStatus, activeTurn: null } }),
+            subscribe: () => () => {},
+            timeline: {
+              refetch: async () => ({ entries: [replyEntry(Date.parse("2026-01-01T10:00:00Z"), questions)], hasOlder: false }),
+              subscribe: () => Object.assign(() => {}, { ready: Promise.resolve() }),
+            },
+          };
+        },
+        async list(options) {
+          return {
+            entries: [
+              { agent: { id: "a", workspaceId: "w1" } },
+              { agent: { id: "b", workspaceId: "w1" } },
+            ],
+            subscription: options?.subscribe ? { release: async () => {} } : undefined,
+          };
+        },
+      },
+    },
+  });
+  t.after(() => h.dispose());
+  const flush = async () => { for (let i = 0; i < 30; i += 1) await Promise.resolve(); };
+  const live = () => h.composerPills.filter(record => !record.removed);
+  await flush();
+  assert.equal(live().length, 1);
+  current = composerB;
+  t.mock.timers.tick(750);
+  await flush();
+  for (const handler of listeners) handler({ kind: "upsert", agent: { id: "a", status: "running" } });
+  refreshStatus = "idle";
+  current = composerA;
+  t.mock.timers.tick(750);
+  await flush();
+  assert.equal(live().length, 0, "coming back hides the button when the stream already said running");
+});
+
+test("a second registration opens the agent list stream again", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const listOptions = [];
+  const composer = { context: "agent", prompt: "", attachments: [], agent: { metadata: {} } };
+  const options = {
+    locale: "en",
+    composers: selector => ("focused" in selector || selector.agentId === "a") ? [composer] : [],
+    paseo: {
+      agents: {
+        ref() {
+          return {
+            current: () => null,
+            refresh: async () => ({ agent: { status: "idle", activeTurn: null } }),
+            subscribe: () => () => {},
+            timeline: {
+              refetch: async () => ({ entries: [], hasOlder: false }),
+              subscribe: () => Object.assign(() => {}, { ready: Promise.resolve() }),
+            },
+          };
+        },
+        async list(opts) {
+          listOptions.push(opts ?? null);
+          return {
+            entries: [{ agent: { id: "a", workspaceId: "w1" } }],
+            subscription: opts?.subscribe ? { release: async () => {} } : undefined,
+          };
+        },
+      },
+    },
+  };
+  const flush = async () => { for (let i = 0; i < 30; i += 1) await Promise.resolve(); };
+  const first = createToolHarness("web", options);
+  await flush();
+  first.dispose();
+  const second = createToolHarness("web", options);
+  t.after(() => second.dispose());
+  await flush();
+  assert.equal(listOptions.filter(opts => opts && opts.subscribe).length, 2, "the next registration opens its own stream");
+});
+
+test("a refresh that resolves after the focus moved is ignored", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const pending = [];
+  const composerA = { context: "agent", prompt: "", attachments: [], agent: { metadata: {} } };
+  const composerB = { context: "agent", prompt: "", attachments: [], agent: { metadata: {} } };
+  let current = composerA;
+  let refreshRound = 0;
+  const h = createToolHarness("web", {
+    locale: "en",
+    composers: selector => {
+      if ("focused" in selector) return [current];
+      if (selector.agentId === "a" && current === composerA) return [composerA];
+      if (selector.agentId === "b" && current === composerB) return [composerB];
+      return [];
+    },
+    paseo: {
+      agents: {
+        ref() {
+          return {
+            current: () => null,
+            refresh: () => new Promise(resolve => { pending.push(resolve); }),
+            subscribe: () => () => {},
+            timeline: {
+              refetch: async () => ({ entries: [replyEntry(Date.parse("2026-01-01T10:00:00Z"), questions)], hasOlder: false }),
+              subscribe: () => Object.assign(() => {}, { ready: Promise.resolve() }),
+            },
+          };
+        },
+        async list() {
+          refreshRound += 0;
+          return {
+            entries: [
+              { agent: { id: "a", workspaceId: "w1" } },
+              { agent: { id: "b", workspaceId: "w1" } },
+            ],
+          };
+        },
+      },
+    },
+  });
+  t.after(() => h.dispose());
+  const flush = async () => { for (let i = 0; i < 30; i += 1) await Promise.resolve(); };
+  const live = () => h.composerPills.filter(record => !record.removed && record.contribution.agentId === "a");
+  await flush();
+  const first = pending.splice(0);
+  for (const resolve of first) resolve({ agent: { status: "idle", activeTurn: null } });
+  await flush();
+  assert.equal(live().length, 1);
+  current = composerB;
+  t.mock.timers.tick(750);
+  await flush();
+  const stale = pending.splice(0);
+  current = composerA;
+  t.mock.timers.tick(750);
+  await flush();
+  const latest = pending.splice(0);
+  for (const resolve of latest) resolve({ agent: { status: "idle", activeTurn: null } });
+  await flush();
+  for (const resolve of stale) resolve({ agent: { status: "running", activeTurn: null } });
+  await flush();
+  assert.equal(live().length, 1, "a refresh from the previous visit does not hide the button");
+});
+

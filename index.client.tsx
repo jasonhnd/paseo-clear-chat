@@ -134,7 +134,23 @@ function registerAnswerPill(client: PluginClientContext): () => void {
   // is held on this same API object, and the host's own list does not feed the plugin's listeners.
   let agentStream: { release?: () => Promise<void> } | null = null;
   let agentStreamOpened = false;
+  let streamEpoch = 0;
+  let stopAgentEvents: (() => void) | null = null;
+  const streamSeen = new Set<string>();
+  function releaseAgentStream(): void {
+    streamEpoch += 1;
+    agentStreamOpened = false;
+    streamSeen.clear();
+    const stopEvents = stopAgentEvents;
+    stopAgentEvents = null;
+    if (stopEvents) stopEvents();
+    const stream = agentStream;
+    agentStream = null;
+    if (stream?.release) void stream.release().catch(() => {});
+  }
   const agentList = async (): Promise<{ id: string; workspaceId: string }[]> => {
+    const epoch = streamEpoch;
+    const opening = !agentStreamOpened;
     try {
       const list = (client.paseo.agents as unknown as {
         list?: (options?: { subscribe: Record<string, never> }) => Promise<{
@@ -142,10 +158,15 @@ function registerAnswerPill(client: PluginClientContext): () => void {
           subscription?: { release?: () => Promise<void> };
         }>;
       }).list;
-      const result = await list?.(agentStreamOpened ? undefined : { subscribe: {} });
-      if (!agentStreamOpened) {
+      const result = await list?.(opening ? { subscribe: {} } : undefined);
+      if (stopped || epoch !== streamEpoch) {
+        if (opening) void result?.subscription?.release?.().catch(() => {});
+        return [];
+      }
+      if (opening) {
         agentStreamOpened = true;
         agentStream = result?.subscription ?? null;
+        attachAgentEvents();
       }
       const entries = result?.entries ?? [];
       const found: { id: string; workspaceId: string }[] = [];
@@ -168,6 +189,7 @@ function registerAnswerPill(client: PluginClientContext): () => void {
     // The switch is read before anything else: a turned-off pin, or one whose stored value is
     // still loading, must not spend an agent list.
     if (!showAnswerCard()) {
+      releaseAgentStream();
       cachedComposer = null;
       cachedAgent = null;
       return null;
@@ -249,17 +271,34 @@ function registerAnswerPill(client: PluginClientContext): () => void {
     refresh?: () => Promise<{ agent?: { readonly status?: string | null } } | null>;
     subscribe?: (handler: (update: { agent?: { readonly status?: string | null } }) => void) => () => void;
   }
-  function rememberStatus(agentId: string, status: unknown): void {
-    if (typeof status !== "string" || agentStatuses.get(agentId) === status) return;
+  function rememberStatus(agentId: string, status: string): void {
+    if (agentStatuses.get(agentId) === status) return;
     agentStatuses.set(agentId, status);
-    void pill.refresh();
+    if (agentId === watchedAgentId) void pill.refresh();
+  }
+  function noteFromStream(agentId: string, status: string): void {
+    streamSeen.add(agentId);
+    rememberStatus(agentId, status);
+  }
+  function attachAgentEvents(): void {
+    if (stopAgentEvents) return;
+    const subscribe = (client.paseo.agents as unknown as {
+      subscribe?: (handler: (update: { kind?: string; agent?: { id?: string; status?: string } }) => void) => () => void;
+    }).subscribe;
+    if (!subscribe) return;
+    try {
+      const stop = subscribe(update => {
+        if (update?.kind === "upsert" && update.agent?.id && typeof update.agent.status === "string") {
+          noteFromStream(update.agent.id, update.agent.status);
+        }
+      });
+      if (typeof stop === "function") stopAgentEvents = stop;
+    } catch { /* The handle subscription still hears the focused agent. */ }
   }
   function watchAgentStatus(agentId: string): string | null {
     if (watchedAgentId !== agentId) {
       stopStatusWatch?.();
       stopStatusWatch = null;
-      if (watchedAgentId) agentStatuses.delete(watchedAgentId);
-      agentStatuses.delete(agentId);
       watchedAgentId = agentId;
       refreshGeneration += 1;
       const generation = refreshGeneration;
@@ -269,14 +308,17 @@ function registerAnswerPill(client: PluginClientContext): () => void {
         try {
           const stop = handle.subscribe?.(update => {
             if (watchedAgentId !== agentId || refreshGeneration !== generation) return;
-            rememberStatus(agentId, update?.agent?.status);
+            if (typeof update?.agent?.status === "string") noteFromStream(agentId, update.agent.status);
           });
           if (typeof stop === "function") stopStatusWatch = stop;
         } catch { /* A host that cannot stream updates still answers refresh(). */ }
-        if (handle.refresh) {
+        // A status the stream already reported is kept. refresh() can answer with the
+        // snapshot from before the reader left, and that must not cover a newer running state.
+        if (!streamSeen.has(agentId) && handle.refresh) {
           void handle.refresh().then(result => {
-            if (watchedAgentId !== agentId || refreshGeneration !== generation) return;
-            rememberStatus(agentId, result?.agent?.status ?? handle?.current?.()?.status);
+            if (watchedAgentId !== agentId || refreshGeneration !== generation || streamSeen.has(agentId)) return;
+            const status = result?.agent?.status ?? handle?.current?.()?.status;
+            if (typeof status === "string") rememberStatus(agentId, status);
           }).catch(() => {});
         }
       }
@@ -303,9 +345,7 @@ function registerAnswerPill(client: PluginClientContext): () => void {
     stopStatusWatch = null;
     agentStatuses.clear();
     watchedAgentId = null;
-    const stream = agentStream;
-    agentStream = null;
-    if (stream?.release) void stream.release().catch(() => {});
+    releaseAgentStream();
     pill.stop();
   };
 }
