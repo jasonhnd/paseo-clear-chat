@@ -154,7 +154,7 @@ function registerAnswerPill(client: PluginClientContext): () => void {
     try {
       const list = (client.paseo.agents as unknown as {
         list?: (options?: { subscribe: Record<string, never> }) => Promise<{
-          entries?: readonly { agent?: { id?: string; workspaceId?: string } }[];
+          entries?: readonly { agent?: { id?: string; workspaceId?: string; status?: string } }[];
           subscription?: { release?: () => Promise<void> };
         }>;
       }).list;
@@ -171,7 +171,9 @@ function registerAnswerPill(client: PluginClientContext): () => void {
       const entries = result?.entries ?? [];
       const found: { id: string; workspaceId: string }[] = [];
       for (const entry of entries) {
-        if (entry.agent?.id && entry.agent.workspaceId) found.push({ id: entry.agent.id, workspaceId: entry.agent.workspaceId });
+        const agent = entry.agent;
+        if (agent?.id && agent.workspaceId) found.push({ id: agent.id, workspaceId: agent.workspaceId });
+        if (agent?.id && typeof agent.status === "string") noteFromStream(agent.id, agent.status);
       }
       return found;
     } catch (error) {
