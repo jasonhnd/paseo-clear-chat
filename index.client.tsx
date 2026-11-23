@@ -137,10 +137,14 @@ function registerAnswerPill(client: PluginClientContext): () => void {
   let streamEpoch = 0;
   let stopAgentEvents: (() => void) | null = null;
   const streamSeen = new Set<string>();
+  // Filled once `agentListeners` exists. Turning the card off must drop every
+  // per-agent listener, not only the list subscription.
+  let stopAgentListeners: () => void = () => {};
   function releaseAgentStream(): void {
     streamEpoch += 1;
     agentStreamOpened = false;
     streamSeen.clear();
+    stopAgentListeners();
     const stopEvents = stopAgentEvents;
     stopAgentEvents = null;
     if (stopEvents) stopEvents();
@@ -265,6 +269,10 @@ function registerAnswerPill(client: PluginClientContext): () => void {
   // leaves the button visible until that refresh answers.
   const agentStatuses = new Map<string, string>();
   const agentListeners = new Map<string, () => void>();
+  stopAgentListeners = () => {
+    for (const stop of agentListeners.values()) stop();
+    agentListeners.clear();
+  };
   let watchedAgentId: string | null = null;
   let refreshGeneration = 0;
   interface AgentStatusHandle {

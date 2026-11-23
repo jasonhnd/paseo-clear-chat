@@ -270,6 +270,64 @@ test("preferences becoming ready retries a card already marked unread", async t 
   assert.equal(restored.draftUnread, false);
 });
 
+test("a continued card stays editable when the first read fails and a later read succeeds", async t => {
+  const h = createToolHarness("ios", { agents: { a: { status: "idle" } } });
+  const session = h.load("client/option-session.ts");
+  const Card = h.load("client/components/option-card.tsx").OptionCard;
+  const control = { reads: 0, mode: "throw", data: {} };
+  control.data[session.answerDraftKey("a", 10)] = {
+    schema: 1, choices: { 0: "B" }, customDrafts: {}, customOpen: {}, activeQuestion: 1, resumed: true,
+  };
+  session.setAnswerDraftStore(failingThen(control));
+  t.after(() => { session.setAnswerDraftStore(null); h.unmount(); h.dispose(); });
+  session.publishAssistantReply("a", { at: 10, text: questions });
+  session.publishUserMessage("a", 11, "wait");
+  assert.equal(session.getOptionSessionAt("a", 10).draftUnread, true, "the ordinary follow-up is recorded before the draft can be read");
+  control.mode = "ready";
+  session.publishAssistantReply("a", { at: 20, text: "Still thinking." });
+  const restored = session.getOptionSessionAt("a", 10);
+  assert.equal(restored.readOnly, false);
+  assert.equal(restored.resumed, true);
+  assert.equal(restored.choices[0], "B");
+  const tree = h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } });
+  assert.equal(h.nodes(tree, node => node.props?.testID === "option-resume").length, 0);
+});
+
+test("a continued card stays editable when preferences become ready after the first read failed", async t => {
+  const key = "a\u000010";
+  const stored = {
+    preferences: {},
+    legacyMigrated: true,
+    answerDrafts: {
+      [key]: { schema: 1, choices: { 0: "B" }, customDrafts: {}, customOpen: {}, activeQuestion: 1, resumed: true },
+    },
+  };
+  const rpc = async (contract, input) => {
+    if (String(contract?.name).endsWith(".read")) return { status: "ready", revision: "1", values: structuredClone(stored) };
+    return { status: "saved", revision: "2", values: structuredClone(input?.values ?? stored) };
+  };
+  const h = createToolHarness("ios", { presentationHost: { rpc } });
+  const preferences = h.load("client/preferences.ts");
+  const session = h.load("client/option-session.ts");
+  const Card = h.load("client/components/option-card.tsx").OptionCard;
+  t.after(() => { session.setAnswerDraftStore(null); h.unmount(); h.dispose(); });
+  session.setAnswerDraftStore({
+    read: preferences.getStoredAnswerDraft,
+    write: preferences.storeAnswerDraft,
+    clear: preferences.clearStoredAnswerDraft,
+  });
+  session.publishAssistantReply("a", { at: 10, text: questions });
+  session.publishUserMessage("a", 11, "wait");
+  assert.equal(session.getOptionSessionAt("a", 10).draftUnread, true);
+  await preferences.initializeEnhancerPreferences(rpc);
+  const restored = session.getOptionSessionAt("a", 10);
+  assert.equal(restored.readOnly, false);
+  assert.equal(restored.resumed, true);
+  assert.equal(restored.choices[0], "B");
+  const tree = h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: h.tokens } });
+  assert.equal(h.nodes(tree, node => node.props?.testID === "option-resume").length, 0);
+});
+
 test("a late draft does not restore a choice the reader cleared", async t => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const h = createToolHarness("ios", { agents: { a: { status: "idle" } } });
@@ -277,7 +335,7 @@ test("a late draft does not restore a choice the reader cleared", async t => {
   const control = {
     reads: 0,
     mode: "throw",
-    data: { [session.answerDraftKey("a", 10)]: { schema: 1, choices: { 0: "B" }, customDrafts: {}, customOpen: {}, activeQuestion: 0 } },
+    data: { [session.answerDraftKey("a", 10)]: { schema: 1, choices: { 0: "B", 1: "A" }, customDrafts: {}, customOpen: {}, activeQuestion: 0 } },
   };
   session.setAnswerDraftStore(failingThen(control));
   t.after(() => { session.setAnswerDraftStore(null); h.unmount(); h.dispose(); });
@@ -288,6 +346,7 @@ test("a late draft does not restore a choice the reader cleared", async t => {
   control.mode = "ready";
   session.publishAssistantReply("a", { at: 20, text: "Still thinking." });
   assert.equal(session.getOptionSessionAt("a", 10).choices[0], undefined);
+  assert.equal(session.getOptionSessionAt("a", 10).choices[1], "A", "an untouched question is still restored once the read can answer");
 });
 
 test("a rejected draft shape is not read again", async t => {
@@ -436,6 +495,8 @@ test("turning the answer card off releases the stream and turning it on opens it
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const listOptions = [];
   let releases = 0;
+  let agentSubscribes = 0;
+  let agentStops = 0;
   const composer = { context: "agent", prompt: "", attachments: [], agent: { metadata: {} } };
   const h = createToolHarness("web", {
     locale: "en",
@@ -447,7 +508,10 @@ test("turning the answer card off releases the stream and turning it on opens it
           return {
             current: () => null,
             refresh: async () => ({ agent: { status: "idle", activeTurn: null } }),
-            subscribe: () => () => {},
+            subscribe: () => {
+              agentSubscribes += 1;
+              return () => { agentStops += 1; };
+            },
             timeline: {
               refetch: async () => ({ entries: [replyEntry(Date.parse("2026-01-01T10:00:00Z"), questions)], hasOlder: false }),
               subscribe: () => Object.assign(() => {}, { ready: Promise.resolve() }),
@@ -468,15 +532,18 @@ test("turning the answer card off releases the stream and turning it on opens it
   const flush = async () => { for (let i = 0; i < 30; i += 1) await Promise.resolve(); };
   await flush();
   assert.equal(listOptions.filter(options => options && options.subscribe).length, 1);
+  assert.equal(agentSubscribes, 1, "the focused agent is listened to while the card is on");
   h.preferences.showAnswerCard = false;
   h.notifyPreferences();
   await flush();
   assert.equal(releases, 1, "turning the card off releases the agent list stream");
+  assert.equal(agentStops, 1, "turning the card off stops per-agent listeners");
   h.preferences.showAnswerCard = true;
   h.notifyPreferences();
   t.mock.timers.tick(750);
   await flush();
   assert.equal(listOptions.filter(options => options && options.subscribe).length, 2, "turning the card on opens the stream again");
+  assert.equal(agentSubscribes, 2, "turning the card on attaches the listener again");
 });
 
 test("an unread card does not refill a choice the reader cleared", async t => {
@@ -670,5 +737,16 @@ test("a refresh that resolves after the focus moved is ignored", async t => {
   for (const resolve of stale) resolve({ agent: { status: "running", activeTurn: null } });
   await flush();
   assert.equal(live().length, 1, "a refresh from the previous visit does not hide the button");
+  current = composerB;
+  t.mock.timers.tick(750);
+  await flush();
+  current = composerA;
+  t.mock.timers.tick(750);
+  await flush();
+  const stillCurrent = pending.splice(0);
+  assert.equal(stillCurrent.length > 0, true, "returning to the agent asks for its status again");
+  for (const resolve of stillCurrent) resolve({ agent: { status: "running", activeTurn: null } });
+  await flush();
+  assert.equal(live().length, 0, "a refresh that is still for this visit hides the button while the agent is running");
 });
 

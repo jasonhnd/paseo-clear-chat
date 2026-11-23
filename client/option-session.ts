@@ -143,8 +143,14 @@ function restoreDraft(agentId: string, at: number): boolean {
   const key = answerDraftKey(agentId, at);
   const sessions = snapshots.get(agentId);
   const session = sessions?.get(at);
-  if (!sessions || !session || session.readOnly || session.dismissed) {
+  if (!sessions || !session || session.dismissed) {
     pendingDraftReads.delete(key);
+    return false;
+  }
+  // A read-only card normally has nothing left to restore. An unread card is the
+  // exception: the pending key has to stay until the later read can see `resumed`.
+  if (session.readOnly) {
+    if (session.draftUnread !== true) pendingDraftReads.delete(key);
     return false;
   }
   const inspected = inspectDraft(agentId, at);
@@ -275,7 +281,16 @@ export async function resumeAnswerDraft(agentId: string, at: number): Promise<bo
   const stored = inspectDraft(agentId, at);
   if (stored.kind !== "valid") return false;
   try { await store.write(key, { ...stored.value, resumed: true }); } catch { return false; }
-  if (draftStore !== store || replies.get(agentId) !== latest || sessions.get(at) !== original || hasNewerAnswerCard(agentId, at)) return false;
+  const endedByNewerCard = hasNewerAnswerCard(agentId, at);
+  if (draftStore !== store || replies.get(agentId) !== latest || sessions.get(at) !== original || endedByNewerCard) {
+    // The write already stored `resumed`. A false return must not leave that flag
+    // behind, unless a newer answer card is what ended this click.
+    if (!endedByNewerCard) {
+      const { schema, choices, customDrafts, customOpen, activeQuestion } = stored.value;
+      try { await store.write(key, { schema, choices, customDrafts, customOpen, activeQuestion }); } catch { /* A failed rollback must not surface. */ }
+    }
+    return false;
+  }
   sessions.set(at, { ...original, readOnly: false, followupStatus: undefined, draftUnread: false, resumed: true });
   notify();
   return true;
@@ -404,6 +419,14 @@ function containsAnswerShape(text: string): boolean {
   return text.split(/\s+/).some(raw => /^[A-Z]?[0-9]+[A-H]$/i.test(raw.replace(/^[.,;:!?()[\]"']+|[.,;:!?()[\]"']+$/g, "")));
 }
 
+/** Chat that is not a typed choice, a custom answer, or the send already in flight. */
+function isOrdinaryFollowup(session: OptionSession, text: string): boolean {
+  const parsed = parseCustomAnswerHistory(session.set, text);
+  const typed = typedChoices(session.set, text);
+  const sent = (session.sending || (session.answerAt === null && session.answeredText === text)) && sessionAnswerText(session) === text;
+  return !parsed && Object.keys(typed).length === 0 && !sent && !containsAnswerShape(text);
+}
+
 /** How a card with a later ordinary user message is presented.
  * `waiting` needs the reader's explicit Continue; `ended` is the legacy read-only history.
  * `unsafe` means the draft could not be read, so neither is claimed yet. */
@@ -442,10 +465,22 @@ function reconcileAnswers(agentId: string): boolean {
       // unsafe state for the next event instead of offering a card with nothing in it.
       if (status === "waiting" && draft) {
         const merged = mergeDraft(session, draft, clearedDraftChoices.get(answerDraftKey(agentId, at)));
-        sessions.set(at, { ...(merged ?? session), readOnly: true, followupStatus: "waiting", draftUnread: false });
+        const base = merged ?? session;
+        const key = answerDraftKey(agentId, at);
+        let ordinary = false;
+        try { ordinary = isOrdinaryFollowup(session, answer[1]); } catch { ordinary = false; }
+        // A stored Continue survives the failed first read. A message that is itself
+        // an answer, or a newer card, still leaves the read-only waiting presentation.
+        if (draft.resumed === true && !hasNewerAnswerCard(agentId, at) && ordinary) {
+          sessions.set(at, { ...base, readOnly: false, resumed: true, followupStatus: undefined, draftUnread: false });
+        } else {
+          sessions.set(at, { ...base, readOnly: true, followupStatus: "waiting", draftUnread: false });
+        }
+        pendingDraftReads.delete(key);
         changed = true;
       } else if (status === "ended") {
         sessions.set(at, { ...session, choices: {}, customConfirmed: {}, customOpen: {}, readOnly: true, followupStatus: "ended", draftUnread: false });
+        pendingDraftReads.delete(answerDraftKey(agentId, at));
         changed = true;
       }
       continue;
