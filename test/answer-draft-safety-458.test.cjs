@@ -139,8 +139,10 @@ test('a second continue does not write while the first resume is still in flight
   await flush();
   assert.equal(pendingWrites.length, 1, 'only the first continue writes');
   pendingWrites.shift()();
-  assert.equal(await second, false);
-  assert.equal(await first, true);
+  const secondResult = await second;
+  const firstResult = await first;
+  assert.equal(secondResult, firstResult);
+  assert.equal(firstResult, true);
   assert.equal(data[key].resumed, true);
   assert.equal(pendingWrites.length, 0, 'the second continue does not roll the flag back');
 });

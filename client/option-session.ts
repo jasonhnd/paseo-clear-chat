@@ -125,6 +125,12 @@ function mergeDraft(session: OptionSession, draft: AnswerDraftV1, skipChoices?: 
 
 /** Restore a draft onto a freshly published card. A read that cannot answer is marked and tried again. */
 const pendingDraftReads = new Set<string>();
+
+/** Test-only: how many cards are still waiting on a draft read. */
+export function __testPendingDraftReadCount(): number {
+  return pendingDraftReads.size;
+}
+
 /** Indexes the reader cleared, so a late draft must not put that letter back. */
 const clearedDraftChoices = new Map<string, Set<number>>();
 
@@ -147,9 +153,13 @@ function restoreDraft(agentId: string, at: number): boolean {
     pendingDraftReads.delete(key);
     return false;
   }
-  // A read-only card is not restored here. The pending key stays until a later
-  // read applies the draft, or the read is a confirmed absence or a rejected shape.
-  if (session.readOnly) return false;
+  // A read-only card is not restored here. Drop the pending key unless the card
+  // is still unread; that recovery reads the draft later. Absence and a rejected
+  // shape are final only while the card is still editable.
+  if (session.readOnly) {
+    if (session.draftUnread !== true) pendingDraftReads.delete(key);
+    return false;
+  }
   const inspected = inspectDraft(agentId, at);
   // A failed read is not "no draft". Remember the card and try again when the
   // store can answer. A successful absence or a rejected shape is final.
@@ -257,63 +267,69 @@ function sameWrittenDraft(stored: AnswerDraftV1, written: AnswerDraftV1): boolea
   return canonicalDraft(stored) === canonicalDraft(written) && stored.resumed === written.resumed;
 }
 
-/** One resume per card. A second press while the first call is still running must not write. */
-const resumeInFlight = new Set<string>();
+/** One resume per card. An overlapping press shares that call and must not write again. */
+const resumeInFlight = new Map<string, Promise<boolean>>();
 
 /** Resume exactly this card only if its draft and identity remain stable. */
-export async function resumeAnswerDraft(agentId: string, at: number): Promise<boolean> {
+export function resumeAnswerDraft(agentId: string, at: number): Promise<boolean> {
   const key = answerDraftKey(agentId, at);
-  if (resumeInFlight.has(key)) return false;
+  const existing = resumeInFlight.get(key);
+  if (existing) return existing;
+  const run = runResumeAnswerDraft(agentId, at);
+  resumeInFlight.set(key, run);
+  void run.finally(() => {
+    if (resumeInFlight.get(key) === run) resumeInFlight.delete(key);
+  });
+  return run;
+}
+
+async function runResumeAnswerDraft(agentId: string, at: number): Promise<boolean> {
   const original = getOptionSessionAt(agentId, at);
   const store = draftStore;
   const latest = replies.get(agentId);
   if (!original || original.followupStatus !== "waiting" || !store || hasNewerAnswerCard(agentId, at)) return false;
-  resumeInFlight.add(key);
-  try {
-    const before = inspectDraft(agentId, at);
-    const pending = draftTimers.get(key);
-    if (before.kind !== "valid" && !pending) return false;
-    // Also yields once when there is no pending write so click-time mutations are visible.
-    const settled = pending ? await pending.completion : (await Promise.resolve(), true);
-    if (!settled || draftStore !== store || replies.get(agentId) !== latest || getOptionSessionAt(agentId, at) !== original || hasNewerAnswerCard(agentId, at) || draftTimers.has(key)) return false;
-    const after = inspectDraft(agentId, at);
-    if (after.kind !== "valid") return false;
-    if (!pending && (before.kind !== "valid" || canonicalDraft(before.value) !== canonicalDraft(after.value))) return false;
-    if (pending) {
-      const expected: AnswerDraftV1 = { schema: 1, choices: Object.fromEntries(Object.entries(original.choices).filter((entry): entry is [string, string] => typeof entry[1] === "string")), customDrafts: { ...original.customDrafts }, customOpen: { ...original.customOpen }, activeQuestion: original.activeQuestion };
-      if (canonicalDraft(expected) !== canonicalDraft(after.value)) return false;
-    }
-    const sessions = snapshots.get(agentId);
-    if (!sessions || sessions.get(at) !== original) return false;
-    const stored = inspectDraft(agentId, at);
-    if (stored.kind !== "valid") return false;
-    const preImage = stored.value;
-    const written: AnswerDraftV1 = { ...preImage, resumed: true };
-    try { await store.write(key, written); } catch { return false; }
-    const postCheckFailed = draftStore !== store || replies.get(agentId) !== latest || sessions.get(at) !== original || hasNewerAnswerCard(agentId, at);
-    if (postCheckFailed) {
-      const current = sessions.get(at);
-      const unlocked = !current || current.readOnly === false;
-      if (!unlocked && draftStore === store) {
-        try {
-          const now = inspectDraft(agentId, at);
-          // Only the value this call just wrote may be replaced, and only while the card is still locked.
-          if (now.kind === "valid" && sameWrittenDraft(now.value, written)) {
-            const rollback = preImage.resumed === true
-              ? preImage
-              : { schema: preImage.schema, choices: preImage.choices, customDrafts: preImage.customDrafts, customOpen: preImage.customOpen, activeQuestion: preImage.activeQuestion };
-            await store.write(key, rollback);
-          }
-        } catch { /* A failed rollback must not surface. */ }
-      }
-      return false;
-    }
-    sessions.set(at, { ...original, readOnly: false, followupStatus: undefined, draftUnread: false, resumed: true });
-    notify();
-    return true;
-  } finally {
-    resumeInFlight.delete(key);
+  const key = answerDraftKey(agentId, at);
+  const before = inspectDraft(agentId, at);
+  const pending = draftTimers.get(key);
+  if (before.kind !== "valid" && !pending) return false;
+  // Also yields once when there is no pending write so click-time mutations are visible.
+  const settled = pending ? await pending.completion : (await Promise.resolve(), true);
+  if (!settled || draftStore !== store || replies.get(agentId) !== latest || getOptionSessionAt(agentId, at) !== original || hasNewerAnswerCard(agentId, at) || draftTimers.has(key)) return false;
+  const after = inspectDraft(agentId, at);
+  if (after.kind !== "valid") return false;
+  if (!pending && (before.kind !== "valid" || canonicalDraft(before.value) !== canonicalDraft(after.value))) return false;
+  if (pending) {
+    const expected: AnswerDraftV1 = { schema: 1, choices: Object.fromEntries(Object.entries(original.choices).filter((entry): entry is [string, string] => typeof entry[1] === "string")), customDrafts: { ...original.customDrafts }, customOpen: { ...original.customOpen }, activeQuestion: original.activeQuestion };
+    if (canonicalDraft(expected) !== canonicalDraft(after.value)) return false;
   }
+  const sessions = snapshots.get(agentId);
+  if (!sessions || sessions.get(at) !== original) return false;
+  const stored = inspectDraft(agentId, at);
+  if (stored.kind !== "valid") return false;
+  const preImage = stored.value;
+  const written: AnswerDraftV1 = { ...preImage, resumed: true };
+  try { await store.write(key, written); } catch { return false; }
+  const postCheckFailed = draftStore !== store || replies.get(agentId) !== latest || sessions.get(at) !== original || hasNewerAnswerCard(agentId, at);
+  if (postCheckFailed) {
+    const current = sessions.get(at);
+    const unlocked = !current || current.readOnly === false;
+    if (!unlocked && draftStore === store) {
+      try {
+        const now = inspectDraft(agentId, at);
+        // Only the value this call just wrote may be replaced, and only while the card is still locked.
+        if (now.kind === "valid" && sameWrittenDraft(now.value, written)) {
+          const rollback = preImage.resumed === true
+            ? preImage
+            : { schema: preImage.schema, choices: preImage.choices, customDrafts: preImage.customDrafts, customOpen: preImage.customOpen, activeQuestion: preImage.activeQuestion };
+          await store.write(key, rollback);
+        }
+      } catch { /* A failed rollback must not surface. */ }
+    }
+    return false;
+  }
+  sessions.set(at, { ...original, readOnly: false, followupStatus: undefined, draftUnread: false, resumed: true });
+  notify();
+  return true;
 }
 
 export interface OptionSession {

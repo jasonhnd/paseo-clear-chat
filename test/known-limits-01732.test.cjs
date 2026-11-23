@@ -347,6 +347,29 @@ test("an ordinary follow-up applies a recovered continued draft before the card 
   assert.equal(restored.choices[0], "B");
 });
 
+test("a recognized answer drops a pending draft read that will not be retried", async t => {
+  const h = createToolHarness("ios", { agents: { a: { status: "idle" } } });
+  const session = h.load("client/option-session.ts");
+  const control = { reads: 0, mode: "throw", data: {} };
+  control.data[session.answerDraftKey("a", 10)] = {
+    schema: 1, choices: { 0: "B" }, customDrafts: {}, customOpen: {}, activeQuestion: 0,
+  };
+  session.setAnswerDraftStore(failingThen(control));
+  t.after(() => { session.setAnswerDraftStore(null); h.unmount(); h.dispose(); });
+  session.publishAssistantReply("a", { at: 10, text: questions });
+  assert.equal(session.__testPendingDraftReadCount(), 1, "the failed first read is still pending");
+  session.publishUserMessage("a", 11, "1A");
+  const answered = session.getOptionSessionAt("a", 10);
+  assert.equal(answered.readOnly, true);
+  assert.notEqual(answered.draftUnread, true);
+  assert.equal(answered.choices[0], "A");
+  const readsAfterAnswer = control.reads;
+  control.mode = "ready";
+  session.publishAssistantReply("a", { at: 20, text: "Noted." });
+  assert.equal(session.__testPendingDraftReadCount(), 0);
+  assert.equal(control.reads, readsAfterAnswer, "a finished read-only card is not read again");
+});
+
 test("a late draft does not restore a choice the reader cleared", async t => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const h = createToolHarness("ios", { agents: { a: { status: "idle" } } });
