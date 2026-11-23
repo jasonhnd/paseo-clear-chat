@@ -137,13 +137,17 @@ function registerAnswerPill(client: PluginClientContext): () => void {
   let streamEpoch = 0;
   let stopAgentEvents: (() => void) | null = null;
   const streamSeen = new Set<string>();
-  // Filled once `agentListeners` exists. Turning the card off must drop every
-  // per-agent listener, not only the list subscription.
+  // Filled once the maps below exist. Turning the card off drops listeners and
+  // the cached status, so turning it on does not keep showing the old one.
   let stopAgentListeners: () => void = () => {};
+  let clearCachedStatus: () => void = () => {};
+  let statusNeedsRefresh = false;
   function releaseAgentStream(): void {
     streamEpoch += 1;
     agentStreamOpened = false;
     streamSeen.clear();
+    statusNeedsRefresh = true;
+    clearCachedStatus();
     stopAgentListeners();
     const stopEvents = stopAgentEvents;
     stopAgentEvents = null;
@@ -273,6 +277,7 @@ function registerAnswerPill(client: PluginClientContext): () => void {
     for (const stop of agentListeners.values()) stop();
     agentListeners.clear();
   };
+  clearCachedStatus = () => { agentStatuses.clear(); };
   let watchedAgentId: string | null = null;
   let refreshGeneration = 0;
   interface AgentStatusHandle {
@@ -306,7 +311,8 @@ function registerAnswerPill(client: PluginClientContext): () => void {
     } catch { /* The handle subscription still hears the focused agent. */ }
   }
   function watchAgentStatus(agentId: string): string | null {
-    const switched = watchedAgentId !== agentId;
+    const switched = watchedAgentId !== agentId || statusNeedsRefresh;
+    statusNeedsRefresh = false;
     watchedAgentId = agentId;
     if (!agentListeners.has(agentId)) {
       let handle: AgentStatusHandle | null = null;

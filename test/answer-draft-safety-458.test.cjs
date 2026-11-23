@@ -118,6 +118,80 @@ test('resume returns false and stores no resumed flag when the latest reply move
   assert.equal(s.getOptionSessionAt('a', 10).readOnly, true);
 });
 
+test('a second continue does not write while the first resume is still in flight', async t => {
+  const s = setup(t);
+  const data = {};
+  const key = s.answerDraftKey('a', 10);
+  data[key] = { schema: 1, choices: { 0: 'B' }, customDrafts: {}, customOpen: {}, activeQuestion: 1 };
+  const pendingWrites = [];
+  s.setAnswerDraftStore({
+    read: id => data[id],
+    write(id, value) {
+      return new Promise(resolve => {
+        pendingWrites.push(() => { data[id] = structuredClone(value); resolve(); });
+      });
+    },
+  });
+  s.publishAssistantReply('a', { at: 10, text: reply });
+  s.publishUserMessage('a', 11, 'Please wait until tomorrow.');
+  const first = s.resumeAnswerDraft('a', 10);
+  const second = s.resumeAnswerDraft('a', 10);
+  await flush();
+  assert.equal(pendingWrites.length, 1, 'only the first continue writes');
+  pendingWrites.shift()();
+  assert.equal(await second, false);
+  assert.equal(await first, true);
+  assert.equal(data[key].resumed, true);
+  assert.equal(pendingWrites.length, 0, 'the second continue does not roll the flag back');
+});
+
+test('a failed post-check keeps a resumed flag that was already stored', async t => {
+  const s = setup(t);
+  const data = {};
+  const key = s.answerDraftKey('a', 10);
+  data[key] = { schema: 1, choices: { 0: 'B' }, customDrafts: {}, customOpen: {}, activeQuestion: 1 };
+  let writes = 0;
+  s.setAnswerDraftStore({
+    read: id => data[id],
+    write(id, value) {
+      writes += 1;
+      data[id] = structuredClone(value);
+      if (writes === 1) s.publishAssistantReply('a', { at: 30, text: 'A later note.' });
+    },
+  });
+  s.publishAssistantReply('a', { at: 10, text: reply });
+  s.publishUserMessage('a', 11, 'Please wait until tomorrow.');
+  data[key] = { ...data[key], resumed: true };
+  assert.equal(s.getOptionSessionAt('a', 10).followupStatus, 'waiting');
+  assert.equal(await s.resumeAnswerDraft('a', 10), false);
+  assert.equal(data[key].resumed, true);
+  assert.equal(data[key].choices[0], 'B');
+});
+
+test('a failed post-check does not overwrite a draft another write changed', async t => {
+  const s = setup(t);
+  const data = {};
+  const key = s.answerDraftKey('a', 10);
+  data[key] = { schema: 1, choices: { 0: 'B' }, customDrafts: {}, customOpen: {}, activeQuestion: 1 };
+  let writes = 0;
+  s.setAnswerDraftStore({
+    read: id => data[id],
+    write(id, value) {
+      writes += 1;
+      data[id] = structuredClone(value);
+      if (writes === 1) {
+        s.publishAssistantReply('a', { at: 30, text: 'A later note.' });
+        data[id] = { ...value, choices: { 0: 'A' } };
+      }
+    },
+  });
+  s.publishAssistantReply('a', { at: 10, text: reply });
+  s.publishUserMessage('a', 11, 'Please wait until tomorrow.');
+  assert.equal(await s.resumeAnswerDraft('a', 10), false);
+  assert.equal(writes, 1, 'a changed draft is not overwritten');
+  assert.equal(data[key].choices[0], 'A');
+});
+
 test('host draft cache is unavailable during a write and after failure until a fresh read', async t => {
   let values = { preferences: {}, legacyMigrated: true, answerDrafts: {} }, revision = 0;
   let fail = false;
