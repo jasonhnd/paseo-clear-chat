@@ -134,3 +134,14 @@ test("a prototype-shaped draft key never becomes a draft or changes the document
   assert.equal(parsed.answerDrafts.choices, undefined, "the key cannot lend a draft shape to the record");
   assert.equal(parsed.preferences.accent, "rose", "the rest of the document still loads");
 });
+
+test("each degraded draft block gets its own record", t => {
+  const h = createToolHarness("ios");
+  t.after(() => { h.unmount(); h.dispose(); });
+  const { presentationSettings } = h.load("shared/settings.ts");
+  const first = presentationSettings.schema.parse({ preferences: {}, legacyMigrated: true, answerDrafts: null });
+  const second = presentationSettings.schema.parse({ preferences: {}, legacyMigrated: true, answerDrafts: "garbage" });
+  assert.notEqual(first.answerDrafts, second.answerDrafts, "a shared fallback object would leak between documents");
+  first.answerDrafts[goodKey] = structuredClone(good);
+  assert.deepEqual(Object.keys(second.answerDrafts), [], "writing into one degraded record must not reach another");
+});

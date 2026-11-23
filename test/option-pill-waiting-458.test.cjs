@@ -19,7 +19,10 @@ function pillHarness(t, data = {}, control = { readThrows: false }) {
       return data[key];
     },
     write: (key, value) => { data[key] = value; },
-    clear: key => { delete data[key]; },
+    clear: key => {
+      if (control.clearHangs) return new Promise(() => {});
+      delete data[key];
+    },
   });
   const registrations = [];
   const deps = {
@@ -198,4 +201,38 @@ test("sending from a continued card removes the button", async t => {
   await f.controller.refresh();
   assert.equal(f.live().length, 0);
   assert.equal(f.registrations[0].removed, true);
+});
+
+test("a pending draft operation does not promote a card whose draft still cannot be read", async t => {
+  const f = pillHarness(t);
+  const key = f.session.answerDraftKey("a", 10);
+  f.data[key] = structuredClone(draft);
+  f.session.publishAssistantReply("a", { at: 10, text: questions });
+  f.session.choose("a", 1, "A", 10);
+
+  // Send while the sender hangs: the sending-state write leaves the debounce window and
+  // clears its timer before the ordinary message arrives.
+  let release;
+  f.session.setOptionSender(() => { release = null; return new Promise(resolve => { release = resolve; }); });
+  const sent = f.session.sendAnswer("a", 10);
+  await new Promise(resolve => setTimeout(resolve, 450));
+
+  f.control.readThrows = true;
+  f.session.publishUserMessage("a", 11, "wait a moment");
+  assert.equal(f.session.getOptionSessionAt("a", 10).followupStatus, "unsafe");
+
+  // The send settles and schedules a draft clear that never completes, so a draft timer
+  // exists for this card while no readable draft does.
+  f.control.clearHangs = true;
+  release();
+  await sent;
+  await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(f.session.getOptionSessionAt("a", 10).readOnly, true);
+
+  f.session.publishAssistantReply("a", { at: 12, text: "Waiting." });
+  const after = f.session.getOptionSessionAt("a", 10);
+  assert.equal(after.followupStatus, "unsafe", "a pending timer is not a readable draft");
+  assert.equal(f.pill.currentPillCard("a"), null, "the card stays out of reach until a draft is read");
+  await f.controller.refresh();
+  assert.equal(f.live().length, 0, "the earlier registration is removed");
 });

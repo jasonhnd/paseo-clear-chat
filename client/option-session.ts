@@ -385,8 +385,10 @@ function reconcileAnswers(agentId: string): boolean {
     // draft, never what was once selected in memory.
     if (answer && session.followupStatus === "unsafe" && session.draftUnread === true && session.answerAt === answer[0] && session.answeredText === answer[1]) {
       const { status, draft } = inspectFollowup(agentId, at);
-      if (status === "waiting") {
-        const merged = draft ? mergeDraft(session, draft) : null;
+      // Only a draft that was actually read may lift the card: a pending write keeps the
+      // unsafe state for the next event instead of offering a card with nothing in it.
+      if (status === "waiting" && draft) {
+        const merged = mergeDraft(session, draft);
         sessions.set(at, { ...(merged ?? session), readOnly: true, followupStatus: "waiting", draftUnread: false });
         changed = true;
       } else if (status === "ended") {
@@ -407,6 +409,9 @@ function reconcileAnswers(agentId: string): boolean {
           continue;
         }
       } catch {
+        // The message could not be classified. This is intentionally not `draftUnread`:
+        // the draft may be perfectly readable, so re-reading it must never lift the card
+        // out of the read-only presentation. It stays until the conversation changes.
         sessions.set(at, { ...session, readOnly: true, followupStatus: "unsafe", answeredText: answer[1], answerAt: answer[0] });
         changed = true;
         continue;

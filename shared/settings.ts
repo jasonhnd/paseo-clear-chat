@@ -78,8 +78,9 @@ const presentationSchema = z.object({
   preferences: preferenceOverridesSchema.default({}),
   legacyMigrated: z.boolean().default(false),
   // A half-written or hand-edited block (null, an array, a string, a number) degrades to
-  // "no drafts" instead of rejecting the whole document.
-  answerDrafts: answerDraftsSchema.optional().catch({}),
+  // "no drafts" instead of rejecting the whole document. The fallback is created per
+  // parse: a shared object would let one degraded document write into the next.
+  answerDrafts: answerDraftsSchema.optional().catch(() => ({})),
 });
 
 export const presentationSettings = defineSettings({
