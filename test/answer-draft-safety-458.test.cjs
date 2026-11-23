@@ -64,6 +64,8 @@ test('resume waits for the pending write and rejects a failed write', async t =>
   await flush();
   assert.equal(finished, false);
   settle();
+  await flush();
+  settle();
   assert.equal(await click, true);
   s.choose('a', 1, 'A', 10);
   s.publishUserMessage('a', 12, 'Please wait again.');

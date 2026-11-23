@@ -49,7 +49,7 @@ test('Continue keeps the card editable when another non-card reply arrives', asy
   assert.equal(f.s.getOptionSessionAt('a', 10).choices[1], 'A');
 });
 
-test('replaying the same draft after reload allows Continue and editing', async t => {
+test('replaying the same draft after reload keeps a continued card editable', async t => {
   const data = {};
   const first = fixture(t, data);
   data[first.s.answerDraftKey('a', 10)] = structuredClone(draft);
@@ -57,9 +57,10 @@ test('replaying the same draft after reload allows Continue and editing', async 
   await pressContinue(first);
   const reloaded = fixture(t, data);
   replay(reloaded);
-  await pressContinue(reloaded);
   assert.equal(reloaded.s.getOptionSessionAt('a', 10).readOnly, false);
+  assert.equal(reloaded.s.getOptionSessionAt('a', 10).resumed, true);
   assert.equal(reloaded.s.getOptionSessionAt('a', 10).choices[0], 'B');
+  assert.equal(reloaded.control('option-resume').length, 0);
   assert.equal(reloaded.control('option-row-A').length, 1);
 });
 

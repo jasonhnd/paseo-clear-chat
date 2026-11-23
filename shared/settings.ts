@@ -56,6 +56,7 @@ export const answerDraftSchema = z.object({
   customOpen: z.record(z.string(), z.boolean()).default({}),
   activeQuestion: z.number().int().min(0).default(0),
   block: z.string().optional(),
+  resumed: z.literal(true).optional(),
 });
 
 export type AnswerDraft = z.output<typeof answerDraftSchema>;

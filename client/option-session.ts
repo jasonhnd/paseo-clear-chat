@@ -18,6 +18,8 @@ export interface AnswerDraftV1 {
   customDrafts: Record<string, string>;
   customOpen: Record<string, boolean>;
   activeQuestion: number;
+  /** The reader already pressed Continue. Survives a client remount; history cannot say this. */
+  resumed?: true;
 }
 
 export interface AnswerDraftStore {
@@ -72,7 +74,8 @@ function decodeDraft(raw: unknown): AnswerDraftV1 | null {
   const activeQuestion = value.activeQuestion;
   if (!choices || !customDrafts || !customOpen) return null;
   if (typeof activeQuestion !== "number" || !Number.isInteger(activeQuestion) || activeQuestion < 0) return null;
-  return { schema: 1, choices, customDrafts, customOpen, activeQuestion };
+  const resumed = value.resumed === true ? true as const : undefined;
+  return { schema: 1, choices, customDrafts, customOpen, activeQuestion, ...(resumed ? { resumed } : {}) };
 }
 
 type DraftRead = { kind: "valid"; value: AnswerDraftV1 } | { kind: "absent" | "invalid" | "unavailable" };
@@ -154,8 +157,10 @@ function restoreDraft(agentId: string, at: number): boolean {
   pendingDraftReads.delete(key);
   if (inspected.kind !== "valid") return false;
   const merged = mergeDraft(session, inspected.value, clearedDraftChoices.get(key));
-  if (!merged) return false;
-  sessions.set(at, readerHasAnswered(session) ? { ...merged, activeQuestion: session.activeQuestion } : merged);
+  const resumed = inspected.value.resumed === true;
+  if (!merged && !resumed) return false;
+  const next = readerHasAnswered(session) && merged ? { ...merged, activeQuestion: session.activeQuestion } : (merged ?? session);
+  sessions.set(at, resumed ? { ...next, readOnly: false, resumed: true, followupStatus: undefined, draftUnread: false } : next);
   return true;
 }
 
@@ -220,6 +225,7 @@ function persistDraft(agentId: string, session: OptionSession): void {
     schema: 1,
     choices: Object.fromEntries(Object.entries(session.choices).filter((entry): entry is [string, string] => typeof entry[1] === "string")),
     customDrafts: { ...session.customDrafts }, customOpen: { ...session.customOpen }, activeQuestion: session.activeQuestion,
+    ...(session.resumed ? { resumed: true as const } : {}),
   };
   const entry: DraftPending = {
     completion,
@@ -266,6 +272,10 @@ export async function resumeAnswerDraft(agentId: string, at: number): Promise<bo
   }
   const sessions = snapshots.get(agentId);
   if (!sessions || sessions.get(at) !== original) return false;
+  const stored = inspectDraft(agentId, at);
+  if (stored.kind !== "valid") return false;
+  try { await store.write(key, { ...stored.value, resumed: true }); } catch { return false; }
+  if (draftStore !== store || replies.get(agentId) !== latest || sessions.get(at) !== original || hasNewerAnswerCard(agentId, at)) return false;
   sessions.set(at, { ...original, readOnly: false, followupStatus: undefined, draftUnread: false, resumed: true });
   notify();
   return true;
@@ -446,6 +456,11 @@ function reconcileAnswers(agentId: string): boolean {
         const typed = typedChoices(session.set, answer[1]);
         const sent = (session.sending || (session.answerAt === null && session.answeredText === answer[1])) && sessionAnswerText(session) === answer[1];
         if (!parsed && !Object.keys(typed).length && !sent && !containsAnswerShape(answer[1])) {
+          if (session.resumed && !hasNewerAnswerCard(agentId, at)) {
+            sessions.set(at, { ...session, readOnly: false, followupStatus: undefined, draftUnread: false, answeredText: answer[1], answerAt: answer[0], error: null });
+            changed = true;
+            continue;
+          }
           const { status } = inspectFollowup(agentId, at);
           sessions.set(at, { ...session, ...(status === "waiting" ? {} : { choices: {}, customConfirmed: {}, customOpen: {} }), readOnly: true, superseded: false, followupStatus: status, draftUnread: status === "unsafe", answeredText: answer[1], answerAt: answer[0], error: null });
           changed = true;
