@@ -104,3 +104,33 @@ test("an invalid preference still rejects the document", async t => {
     "other settings fields keep their strict validation",
   );
 });
+
+for (const [label, block] of [["null", null], ["empty array", []], ["string", "garbage"], ["number", 7]]) {
+  test(`an answerDrafts block that is not a record is treated as no drafts (${label})`, async t => {
+    const server = host({ preferences: { accent: "rose", assistantMarkdown: false }, legacyMigrated: true, answerDrafts: block });
+    const f = fixture(t, server);
+    await f.preferences.initializeEnhancerPreferences(server.rpc);
+    assert.equal(f.preferences.getEnhancerPreferencesError(), null, "an unusable drafts block must not invalidate the document");
+    assert.equal(f.preferences.getEnhancerPreferences().accent, "rose", "stored preferences still load");
+    assert.equal(f.preferences.getEnhancerPreferences().assistantMarkdown, false);
+    assert.equal(f.preferences.getStoredAnswerDraft(goodKey), undefined, "no draft can be read from an unusable block");
+
+    await f.preferences.updateEnhancerPreferences({ accent: "jade" });
+    const written = server.writes.at(-1);
+    assert.deepEqual(written.answerDrafts, {}, "the next write stores an empty draft record");
+    assert.equal(written.preferences.accent, "jade");
+    assert.equal(written.preferences.assistantMarkdown, false, "an unrelated preference is not lost");
+    assert.equal(written.legacyMigrated, true);
+  });
+}
+
+test("a prototype-shaped draft key never becomes a draft or changes the document", t => {
+  const h = createToolHarness("ios");
+  t.after(() => { h.unmount(); h.dispose(); });
+  const { presentationSettings } = h.load("shared/settings.ts");
+  const values = JSON.parse('{"preferences":{"accent":"rose"},"legacyMigrated":true,"answerDrafts":{"__proto__":{"schema":1,"choices":{"0":"A"},"customDrafts":{},"customOpen":{},"activeQuestion":0}}}');
+  const parsed = presentationSettings.schema.parse(values);
+  assert.equal(Object.hasOwn(parsed.answerDrafts, "__proto__"), false, "a prototype-shaped key is not kept as a draft");
+  assert.equal(parsed.answerDrafts.choices, undefined, "the key cannot lend a draft shape to the record");
+  assert.equal(parsed.preferences.accent, "rose", "the rest of the document still loads");
+});

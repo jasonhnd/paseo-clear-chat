@@ -9,11 +9,18 @@ const { createToolHarness } = require("./helpers/tool-harness.cjs");
 const questions = "1) First?\nA One\nB Two\n\n2) Second?\nA One\nB Two\n\nReply: A";
 const draft = { schema: 1, choices: { 0: "B" }, customDrafts: {}, customOpen: {}, activeQuestion: 1 };
 
-function pillHarness(t, data = {}) {
+function pillHarness(t, data = {}, control = { readThrows: false }) {
   const h = createToolHarness("web", { locale: "en", agents: { a: { status: "idle" } } });
   const session = h.load("client/option-session.ts");
   const pill = h.load("client/answer-pill.ts");
-  session.setAnswerDraftStore({ read: key => data[key], write: (key, value) => { data[key] = value; }, clear: key => { delete data[key]; } });
+  session.setAnswerDraftStore({
+    read: key => {
+      if (control.readThrows) throw new Error("draft store unavailable");
+      return data[key];
+    },
+    write: (key, value) => { data[key] = value; },
+    clear: key => { delete data[key]; },
+  });
   const registrations = [];
   const deps = {
     focusedAgent: () => ({ workspaceId: "w1", agentId: "a" }),
@@ -38,7 +45,7 @@ function pillHarness(t, data = {}) {
   const controller = pill.createAnswerPill(deps);
   t.after(() => { controller.stop(); session.setAnswerDraftStore(null); h.unmount(); h.dispose(); });
   return {
-    h, session, pill, data, controller, registrations,
+    h, session, pill, data, controller, registrations, control,
     live() { return registrations.filter(record => !record.removed); },
   };
 }
@@ -120,4 +127,75 @@ test("a recognized answer after a drafted card still ends it", async t => {
   assert.equal(answered.choices[0], "B");
   assert.equal(f.pill.currentPillCard("a"), null, "an answered card offers no composer button");
   assert.equal(await f.session.resumeAnswerDraft("a", 10), false);
+});
+
+test("an unreadable draft store hides the card but keeps its answer for a later recovery", async t => {
+  const f = pillHarness(t);
+  f.data[f.session.answerDraftKey("a", 10)] = structuredClone(draft);
+  f.session.publishAssistantReply("a", { at: 10, text: questions });
+  assert.equal(f.session.getOptionSessionAt("a", 10).choices[0], "B", "the stored draft was restored");
+
+  // A read that cannot answer must not be treated as "no draft", but it also must not
+  // lock the card away for the rest of the session.
+  f.control.readThrows = true;
+  f.session.publishUserMessage("a", 11, "wait a moment");
+  const unread = f.session.getOptionSessionAt("a", 10);
+  assert.equal(unread.followupStatus, "unsafe");
+  assert.equal(unread.readOnly, true);
+  assert.deepEqual(unread.choices, {}, "the unreadable state keeps the legacy presentation, not an unsent selection");
+  assert.equal(f.pill.currentPillCard("a"), null, "the unreadable state offers no composer button");
+  await f.controller.refresh();
+  assert.equal(f.registrations.length, 0);
+
+  const Card = f.h.load("client/components/option-card.tsx").OptionCard;
+  const tree = f.h.draw({ type: Card, props: { agentId: "a", at: 10, tokens: f.h.tokens } });
+  assert.equal(f.h.nodes(tree, node => node.props?.testID === "option-resume").length, 0, "no Continue while the draft cannot be read");
+
+  // The store answers again: the next timeline event re-reads this card's draft and
+  // rebuilds exactly what was saved, not what was once selected in memory.
+  f.control.readThrows = false;
+  f.session.publishAssistantReply("a", { at: 12, text: "Waiting." });
+  const recovered = f.session.getOptionSessionAt("a", 10);
+  assert.equal(recovered.followupStatus, "waiting", "a readable draft lifts the card out of the unsafe state");
+  assert.equal(recovered.readOnly, true);
+  assert.equal(recovered.choices[0], "B", "the recovered card shows the saved answer");
+  const card = f.pill.currentPillCard("a");
+  assert.equal(card?.at, 10);
+  assert.equal(card?.answeredCount, 1);
+  await f.controller.refresh();
+  assert.equal(f.live().length, 1, "the composer button comes back");
+  assert.equal(f.live()[0].input.button.label, "Answer card 1/2");
+});
+
+test("a continued card stays editable and on the button when another plain message arrives", async t => {
+  const f = pillHarness(t);
+  f.data[f.session.answerDraftKey("a", 10)] = structuredClone(draft);
+  replay(f);
+  assert.equal(await f.session.resumeAnswerDraft("a", 10), true);
+  f.session.publishUserMessage("a", 13, "still here");
+  const card = f.session.getOptionSessionAt("a", 10);
+  assert.equal(card.readOnly, false, "a later plain message does not re-lock a card the reader continued");
+  assert.equal(card.choices[0], "B");
+  const pinned = f.pill.currentPillCard("a");
+  assert.equal(pinned?.at, 10);
+  assert.equal(pinned?.answeredCount, 1);
+  await f.controller.refresh();
+  assert.equal(f.live().length, 1);
+});
+
+test("sending from a continued card removes the button", async t => {
+  const f = pillHarness(t);
+  f.data[f.session.answerDraftKey("a", 10)] = structuredClone(draft);
+  replay(f);
+  assert.equal(await f.session.resumeAnswerDraft("a", 10), true);
+  f.session.setOptionSender(async () => {});
+  t.after(() => f.session.setOptionSender(null));
+  f.session.choose("a", 1, "A", 10);
+  await f.session.sendAnswer("a", 10);
+  const sent = f.session.getOptionSessionAt("a", 10);
+  assert.equal(sent.readOnly, true);
+  assert.equal(f.pill.currentPillCard("a"), null, "a sent card leaves no composer button");
+  await f.controller.refresh();
+  assert.equal(f.live().length, 0);
+  assert.equal(f.registrations[0].removed, true);
 });
