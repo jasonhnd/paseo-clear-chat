@@ -18,6 +18,8 @@ export interface AnswerDraftV1 {
   customDrafts: Record<string, string>;
   customOpen: Record<string, boolean>;
   activeQuestion: number;
+  /** The reader already pressed Continue. Survives a client remount; history cannot say this. */
+  resumed?: true;
 }
 
 export interface AnswerDraftStore {
@@ -72,7 +74,8 @@ function decodeDraft(raw: unknown): AnswerDraftV1 | null {
   const activeQuestion = value.activeQuestion;
   if (!choices || !customDrafts || !customOpen) return null;
   if (typeof activeQuestion !== "number" || !Number.isInteger(activeQuestion) || activeQuestion < 0) return null;
-  return { schema: 1, choices, customDrafts, customOpen, activeQuestion };
+  const resumed = value.resumed === true ? true as const : undefined;
+  return { schema: 1, choices, customDrafts, customOpen, activeQuestion, ...(resumed ? { resumed } : {}) };
 }
 
 type DraftRead = { kind: "valid"; value: AnswerDraftV1 } | { kind: "absent" | "invalid" | "unavailable" };
@@ -85,21 +88,17 @@ function inspectDraft(agentId: string, at: number): DraftRead {
     return value ? { kind: "valid", value } : { kind: "invalid" };
   } catch { return { kind: "unavailable" }; }
 }
-function readDraft(agentId: string, at: number): AnswerDraftV1 | null {
-  const result = inspectDraft(agentId, at);
-  return result.kind === "valid" ? result.value : null;
-}
 
 /**
  * Fill what history left open from a draft. History wins on any question it
  * answered; nothing is invented for a question the user never touched.
  */
-function mergeDraft(session: OptionSession, draft: AnswerDraftV1): OptionSession | null {
+function mergeDraft(session: OptionSession, draft: AnswerDraftV1, skipChoices?: ReadonlySet<number>): OptionSession | null {
   let touched = false;
   const choices = { ...session.choices };
   for (const [index, letter] of Object.entries(draft.choices)) {
     const i = Number(index);
-    if (choices[i] !== undefined || !session.set.questions[i]) continue;
+    if (skipChoices?.has(i) || choices[i] !== undefined || !session.set.questions[i]) continue;
     if (!session.set.questions[i]!.options.some(option => option.letter === letter)) continue;
     choices[i] = letter;
     touched = true;
@@ -124,17 +123,75 @@ function mergeDraft(session: OptionSession, draft: AnswerDraftV1): OptionSession
   return { ...session, choices, customDrafts, customOpen, activeQuestion: active };
 }
 
-/** Restore a draft onto a freshly published card. */
+/** Restore a draft onto a freshly published card. A read that cannot answer is marked and tried again. */
+const pendingDraftReads = new Set<string>();
+
+/** Test-only: how many cards are still waiting on a draft read. */
+export function __testPendingDraftReadCount(): number {
+  return pendingDraftReads.size;
+}
+
+/** Indexes the reader cleared, so a late draft must not put that letter back. */
+const clearedDraftChoices = new Map<string, Set<number>>();
+
+/** The reader has moved this card since it was published, so a late draft must not take their place. */
+function readerHasAnswered(session: OptionSession): boolean {
+  if (session.activeQuestion !== 0) return true;
+  if (Object.values(session.customOpen).some(Boolean)) return true;
+  for (const value of Object.values(session.choices)) if (value !== undefined) return true;
+  for (const value of Object.values(session.customConfirmed)) if (value !== undefined) return true;
+  for (const value of Object.values(session.customDrafts)) if (value) return true;
+  for (const value of Object.values(session.notes)) if (value) return true;
+  return false;
+}
+
 function restoreDraft(agentId: string, at: number): boolean {
+  const key = answerDraftKey(agentId, at);
   const sessions = snapshots.get(agentId);
   const session = sessions?.get(at);
-  if (!session || session.readOnly || session.dismissed) return false;
-  const draft = readDraft(agentId, at);
-  if (!draft) return false;
-  const merged = mergeDraft(session, draft);
-  if (!merged) return false;
-  sessions!.set(at, merged);
+  if (!sessions || !session || session.dismissed) {
+    pendingDraftReads.delete(key);
+    return false;
+  }
+  // A read-only card is not restored here. Drop the pending key unless the card
+  // is still unread; that recovery reads the draft later. Absence and a rejected
+  // shape are final only while the card is still editable.
+  if (session.readOnly) {
+    if (session.draftUnread !== true) pendingDraftReads.delete(key);
+    return false;
+  }
+  const inspected = inspectDraft(agentId, at);
+  // A failed read is not "no draft". Remember the card and try again when the
+  // store can answer. A successful absence or a rejected shape is final.
+  if (inspected.kind === "unavailable") {
+    pendingDraftReads.add(key);
+    return false;
+  }
+  pendingDraftReads.delete(key);
+  if (inspected.kind !== "valid") return false;
+  const merged = mergeDraft(session, inspected.value, clearedDraftChoices.get(key));
+  const resumed = inspected.value.resumed === true;
+  if (!merged && !resumed) return false;
+  const next = readerHasAnswered(session) && merged ? { ...merged, activeQuestion: session.activeQuestion } : (merged ?? session);
+  sessions.set(at, resumed ? { ...next, readOnly: false, resumed: true, followupStatus: undefined, draftUnread: false } : next);
   return true;
+}
+
+/** Re-read cards whose first draft read failed. Skips a card this turn already read. */
+function retryPendingDraftReads(skipAgentId?: string, skipAt?: number): boolean {
+  let changed = false;
+  for (const key of [...pendingDraftReads]) {
+    const splitAt = key.lastIndexOf("\u0000");
+    const agentId = splitAt > 0 ? key.slice(0, splitAt) : "";
+    const at = Number(key.slice(splitAt + 1));
+    if (!agentId || !Number.isFinite(at)) {
+      pendingDraftReads.delete(key);
+      continue;
+    }
+    if (agentId === skipAgentId && at === skipAt) continue;
+    if (restoreDraft(agentId, at)) changed = true;
+  }
+  return changed;
 }
 
 /** Sidebar hint: how many questions of this card are still open. Carries no draft text. */
@@ -181,6 +238,7 @@ function persistDraft(agentId: string, session: OptionSession): void {
     schema: 1,
     choices: Object.fromEntries(Object.entries(session.choices).filter((entry): entry is [string, string] => typeof entry[1] === "string")),
     customDrafts: { ...session.customDrafts }, customOpen: { ...session.customOpen }, activeQuestion: session.activeQuestion,
+    ...(session.resumed ? { resumed: true as const } : {}),
   };
   const entry: DraftPending = {
     completion,
@@ -205,8 +263,27 @@ function canonicalDraft(draft: AnswerDraftV1): string {
   return JSON.stringify({ schema: draft.schema, choices: sort(draft.choices), customDrafts: sort(draft.customDrafts), customOpen: sort(draft.customOpen), activeQuestion: draft.activeQuestion });
 }
 
+function sameWrittenDraft(stored: AnswerDraftV1, written: AnswerDraftV1): boolean {
+  return canonicalDraft(stored) === canonicalDraft(written) && stored.resumed === written.resumed;
+}
+
+/** One resume per card. An overlapping press shares that call and must not write again. */
+const resumeInFlight = new Map<string, Promise<boolean>>();
+
 /** Resume exactly this card only if its draft and identity remain stable. */
-export async function resumeAnswerDraft(agentId: string, at: number): Promise<boolean> {
+export function resumeAnswerDraft(agentId: string, at: number): Promise<boolean> {
+  const key = answerDraftKey(agentId, at);
+  const existing = resumeInFlight.get(key);
+  if (existing) return existing;
+  const run = runResumeAnswerDraft(agentId, at);
+  resumeInFlight.set(key, run);
+  void run.finally(() => {
+    if (resumeInFlight.get(key) === run) resumeInFlight.delete(key);
+  });
+  return run;
+}
+
+async function runResumeAnswerDraft(agentId: string, at: number): Promise<boolean> {
   const original = getOptionSessionAt(agentId, at);
   const store = draftStore;
   const latest = replies.get(agentId);
@@ -227,6 +304,29 @@ export async function resumeAnswerDraft(agentId: string, at: number): Promise<bo
   }
   const sessions = snapshots.get(agentId);
   if (!sessions || sessions.get(at) !== original) return false;
+  const stored = inspectDraft(agentId, at);
+  if (stored.kind !== "valid") return false;
+  const preImage = stored.value;
+  const written: AnswerDraftV1 = { ...preImage, resumed: true };
+  try { await store.write(key, written); } catch { return false; }
+  const postCheckFailed = draftStore !== store || replies.get(agentId) !== latest || sessions.get(at) !== original || hasNewerAnswerCard(agentId, at);
+  if (postCheckFailed) {
+    const current = sessions.get(at);
+    const unlocked = !current || current.readOnly === false;
+    if (!unlocked && draftStore === store) {
+      try {
+        const now = inspectDraft(agentId, at);
+        // Only the value this call just wrote may be replaced, and only while the card is still locked.
+        if (now.kind === "valid" && sameWrittenDraft(now.value, written)) {
+          const rollback = preImage.resumed === true
+            ? preImage
+            : { schema: preImage.schema, choices: preImage.choices, customDrafts: preImage.customDrafts, customOpen: preImage.customOpen, activeQuestion: preImage.activeQuestion };
+          await store.write(key, rollback);
+        }
+      } catch { /* A failed rollback must not surface. */ }
+    }
+    return false;
+  }
   sessions.set(at, { ...original, readOnly: false, followupStatus: undefined, draftUnread: false, resumed: true });
   notify();
   return true;
@@ -313,6 +413,8 @@ onEnhancerPreferencesReady(() => {
       if (isDismissed(agentId, at)) changed = sessions.delete(at) || changed;
     }
   }
+  if (retryPendingDraftReads()) changed = true;
+  for (const agentId of snapshots.keys()) if (reconcileAnswers(agentId)) changed = true;
   if (changed) notify();
 });
 
@@ -353,6 +455,14 @@ function containsAnswerShape(text: string): boolean {
   return text.split(/\s+/).some(raw => /^[A-Z]?[0-9]+[A-H]$/i.test(raw.replace(/^[.,;:!?()[\]"']+|[.,;:!?()[\]"']+$/g, "")));
 }
 
+/** Chat that is not a typed choice, a custom answer, or the send already in flight. */
+function isOrdinaryFollowup(session: OptionSession, text: string): boolean {
+  const parsed = parseCustomAnswerHistory(session.set, text);
+  const typed = typedChoices(session.set, text);
+  const sent = (session.sending || (session.answerAt === null && session.answeredText === text)) && sessionAnswerText(session) === text;
+  return !parsed && Object.keys(typed).length === 0 && !sent && !containsAnswerShape(text);
+}
+
 /** How a card with a later ordinary user message is presented.
  * `waiting` needs the reader's explicit Continue; `ended` is the legacy read-only history.
  * `unsafe` means the draft could not be read, so neither is claimed yet. */
@@ -375,6 +485,8 @@ function reconcileAnswers(agentId: string): boolean {
     const answer = userMessages.find(([time]) => time > at && time < nextReply);
     if (answer && session.answerAt === answer[0] && session.answeredText === answer[1] && (session.followupStatus === "waiting" || session.resumed) && hasNewerAnswerCard(agentId, at)) {
       sessions.set(at, { ...session, readOnly: true, resumed: false, followupStatus: "ended" });
+      clearedDraftChoices.delete(answerDraftKey(agentId, at));
+      pendingDraftReads.delete(answerDraftKey(agentId, at));
       changed = true;
       continue;
     }
@@ -388,11 +500,23 @@ function reconcileAnswers(agentId: string): boolean {
       // Only a draft that was actually read may lift the card: a pending write keeps the
       // unsafe state for the next event instead of offering a card with nothing in it.
       if (status === "waiting" && draft) {
-        const merged = mergeDraft(session, draft);
-        sessions.set(at, { ...(merged ?? session), readOnly: true, followupStatus: "waiting", draftUnread: false });
+        const merged = mergeDraft(session, draft, clearedDraftChoices.get(answerDraftKey(agentId, at)));
+        const base = merged ?? session;
+        const key = answerDraftKey(agentId, at);
+        let ordinary = false;
+        try { ordinary = isOrdinaryFollowup(session, answer[1]); } catch { ordinary = false; }
+        // A stored Continue survives the failed first read. A message that is itself
+        // an answer, or a newer card, still leaves the read-only waiting presentation.
+        if (draft.resumed === true && !hasNewerAnswerCard(agentId, at) && ordinary) {
+          sessions.set(at, { ...base, readOnly: false, resumed: true, followupStatus: undefined, draftUnread: false });
+        } else {
+          sessions.set(at, { ...base, readOnly: true, followupStatus: "waiting", draftUnread: false });
+        }
+        pendingDraftReads.delete(key);
         changed = true;
       } else if (status === "ended") {
         sessions.set(at, { ...session, choices: {}, customConfirmed: {}, customOpen: {}, readOnly: true, followupStatus: "ended", draftUnread: false });
+        pendingDraftReads.delete(answerDraftKey(agentId, at));
         changed = true;
       }
       continue;
@@ -403,6 +527,11 @@ function reconcileAnswers(agentId: string): boolean {
         const typed = typedChoices(session.set, answer[1]);
         const sent = (session.sending || (session.answerAt === null && session.answeredText === answer[1])) && sessionAnswerText(session) === answer[1];
         if (!parsed && !Object.keys(typed).length && !sent && !containsAnswerShape(answer[1])) {
+          if (session.resumed && !hasNewerAnswerCard(agentId, at)) {
+            sessions.set(at, { ...session, readOnly: false, followupStatus: undefined, draftUnread: false, answeredText: answer[1], answerAt: answer[0], error: null });
+            changed = true;
+            continue;
+          }
           const { status } = inspectFollowup(agentId, at);
           sessions.set(at, { ...session, ...(status === "waiting" ? {} : { choices: {}, customConfirmed: {}, customOpen: {} }), readOnly: true, superseded: false, followupStatus: status, draftUnread: status === "unsafe", answeredText: answer[1], answerAt: answer[0], error: null });
           changed = true;
@@ -479,6 +608,7 @@ export function publishAssistantReply(agentId: string, reply: { at: number; text
     });
   }
   let changed = !!set && restoreDraft(agentId, reply.at);
+  if (retryPendingDraftReads(set ? agentId : undefined, set ? reply.at : undefined)) changed = true;
   if (reconcileAnswers(agentId)) changed = true;
   if (reply.at > latest || changed) notify();
 }
@@ -489,7 +619,9 @@ export function publishUserMessage(agentId: string, at: number, text = ""): void
   if (!userMessages) messages.set(agentId, userMessages = new Map());
   if (userMessages.get(at) === text) return;
   userMessages.set(at, text);
-  if (reconcileAnswers(agentId)) notify();
+  const recovered = retryPendingDraftReads();
+  const reconciled = reconcileAnswers(agentId);
+  if (recovered || reconciled) notify();
 }
 
 function update(agentId: string, change: (snapshot: OptionSession) => OptionSession, at?: number): void {
@@ -506,6 +638,11 @@ function update(agentId: string, change: (snapshot: OptionSession) => OptionSess
 export function choose(agentId: string, questionIndex: number, letter: string, at?: number): void {
   update(agentId, snapshot => {
     if (snapshot.readOnly || snapshot.sending || !snapshot.set.questions[questionIndex]?.options.some(option => option.letter === letter) || snapshot.choices[questionIndex] === letter) return snapshot;
+    const cleared = clearedDraftChoices.get(answerDraftKey(agentId, snapshot.at));
+    if (cleared) {
+      cleared.delete(questionIndex);
+      if (cleared.size === 0) clearedDraftChoices.delete(answerDraftKey(agentId, snapshot.at));
+    }
     const wasAnswered = snapshot.choices[questionIndex] !== undefined;
     const choices = { ...snapshot.choices, [questionIndex]: letter };
     const count = snapshot.set.questions.length;
@@ -574,6 +711,9 @@ export function customLetterFor(agentId: string, questionIndex: number, at?: num
 export function clearChoice(agentId: string, questionIndex: number, at?: number): void {
   update(agentId, snapshot => {
     if (snapshot.readOnly || snapshot.sending || snapshot.choices[questionIndex] === undefined) return snapshot;
+    const cleared = clearedDraftChoices.get(answerDraftKey(agentId, snapshot.at)) ?? new Set<number>();
+    cleared.add(questionIndex);
+    clearedDraftChoices.set(answerDraftKey(agentId, snapshot.at), cleared);
     const choices = { ...snapshot.choices };
     const customConfirmed = { ...snapshot.customConfirmed };
     delete choices[questionIndex];
@@ -616,6 +756,8 @@ export function retireOptionSession(agentId: string, at = replies.get(agentId)):
 export function dismiss(agentId: string, at?: number): void {
   const session = sessionForOperation(agentId, at);
   if (!session || session.readOnly || session.sending) return;
+  pendingDraftReads.delete(answerDraftKey(agentId, session.at));
+  clearedDraftChoices.delete(answerDraftKey(agentId, session.at));
   retireOptionSession(agentId, session.at);
   void saveDismissedOptionReply(agentId, session.at);
 }
@@ -672,6 +814,8 @@ export async function sendAnswer(agentId: string, at?: number): Promise<void> {
     if (current) {
       const settled = { ...current, sending: false, readOnly: true, answeredText: current.answeredText ?? text, error: null };
       snapshots.get(agentId)!.set(snapshot.at, settled);
+      clearedDraftChoices.delete(answerDraftKey(agentId, snapshot.at));
+      pendingDraftReads.delete(answerDraftKey(agentId, snapshot.at));
       persistDraft(agentId, settled);
       publishAnswerState(agentId, settled);
       notify();

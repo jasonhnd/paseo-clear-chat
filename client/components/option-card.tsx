@@ -4,6 +4,7 @@ import * as pluginClient from "@getpaseo/plugin/client";
 import { useAgent, useTranslation } from "@getpaseo/plugin/client";
 import { TextInput } from "@getpaseo/plugin/client/ui";
 import { messages } from "../messages";
+import { answerCardHiddenWhileAgentRuns } from "../answer-pill";
 import { resumeAnswerDraft, initializeAnswerState, answerIndex, answerText, choose, confirmCustom, customLetterFor, dismiss, getOptionSessionAt, getOptionSession, hasNewerAnswerCard, missingQuestion, moveCursor, openCustom, sendAnswer, setActiveQuestion, setCustomDraft, useOptionSession } from "../option-session";
 import { customAnswerLetter } from "../option-custom-answer";
 import { useEnhancerPreferences } from "../preferences";
@@ -476,7 +477,7 @@ export function OptionCard({ agentId, at, tokens, surface = "timeline", compact 
     readOnlyTransition.current?.();
     clearScrollSpace();
   }, []);
-  if (!session || session.at !== at || session.dismissed || session.superseded || (!session.resumed && !getOptionSession(agentId, at)) || (status === "running" && !session.readOnly)) return null;
+  if (!session || session.at !== at || session.dismissed || session.superseded || (!session.resumed && !getOptionSession(agentId, at)) || answerCardHiddenWhileAgentRuns(session, status)) return null;
 
   const question = session.set.questions[index]!;
   const customLetter = getOptionSessionAt(agentId, at)?.at === at ? customLetterFor(agentId, index, at)! : customAnswerLetter(question);
