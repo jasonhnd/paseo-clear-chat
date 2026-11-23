@@ -204,6 +204,9 @@ test("sending from a continued card removes the button", async t => {
 });
 
 test("a pending draft operation does not promote a card whose draft still cannot be read", async t => {
+  // The draft write is debounced; drive it with the same fake clock the other draft tests use.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const flush = () => new Promise(setImmediate);
   const f = pillHarness(t);
   const key = f.session.answerDraftKey("a", 10);
   f.data[key] = structuredClone(draft);
@@ -215,7 +218,9 @@ test("a pending draft operation does not promote a card whose draft still cannot
   let release;
   f.session.setOptionSender(() => { release = null; return new Promise(resolve => { release = resolve; }); });
   const sent = f.session.sendAnswer("a", 10);
-  await new Promise(resolve => setTimeout(resolve, 450));
+  t.mock.timers.tick(400);
+  await flush();
+  assert.equal(f.data[key].choices["1"], "A", "the debounced write landed with both answers");
 
   f.control.readThrows = true;
   f.session.publishUserMessage("a", 11, "wait a moment");
@@ -226,7 +231,8 @@ test("a pending draft operation does not promote a card whose draft still cannot
   f.control.clearHangs = true;
   release();
   await sent;
-  await new Promise(resolve => setTimeout(resolve, 10));
+  t.mock.timers.tick(0);
+  await flush();
   assert.equal(f.session.getOptionSessionAt("a", 10).readOnly, true);
 
   f.session.publishAssistantReply("a", { at: 12, text: "Waiting." });
