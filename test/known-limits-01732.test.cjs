@@ -377,7 +377,7 @@ test("leaving a conversation and coming back does not keep the old running state
   current = composerB;
   t.mock.timers.tick(750);
   await flush();
-  assert.equal(listeners.has("a"), false, "leaving a conversation drops its status listener");
+  assert.equal(listeners.has("a"), true, "the background conversation keeps its status listener");
   status.a = "running";
   current = composerA;
   t.mock.timers.tick(750);

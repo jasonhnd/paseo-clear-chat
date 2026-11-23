@@ -262,8 +262,8 @@ function registerAnswerPill(client: PluginClientContext): () => void {
   // A focus change drops the cached string and always refreshes; an unknown status
   // leaves the button visible until that refresh answers.
   const agentStatuses = new Map<string, string>();
+  const agentListeners = new Map<string, () => void>();
   let watchedAgentId: string | null = null;
-  let stopStatusWatch: (() => void) | null = null;
   let refreshGeneration = 0;
   interface AgentStatusHandle {
     readonly status?: string | null;
@@ -296,31 +296,33 @@ function registerAnswerPill(client: PluginClientContext): () => void {
     } catch { /* The handle subscription still hears the focused agent. */ }
   }
   function watchAgentStatus(agentId: string): string | null {
-    if (watchedAgentId !== agentId) {
-      stopStatusWatch?.();
-      stopStatusWatch = null;
-      watchedAgentId = agentId;
-      refreshGeneration += 1;
-      const generation = refreshGeneration;
+    const switched = watchedAgentId !== agentId;
+    watchedAgentId = agentId;
+    if (!agentListeners.has(agentId)) {
       let handle: AgentStatusHandle | null = null;
       try { handle = client.paseo.agents.ref(agentId) as AgentStatusHandle; } catch { handle = null; }
       if (handle) {
         try {
           const stop = handle.subscribe?.(update => {
-            if (watchedAgentId !== agentId || refreshGeneration !== generation) return;
+            // Keep this listener after the reader leaves, so a running update in the
+            // background is already stored when they come back.
             if (typeof update?.agent?.status === "string") noteFromStream(agentId, update.agent.status);
           });
-          if (typeof stop === "function") stopStatusWatch = stop;
-        } catch { /* A host that cannot stream updates still answers refresh(). */ }
-        // A status the stream already reported is kept. refresh() can answer with the
-        // snapshot from before the reader left, and that must not cover a newer running state.
-        if (!streamSeen.has(agentId) && handle.refresh) {
-          void handle.refresh().then(result => {
-            if (watchedAgentId !== agentId || refreshGeneration !== generation || streamSeen.has(agentId)) return;
-            const status = result?.agent?.status ?? handle?.current?.()?.status;
-            if (typeof status === "string") rememberStatus(agentId, status);
-          }).catch(() => {});
-        }
+          if (typeof stop === "function") agentListeners.set(agentId, stop);
+        } catch { /* refresh below still answers when the stream has not. */ }
+      }
+    }
+    if (switched && !streamSeen.has(agentId)) {
+      refreshGeneration += 1;
+      const generation = refreshGeneration;
+      let handle: AgentStatusHandle | null = null;
+      try { handle = client.paseo.agents.ref(agentId) as AgentStatusHandle; } catch { handle = null; }
+      if (handle?.refresh) {
+        void handle.refresh().then(result => {
+          if (watchedAgentId !== agentId || refreshGeneration !== generation || streamSeen.has(agentId)) return;
+          const status = result?.agent?.status ?? handle?.current?.()?.status;
+          if (typeof status === "string") rememberStatus(agentId, status);
+        }).catch(() => {});
       }
     }
     return agentStatuses.get(agentId) ?? null;
@@ -341,8 +343,8 @@ function registerAnswerPill(client: PluginClientContext): () => void {
     stopped = true;
     if (timer) clearTimeout(timer);
     timer = null;
-    stopStatusWatch?.();
-    stopStatusWatch = null;
+    for (const stop of agentListeners.values()) stop();
+    agentListeners.clear();
     agentStatuses.clear();
     watchedAgentId = null;
     releaseAgentStream();
