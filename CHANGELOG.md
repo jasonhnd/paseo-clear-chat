@@ -1,3 +1,40 @@
+## [0.17.4.1] - 2026-11-24
+
+### Fixed
+
+- **The composer button follows the agent's running state.** While the agent is answering, the button above the message box is no longer shown for a card the reader can still edit, so it no longer stays there to open onto the “reply is still running” message; it returns with the same progress when the run ends, and a read-only card that is still waiting for an answer keeps its button. A switch away and back, and turning the answer card off and on again, both leave the button in step with the agent. While the host has not reported a status, the button stays visible ([PR #527](https://github.com/jasonhnd/paseo-clear-chat/pull/527)).
+- **A continued card survives a reload, a switch away, and an ordinary message.** A successful **Continue answering** now writes an optional `resumed: true` field into the saved draft and unlocks the card only after the write settles; a failed write leaves the card waiting. A reload, a return to the conversation, or another ordinary message in the same conversation then leaves the card editable with its saved choices and position, without a second **Continue answering**. A newer answer card still ends the older card, and a message recognised as this card's answer still replaces those choices ([PR #527](https://github.com/jasonhnd/paseo-clear-chat/pull/527)).
+- **Two quick presses on Continue count as one.** The second press shares the call the first one started, so it neither writes again nor rolls back the stored `resumed` field after the first press stored it ([PR #527](https://github.com/jasonhnd/paseo-clear-chat/pull/527)).
+- **A draft that could not be read is read again instead of being taken as “no draft”.** A failed read is remembered per card and retried when the saved preferences become ready, on a new reply, and on a new user message. A read that succeeds and finds no draft, or a shape this version rejects, is final and not retried ([PR #527](https://github.com/jasonhnd/paseo-clear-chat/pull/527)).
+
+### Changed
+
+- **The version follows Paseo 0.17.4.** The first three parts of the Clear Chat version are the Paseo version this build was checked with, and the fourth counts Clear Chat's releases for that host version. The minimum host version is unchanged at Paseo 0.16.0: the plugin uses no host interface that appeared after 0.16.0.
+- **The host badge still reads tested 0.17.4.** The badge names the browser interface this build was checked in, and `OVERVIEW.md` and `OVERVIEW.zh-CN.md` name the same host version, the viewport and the languages that were measured.
+- **The draft schema accepts one new optional field.** `answerDraftSchema` in `shared/settings.ts` accepts `resumed: true` and nothing else. The previous release's schema parses a draft that carries it, keeps the saved choices, and drops the flag, so a rollback keeps the saved choices; the older build does not remember that the reader continued ([PR #527](https://github.com/jasonhnd/paseo-clear-chat/pull/527)).
+
+### Upgrade notes
+
+- Clear Chat 0.17.4.1 needs Paseo 0.16.0 or newer. The minimum host version is unchanged. This build was checked on Paseo 0.17.4, and the same checks also ran on Paseo 0.17.3; it was not checked on Paseo 0.16.x, 0.17.1, or 0.17.2. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x.
+- Update with `paseo plugin update clear-chat --ref v0.17.4.1 --yes`, or install with `paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.4.1`.
+- The settings file is kept. The answer card switch, saved replies, dismissed false detections, and unfinished drafts stay as they are. A draft that was continued now also carries `resumed: true`; it is removed with the rest of that draft after a send. Keys for features this version does not show stay in the file and have no controls.
+- This build was checked in the browser interface of Paseo 0.17.4 (the web UI the `paseo` command starts), in a headless browser, at 1280×900, with a test agent that needs no model, on commit b8a43a81 (the code is the same as this build; the commits after it change the version and the documents only). The full set ran with the interface in English: the button hiding while the agent answers and returning with the progress when it finishes, both on the conversation and after switching away and back; a continued card after a page reload (the switch away and back was checked for the button, not for the reopen, and both use the same restore path); two quick presses on **Continue answering**; the answer card switched off and on again; the card ending after a send; a settings file whose drafts block is null; and an ordinary message with no draft. One pass ran with the interface in Chinese, covering the button hiding and a continued card after a reload. The same set also ran on Paseo 0.17.3, with the same result. The version line reads 0.17.4.1 in `paseo plugin ls` and on the settings page, and an update from the previous release kept the half-answered draft and the settings unchanged. It was not checked in the desktop app, with a real model, on physical iOS or Android devices, on Paseo 0.16.x, 0.17.1, and 0.17.2, in the dark theme, in other interface languages, or at other viewport sizes. A draft store that fails its first read was exercised by unit tests only, not on a real host.
+
+### Known limitations
+
+- `Plan 2B` can still be read as an answer.
+- In the desktop panel a long written answer previews in at most two lines: the whole answer index, then the start of the first written answer. The message that is sent keeps the full answer, and the narrow panel shows the full preview.
+- A window shorter than about 117 px is not supported: the panel's footer no longer fits.
+- While the agent is answering, a card that can still be edited has no button above the message box, and a panel that is already open says the reply is still running; the button and the answers return when the agent finishes. A read-only card that is still waiting for an answer keeps its button.
+- For up to about half a second after the agent starts answering, the button can still be there; a panel opened in that moment can show the wait message.
+- A draft read that fails after the saved preferences are ready, and before a new reply or a new message from you arrives, leaves the card out of reach until one of those arrives or you reload; the draft itself is not lost. A read that succeeds and finds no draft, or a shape this version rejects, is final and not retried.
+- A rollback to the previous release keeps the saved choices but not the continued state: a card you continued asks for **Continue answering** again after a reload.
+- Reconciliation only considers the first user message between a card and the next reply, so an answer typed after a prose message in the same turn is not associated with that card. Nothing is lost: the card stays continuable and the draft is retained.
+- At phone width, Enter in Paseo's own input box inserts a newline. Use that box's Send button. This is the host's behaviour.
+- At phone width, Esc does not close the answer card; tap outside the panel to close it (the sheet closes about a second after the tap). This is the host's behaviour. **Not options** is not a way to close the card: it dismisses that reply for good, and neither the card nor its button comes back.
+- The button above the message box is drawn by Paseo and is 32 px high at tablet and phone widths; the card's option rows and **Send** are at least 44 px.
+- Removing the plugin deletes its settings. Startup does not delete older plugin-data files.
+
 ## [0.17.3.1] - 2026-11-23
 
 ### Fixed
@@ -810,6 +847,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.17.4.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.17.3.1...v0.17.4.1
 [0.17.3.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.17.2.1...v0.17.3.1
 [0.17.2.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.17.1.1...v0.17.2.1
 [0.17.1.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.16.2.3...v0.17.1.1
