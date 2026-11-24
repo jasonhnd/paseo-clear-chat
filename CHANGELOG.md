@@ -1,4 +1,4 @@
-## [0.17.3.2] - 2026-11-24
+## [0.17.4.1] - 2026-11-24
 
 ### Fixed
 
@@ -9,16 +9,16 @@
 
 ### Changed
 
-- **The version follows Paseo 0.17.3.** The first three parts of the Clear Chat version are the Paseo version this build was checked with, and the fourth counts Clear Chat's releases for that host version. The minimum host version is unchanged at Paseo 0.16.0: the plugin uses no host interface that appeared after 0.16.0.
-- **The host badge still reads tested 0.17.3.** The badge names the browser interface this build was checked in, and `OVERVIEW.md` and `OVERVIEW.zh-CN.md` name the same host version, the viewport and the languages that were measured.
+- **The version follows Paseo 0.17.4.** The first three parts of the Clear Chat version are the Paseo version this build was checked with, and the fourth counts Clear Chat's releases for that host version. The minimum host version is unchanged at Paseo 0.16.0: the plugin uses no host interface that appeared after 0.16.0.
+- **The host badge still reads tested 0.17.4.** The badge names the browser interface this build was checked in, and `OVERVIEW.md` and `OVERVIEW.zh-CN.md` name the same host version, the viewport and the languages that were measured.
 - **The draft schema accepts one new optional field.** `answerDraftSchema` in `shared/settings.ts` accepts `resumed: true` and nothing else. The previous release's schema parses a draft that carries it, keeps the saved choices, and drops the flag, so a rollback keeps the saved choices; the older build does not remember that the reader continued ([PR #527](https://github.com/jasonhnd/paseo-clear-chat/pull/527)).
 
 ### Upgrade notes
 
-- Clear Chat 0.17.3.2 needs Paseo 0.16.0 or newer. The minimum host version is unchanged. This build was checked on Paseo 0.17.3 only; it was not checked on Paseo 0.16.x, 0.17.1, or 0.17.2. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x.
-- Update with `paseo plugin update clear-chat --ref v0.17.3.2 --yes`, or install with `paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.3.2`.
+- Clear Chat 0.17.4.1 needs Paseo 0.16.0 or newer. The minimum host version is unchanged. This build was checked on Paseo 0.17.4, and the same checks also ran on Paseo 0.17.3; it was not checked on Paseo 0.16.x, 0.17.1, or 0.17.2. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x.
+- Update with `paseo plugin update clear-chat --ref v0.17.4.1 --yes`, or install with `paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.4.1`.
 - The settings file is kept. The answer card switch, saved replies, dismissed false detections, and unfinished drafts stay as they are. A draft that was continued now also carries `resumed: true`; it is removed with the rest of that draft after a send. Keys for features this version does not show stay in the file and have no controls.
-- This build was checked in the browser interface of Paseo 0.17.3 (the web UI the `paseo` command starts), in a headless browser, at 1280×900, with a test agent that needs no model, on commit 570a677d (the commits after it change documentation only). The full set ran with the interface in English: the button hiding while the agent answers and returning with the progress when it finishes, both on the conversation and after switching away and back; a continued card after a page reload (the switch away and back was checked for the button, not for the reopen, and both use the same restore path); two quick presses on **Continue answering**; the answer card switched off and on again; the card ending after a send; a settings file whose drafts block is null; and an ordinary message with no draft. One pass ran with the interface in Chinese, covering the button hiding and a continued card after a reload. The version line reads 0.17.3.2 in `paseo plugin ls` and on the settings page, and an update from the previous release kept the half-answered draft and the settings unchanged. It was not checked in the desktop app, with a real model, on physical iOS or Android devices, on Paseo 0.16.x, 0.17.1, and 0.17.2, in the dark theme, in other interface languages, or at other viewport sizes. A draft store that fails its first read was exercised by unit tests only, not on a real host.
+- This build was checked in the browser interface of Paseo 0.17.4 (the web UI the `paseo` command starts), in a headless browser, at 1280×900, with a test agent that needs no model, on commit b8a43a81 (the code is the same as this build; the commits after it change the version and the documents only). The full set ran with the interface in English: the button hiding while the agent answers and returning with the progress when it finishes, both on the conversation and after switching away and back; a continued card after a page reload (the switch away and back was checked for the button, not for the reopen, and both use the same restore path); two quick presses on **Continue answering**; the answer card switched off and on again; the card ending after a send; a settings file whose drafts block is null; and an ordinary message with no draft. One pass ran with the interface in Chinese, covering the button hiding and a continued card after a reload. The same set also ran on Paseo 0.17.3, with the same result. The version line reads 0.17.4.1 in `paseo plugin ls` and on the settings page, and an update from the previous release kept the half-answered draft and the settings unchanged. It was not checked in the desktop app, with a real model, on physical iOS or Android devices, on Paseo 0.16.x, 0.17.1, and 0.17.2, in the dark theme, in other interface languages, or at other viewport sizes. A draft store that fails its first read was exercised by unit tests only, not on a real host.
 
 ### Known limitations
 
@@ -45,7 +45,7 @@
 
 ### Changed
 
-- **The version follows Paseo 0.17.3.** The first three parts of the Clear Chat version are the Paseo version this build was checked with, and the fourth counts Clear Chat's releases for that host version. The minimum host version is unchanged at Paseo 0.16.0: the plugin uses no host interface that appeared after 0.16.0.
+- **The version follows Paseo 0.17.4.** The first three parts of the Clear Chat version are the Paseo version this build was checked with, and the fourth counts Clear Chat's releases for that host version. The minimum host version is unchanged at Paseo 0.16.0: the plugin uses no host interface that appeared after 0.16.0.
 - **The host badge reads tested 0.17.3.** The README badge in all three languages names Paseo 0.17.3, the browser interface this build was checked in, while the minimum stays Paseo 0.16.0.
 - **The install notes match the command, and the lockfile invariant is tested.** `test/install-failures.test.cjs` now asserts that every lockfile package with `hasInstallScript: true` is development-only, so the invariant behind `npm ci --include=dev --ignore-scripts` fails loudly if a production dependency ever needs an install script. The test does not fail when the lockfile records no package with an install script. The comment in `scripts/install.cjs`, the `scripts/install.cjs` line in `docs/DEVELOPMENT.md`, and the sample install output name the same command. No behaviour change ([PR #523](https://github.com/jasonhnd/paseo-clear-chat/pull/523)).
 - **The three READMEs say what was not checked.** Each install section says that the command from the previous release was not checked on Paseo 0.16.x, and that Paseo 0.16.0 and 0.16.1 were not checked. The answer-card bullet in the previous section of this changelog now describes the current behaviour ([PR #523](https://github.com/jasonhnd/paseo-clear-chat/pull/523)).
@@ -57,11 +57,11 @@
 
 ### Upgrade notes
 
-- Clear Chat 0.17.3.1 needs Paseo 0.16.0 or newer. The minimum host version is unchanged. This build was checked on Paseo 0.17.3 only; it was not checked on Paseo 0.16.x, 0.17.1, or 0.17.2. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x.
+- Clear Chat 0.17.3.1 needs Paseo 0.16.0 or newer. The minimum host version is unchanged. This build was checked on Paseo 0.17.4 only; it was not checked on Paseo 0.16.x, 0.17.1, or 0.17.2. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x.
 - Update with `paseo plugin update clear-chat --ref v0.17.3.1 --yes`, or install with `paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.3.1`.
 - The settings file is kept. The answer card switch, saved replies, dismissed false detections, and unfinished drafts stay as they are. A stored draft entry that is damaged, of an older shape, or of an unknown shape is ignored when the settings are read; it stays in the file until the settings are next written. The other drafts and the preferences still load. Keys for features this version does not show stay in the file and have no controls.
 - The button above the message box is drawn by Paseo and is 32 px high at tablet and phone widths; the card's option rows and **Send** are at least 44 px.
-- This build was checked in the browser interface of Paseo 0.17.3 (the web UI the `paseo` command starts), in a headless browser, with a test agent that needs no model, on commit d5a7242e (this documentation change is the only difference since): every follow-up-draft check of [#458](https://github.com/jasonhnd/paseo-clear-chat/issues/458), including one pass with the interface in Chinese, and all eight tablet and foldable cells of [#467](https://github.com/jasonhnd/paseo-clear-chat/issues/467) — 820×1180 and 1024×1366, plus the foldable widths 717×512 and 884×1104, in English and Chinese — with the keyboard paths read at 717×512. It was not checked in the desktop app, with a real model, on physical iOS or Android devices, on Paseo 0.16.x, 0.17.1, and 0.17.2, in the dark theme, or with a draft store that fails to answer on a real host.
+- This build was checked in the browser interface of Paseo 0.17.4 (the web UI the `paseo` command starts), in a headless browser, with a test agent that needs no model, on commit d5a7242e (this documentation change is the only difference since): every follow-up-draft check of [#458](https://github.com/jasonhnd/paseo-clear-chat/issues/458), including one pass with the interface in Chinese, and all eight tablet and foldable cells of [#467](https://github.com/jasonhnd/paseo-clear-chat/issues/467) — 820×1180 and 1024×1366, plus the foldable widths 717×512 and 884×1104, in English and Chinese — with the keyboard paths read at 717×512. It was not checked in the desktop app, with a real model, on physical iOS or Android devices, on Paseo 0.16.x, 0.17.1, and 0.17.2, in the dark theme, or with a draft store that fails to answer on a real host.
 
 ### Known limitations
 
@@ -847,7 +847,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
-[0.17.3.2]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.17.3.1...v0.17.3.2
+[0.17.4.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.17.3.1...v0.17.4.1
 [0.17.3.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.17.2.1...v0.17.3.1
 [0.17.2.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.17.1.1...v0.17.2.1
 [0.17.1.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.16.2.3...v0.17.1.1
