@@ -140,7 +140,9 @@ const fields = (extra = {}) => ({
   error: null,
   ...extra,
 });
-const row = (text, at, seq = 1) => ({ key: `${at}:${seq}`, at, seq, time: "09:00", text, preview: text, truncated: false, empty: false });
+const row = (text, at, seq = 1) => ({
+  key: `${at}:${seq}`, at, seq, day: "2026-03-15", time: "09:00", text, preview: text, truncated: false, empty: false,
+});
 
 test("the panel shows the counts and the person's messages, and copies one exactly", async t => {
   const { h, agent } = harness(t);
@@ -364,8 +366,25 @@ test("an open panel turns over at midnight, on its own timer", async t => {
   const after = drawPanel(h);
   const text = h.text(after);
   assert.ok(text.includes("From you: 0"), "the counts restart at today, not yesterday's day: " + text);
-  // The window starts on the day it always started on, which is now yesterday: the rows the
-  // reader was looking at stay, rather than disappearing at midnight.
-  assert.ok(text.includes("before midnight"), "the window is not silently emptied at midnight");
+  assert.ok(!text.includes("before midnight"), "with no day added, the window is the new day alone");
   assert.equal(snapshot(h).myMessagesSnapshot("a").day, "2026-03-16", "the counts belong to the new day");
+  assert.equal(snapshot(h).myMessagesSnapshot("a").coveredFrom, "2026-03-16");
+});
+
+test("a row from an earlier day carries its date", async t => {
+  const { h } = harness(t);
+  drawPanel(h);
+  await settle();
+  snapshot(h).publishMyMessages("a", fields({
+    humanToday: 1,
+    rows: [
+      row("today", FROZEN),
+      { ...row("yesterday", at(-1, 9)), day: "2026-03-14" },
+    ],
+    hasEarlier: true,
+  }));
+  const drawn = drawPanel(h);
+  const rows = h.nodes(drawn, node => node.props.testID === "my-message-row").map(node => h.text(node));
+  assert.ok(rows.some(text => text.includes("09:00") && !text.includes("3/14")), JSON.stringify(rows));
+  assert.ok(rows.some(text => text.includes("3/14 09:00")), `an older row is dated: ${JSON.stringify(rows)}`);
 });

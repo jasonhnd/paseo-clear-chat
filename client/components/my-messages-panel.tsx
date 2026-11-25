@@ -164,7 +164,9 @@ export function MyMessagesPanel(props: PluginAgentPanelProps) {
           onPress={() => openMessage(row)}
           style={{ paddingVertical: 6, paddingHorizontal: compact ? 8 : 10, borderRadius: 8, backgroundColor: tokens.surface1, gap: 2 }}
         >
-          <Text style={{ ...mutedText, fontSize: tokens.fs(11) }}>{row.time}</Text>
+          <Text style={{ ...mutedText, fontSize: tokens.fs(11) }}>
+            {row.day === state.day ? row.time : `${dayLabel(row.day)} ${row.time}`}
+          </Text>
           <Text style={bodyText} numberOfLines={3}>
             {row.empty ? t("myMessages.imageOnly") : row.preview}
             {row.truncated ? "…" : ""}

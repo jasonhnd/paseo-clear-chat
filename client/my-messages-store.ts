@@ -16,6 +16,8 @@ export interface MyMessageRow {
   at: number;
   /** The timeline sequence of the row, so equal timestamps still order newest first. */
   seq: number;
+  /** The row's local day (`YYYY-MM-DD`); rows outside today are shown with their date. */
+  day: string;
   /** `HH:MM` on this device's clock. */
   time: string;
   /** The message the way it was sent: this is what a row copies. */
@@ -96,7 +98,7 @@ function sameRows(left: readonly MyMessageRow[], right: readonly MyMessageRow[])
   for (let i = 0; i < left.length; i += 1) {
     const a = left[i]!;
     const b = right[i]!;
-    if (a.key !== b.key || a.at !== b.at || a.seq !== b.seq || a.text !== b.text || a.time !== b.time) return false;
+    if (a.key !== b.key || a.at !== b.at || a.seq !== b.seq || a.day !== b.day || a.text !== b.text || a.time !== b.time) return false;
   }
   return true;
 }

@@ -444,6 +444,27 @@ test("a subscription that comes back reads again", async t => {
   assert.ok(await pump(timers, () => store.myMessagesSnapshot("a").humanToday === 2), "the catch-up read lands");
 });
 
+test("the panel re-reads when the local day turns over", async t => {
+  const { feed, store, client, agent } = fixture(t);
+  agent.state.pages = [[entry("user_message", "before midnight", DAY(0, 22), 1)]];
+  const timers = fakeTimers();
+  let clock = DAY(0, 23, 59, 59);
+  const started = start(feed, client, { now: () => clock, timers });
+  t.after(() => started.stop());
+  await started.ready;
+  assert.equal(store.myMessagesSnapshot("a").humanToday, 1);
+  const wake = timers.pending();
+  assert.equal(wake.length, 1, "one timer waits for the next local midnight");
+
+  clock = DAY(1, 0, 0, 5);
+  timers.runLongest();
+  assert.ok(await pump(timers, () => store.myMessagesSnapshot("a").humanToday === 0), "the new day is counted from zero");
+  const snapshot = store.myMessagesSnapshot("a");
+  assert.deepEqual(snapshot.rows, [], "with no day added, the window is the new day alone");
+  assert.equal(snapshot.coveredFrom, KEY(1), "the window follows today");
+  assert.equal(snapshot.hasEarlier, true, "yesterday is still reachable");
+});
+
 test("a failed rollover read marks the retained counts as stale", async t => {
   const { feed, store, client, agent } = fixture(t);
   agent.state.pages = [[entry("user_message", "before midnight", DAY(0, 22), 1)]];
@@ -461,6 +482,31 @@ test("a failed rollover read marks the retained counts as stale", async t => {
   const snapshot = store.myMessagesSnapshot("a");
   assert.equal(snapshot.stale, true, "yesterday's counts are not shown as today's");
   assert.ok(timers.pending().some(item => item.ms > SHORT_MS), "another midnight wake is armed anyway");
+});
+
+test("a day the reader added with Earlier stays when midnight passes", async t => {
+  const { feed, store, client, agent } = fixture(t);
+  agent.state.pages = [
+    [entry("user_message", "day 15", DAY(0, 9), 1)],
+    [entry("user_message", "day 14", DAY(-1, 9), 2)],
+    [entry("user_message", "day 13", DAY(-2, 9), 3)],
+  ];
+  const timers = fakeTimers();
+  let clock = DAY(0, 23, 55);
+  const started = start(feed, client, { now: () => clock, timers, budgets: { pagesPerDay: 8, maxPages: 64 } });
+  t.after(() => started.stop());
+  await started.ready;
+  await started.loadEarlier();
+  assert.equal(store.myMessagesSnapshot("a").coveredFrom, KEY(-1), "one day was added");
+  assert.deepEqual(store.myMessagesSnapshot("a").rows.map(row => row.text), ["day 15", "day 14"]);
+
+  clock = DAY(1, 0, 5);
+  timers.runLongest();
+  assert.ok(await pump(timers, () => store.myMessagesSnapshot("a").day === KEY(1)), "the new day is read");
+  const snapshot = store.myMessagesSnapshot("a");
+  assert.equal(snapshot.coveredFrom, KEY(0), "the window is the new today plus the one day that was added");
+  assert.deepEqual(snapshot.rows.map(row => row.text), ["day 15"],
+    "the day that was added is now yesterday; the day before that does not appear");
 });
 
 test("foreground re-anchors the midnight wake even when its read fails", async t => {
@@ -707,7 +753,8 @@ test("any order of events, Earlier, retry, midnight and subscription failures se
     };
     if (snapshot.status === "ready" && !snapshot.partial && snapshot.coveredFrom && snapshot.coveredFrom <= today) {
       const windowStart = dayStart(snapshot.coveredFrom);
-      const tomorrow = dayStart(today) + 26 * 60 * 60 * 1000;
+      // The window start is today minus the days the reader added, and every row in it is here.
+      assert.equal(dayStart(today) >= windowStart, true, `seed ${seed}: the window starts today or earlier`);
       const expected = [...rowsByDay.values()].flat()
         .filter(row => row.kind === "human" && row.at >= windowStart && row.at < dayStart(keyOf(dayStart(today) + 26 * 60 * 60 * 1000)))
         .sort((a, b) => b.at - a.at || b.seq - a.seq)
@@ -717,7 +764,6 @@ test("any order of events, Earlier, retry, midnight and subscription failures se
       assert.equal(snapshot.humanToday, todayRows.filter(row => row.kind === "human").length, `seed ${seed}: today's count`);
       assert.equal(snapshot.machineToday, todayRows.filter(row => row.kind === "machine").length, `seed ${seed}: machine count`);
       assert.equal(snapshot.day, today, `seed ${seed}: the counts belong to the current day`);
-      void tomorrow;
     }
     if (snapshot.pendingDay !== null) {
       assert.ok(snapshot.pendingDay < snapshot.coveredFrom, `seed ${seed}: a pending day is older than the window`);

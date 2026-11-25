@@ -3,7 +3,7 @@ import { AppState } from "react-native";
 import { getPaseoClient } from "@getpaseo/plugin/client";
 import type { PaseoAgentTimelineEvent, PaseoApi } from "@getpaseo/client";
 import { classifyUserMessage, isEmptyMessageText, messagePreview } from "./user-message-kind";
-import { formatClock, localDateKey, localDaySpan, localDayStartFor, nextLocalDateKey, previousLocalDateKey } from "./local-day";
+import { formatClock, localDateKey, localDaySpan, localDayStartFor, nextLocalDateKey, previousLocalDateKey, shiftLocalDays } from "./local-day";
 import { cancelTimer, nowMs, scheduleTimer, type FeedTimers } from "./my-messages-clock";
 import {
   forgetMyMessages,
@@ -112,6 +112,7 @@ function rowFor(entry: TimelineEntry, text: string): MyMessageRow {
     key: `${at}:${entry.seqStart}`,
     at,
     seq: entry.seqStart,
+    day: localDateKey(at),
     time: formatClock(at),
     text,
     preview,
@@ -132,8 +133,12 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
   const handle = api.agents.ref(input.agentId);
 
   let stopped = false;
-  /** The first local day the visible window covers, as a calendar date. */
-  let coveredFrom = localDateKey(now());
+  /**
+   * Days the reader added with Earlier, each only after that day was fully read. The window
+   * start is recomputed from it and today on every read, so the window follows the calendar
+   * instead of freezing on the day the panel was opened.
+   */
+  let extraDays = 0;
   /** A day an Earlier press is trying to reach, as a calendar date, until it is covered. */
   let pendingDay: string | null = null;
   /** Doubles on each explicit retry so a retry always reads further than the last attempt. */
@@ -160,6 +165,9 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
   const windowStartFor = (day: string): number => localDayStartFor(day);
   const isCovered = (read: WindowRead, day: string): boolean =>
     read.reachedStart || read.oldestAt < windowStartFor(day);
+
+  /** The first day the window covers right now: today, less the days the reader added. */
+  const windowStartKey = (): string => localDateKey(shiftLocalDays(localDayStartFor(localDateKey(now())), -extraDays));
 
   /**
    * One read. Only the person's rows inside the target window are kept; the model's rows and
@@ -240,15 +248,16 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
    */
   function applyRead(read: WindowRead, targetDay: string): void {
     if (isCovered(read, targetDay)) {
-      // A window only ever widens: a refresh queued before an Earlier press must not pull it
-      // back to the day it was reading.
-      if (targetDay < coveredFrom) coveredFrom = targetDay;
-      if (pendingDay !== null && pendingDay >= coveredFrom) pendingDay = null;
+      // The reader's window is expressed in days added to today, so it moves with the
+      // calendar; the day just read is the one that is now covered.
+      const target = targetDay <= read.day ? targetDay : read.day;
+      extraDays = Math.max(0, localDaySpan(target, read.day) - 1);
+      if (pendingDay !== null && pendingDay >= target) pendingDay = null;
       retryFactor = 1;
       lastPublished = {
         status: "ready",
         day: read.day,
-        coveredFrom,
+        coveredFrom: localDateKey(shiftLocalDays(localDayStartFor(read.day), -extraDays)),
         machineToday: read.machineToday,
         humanToday: read.humanToday,
         rows: read.rows,
@@ -262,14 +271,15 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
       };
     } else {
       const known = lastPublished ?? myMessagesSnapshot(input.agentId);
-      if (targetDay < coveredFrom) pendingDay = targetDay;
+      const windowStart = localDateKey(shiftLocalDays(localDayStartFor(read.day), -extraDays));
+      if (targetDay < windowStart) pendingDay = targetDay;
       // Show what this read found when it found more than is on screen; never quietly show
       // fewer rows than the last complete read.
       const keep = known.rows.length > read.rows.length;
       lastPublished = {
         status: "ready",
         day: read.day,
-        coveredFrom,
+        coveredFrom: windowStart,
         machineToday: keep ? known.machineToday : read.machineToday,
         humanToday: keep ? known.humanToday : read.humanToday,
         rows: keep ? known.rows : read.rows,
@@ -333,7 +343,8 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
   /** One read of one target window, then the result is applied. */
   async function runRead(requested: string): Promise<"applied" | "stale" | "failed"> {
     // Every read covers at least the window already on screen, whatever target was asked for.
-    const targetDay = requested < coveredFrom ? requested : coveredFrom;
+    const windowStart = windowStartKey();
+    const targetDay = requested < windowStart ? requested : windowStart;
     const at = now();
     const budget = budgetFor(targetDay);
     const read = await withReadRetry(() => readWindow(at, targetDay, budget));
@@ -403,11 +414,11 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
   const handleEvent = (event: PaseoAgentTimelineEvent["event"]): void => {
     if (event.type === "timeline") {
       // Only a user-side row can change a count or a row. The model's own words cannot.
-      if (event.item.type === "user_message") void requestRead(pendingDay ?? coveredFrom);
+      if (event.item.type === "user_message") void requestRead(pendingDay ?? windowStartKey());
       return;
     }
     if (event.type === "replacement" || event.type === "subscription_restored") {
-      void requestRead(pendingDay ?? coveredFrom);
+      void requestRead(pendingDay ?? windowStartKey());
       return;
     }
     if (event.type === "error") markLiveDown(generation, event.error);
@@ -457,7 +468,7 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
       flushQueued();
       // Coming back from being offline — including a first subscription that failed — means
       // the timeline may have moved on. The normal first start has one read on its way.
-      if (wentOffline) void requestRead(pendingDay ?? coveredFrom);
+      if (wentOffline) void requestRead(pendingDay ?? windowStartKey());
     }).catch(error => {
       if (stopped || mine !== generation) return;
       markLiveDown(mine, error);
@@ -480,7 +491,7 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
       if (stopped) return;
       // Re-arm before reading, so a failed read cannot leave the panel without a next wake.
       armMidnight(now());
-      void requestRead(pendingDay ?? coveredFrom);
+      void requestRead(pendingDay ?? windowStartKey());
     }, delay);
   }
 
@@ -501,12 +512,12 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
     // Returning to the foreground can cross midnight: re-anchor the wake to the current
     // clock whatever the read does, then read.
     armMidnight(now());
-    void requestRead(pendingDay ?? coveredFrom);
+    void requestRead(pendingDay ?? windowStartKey());
   });
 
   armMidnight(now());
   connect();
-  const firstRead = requestRead(coveredFrom);
+  const firstRead = requestRead(windowStartKey());
   const ready = (async () => {
     // The panel may draw as soon as the first read and the first subscription settled, in
     // either order: a dead subscription must not hold the rows back, and a slow read must not
@@ -538,7 +549,7 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
       // The busy state stays until this press's own read has finished, even if it had to wait
       // behind another one.
       if (earlierBusy) return;
-      const target = pendingDay ?? previousLocalDateKey(coveredFrom);
+      const target = pendingDay ?? previousLocalDateKey(windowStartKey());
       earlierBusy = true;
       publishLatest({ earlierBusy, pendingDay: target });
       try {
@@ -556,7 +567,7 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
       // A retry must get further than the attempt before it, so its budget doubles.
       retryFactor = Math.min(MAX_RETRY_FACTOR, retryFactor * 2);
       if (!live) connect();
-      void requestRead(pendingDay ?? coveredFrom);
+      void requestRead(pendingDay ?? windowStartKey());
     },
   };
 }
