@@ -11,9 +11,11 @@ export interface MyMessageRow {
   /** Stable per timeline entry: the panel uses it as a list key. */
   key: string;
   at: number;
+  /** The timeline sequence of the row, so equal timestamps still order newest first. */
+  seq: number;
   /** `HH:MM` on this device's clock. */
   time: string;
-  /** The whole message a row copies. */
+  /** The message the way it was sent: this is what a row copies. */
   text: string;
   /** At most three lines, for the row body. */
   preview: string;
@@ -33,6 +35,13 @@ export interface MyMessagesSnapshot {
   rows: readonly MyMessageRow[];
   /** Whether one more day of history can be read. */
   hasEarlier: boolean;
+  /**
+   * True when a read stopped at its page budget before covering the oldest day in view.
+   * The counts and the list are then what was read, not the whole day.
+   */
+  partial: boolean;
+  /** False while the timeline subscription is down: rows would then stop updating. */
+  live: boolean;
   error: string | null;
 }
 
@@ -50,6 +59,8 @@ function emptySnapshot(agentId: string): MyMessagesSnapshot {
     humanToday: 0,
     rows: [],
     hasEarlier: false,
+    partial: false,
+    live: false,
     error: null,
   };
 }
@@ -73,7 +84,7 @@ function sameRows(left: readonly MyMessageRow[], right: readonly MyMessageRow[])
   for (let i = 0; i < left.length; i += 1) {
     const a = left[i]!;
     const b = right[i]!;
-    if (a.key !== b.key || a.at !== b.at || a.text !== b.text || a.time !== b.time) return false;
+    if (a.key !== b.key || a.at !== b.at || a.seq !== b.seq || a.text !== b.text || a.time !== b.time) return false;
   }
   return true;
 }
@@ -84,6 +95,8 @@ function same(current: MyMessagesSnapshot, next: MyMessagesFields): boolean {
     && current.machineToday === next.machineToday
     && current.humanToday === next.humanToday
     && current.hasEarlier === next.hasEarlier
+    && current.partial === next.partial
+    && current.live === next.live
     && current.error === next.error
     && sameRows(current.rows, next.rows);
 }
@@ -93,5 +106,14 @@ export function publishMyMessages(agentId: string, next: MyMessagesFields): void
   const current = snapshots.get(agentId);
   if (current && same(current, next)) return;
   snapshots.set(agentId, { agentId, ...next });
+  for (const listener of [...listeners]) listener();
+}
+
+/**
+ * Drops one conversation's snapshot when nothing reads it any more, so a closed panel does
+ * not keep every message it ever listed in memory.
+ */
+export function forgetMyMessages(agentId: string): void {
+  if (!snapshots.delete(agentId)) return;
   for (const listener of [...listeners]) listener();
 }

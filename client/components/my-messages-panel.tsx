@@ -3,14 +3,16 @@ import { Pressable, ScrollView, Text } from "react-native";
 import { usePaseo, useTranslation } from "@getpaseo/plugin/client";
 import type { PluginAgentPanelProps } from "@getpaseo/plugin/client";
 import { copyText, useToast } from "@getpaseo/plugin/client/ui";
-import { startMyMessagesFeed, useMyMessages } from "../my-messages-feed";
+import { acquireMyMessagesFeed, useMyMessages } from "../my-messages-feed";
 import type { MyMessageRow } from "../my-messages-store";
 import { messages } from "../messages";
 import { useEnhancerPreferences } from "../preferences";
+import { setMyMessagesNotice } from "../my-messages-notice";
 import { buildThemeTokens } from "./theme-tokens";
 
 interface MyMessagesFeedHandle {
   loadEarlier(): Promise<void>;
+  retry(): void;
   stop(): void;
 }
 
@@ -20,6 +22,10 @@ interface MyMessagesFeedHandle {
  * The panel draws beside the conversation in a host tab, so it owns its scroll container and
  * keeps no timeline spacing. Counts and rows come from the same timeline pages the answer card
  * reads; a row opens nothing, it copies the whole message and says so.
+ *
+ * A read that could not finish, and a timeline subscription that stopped delivering, are both
+ * said out loud and both offer the same retry: a panel that quietly keeps yesterday's counts is
+ * worse than one that admits it is stale.
  *
  * No jump to the original message: the plugin API has no scroll-to-message surface, and a
  * panel that reached into the host's own list would break on the next host release. The row
@@ -46,21 +52,31 @@ export function MyMessagesPanel(props: PluginAgentPanelProps) {
 
   React.useEffect(() => {
     if (!agentId) return undefined;
-    const started = startMyMessagesFeed({ agentId, client: paseoRef.current });
+    // One reference-counted feed per conversation: a second mount of this panel shares it,
+    // and the last one to close releases the subscription and forgets the rows.
+    const started = acquireMyMessagesFeed({ agentId, client: paseoRef.current });
     feed.current = started;
-    // Unmounting the panel releases the timeline subscription it opened.
     return () => {
       feed.current = null;
       started.stop();
     };
   }, [agentId]);
 
+  // The header button can only speak through a toast, and a toast lives inside React, so the
+  // panel lends its toast to the registration while it is open.
+  React.useEffect(() => {
+    setMyMessagesNotice(reason => {
+      toastRef.current.show(t(`myMessages.${reason}`), { variant: "warning" });
+    });
+    return () => setMyMessagesNotice(null);
+  }, [t]);
+
   /**
    * The whole row press: copy the message and confirm it. Everything a future jump to the
    * original message would need belongs here and nowhere else.
    */
   const openMessage = React.useCallback((row: MyMessageRow) => {
-    if (!row.text) {
+    if (row.empty) {
       toastRef.current.show(t("myMessages.noText"), { variant: "info" });
       return;
     }
@@ -73,6 +89,7 @@ export function MyMessagesPanel(props: PluginAgentPanelProps) {
 
   const bodyText = { color: tokens.foreground, fontFamily: tokens.fontUi, fontSize: tokens.fs(14) };
   const mutedText = { color: tokens.foregroundMuted, fontFamily: tokens.fontUi, fontSize: tokens.fs(12) };
+  const retryStyle = { alignSelf: "flex-start" as const, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: tokens.border };
 
   return (
     <ScrollView
@@ -83,10 +100,28 @@ export function MyMessagesPanel(props: PluginAgentPanelProps) {
       <Text testID="my-messages-summary" style={{ ...mutedText, fontSize: tokens.fs(13) }} accessibilityRole="header">
         {t("myMessages.summary", { machine: state.machineToday, human: state.humanToday })}
       </Text>
+      {state.partial ? (
+        <Text testID="my-messages-partial" style={{ ...mutedText, color: tokens.warning }}>{t("myMessages.partial")}</Text>
+      ) : null}
       {state.status === "error" ? (
         <Text testID="my-messages-error" style={{ ...bodyText, color: tokens.danger }} accessibilityRole="alert">
           {t("myMessages.error")}
         </Text>
+      ) : null}
+      {state.status === "ready" && !state.live ? (
+        <Text testID="my-messages-live-error" style={{ ...bodyText, color: tokens.warning }} accessibilityRole="alert">
+          {t("myMessages.liveStopped")}
+        </Text>
+      ) : null}
+      {state.status === "error" || (state.status === "ready" && !state.live) ? (
+        <Pressable
+          testID="my-messages-retry"
+          accessibilityRole="button"
+          onPress={() => feed.current?.retry()}
+          style={retryStyle}
+        >
+          <Text style={mutedText}>{t("myMessages.retry")}</Text>
+        </Pressable>
       ) : null}
       {state.status === "loading" && state.rows.length === 0 ? (
         <Text testID="my-messages-loading" style={mutedText}>{t("myMessages.loading")}</Text>

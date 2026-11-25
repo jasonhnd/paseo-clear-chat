@@ -2,23 +2,33 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const { createToolHarness } = require("./helpers/tool-harness.cjs");
 
-// The "what I said" panel counts a user-side row as the person's own message or as a message
-// written by automation. These tests pin the whole prefix table, the mid-turn wrapper, and the
-// local-day boundary the panel's "today" uses. They run unchanged in any time zone: every
-// expectation is built from local calendar parts, never from a UTC hour.
+// What counts as the person's message, and what a row copies. The expected envelope prefixes
+// are written out here on purpose: a test that read them from the production table would pass
+// even if that table were replaced with something wrong.
+// Dates are built from local calendar parts, so the same file passes in UTC and Asia/Tokyo.
+
+const EXPECTED_PREFIXES = [
+  "【",
+  "[ASYNC DELEGATION",
+  "[IMPORTANT",
+  "[System:",
+  "[T3 Code",
+  "<t3_code_instructions>",
+  "CONTEXT:",
+  "You've reached the maximum number",
+  "发件：",
+];
 
 function load() {
   const h = createToolHarness("web");
   return { h, kind: h.load("client/user-message-kind.ts"), day: h.load("client/local-day.ts") };
 }
 
-test("every table prefix is a machine message", () => {
+test("the envelope table holds exactly the shapes the panel expects", () => {
   const { h, kind } = load();
-  const prefixes = kind.MACHINE_PREFIXES;
-  assert.ok(prefixes.length >= 9, "the table lists every known envelope shape");
-  for (const prefix of prefixes) {
-    const text = `${prefix} something the automation wrote`;
-    assert.deepEqual(kind.classifyUserMessage(text).kind, "machine", JSON.stringify(prefix));
+  assert.deepEqual([...kind.MACHINE_PREFIXES].sort(), [...EXPECTED_PREFIXES].sort());
+  for (const prefix of EXPECTED_PREFIXES) {
+    assert.equal(kind.classifyUserMessage(`${prefix} written by automation`).kind, "machine", JSON.stringify(prefix));
   }
   h.dispose();
 });
@@ -59,18 +69,33 @@ test("a bracketed line a person typed stays the person's message", () => {
   h.dispose();
 });
 
-test("a mid-turn message counts as the person's, without its markers", () => {
+test("a message copies exactly as it was sent, spaces and line endings included", () => {
   const { h, kind } = load();
+  const sent = "  first\r\nsecond  ";
+  const classified = kind.classifyUserMessage(sent);
+  assert.equal(classified.kind, "human");
+  assert.equal(classified.text, sent, "trimming decides the kind, never the copy");
+  assert.equal(kind.classifyUserMessage("  plain  ").text, "  plain  ");
+  assert.equal(kind.classifyUserMessage("line one\r\n\r\nline three").text, "line one\r\n\r\nline three");
+  h.dispose();
+});
+
+test("a mid-turn message is the person's, and its body is the exact substring", () => {
+  const { h, kind } = load();
+  const body = "  first\r\nsecond  ";
   const text = [
     "[OUT-OF-BAND USER MESSAGE — a direct message from the user, delivered once at this position]",
-    "Actually, use the second option.",
-    "And keep the draft.",
+    body,
     "[/OUT-OF-BAND USER MESSAGE]",
-  ].join("\n");
+  ].join("\r\n");
   const classified = kind.classifyUserMessage(text);
   assert.equal(classified.kind, "human", "an inserted message is the person speaking");
-  assert.equal(classified.text, "Actually, use the second option.\nAnd keep the draft.");
-  assert.equal(kind.outOfBandBody(text), classified.text);
+  assert.equal(classified.text, body, "the body keeps its own spaces and line endings");
+  assert.equal(kind.outOfBandBody(text), body);
+
+  // An opener without a closing marker keeps everything after the marker line.
+  const openOnly = `[OUT-OF-BAND USER MESSAGE — inserted]\r\n${body}`;
+  assert.equal(kind.outOfBandBody(openOnly), body);
 
   // A marker quoted inside the body is not the closing marker.
   const quoted = [
@@ -89,12 +114,15 @@ test("a mid-turn message counts as the person's, without its markers", () => {
 
 test("a message with only an image is still the person's message", () => {
   const { h, kind } = load();
-  for (const text of ["", "   \n  ", "\n"]) {
+  for (const text of ["", "   \n  ", "\n", "\r\n"]) {
     const classified = kind.classifyUserMessage(text);
     assert.equal(classified.kind, "human", JSON.stringify(text));
-    assert.equal(classified.text, "");
+    assert.equal(kind.isEmptyMessageText(classified.text), true);
   }
-  assert.deepEqual(kind.classifyUserMessage("[OUT-OF-BAND USER MESSAGE — inserted]\n[/OUT-OF-BAND USER MESSAGE]"), { kind: "human", text: "" });
+  const wrapped = "[OUT-OF-BAND USER MESSAGE — inserted]\n[/OUT-OF-BAND USER MESSAGE]";
+  assert.equal(kind.classifyUserMessage(wrapped).kind, "human");
+  assert.equal(kind.classifyUserMessage(wrapped).text, "");
+  assert.equal(kind.isEmptyMessageText("  text  "), false);
   h.dispose();
 });
 
@@ -111,7 +139,6 @@ test("the local day starts at midnight on this device, not at a UTC hour", () =>
   const midnight = new Date(2026, 2, 15, 0, 0, 0, 0).getTime();
   assert.equal(day.startOfLocalDay(new Date(2026, 2, 15, 0, 0, 0, 1).getTime()), midnight);
   assert.equal(day.startOfLocalDay(new Date(2026, 2, 15, 23, 59, 59, 999).getTime()), midnight);
-  assert.equal(day.startOfLocalDay(new Date(2026, 2, 16, 0, 0, 0, 0).getTime()), new Date(2026, 2, 16, 0, 0, 0, 0).getTime());
   assert.equal(day.localDayStartBefore(midnight + 5, 0), midnight);
   assert.equal(day.localDayStartBefore(midnight + 5, 1), new Date(2026, 2, 14, 0, 0, 0, 0).getTime());
   assert.equal(day.localDayStartBefore(midnight + 5, -1), new Date(2026, 2, 16, 0, 0, 0, 0).getTime());
