@@ -54,5 +54,17 @@
   "answerStyle": {
     "savedRepliesLabel": "よく使う回答",
     "savedRepliesDescription": "1行に1つ入力します。挿入しても送信されません。"
+  },
+  "myMessages": {
+    "title": "自分の発言",
+    "summary": "今日の機械メッセージ {{machine}} 件 · 自分の発言 {{human}} 件",
+    "empty": "今日はまだ自分の発言がありません",
+    "earlier": "もっと前",
+    "loading": "この会話を読み込んでいます…",
+    "error": "この会話を読めませんでした。パネルを開き直してください。",
+    "copied": "コピーしました",
+    "copyFailed": "このメッセージをコピーできませんでした",
+    "noText": "このメッセージにはコピーできる文字がありません",
+    "imageOnly": "（画像）"
   }
 }

@@ -54,5 +54,17 @@
   "answerStyle": {
     "savedRepliesLabel": "Saved replies",
     "savedRepliesDescription": "One phrase per line. Replies are inserted without sending."
+  },
+  "myMessages": {
+    "title": "What I said",
+    "summary": "Machine messages today: {{machine}} · From you: {{human}}",
+    "empty": "Nothing from you today yet",
+    "earlier": "Earlier",
+    "loading": "Reading this conversation…",
+    "error": "Could not read this conversation. Reopen the panel to try again.",
+    "copied": "Copied",
+    "copyFailed": "Could not copy this message",
+    "noText": "This message has no text to copy",
+    "imageOnly": "(image)"
   }
 }
