@@ -1,6 +1,5 @@
 import { MyMessagesPanel } from "./components/my-messages-panel";
 import { messages } from "./messages";
-import { tellMyMessages, type MyMessagesNoticeReason } from "./my-messages-notice";
 
 /**
  * Where the host can find the panel, and the button that opens it.
@@ -12,9 +11,9 @@ import { tellMyMessages, type MyMessagesNoticeReason } from "./my-messages-notic
  *
  * The panel declares two locations. On a wide layout it opens in the explorer pane, which the
  * host puts beside the conversation; the plain workspace location puts a tab in the same pane
- * as the conversation, on top of it. A compact layout has no adjacent pane to reveal, so the
- * host adds the tab to the explorer pane without unhiding it and the tab waits in that pane's
- * tab bar.
+ * as the conversation, on top of it. On a compact layout the host reveals its Explorer
+ * overlay when the tab lands there, so the panel covers the conversation for as long as that
+ * overlay is open.
  *
  * The header button is workspace-scoped in the plugin API (there is no per-conversation
  * header button), so the button asks which conversation is focused when it is pressed. That
@@ -22,6 +21,10 @@ import { tellMyMessages, type MyMessagesNoticeReason } from "./my-messages-notic
  * single conversation needs no focus — but only once the whole directory has been read: the
  * host returns agents a page at a time, and the first page may hold neither the focused
  * conversation nor all of a workspace's conversations.
+ *
+ * The action returns a promise and rejects with a localized sentence when there is no
+ * conversation to open. The host turns a rejected button action into its own toast, so the
+ * first press — with no panel open to say anything — still tells the reader what to do.
  */
 
 export const MY_MESSAGES_PANEL_ID = "my-messages";
@@ -62,6 +65,8 @@ interface DirectoryListOptions {
   page?: { limit: number; cursor?: string };
 }
 
+export type BlockedReason = "pickConversation" | "directory";
+
 /** Only the host methods this feature touches; every one of them is optional on old hosts. */
 export interface MyMessagesHost {
   addAgentPanel?: (contribution: {
@@ -74,10 +79,11 @@ export interface MyMessagesHost {
   addHeaderButton?: (contribution: {
     id: string;
     workspaceId: string;
-    button: { title: unknown; icon: string; behavior: { kind: "action"; onPress: () => void } };
+    button: { title: unknown; icon: string; behavior: { kind: "action"; onPress: () => void | Promise<void> } };
   }) => ButtonRegistration | undefined;
   openPanel?: (id: string, options: { workspaceId: string; agentId?: string; location?: "workspace" | "explorer" }) => void;
   composers?: (selector: { focused: true } | { agentId: string }) => readonly unknown[];
+  i18n?: { t(definition: typeof messages, key: string): string };
   paseo?: {
     workspaces?: {
       list?: (options?: DirectoryListOptions) => Promise<DirectoryPage<WorkspaceEntry>>;
@@ -93,6 +99,18 @@ function warn(message: string, detail?: unknown): void {
   console.warn(`Clear Chat my-messages panel ${message}`, detail);
 }
 
+/** A sentence in the app language, resolved when the reader presses the button. */
+function guidance(client: MyMessagesHost, reason: BlockedReason): string {
+  const key = `myMessages.${reason}`;
+  try {
+    const text = client.i18n?.t(messages, key);
+    if (typeof text === "string" && text) return text;
+  } catch (error) {
+    warn("could not translate its guidance", error);
+  }
+  return messages.resources.en.myMessages[reason];
+}
+
 /** The conversation in front of the reader, as the host resolves it. */
 function focusedComposer(host: MyMessagesHost): unknown | null {
   try {
@@ -102,29 +120,27 @@ function focusedComposer(host: MyMessagesHost): unknown | null {
   }
 }
 
-function agentHasFocusedComposer(host: MyMessagesHost, agentId: string, focused: unknown): boolean {
-  if (!focused) return false;
-  try {
-    return host.composers?.({ agentId })[0] === focused;
-  } catch {
-    return false;
-  }
-}
-
 interface WorkspaceConversations {
-  /** The conversation whose composer the host reports as focused, if a page held it. */
+  /** The conversation whose composer the host reports as focused, if any. */
   focused: string | null;
   /** Every conversation of this workspace the directory returned. */
   ids: string[];
-  /** True when the whole directory was read, so `ids` is complete. */
+  /** True only when the whole directory was read: a broken cursor or the page cap is not. */
   complete: boolean;
 }
 
-/** Reads the agent directory page by page until the focused conversation is found or it ends. */
+/**
+ * Reads the agent directory page by page, then decides in one synchronous step which of its
+ * conversations is the one in front.
+ *
+ * The comparison happens at the end on purpose: the host caches composer handles by state
+ * object, so a handle captured before several page requests can be stale by the time they
+ * finish even though the same conversation is still selected.
+ */
 async function workspaceConversations(host: MyMessagesHost, workspaceId: string): Promise<WorkspaceConversations> {
   const ids: string[] = [];
-  const focused = focusedComposer(host);
   let cursor: string | undefined;
+  let complete = false;
   for (let page = 0; page < MAX_DIRECTORY_PAGES; page += 1) {
     const result = await host.paseo?.agents?.list?.(cursor
       ? { page: { limit: DIRECTORY_PAGE_SIZE, cursor } }
@@ -133,18 +149,34 @@ async function workspaceConversations(host: MyMessagesHost, workspaceId: string)
       const agent = entry.agent;
       if (typeof agent?.id !== "string" || agent.workspaceId !== workspaceId) continue;
       if (!ids.includes(agent.id)) ids.push(agent.id);
-      if (agentHasFocusedComposer(host, agent.id, focused)) return { focused: agent.id, ids, complete: false };
     }
     const info = result?.pageInfo;
-    if (!info?.hasMore || !info.nextCursor) return { focused: null, ids, complete: true };
+    if (!info?.hasMore) {
+      complete = true;
+      break;
+    }
+    // A directory that says there is more without a cursor is not a complete directory.
+    if (!info.nextCursor) break;
     cursor = info.nextCursor;
   }
-  return { focused: null, ids, complete: false };
+  let focused: string | null = null;
+  const handle = focusedComposer(host);
+  if (handle) {
+    for (const id of ids) {
+      try {
+        if (host.composers?.({ agentId: id })[0] === handle) {
+          focused = id;
+          break;
+        }
+      } catch { /* One unrunnable selector must not hide the others. */ }
+    }
+  }
+  return { focused, ids, complete };
 }
 
 type ConversationChoice =
   | { agentId: string }
-  | { blocked: MyMessagesNoticeReason };
+  | { blocked: BlockedReason };
 
 /**
  * Which conversation the button should open.
@@ -161,22 +193,21 @@ async function chooseConversation(host: MyMessagesHost, workspaceId: string): Pr
   return { blocked: "pickConversation" };
 }
 
-/** Every workspace that gets a button, read page by page. */
-async function allWorkspaceIds(host: MyMessagesHost): Promise<{ ids: string[]; complete: boolean }> {
+/** The rest of the workspace directory, continuing from the cursor the first page returned. */
+async function moreWorkspaceIds(host: MyMessagesHost, firstCursor: string): Promise<string[]> {
   const ids: string[] = [];
-  let cursor: string | undefined;
-  for (let page = 0; page < MAX_DIRECTORY_PAGES; page += 1) {
-    const result = await host.paseo?.workspaces?.list?.(cursor
-      ? { page: { limit: DIRECTORY_PAGE_SIZE, cursor } }
-      : { page: { limit: DIRECTORY_PAGE_SIZE } });
+  let cursor: string | undefined = firstCursor;
+  for (let page = 0; page < MAX_DIRECTORY_PAGES && cursor; page += 1) {
+    const result: DirectoryPage<WorkspaceEntry> | undefined =
+      await host.paseo?.workspaces?.list?.({ page: { limit: DIRECTORY_PAGE_SIZE, cursor } });
     for (const entry of result?.entries ?? []) {
       if (typeof entry.id === "string" && entry.id && !ids.includes(entry.id)) ids.push(entry.id);
     }
-    const info = result?.pageInfo;
-    if (!info?.hasMore || !info.nextCursor) return { ids, complete: true };
-    cursor = info.nextCursor;
+    const info: PageInfo | undefined = result?.pageInfo;
+    // A directory that says there is more without a cursor is not a complete one: stop.
+    cursor = info?.hasMore && info.nextCursor ? info.nextCursor : undefined;
   }
-  return { ids, complete: false };
+  return ids;
 }
 
 /**
@@ -237,23 +268,22 @@ export function registerMyMessagesPanel(client: MyMessagesHost): () => void {
     }
   };
 
-  const openFor = (workspaceId: string): void => {
-    void (async () => {
-      let choice: ConversationChoice;
-      try {
-        choice = await chooseConversation(client, workspaceId);
-      } catch (error) {
-        warn("could not read the agent directory", error);
-        if (!stopped) tellMyMessages("directory");
-        return;
-      }
-      if (stopped) return;
-      if ("blocked" in choice) {
-        tellMyMessages(choice.blocked);
-        return;
-      }
-      openBeside(workspaceId, choice.agentId);
-    })();
+  /**
+   * The button's action. Its rejection is the feedback: the host shows the message in its own
+   * toast, which works on the very first press, before any panel is open.
+   */
+  const openFor = async (workspaceId: string): Promise<void> => {
+    let choice: ConversationChoice;
+    try {
+      choice = await chooseConversation(client, workspaceId);
+    } catch (error) {
+      warn("could not read the agent directory", error);
+      // A directory that cannot be read is not an empty one: say so, do not guess.
+      throw new Error(guidance(client, "directory"));
+    }
+    if (stopped) return;
+    if ("blocked" in choice) throw new Error(guidance(client, choice.blocked));
+    openBeside(workspaceId, choice.agentId);
   };
 
   const ensureButton = (workspaceId: string | undefined) => {
@@ -288,11 +318,12 @@ export function registerMyMessagesPanel(client: MyMessagesHost): () => void {
         if (typeof stop === "function") stopUpdates = stop;
       }
       // A long directory does not fit in one page: the rest of the workspaces get their
-      // buttons from the pages after it.
-      if (first.pageInfo?.hasMore) {
-        void allWorkspaceIds(client).then(rest => {
+      // buttons from the page after this one, not by starting over.
+      const next = first.pageInfo?.hasMore ? first.pageInfo.nextCursor : null;
+      if (next) {
+        void moreWorkspaceIds(client, next).then(ids => {
           if (stopped) return;
-          for (const id of rest.ids) ensureButton(id);
+          for (const id of ids) ensureButton(id);
         }).catch(error => warn("could not read the rest of the workspace directory", error));
       }
     }).catch(error => {

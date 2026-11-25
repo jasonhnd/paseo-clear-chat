@@ -5,6 +5,9 @@
  * A snapshot object is only replaced when what the panel draws changes: React re-reads the
  * snapshot after every commit and compares by identity, so a fresh object per read would
  * re-render forever (React error #185).
+ *
+ * The snapshot holds only what the panel draws — the rows of the visible window and the two
+ * counts. Timeline pages are not kept: every refresh reads them again.
  */
 
 export interface MyMessageRow {
@@ -31,15 +34,16 @@ export interface MyMessagesSnapshot {
   loadedDays: number;
   machineToday: number;
   humanToday: number;
-  /** Today's and any loaded older days' messages from the person, newest first. */
+  /** The visible window's messages from the person, newest first. */
   rows: readonly MyMessageRow[];
   /** Whether one more day of history can be read. */
   hasEarlier: boolean;
-  /**
-   * True when a read stopped at its page budget before covering the oldest day in view.
-   * The counts and the list are then what was read, not the whole day.
-   */
+  /** True when the visible window itself was not fully read: the counts are a lower bound. */
   partial: boolean;
+  /** The day start an Earlier press is reading, while that day is not covered yet. */
+  pendingDayAt: number | null;
+  /** True while an Earlier read is in flight, so the button cannot queue a second one. */
+  earlierBusy: boolean;
   /** False while the timeline subscription is down: rows would then stop updating. */
   live: boolean;
   error: string | null;
@@ -60,6 +64,8 @@ function emptySnapshot(agentId: string): MyMessagesSnapshot {
     rows: [],
     hasEarlier: false,
     partial: false,
+    pendingDayAt: null,
+    earlierBusy: false,
     live: false,
     error: null,
   };
@@ -96,6 +102,8 @@ function same(current: MyMessagesSnapshot, next: MyMessagesFields): boolean {
     && current.humanToday === next.humanToday
     && current.hasEarlier === next.hasEarlier
     && current.partial === next.partial
+    && current.pendingDayAt === next.pendingDayAt
+    && current.earlierBusy === next.earlierBusy
     && current.live === next.live
     && current.error === next.error
     && sameRows(current.rows, next.rows);
@@ -111,7 +119,7 @@ export function publishMyMessages(agentId: string, next: MyMessagesFields): void
 
 /**
  * Drops one conversation's snapshot when nothing reads it any more, so a closed panel does
- * not keep every message it ever listed in memory.
+ * not keep the rows it listed in memory.
  */
 export function forgetMyMessages(agentId: string): void {
   if (!snapshots.delete(agentId)) return;

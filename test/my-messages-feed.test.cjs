@@ -2,12 +2,12 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const { createToolHarness } = require("./helpers/tool-harness.cjs");
 
-// The panel's data path. Every case freezes the clock and, where a retry or a midnight wake is
-// involved, drives the timers by hand: nothing here waits for a real hour or a real second.
-// Dates are built from local calendar parts, so the same file passes in UTC and in Asia/Tokyo.
+// The panel's data path. Every case freezes the clock and drives the timers by hand: nothing
+// here waits for a real hour or a real second. Dates come from local calendar parts, so the
+// same file passes in UTC and in Asia/Tokyo.
 
-const DAY = (dayOffset, hour, minute = 0, second = 0) =>
-  new Date(2026, 2, 15 + dayOffset, hour, minute, second, 0).getTime();
+const DAY = (dayOffset, hour, minute = 0, second = 0, ms = 0) =>
+  new Date(2026, 2, 15 + dayOffset, hour, minute, second, ms).getTime();
 
 function entry(type, text, timestamp, seq) {
   return {
@@ -31,28 +31,31 @@ function page(entries, options = {}) {
     epoch: "e1",
     reset: false,
     staleCursor: false,
-    gap: Boolean(options.gap),
+    gap: false,
     window: { minSeq: 0, maxSeq: 1, nextSeq: 2 },
     startCursor: options.startCursor ?? null,
     endCursor: { epoch: "e1", seq: 2 },
     hasOlder: Boolean(options.hasOlder),
     hasNewer: false,
     entries,
-    error: options.error ?? null,
+    error: null,
   };
 }
 
-/** A timeline served as the pages a real one returns: the newest page first, older pages by cursor. */
+/**
+ * A timeline served as pages, newest first. A subscription's `ready` is a promise the test
+ * settles, so the order "read still running, subscription 1 errors, subscription 2 answers"
+ * can be reproduced exactly.
+ */
 function createAgent(id = "a") {
   const state = {
     pages: [],
     failReads: 0,
-    failSubscribes: 0,
     holdReads: null,
+    /** When true, a subscription's `ready` waits for the test; otherwise it resolves at once. */
+    holdReady: false,
     calls: [],
-    subscribeCount: 0,
-    stopped: 0,
-    subscribers: [],
+    subscriptions: [],
   };
   const handle = {
     id,
@@ -77,39 +80,41 @@ function createAgent(id = "a") {
         });
       },
       subscribe(handler) {
-        state.subscribeCount += 1;
-        if (state.failSubscribes > 0) {
-          state.failSubscribes -= 1;
-          return Object.assign(() => {}, {
-            ready: Promise.reject(new Error("subscription unavailable")),
-            async release() {},
-          });
-        }
-        state.subscribers.push(handler);
-        const stop = () => {
-          state.stopped += 1;
-          const index = state.subscribers.indexOf(handler);
-          if (index >= 0) state.subscribers.splice(index, 1);
+        let settleReady;
+        let failReady;
+        const ready = new Promise((resolve, reject) => { settleReady = resolve; failReady = reject; });
+        const record = {
+          handler,
+          ready,
+          resolve: () => settleReady(),
+          reject: error => failReady(error),
+          stop() {
+            if (record.closed) return;
+            record.closed = true;
+            const index = state.subscriptions.indexOf(record);
+            if (index >= 0) state.subscriptions.splice(index, 1);
+          },
         };
-        return Object.assign(stop, { ready: Promise.resolve(), async release() { stop(); } });
+        state.subscriptions.push(record);
+        if (!state.holdReady) setImmediate(() => { record.resolve(); });
+        return Object.assign(record.stop, { ready, async release() { record.stop(); } });
       },
     },
+  };
+  return {
+    state,
+    handle,
+    get live() { return state.subscriptions.filter(record => !record.closed); },
     emit(event) {
-      for (const handler of [...state.subscribers]) handler({ agentId: id, event });
+      for (const record of [...this.live]) record.handler({ agentId: id, event });
     },
   };
-  return { state, handle, emit: event => handle.emit(event) };
-}
-
-function createClient(agent) {
-  return { agents: { ref: () => agent.handle } };
 }
 
 // A retry sleeps milliseconds; the midnight wake is hours away. Keeping the two apart means a
 // case that pumps retries never accidentally fires the day boundary.
 const SHORT_MS = 5 * 60 * 1000;
 
-/** Timers a test runs itself: no case here waits for a real delay. */
 function fakeTimers() {
   const queue = [];
   const pending = () => queue.filter(item => !item.cleared && !item.ran);
@@ -152,7 +157,6 @@ async function settle(times = 8) {
   for (let i = 0; i < times; i += 1) await new Promise(resolve => setImmediate(resolve));
 }
 
-/** Runs queued timers until `done()` holds, or the rounds run out. */
 async function pump(timers, done, rounds = 40) {
   for (let round = 0; round < rounds; round += 1) {
     await settle(4);
@@ -162,7 +166,7 @@ async function pump(timers, done, rounds = 40) {
   return done();
 }
 
-function fixture(t, options = {}) {
+function fixture(t) {
   const agent = createAgent();
   const h = createToolHarness("web", { paseo: { agents: { ref: () => agent.handle } } });
   t.after(() => { h.unmount(); h.dispose(); });
@@ -171,9 +175,18 @@ function fixture(t, options = {}) {
     agent,
     feed: h.load("client/my-messages-feed.ts"),
     store: h.load("client/my-messages-store.ts"),
-    client: createClient(agent),
+    client: { agents: { ref: () => agent.handle } },
   };
 }
+
+const start = (feed, client, options = {}) => feed.startMyMessagesFeed({
+  agentId: "a",
+  client,
+  now: options.now ?? (() => DAY(0, 12)),
+  timers: options.timers ?? fakeTimers(),
+  ...(options.budgets ? { budgets: options.budgets } : {}),
+  ...(options.foreground ? { foreground: options.foreground } : {}),
+});
 
 test("today's machine messages and the person's messages come from one read", async t => {
   const { feed, store, client, agent } = fixture(t);
@@ -184,7 +197,7 @@ test("today's machine messages and the person's messages come from one read", as
     entry("user_message", "[1a] 好", DAY(0, 10, 15), 4),
     entry("user_message", "[ASYNC DELEGATION from another agent]", DAY(0, 11), 5),
   ]];
-  const started = feed.startMyMessagesFeed({ agentId: "a", client, now: () => DAY(0, 12), timers: fakeTimers() });
+  const started = start(feed, client);
   t.after(() => started.stop());
   await started.ready;
   const snapshot = store.myMessagesSnapshot("a");
@@ -194,6 +207,7 @@ test("today's machine messages and the person's messages come from one read", as
   assert.deepEqual(snapshot.rows.map(row => row.text), ["[1a] 好", "what did we decide?"], "newest first");
   assert.deepEqual(snapshot.rows.map(row => row.time), ["10:15", "09:05"]);
   assert.equal(snapshot.partial, false);
+  assert.equal(snapshot.pendingDayAt, null);
   assert.equal(snapshot.live, true, "a subscription that answered is live");
   assert.equal(agent.state.calls[0].direction, "tail");
 });
@@ -205,7 +219,7 @@ test("a local midnight splits today from yesterday", async t => {
     entry("user_message", "just after midnight", DAY(0, 0, 0), 2),
     entry("user_message", "later this morning", DAY(0, 8, 30), 3),
   ]];
-  const started = feed.startMyMessagesFeed({ agentId: "a", client, now: () => DAY(0, 12), timers: fakeTimers() });
+  const started = start(feed, client);
   t.after(() => started.stop());
   await started.ready;
   const snapshot = store.myMessagesSnapshot("a");
@@ -214,24 +228,24 @@ test("a local midnight splits today from yesterday", async t => {
   assert.equal(snapshot.hasEarlier, true, "a row older than today is reachable");
 });
 
-test("a read and the rows it publishes use one clock value", async t => {
+test("a page that ends exactly at midnight is read further", async t => {
   const { feed, store, client, agent } = fixture(t);
-  // The message sits just before midnight; the second read of the clock would be after it.
-  agent.state.pages = [[entry("user_message", "still today", DAY(0, 23, 59, 59), 1)]];
-  const values = [DAY(0, 23, 59, 59), DAY(1, 0, 0, 1), DAY(1, 0, 0, 1)];
-  let calls = 0;
-  const started = feed.startMyMessagesFeed({
-    agentId: "a",
-    client,
-    now: () => values[Math.min(calls++, values.length - 1)],
-    timers: fakeTimers(),
-  });
+  // 201 rows: the tail page holds 200 of them and the two oldest share midnight exactly.
+  const tail = [];
+  for (let index = 0; index < 198; index += 1) {
+    tail.push(entry("user_message", `row ${index}`, DAY(0, 12, 0, 0, 0) + index * 1000, index + 1));
+  }
+  tail.push(entry("user_message", "midnight one", DAY(0, 0, 0, 0, 0), 199));
+  tail.push(entry("user_message", "midnight two", DAY(0, 0, 0, 0, 0), 200));
+  agent.state.pages = [tail, [entry("user_message", "before midnight", DAY(-1, 23, 0), 201)]];
+  const started = start(feed, client);
   t.after(() => started.stop());
   await started.ready;
   const snapshot = store.myMessagesSnapshot("a");
-  assert.equal(calls, 1, "one read takes one clock value");
-  assert.equal(snapshot.humanToday, 1, "the row is today's, by the clock the read used");
-  assert.deepEqual(snapshot.rows.map(row => row.text), ["still today"]);
+  assert.equal(snapshot.partial, false, "a page ending exactly at midnight does not finish the day");
+  assert.equal(snapshot.humanToday, 200, "both midnight rows belong to today");
+  assert.equal(agent.state.calls.filter(call => call.direction === "before").length, 1,
+    "the read walked past the page that ended at midnight");
 });
 
 test("the panel re-reads when the local day turns over", async t => {
@@ -239,7 +253,7 @@ test("the panel re-reads when the local day turns over", async t => {
   agent.state.pages = [[entry("user_message", "before midnight", DAY(0, 22), 1)]];
   const timers = fakeTimers();
   let clock = DAY(0, 23, 59, 59);
-  const started = feed.startMyMessagesFeed({ agentId: "a", client, now: () => clock, timers });
+  const started = start(feed, client, { now: () => clock, timers });
   t.after(() => started.stop());
   await started.ready;
   assert.equal(store.myMessagesSnapshot("a").humanToday, 1);
@@ -255,37 +269,169 @@ test("the panel re-reads when the local day turns over", async t => {
   assert.equal(snapshot.hasEarlier, true, "yesterday is still reachable");
 });
 
-test("a day with more pages than one read reports partial, and Earlier continues from the cursor", async t => {
+test("a midnight wake re-arms even when the read it starts fails", async t => {
   const { feed, store, client, agent } = fixture(t);
-  // 45 pages of the person's messages, all today: more than one read may spend.
-  const pages = [];
-  for (let index = 0; index < 45; index += 1) {
-    const minute = 44 - index;
-    pages.push([
-      entry("user_message", `message ${index}-a`, DAY(0, 0, minute, 10), index * 2 + 1),
-      entry("user_message", `message ${index}-b`, DAY(0, 0, minute, 20), index * 2 + 2),
-    ]);
-  }
-  agent.state.pages = pages;
-  const started = feed.startMyMessagesFeed({ agentId: "a", client, now: () => DAY(0, 12), timers: fakeTimers() });
+  agent.state.pages = [[entry("user_message", "before midnight", DAY(0, 22), 1)]];
+  const timers = fakeTimers();
+  let clock = DAY(0, 23, 59, 59);
+  const started = start(feed, client, { now: () => clock, timers });
   t.after(() => started.stop());
   await started.ready;
 
+  agent.state.failReads = 40;
+  clock = DAY(1, 0, 0, 5);
+  timers.runLongest();
+  assert.ok(await pump(timers, () => store.myMessagesSnapshot("a").status === "error"), "the failed read is reported");
+  assert.ok(timers.pending().some(item => item.ms > SHORT_MS), "another midnight wake is armed anyway");
+});
+
+test("a read begun before midnight and resolved after it is thrown away and read again", async t => {
+  const { feed, store, client, agent } = fixture(t);
+  agent.state.pages = [[entry("user_message", "just before midnight", DAY(0, 23, 59, 59), 1)]];
+  const timers = fakeTimers();
+  let clock = DAY(0, 23, 59, 59);
+  let release;
+  agent.state.holdReads = new Promise(resolve => { release = resolve; });
+  const started = start(feed, client, { now: () => clock, timers });
+  t.after(() => started.stop());
+  await settle();
+  // Midnight passes while the read is open, then the read lands.
+  clock = DAY(1, 0, 0, 1);
+  release();
+  await settle(14);
+  const snapshot = store.myMessagesSnapshot("a");
+  assert.ok(agent.state.calls.length >= 2, "the read was repeated after the day changed");
+  assert.equal(snapshot.humanToday, 0, "yesterday's message is not counted as today's");
+  assert.deepEqual(snapshot.rows, []);
+  const wake = timers.pending().filter(item => item.ms > SHORT_MS);
+  assert.equal(wake.length, 1, "the next wake is armed against the new day, not the stale start");
+  assert.ok(wake[0].ms > 60 * 60 * 1000, `a day away, got ${wake[0].ms} ms`);
+});
+
+test("a foreground signal re-reads while another read is still running", async t => {
+  const { feed, store, client, agent } = fixture(t);
+  agent.state.pages = [[entry("user_message", "first", DAY(0, 9), 1)]];
+  const listeners = new Set();
+  const foreground = { subscribe: listener => { listeners.add(listener); return () => listeners.delete(listener); } };
+  let release;
+  agent.state.holdReads = new Promise(resolve => { release = resolve; });
+  const started = start(feed, client, { foreground });
+  t.after(() => started.stop());
+  await settle();
+  assert.equal(agent.state.calls.length, 1, "the first read is still running");
+
+  agent.state.pages = [[
+    entry("user_message", "first", DAY(0, 9), 1),
+    entry("user_message", "while away", DAY(0, 10), 2),
+  ]];
+  for (const listener of listeners) listener();
+  release();
+  await settle(14);
+  assert.ok(agent.state.calls.length >= 2, "coming back to the foreground asks for another read");
+  assert.equal(store.myMessagesSnapshot("a").humanToday, 2);
+});
+
+test("every refresh replaces the snapshot instead of trusting an older one", async t => {
+  const { feed, store, client, agent } = fixture(t);
+  agent.state.pages = [[
+    entry("user_message", "first", DAY(0, 9), 1),
+    entry("user_message", "second", DAY(0, 10), 2),
+  ]];
+  const started = start(feed, client);
+  t.after(() => started.stop());
+  await started.ready;
+  assert.equal(store.myMessagesSnapshot("a").humanToday, 2);
+
+  // The conversation was rebuilt: only one row exists now, and an epoch change says so.
+  agent.state.pages = [[entry("user_message", "only row", DAY(0, 11), 9)]];
+  agent.emit({ type: "replacement", provider: "mock" });
+  await settle(12);
+  const snapshot = store.myMessagesSnapshot("a");
+  assert.deepEqual(snapshot.rows.map(row => row.text), ["only row"], "the rebuilt conversation replaces the old rows");
+  assert.equal(snapshot.humanToday, 1);
+});
+
+test("Earlier reads a day that is larger than a background refresh may spend", async t => {
+  const { feed, store, client, agent } = fixture(t);
+  agent.state.pages = [
+    [entry("user_message", "today", DAY(0, 9), 1)],
+    [entry("user_message", "yesterday late", DAY(-1, 23), 2)],
+    [entry("user_message", "yesterday noon", DAY(-1, 12), 3)],
+    [entry("user_message", "yesterday morning", DAY(-1, 6), 4)],
+    [entry("user_message", "the day before", DAY(-2, 9), 5)],
+  ];
+  const started = start(feed, client, { budgets: { background: 2, earlier: 20 } });
+  t.after(() => started.stop());
+  await started.ready;
+  assert.equal(store.myMessagesSnapshot("a").loadedDays, 1);
+
+  await started.loadEarlier();
+  const snapshot = store.myMessagesSnapshot("a");
+  assert.equal(snapshot.loadedDays, 2, "the day is covered, so the window grows");
+  assert.equal(snapshot.pendingDayAt, null);
+  assert.deepEqual(snapshot.rows.map(row => row.text),
+    ["today", "yesterday late", "yesterday noon", "yesterday morning"]);
+});
+
+test("an Earlier read that stops short names the day and Retry continues it", async t => {
+  const { feed, store, client, agent } = fixture(t);
+  agent.state.pages = [
+    [entry("user_message", "today", DAY(0, 9), 1)],
+    [entry("user_message", "yesterday late", DAY(-1, 23), 2)],
+    [entry("user_message", "yesterday noon", DAY(-1, 12), 3)],
+    [entry("user_message", "yesterday morning", DAY(-1, 6), 4)],
+  ];
+  const budgets = { background: 4, earlier: 2 };
+  const started = start(feed, client, { budgets });
+  t.after(() => started.stop());
+  await started.ready;
+
+  await started.loadEarlier();
   let snapshot = store.myMessagesSnapshot("a");
-  assert.equal(snapshot.partial, true, "an unfinished read says so");
-  assert.equal(snapshot.humanToday, 80, "40 pages of two rows");
-  assert.equal(snapshot.rows.length, 80);
+  assert.equal(snapshot.loadedDays, 1, "a day read only partly does not join the window");
+  assert.equal(snapshot.pendingDayAt, DAY(-1, 0), "the day that is still short is named");
+  assert.deepEqual(snapshot.rows.map(row => row.text), ["today"], "the window still shows what it covered");
+  assert.equal(snapshot.partial, false, "the visible window itself is complete");
   assert.equal(snapshot.hasEarlier, true);
 
-  const before = agent.state.calls.length;
-  await started.loadEarlier();
-  const press = agent.state.calls.slice(before);
-  assert.equal(press[0].direction, "before", "a press continues from the cursor, not from the tail");
-  assert.deepEqual(press[0].cursor, { epoch: "e1", seq: "40" });
+  // The retry reads that same day again, and this time it fits.
+  budgets.earlier = 20;
+  started.retry();
+  await settle(12);
   snapshot = store.myMessagesSnapshot("a");
-  assert.equal(snapshot.partial, false, "the day is covered now");
-  assert.equal(snapshot.humanToday, 90, "every row of the day is counted");
-  assert.equal(snapshot.rows.length, 90);
+  assert.equal(snapshot.loadedDays, 2, "the pending day is committed once it is covered");
+  assert.equal(snapshot.pendingDayAt, null);
+  assert.deepEqual(snapshot.rows.map(row => row.text),
+    ["today", "yesterday late", "yesterday noon", "yesterday morning"]);
+});
+
+test("two quick Earlier presses read once and add one day", async t => {
+  const { feed, store, client, agent } = fixture(t);
+  agent.state.pages = [
+    [entry("user_message", "today", DAY(0, 9), 1)],
+    [entry("user_message", "yesterday", DAY(-1, 9), 2)],
+    [entry("user_message", "the day before", DAY(-2, 9), 3)],
+  ];
+  let release;
+  agent.state.holdReads = new Promise(resolve => { release = resolve; });
+  const started = start(feed, client, { budgets: { background: 4, earlier: 4 } });
+  t.after(() => started.stop());
+  release();
+  await settle(12);
+  assert.equal(store.myMessagesSnapshot("a").loadedDays, 1);
+
+  let gate;
+  agent.state.holdReads = new Promise(resolve => { gate = resolve; });
+  const first = started.loadEarlier();
+  const second = started.loadEarlier();
+  release = gate;
+  await settle(4);
+  gate();
+  await Promise.all([first, second]);
+  await settle(12);
+  const snapshot = store.myMessagesSnapshot("a");
+  assert.equal(snapshot.loadedDays, 2, "two presses add one day, not two");
+  assert.equal(snapshot.pendingDayAt, null);
 });
 
 test("a failed Earlier read leaves the visible day where it was", async t => {
@@ -296,12 +442,11 @@ test("a failed Earlier read leaves the visible day where it was", async t => {
     [entry("user_message", "the day before", DAY(-2, 9), 3)],
   ];
   const timers = fakeTimers();
-  const started = feed.startMyMessagesFeed({ agentId: "a", client, now: () => DAY(0, 12), timers });
+  const started = start(feed, client, { timers });
   t.after(() => started.stop());
   await started.ready;
   assert.equal(store.myMessagesSnapshot("a").loadedDays, 1);
 
-  // Four attempts spend four failures; the fifth read would still fail, which is the last.
   agent.state.failReads = 5;
   const failed = started.loadEarlier();
   assert.ok(await pump(timers, () => store.myMessagesSnapshot("a").status === "error"), "the failure is reported");
@@ -312,45 +457,55 @@ test("a failed Earlier read leaves the visible day where it was", async t => {
   const retried = started.loadEarlier();
   assert.ok(await pump(timers, () => store.myMessagesSnapshot("a").loadedDays === 2), "the next press adds one day");
   await retried;
-  const snapshot = store.myMessagesSnapshot("a");
-  assert.deepEqual(snapshot.rows.map(row => row.text), ["today", "yesterday"], "exactly one more day");
+  assert.deepEqual(store.myMessagesSnapshot("a").rows.map(row => row.text), ["today", "yesterday"]);
 });
 
-test("live updates recover after repeated subscription failures", async t => {
+test("a stale subscription cannot mark a healthy one down", async t => {
   const { feed, store, client, agent } = fixture(t);
   agent.state.pages = [[entry("user_message", "first", DAY(0, 9), 1)]];
-  agent.state.failSubscribes = 4;
   const timers = fakeTimers();
-  const started = feed.startMyMessagesFeed({ agentId: "a", client, now: () => DAY(0, 12), timers });
+  agent.state.holdReady = true;
+  let release;
+  agent.state.holdReads = new Promise(resolve => { release = resolve; });
+  const started = start(feed, client, { timers });
   t.after(() => started.stop());
+  await settle();
+  assert.equal(agent.live.length, 1, "one subscription is opened");
+  const first = agent.state.subscriptions[0];
 
-  assert.ok(await pump(timers, () => store.myMessagesSnapshot("a").live === true), "live delivery comes back");
-  const snapshot = store.myMessagesSnapshot("a");
-  assert.equal(snapshot.status, "ready", "the rows were read while live delivery was down");
-  assert.ok(agent.state.subscribeCount >= 5, `kept trying, saw ${agent.state.subscribeCount} attempts`);
+  // The first subscription fails while the read is still open, and a second one answers.
+  first.handler({ agentId: "a", event: { type: "error", error: new Error("lost") } });
+  first.reject(new Error("subscription unavailable"));
+  await pump(timers, () => agent.state.subscriptions.length >= 2, 6);
+  const second = agent.live[0];
+  assert.ok(second && second !== first, "a replacement subscription was opened");
+  second.resolve();
+  await settle();
 
-  agent.state.pages = [[
-    entry("user_message", "first", DAY(0, 9), 1),
-    entry("user_message", "after the outage", DAY(0, 10), 2),
-  ]];
-  agent.emit({ type: "timeline", provider: "mock", item: { type: "user_message", text: "after the outage" } });
-  assert.ok(await pump(timers, () => store.myMessagesSnapshot("a").humanToday === 2), "a new message arrives again");
+  release();
+  await settle(12);
+  assert.equal(store.myMessagesSnapshot("a").live, true, "the healthy subscription keeps the panel live");
+  assert.equal(agent.live.length, 1, "the failed subscription did not start a third one");
+  started.stop();
+  assert.equal(agent.live.length, 0, "closing the panel releases the one subscription that is left");
 });
 
-test("two mounts of one panel share one feed, and the last close forgets it", async t => {
+test("two mounts of one panel share one feed, and a double release counts once", async t => {
   const { feed, store, client, agent } = fixture(t);
   agent.state.pages = [[entry("user_message", "hello", DAY(0, 9), 1)]];
   const first = feed.acquireMyMessagesFeed({ agentId: "a", client, now: () => DAY(0, 12), timers: fakeTimers() });
   const second = feed.acquireMyMessagesFeed({ agentId: "a", client, now: () => DAY(0, 12), timers: fakeTimers() });
   t.after(() => { first.stop(); second.stop(); });
   await settle();
-  assert.equal(agent.state.subscribeCount, 1, "one conversation, one subscription");
+  assert.equal(agent.state.subscriptions.length, 1, "one conversation, one subscription");
   assert.equal(store.myMessagesSnapshot("a").rows.length, 1);
 
   first.stop();
-  assert.equal(agent.state.stopped, 0, "the second reader keeps the feed alive");
+  first.stop();
+  assert.equal(agent.live.length, 1, "a handle that stops twice still leaves the other reader's feed alone");
   second.stop();
-  assert.equal(agent.state.stopped, 1);
+  first.stop();
+  assert.equal(agent.live.length, 0);
   const forgotten = store.myMessagesSnapshot("a");
   assert.equal(forgotten.status, "loading", "a closed conversation keeps no rows");
   assert.deepEqual(forgotten.rows, []);
@@ -359,7 +514,7 @@ test("two mounts of one panel share one feed, and the last close forgets it", as
 test("overlapping updates run one refresh and one follow-up, not one per event", async t => {
   const { feed, store, client, agent } = fixture(t);
   agent.state.pages = [[entry("user_message", "first", DAY(0, 9), 1)]];
-  const started = feed.startMyMessagesFeed({ agentId: "a", client, now: () => DAY(0, 12), timers: fakeTimers() });
+  const started = start(feed, client);
   t.after(() => started.stop());
   await started.ready;
   const before = agent.state.calls.length;
@@ -378,6 +533,27 @@ test("overlapping updates run one refresh and one follow-up, not one per event",
   assert.equal(store.myMessagesSnapshot("a").humanToday, 3);
 });
 
+test("live delivery comes back after repeated subscription failures", async t => {
+  const { feed, store, client, agent } = fixture(t);
+  agent.state.pages = [[entry("user_message", "first", DAY(0, 9), 1)]];
+  agent.state.holdReady = true;
+  const timers = fakeTimers();
+  const started = start(feed, client, { timers });
+  t.after(() => started.stop());
+  await settle();
+  // Every subscription handed out so far fails; the retry keeps opening new ones.
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const current = agent.state.subscriptions.at(-1);
+    if (current && !current.closed) current.reject(new Error("subscription unavailable"));
+    await pump(timers, () => agent.state.subscriptions.length > attempt + 1, 6);
+  }
+  const last = agent.state.subscriptions.at(-1);
+  last.resolve();
+  await settle();
+  assert.equal(store.myMessagesSnapshot("a").live, true, "live delivery comes back");
+  assert.equal(store.myMessagesSnapshot("a").status, "ready", "the rows were read while it was down");
+});
+
 test("closing the panel stops a page walk that is still running", async t => {
   const { feed, client, agent } = fixture(t);
   agent.state.pages = [
@@ -387,7 +563,7 @@ test("closing the panel stops a page walk that is still running", async t => {
   ];
   let release;
   agent.state.holdReads = new Promise(resolve => { release = resolve; });
-  const started = feed.startMyMessagesFeed({ agentId: "a", client, now: () => DAY(0, 12), timers: fakeTimers() });
+  const started = start(feed, client);
   t.after(() => started.stop());
   await settle();
   assert.equal(agent.state.calls.length, 1, "the walk is waiting on its first page");
@@ -397,6 +573,22 @@ test("closing the panel stops a page walk that is still running", async t => {
   assert.equal(agent.state.calls.length, 1, "a closed panel asks for no further page");
 });
 
+test("the snapshot holds only the visible window's rows", async t => {
+  const { feed, store, client, agent } = fixture(t);
+  agent.state.pages = [
+    [entry("user_message", "today", DAY(0, 9), 1)],
+    [entry("user_message", "yesterday", DAY(-1, 9), 2)],
+    [entry("user_message", "older", DAY(-3, 9), 3)],
+  ];
+  const started = start(feed, client);
+  t.after(() => started.stop());
+  await started.ready;
+  const snapshot = store.myMessagesSnapshot("a");
+  assert.deepEqual(snapshot.rows.map(row => row.text), ["today"], "older days are not kept in the snapshot");
+  assert.equal(snapshot.hasEarlier, true);
+  assert.equal("entries" in snapshot, false, "no timeline pages travel with the snapshot");
+});
+
 test("two messages in the same millisecond list newest sequence first", async t => {
   const { feed, store, client, agent } = fixture(t);
   const sameMillisecond = DAY(0, 9);
@@ -404,7 +596,7 @@ test("two messages in the same millisecond list newest sequence first", async t 
     entry("user_message", "first", sameMillisecond, 1),
     entry("user_message", "second", sameMillisecond, 2),
   ]];
-  const started = feed.startMyMessagesFeed({ agentId: "a", client, now: () => DAY(0, 12), timers: fakeTimers() });
+  const started = start(feed, client);
   t.after(() => started.stop());
   await started.ready;
   assert.deepEqual(store.myMessagesSnapshot("a").rows.map(row => row.text), ["second", "first"]);

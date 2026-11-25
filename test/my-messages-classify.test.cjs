@@ -112,6 +112,22 @@ test("a mid-turn message is the person's, and its body is the exact substring", 
   h.dispose();
 });
 
+test("a closing marker only counts when it stands alone on its own line", () => {
+  const { h, kind } = load();
+  const OPEN = "[OUT-OF-BAND USER MESSAGE — inserted]";
+  const CLOSE = "[/OUT-OF-BAND USER MESSAGE]";
+
+  // A standalone closer is the wrapper's, and goes.
+  assert.equal(kind.outOfBandBody(`${OPEN}\nbody\n${CLOSE}`), "body");
+  assert.equal(kind.outOfBandBody(`${OPEN}\r\nbody\r\n${CLOSE}\r\n`), "body");
+
+  // Text that merely ends with the marker's characters keeps every word the person wrote.
+  assert.equal(kind.outOfBandBody(`${OPEN}\nPlease print ${CLOSE}`), `Please print ${CLOSE}`);
+  assert.equal(kind.outOfBandBody(`${OPEN}\nline one\nPlease print ${CLOSE}`), `line one\nPlease print ${CLOSE}`);
+  assert.equal(kind.outOfBandBody(`${OPEN}\n${CLOSE} and then some`), `${CLOSE} and then some`);
+  h.dispose();
+});
+
 test("a message with only an image is still the person's message", () => {
   const { h, kind } = load();
   for (const text of ["", "   \n  ", "\n", "\r\n"]) {

@@ -48,7 +48,9 @@ export interface ClassifiedMessage {
  * copy reproduces what the person wrote. Only the line break that separates the body from
  * the closing marker is dropped, because it belongs to the wrapper's layout.
  *
- * A closing marker only counts at the very end: a message that quotes one mid-body keeps it.
+ * A closing marker is only a marker when it stands alone on the last line. Text that merely
+ * ends with the marker's characters — `Please print [/OUT-OF-BAND USER MESSAGE]` — keeps the
+ * whole body: a person may write the marker, and cutting there would delete their words.
  */
 export function outOfBandBody(text: string): string | null {
   const leading = text.length - text.trimStart().length;
@@ -57,10 +59,12 @@ export function outOfBandBody(text: string): string | null {
   // A wrapper is always a marker line plus a body: without a line break there is no body.
   if (openEnd < 0) return "";
   const bodyStart = openEnd + 1;
-  const closeAt = text.lastIndexOf(OUT_OF_BAND_CLOSE);
-  if (closeAt < bodyStart || text.slice(closeAt + OUT_OF_BAND_CLOSE.length).trim() !== "") {
-    return text.slice(bodyStart);
-  }
+  const trimmedEnd = text.replace(/\s+$/, "");
+  const closeAt = trimmedEnd.lastIndexOf(OUT_OF_BAND_CLOSE);
+  const standalone = closeAt >= bodyStart
+    && trimmedEnd.slice(closeAt) === OUT_OF_BAND_CLOSE
+    && (closeAt === bodyStart || trimmedEnd[closeAt - 1] === "\n");
+  if (!standalone) return text.slice(bodyStart);
   let bodyEnd = closeAt;
   if (bodyEnd > bodyStart && text[bodyEnd - 1] === "\n") bodyEnd -= 1;
   if (bodyEnd > bodyStart && text[bodyEnd - 1] === "\r") bodyEnd -= 1;

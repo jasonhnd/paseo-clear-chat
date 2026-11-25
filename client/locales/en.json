@@ -61,15 +61,17 @@
     "empty": "Nothing from you today yet",
     "earlier": "Earlier",
     "loading": "Reading this conversation…",
-    "error": "Could not read this conversation. Reopen the panel to try again.",
+    "error": "Could not read this conversation. Select Try again.",
     "copied": "Copied",
     "copyFailed": "Could not copy this message",
     "noText": "This message has no text to copy",
     "imageOnly": "(image)",
-    "partial": "Some of today has not been read yet. Press Earlier to load the rest.",
+    "partial": "Part of this day has not been read yet. Select Try again to load the rest.",
     "liveStopped": "New messages are not coming through. The list may be out of date.",
     "retry": "Try again",
     "pickConversation": "Open a conversation in this workspace first, then press this button.",
-    "directory": "The conversation list could not be read. Try again in a moment."
+    "directory": "The conversation list could not be read. Try again in a moment.",
+    "partialDay": "{{date}} has not been read completely yet. Select Try again to continue.",
+    "loadingEarlier": "Reading…"
   }
 }

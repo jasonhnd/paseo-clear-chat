@@ -43,7 +43,7 @@ function page(entries, options = {}) {
 }
 
 function createAgent(id = "a") {
-  const state = { pages: [], calls: [], subscribers: [], subscribeCount: 0, stopped: 0 };
+  const state = { pages: [], subscribers: [], subscribeCount: 0, stopped: 0, holdReady: false, rejectNext: null };
   const handle = {
     id,
     async refresh() {
@@ -51,7 +51,6 @@ function createAgent(id = "a") {
     },
     timeline: {
       async refetch(options = {}) {
-        state.calls.push(options);
         const index = options.direction === "before" ? Number(options.cursor.seq) : 0;
         const served = state.pages[index] ?? [];
         const older = index + 1 < state.pages.length;
@@ -63,6 +62,11 @@ function createAgent(id = "a") {
       },
       subscribe(handler) {
         state.subscribeCount += 1;
+        const pending = state.rejectNext;
+        state.rejectNext = null;
+        if (pending) {
+          return Object.assign(() => {}, { ready: Promise.reject(pending), async release() {} });
+        }
         state.subscribers.push(handler);
         const stop = () => {
           state.stopped += 1;
@@ -97,7 +101,6 @@ function harness(t, options = {}) {
   const agent = createAgent();
   const h = createToolHarness("web", {
     locale: options.locale ?? "en",
-    paseoClients: undefined,
     paseo: { agents: { ref: () => agent.handle } },
     ...(options.copyText ? { copyText: options.copyText } : {}),
   });
@@ -117,6 +120,8 @@ const drawPanel = (h, extra = {}) => {
   const Panel = h.load("client/components/my-messages-panel.tsx").MyMessagesPanel;
   return h.draw({ type: Panel, props: panelProps(extra) });
 };
+
+const snapshot = (h) => h.load("client/my-messages-store.ts");
 
 test("the panel shows the counts and the person's messages, and copies one exactly", async t => {
   const { h, agent } = harness(t);
@@ -154,50 +159,142 @@ test("the panel shows the counts and the person's messages, and copies one exact
   assert.equal(h.links.length, 0, "a press never navigates");
 });
 
-test("a partially read day says so", async t => {
+test("the list is virtualized, and still scrolls on a compact layout", async t => {
+  const { h, agent } = harness(t);
+  agent.state.pages = [[
+    entry("user_message", "today", at(0, 9), 1),
+    entry("user_message", "later", at(0, 10), 2),
+  ]];
+  drawPanel(h);
+  await settle();
+  const drawn = drawPanel(h, { layout: { compact: true, platform: "ios" } });
+  const panel = h.nodes(drawn, node => node.props.testID === "my-messages-panel")[0];
+  assert.equal(panel.type, "Native.FlatList", "the panel draws a virtualized list");
+  assert.equal(panel.props.style.flex, 1, "it fills the tab and scrolls");
+  assert.equal(panel.props.data.length, 2, "the rows travel as list data, not as prebuilt children");
+  assert.equal(typeof panel.props.renderItem, "function");
+  assert.ok(h.text(drawn).includes("today"));
+});
+
+test("a day an Earlier press left short is named, and Try again continues it", async t => {
   const { h } = harness(t);
   drawPanel(h);
   await settle();
-  const store = h.load("client/my-messages-store.ts");
-  store.publishMyMessages("a", {
+  snapshot(h).publishMyMessages("a", {
     status: "ready",
     loadedDays: 1,
     machineToday: 0,
     humanToday: 1,
     rows: [{ key: "1:1", at: FROZEN, seq: 1, time: "09:00", text: "hello", preview: "hello", truncated: false, empty: false }],
     hasEarlier: true,
+    partial: false,
+    pendingDayAt: at(-1, 0),
+    earlierBusy: false,
+    live: true,
+    error: null,
+  });
+  const drawn = drawPanel(h);
+  const notice = h.nodes(drawn, node => node.props.testID === "my-messages-partial")[0];
+  assert.ok(notice, "the unfinished day is named");
+  assert.ok(h.text(notice).includes("3/14"), h.text(notice));
+  assert.equal(h.nodes(drawn, node => node.props.testID === "my-messages-retry").length, 1);
+});
+
+test("a window that was not read completely says so", async t => {
+  const { h } = harness(t);
+  drawPanel(h);
+  await settle();
+  snapshot(h).publishMyMessages("a", {
+    status: "ready",
+    loadedDays: 1,
+    machineToday: 0,
+    humanToday: 1,
+    rows: [],
+    hasEarlier: true,
     partial: true,
+    pendingDayAt: null,
+    earlierBusy: false,
     live: true,
     error: null,
   });
   const drawn = drawPanel(h);
   assert.equal(h.nodes(drawn, node => node.props.testID === "my-messages-partial").length, 1);
+  assert.equal(h.nodes(drawn, node => node.props.testID === "my-messages-retry").length, 1);
+});
+
+test("the read-error copy points at the control that retries", async t => {
+  const expected = {
+    en: "Select Try again",
+    "zh-CN": "点「重试」",
+    ja: "「再試行」",
+  };
+  for (const [locale, copy] of Object.entries(expected)) {
+    const { h } = harness(t, { locale });
+    drawPanel(h);
+    await settle();
+    snapshot(h).publishMyMessages("a", {
+      status: "error",
+      loadedDays: 1,
+      machineToday: 0,
+      humanToday: 0,
+      rows: [],
+      hasEarlier: false,
+      partial: false,
+      pendingDayAt: null,
+      earlierBusy: false,
+      live: false,
+      error: "timeline unavailable",
+    });
+    const drawn = drawPanel(h);
+    const error = h.nodes(drawn, node => node.props.testID === "my-messages-error")[0];
+    assert.ok(error, `${locale}: the failure is shown`);
+    assert.ok(h.text(error).includes(copy), `${locale}: ${h.text(error)}`);
+    assert.equal(h.nodes(drawn, node => node.props.testID === "my-messages-retry").length, 1);
+    h.unmount();
+    h.dispose();
+  }
 });
 
 test("the panel offers a retry while live delivery is down, and the retry asks the feed", async t => {
   const { h, agent } = harness(t);
+  // Timers the test owns, so the feed's own backoff cannot open a subscription behind our back.
+  h.load("client/my-messages-clock.ts").setMyMessagesTimers({ set: () => ({}), clear: () => {} });
+  agent.state.pages = [[entry("user_message", "first", at(0, 9), 1)]];
+  agent.state.rejectNext = new Error("subscription unavailable");
   drawPanel(h);
-  await settle();
-  const store = h.load("client/my-messages-store.ts");
-  store.publishMyMessages("a", {
-    status: "ready",
-    loadedDays: 1,
-    machineToday: 0,
-    humanToday: 0,
-    rows: [],
-    hasEarlier: false,
-    partial: false,
-    live: false,
-    error: null,
-  });
+  await settle(12);
   const drawn = drawPanel(h);
-  assert.equal(h.nodes(drawn, node => node.props.testID === "my-messages-live-error").length, 1);
+  assert.equal(h.nodes(drawn, node => node.props.testID === "my-messages-live-error").length, 1, "the panel says the list may be stale");
   const attempts = agent.state.subscribeCount;
   const retry = h.nodes(drawn, node => node.props.testID === "my-messages-retry")[0];
   assert.ok(retry, "the retry control is drawn");
   retry.props.onPress();
   await settle();
   assert.ok(agent.state.subscribeCount > attempts, "the retry asks the host for a subscription again");
+});
+
+test("Earlier is disabled while its read is in flight", async t => {
+  const { h } = harness(t);
+  drawPanel(h);
+  await settle();
+  snapshot(h).publishMyMessages("a", {
+    status: "ready",
+    loadedDays: 1,
+    machineToday: 0,
+    humanToday: 1,
+    rows: [{ key: "1:1", at: FROZEN, seq: 1, time: "09:00", text: "hello", preview: "hello", truncated: false, empty: false }],
+    hasEarlier: true,
+    partial: false,
+    pendingDayAt: null,
+    earlierBusy: true,
+    live: true,
+    error: null,
+  });
+  const drawn = drawPanel(h);
+  const earlier = h.nodes(drawn, node => node.props.testID === "my-messages-earlier")[0];
+  assert.equal(earlier.props.disabled, true, "a second press cannot start a second read");
+  assert.equal(earlier.props.accessibilityState.disabled, true);
+  assert.ok(h.text(earlier).includes("Reading…"));
 });
 
 test("a copy the host refuses is reported instead of looking copied", async t => {
@@ -211,18 +308,6 @@ test("a copy the host refuses is reported instead of looking copied", async t =>
   await settle(3);
   assert.ok(h.toasts.includes("Could not copy this message"), JSON.stringify(h.toasts));
   assert.ok(!h.toasts.includes("Copied"));
-});
-
-test("the panel scrolls on a compact layout", async t => {
-  const { h, agent } = harness(t);
-  agent.state.pages = [[entry("user_message", "today", at(0, 9), 1)]];
-  drawPanel(h);
-  await settle();
-  const drawn = drawPanel(h, { layout: { compact: true, platform: "ios" } });
-  const panel = h.nodes(drawn, node => node.props.testID === "my-messages-panel")[0];
-  assert.equal(panel.type, "ScrollView", "the panel is the scroll container on a phone");
-  assert.equal(panel.props.style.flex, 1);
-  assert.ok(h.text(drawn).includes("today"));
 });
 
 test("closing the panel releases the timeline subscription", async t => {
@@ -279,74 +364,3 @@ test("an open panel turns over at midnight, on its own timer", async t => {
   assert.ok(h.text(after).includes("From you: 0"), h.text(after));
   assert.ok(!h.text(after).includes("before midnight"), "yesterday's rows leave today's list");
 });
-
-test("the header button's guidance reaches the panel's toast in every language", async t => {
-  const expected = {
-    en: "Open a conversation in this workspace first, then press this button.",
-    "zh-CN": "先在这个工作区打开一个对话，再点这个按钮。",
-    ja: "このワークスペースで会話を開いてから、このボタンを押してください。",
-  };
-  for (const [locale, copy] of Object.entries(expected)) {
-    const { h } = harness(t, { locale });
-    drawPanel(h);
-    await settle();
-    const registration = h.load("client/my-messages-registration.ts");
-    const host = registrationHost({
-      agents: [
-        [{ agent: { id: "a", workspaceId: "w1" } }],
-        [{ agent: { id: "b", workspaceId: "w1" } }],
-      ],
-      focus: null,
-    });
-    const stop = registration.registerMyMessagesPanel(host.client);
-    await settle();
-    host.buttons.get("w1").button.behavior.onPress();
-    await settle(6);
-    assert.equal(host.opens.length, 0, `${locale}: no conversation is opened`);
-    assert.ok(h.toasts.includes(copy), `${locale}: ${JSON.stringify(h.toasts)}`);
-    stop();
-    h.unmount();
-    h.dispose();
-  }
-});
-
-// A registration host whose agent directory spans pages, so the button has to walk it.
-function registrationHost(options = {}) {
-  const panels = new Map();
-  const buttons = new Map();
-  const opens = [];
-  const agentPages = options.agents ?? [[{ agent: { id: "a", workspaceId: "w1" } }]];
-  const focusObject = options.focus === null ? null : { id: "composer-a" };
-  const activeAgent = options.activeAgent ?? "a";
-  const listPage = pages => async input => {
-    const index = input?.page?.cursor ? Number(input.page.cursor) : 0;
-    const entries = pages[index] ?? [];
-    const hasMore = index + 1 < pages.length;
-    return { entries, pageInfo: { hasMore, nextCursor: hasMore ? String(index + 1) : null } };
-  };
-  const client = {
-    addAgentPanel(value) {
-      panels.set(value.id, value);
-      return () => {};
-    },
-    addHeaderButton(value) {
-      buttons.set(value.workspaceId, value);
-      return { update() {}, remove() {} };
-    },
-    openPanel(id, input) {
-      opens.push({ id, ...input });
-    },
-    composers(selector) {
-      if (!("focused" in selector)) return selector.agentId === activeAgent && focusObject ? [focusObject] : [];
-      return focusObject ? [focusObject] : [];
-    },
-    paseo: {
-      workspaces: {
-        list: async () => ({ entries: [{ id: "w1" }], pageInfo: { hasMore: false, nextCursor: null } }),
-        subscribe: () => () => {},
-      },
-      agents: { list: listPage(agentPages) },
-    },
-  };
-  return { client, panels, buttons, opens };
-}

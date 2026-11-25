@@ -61,15 +61,17 @@
     "empty": "今天还没有你说的话",
     "earlier": "更早",
     "loading": "正在读取这个对话…",
-    "error": "读不到这个对话。重新打开面板再试一次。",
+    "error": "读不到这个对话。点「重试」再试一次。",
     "copied": "已复制",
     "copyFailed": "复制不了这条消息",
     "noText": "这条消息没有文字可复制",
     "imageOnly": "（图片）",
-    "partial": "今天还没读完，点「更早」把剩下的读出来。",
+    "partial": "这一天还没读完。点「重试」把剩下的读出来。",
     "liveStopped": "新消息没能送进来，列表可能不是最新的。",
     "retry": "重试",
     "pickConversation": "先在这个工作区打开一个对话，再点这个按钮。",
-    "directory": "读不到对话列表，请稍后再试。"
+    "directory": "读不到对话列表，请稍后再试。",
+    "partialDay": "{{date}} 还没读完。点「重试」继续读。",
+    "loadingEarlier": "正在读取…"
   }
 }
