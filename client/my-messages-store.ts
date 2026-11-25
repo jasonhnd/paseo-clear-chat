@@ -30,8 +30,10 @@ export interface MyMessageRow {
 export interface MyMessagesSnapshot {
   agentId: string;
   status: "loading" | "ready" | "error";
-  /** Days of history the list covers, today included. */
-  loadedDays: number;
+  /** The local day (`YYYY-MM-DD`) the two counts belong to. */
+  day: string;
+  /** The first local day the visible window covers, as `YYYY-MM-DD`. */
+  coveredFrom: string;
   machineToday: number;
   humanToday: number;
   /** The visible window's messages from the person, newest first. */
@@ -40,12 +42,14 @@ export interface MyMessagesSnapshot {
   hasEarlier: boolean;
   /** True when the visible window itself was not fully read: the counts are a lower bound. */
   partial: boolean;
-  /** The day start an Earlier press is reading, while that day is not covered yet. */
-  pendingDayAt: number | null;
+  /** The day an Earlier press is reading, as `YYYY-MM-DD`, while that day is not covered. */
+  pendingDay: string | null;
   /** True while an Earlier read is in flight, so the button cannot queue a second one. */
   earlierBusy: boolean;
   /** False while the timeline subscription is down: rows would then stop updating. */
   live: boolean;
+  /** True when what is drawn belongs to an earlier day than the one the reader is in. */
+  stale: boolean;
   error: string | null;
 }
 
@@ -58,15 +62,17 @@ function emptySnapshot(agentId: string): MyMessagesSnapshot {
   return {
     agentId,
     status: "loading",
-    loadedDays: 1,
+    day: "",
+    coveredFrom: "",
     machineToday: 0,
     humanToday: 0,
     rows: [],
     hasEarlier: false,
     partial: false,
-    pendingDayAt: null,
+    pendingDay: null,
     earlierBusy: false,
     live: false,
+    stale: false,
     error: null,
   };
 }
@@ -97,14 +103,16 @@ function sameRows(left: readonly MyMessageRow[], right: readonly MyMessageRow[])
 
 function same(current: MyMessagesSnapshot, next: MyMessagesFields): boolean {
   return current.status === next.status
-    && current.loadedDays === next.loadedDays
+    && current.day === next.day
+    && current.coveredFrom === next.coveredFrom
     && current.machineToday === next.machineToday
     && current.humanToday === next.humanToday
     && current.hasEarlier === next.hasEarlier
     && current.partial === next.partial
-    && current.pendingDayAt === next.pendingDayAt
+    && current.pendingDay === next.pendingDay
     && current.earlierBusy === next.earlierBusy
     && current.live === next.live
+    && current.stale === next.stale
     && current.error === next.error
     && sameRows(current.rows, next.rows);
 }

@@ -3,7 +3,7 @@ import { AppState } from "react-native";
 import { getPaseoClient } from "@getpaseo/plugin/client";
 import type { PaseoAgentTimelineEvent, PaseoApi } from "@getpaseo/client";
 import { classifyUserMessage, isEmptyMessageText, messagePreview } from "./user-message-kind";
-import { formatClock, localDayStartBefore } from "./local-day";
+import { formatClock, localDateKey, localDaySpan, localDayStartFor, nextLocalDateKey, previousLocalDateKey } from "./local-day";
 import { cancelTimer, nowMs, scheduleTimer, type FeedTimers } from "./my-messages-clock";
 import {
   forgetMyMessages,
@@ -19,17 +19,19 @@ import {
  * The "what I said" panel's data: how many rows automation sent and how many the person
  * sent today, and the person's own messages, newest first.
  *
- * There is no cross-refresh cache. Every refresh — the first read, a new message, a restored
- * subscription, midnight, the foreground, a retry — reads the newest page and walks older
- * pages until it holds a timestamp strictly older than the first instant of the visible
- * window, or reaches the beginning of the conversation. What it read becomes the snapshot and
- * replaces what was there, so a page boundary, a replaced subscription or a rebuilt timeline
- * cannot leave a stale or half-merged state behind. A read that runs out of its page budget
- * says so and never claims a finished day.
+ * There is one operation: read from the newest page back until a message is strictly older
+ * than the first instant of the target window, or until the conversation begins; then replace
+ * the snapshot with what was read. Every trigger — the first read, a new message, a restored
+ * subscription, midnight, the foreground, an Earlier press, a retry — is that operation, run
+ * one at a time in a single queue. Overlapping triggers collapse into one waiting request that
+ * keeps the widest target, so a later read can never overwrite an earlier one's result and an
+ * Earlier press cannot be undone by a refresh that raced it.
  *
- * "Today" is the reader's calendar day on this device. One read takes one clock value; if the
- * local day has moved on by the time the read lands, the result is thrown away and read
- * again. A read begun just before midnight therefore cannot publish yesterday's counts.
+ * The panel remembers days as calendar dates, not as counts: a count turns into the wrong day
+ * the moment midnight passes, while a date keeps pointing at the day the reader asked for.
+ * A page budget is per day of target window, so a refresh of a window the reader widened still
+ * reads all of it; an explicit retry doubles the budget (up to a cap), so retrying always gets
+ * further than the attempt before it.
  */
 
 type AgentHandle = ReturnType<PaseoApi["agents"]["ref"]>;
@@ -38,24 +40,28 @@ type TimelineEntry = TimelinePage["entries"][number];
 type Unsubscribe = ReturnType<AgentHandle["timeline"]["subscribe"]>;
 
 const READ_RETRY_DELAYS_MS = [10, 20, 40];
-/** Pages a background refresh may spend before it calls itself partial. */
-const BACKGROUND_PAGE_BUDGET = 40;
-/** Pages one press of Earlier may spend: the reader asked for that day, so it may cost more. */
-const EARLIER_PAGE_BUDGET = 500;
+/** Pages one read may spend per day of its target window. */
+const PAGES_PER_DAY = 40;
+/** The most pages any one read may spend, however many days or retries it covers. */
+const MAX_PAGES = 2000;
+/** Each explicit retry reads twice as far, up to this multiple of the base budget. */
+const MAX_RETRY_FACTOR = 8;
 /** Backoff for a timeline subscription that keeps failing: capped, never abandoned. */
 const SUBSCRIBE_BASE_MS = 10;
 const SUBSCRIBE_MAX_MS = 30_000;
 
 export interface MyMessagesBudgets {
-  background: number;
-  earlier: number;
+  /** Base pages per day of target window. */
+  pagesPerDay: number;
+  /** Hard cap on one read. */
+  maxPages: number;
 }
 
 export interface MyMessagesFeed {
   /** Settles after the first read, whether it succeeded or published an error. */
   ready: Promise<void>;
   stop(): void;
-  /** Reads one more local day, or continues the day an earlier press left unread. */
+  /** Widens the window by one day, or finishes the day an earlier press left unread. */
   loadEarlier(): Promise<void>;
   /** Retries what is not working: a pending Earlier read first, otherwise the window. */
   retry(): void;
@@ -65,13 +71,16 @@ export interface MyMessagesFeed {
 interface WindowRead {
   /** The clock value the read and its rows share. */
   at: number;
+  day: string;
   rows: MyMessageRow[];
   machineToday: number;
   humanToday: number;
   /** The oldest instant seen, any kind of row: coverage is about pages, not about rows. */
   oldestAt: number;
   reachedStart: boolean;
-  /** A message from the person older than the visible window was seen: Earlier has content. */
+  /** The read stopped with older pages still unread. */
+  hasOlder: boolean;
+  /** A message from the person older than the window was read: a press of Earlier has content. */
   sawOlderHuman: boolean;
 }
 
@@ -82,7 +91,7 @@ export interface StartMyMessagesFeedInput {
   now?: () => number;
   /** Injected timers. The panel takes its timers from `my-messages-clock`. */
   timers?: FeedTimers;
-  /** Injected page budgets, so a test does not have to build thousands of pages. */
+  /** Injected page budget, so a test does not have to build thousands of pages. */
   budgets?: Partial<MyMessagesBudgets>;
   /** Injected foreground signal; defaults to the app's own state changes. */
   foreground?: { subscribe(listener: () => void): () => void };
@@ -117,20 +126,22 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
     set: (callback, ms) => scheduleTimer(callback, ms),
     clear: handle => cancelTimer(handle),
   };
-  // Read on every use: a test may hand in a budget it changes between presses.
-  const budgetFor = (kind: keyof MyMessagesBudgets): number =>
-    input.budgets?.[kind] ?? (kind === "background" ? BACKGROUND_PAGE_BUDGET : EARLIER_PAGE_BUDGET);
+  const pagesPerDay = input.budgets?.pagesPerDay ?? PAGES_PER_DAY;
+  const maxPages = input.budgets?.maxPages ?? MAX_PAGES;
   const api = input.client ?? getPaseoClient("");
   const handle = api.agents.ref(input.agentId);
 
   let stopped = false;
-  /** Days the visible window covers, today included. Only moves when that day is covered. */
-  let days = 1;
-  /** The day an Earlier press is still reading, or null. */
-  let pendingDays: number | null = null;
+  /** The first local day the visible window covers, as a calendar date. */
+  let coveredFrom = localDateKey(now());
+  /** A day an Earlier press is trying to reach, as a calendar date, until it is covered. */
+  let pendingDay: string | null = null;
+  /** Doubles on each explicit retry so a retry always reads further than the last attempt. */
+  let retryFactor = 1;
+  let earlierBusy = false;
   let live = false;
-  /** The first subscription needs no catch-up read: the first read is already on its way. */
-  let everConnected = false;
+  /** True once a subscription was lost: the next success must catch up on what it missed. */
+  let wentOffline = false;
   let accepting = false;
   let subscription: Unsubscribe | null = null;
   let firstSubscription: Promise<void> | null = null;
@@ -139,26 +150,33 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
   let midnightTimer: unknown = null;
   let subscribeTimer: unknown = null;
   let subscribeAttempt = 0;
+  /** The single read queue: one running read and at most one waiting target. */
   let running: Promise<void> | null = null;
-  let rerun = false;
-  let earlierRunning = false;
+  let waitingTarget: string | null = null;
   const queuedEvents: { generation: number; message: PaseoAgentTimelineEvent }[] = [];
   /** The last published fields, so a flag change republishes without taking a new clock value. */
   let lastPublished: MyMessagesFields | null = null;
 
+  const windowStartFor = (day: string): number => localDayStartFor(day);
+  const isCovered = (read: WindowRead, day: string): boolean =>
+    read.reachedStart || read.oldestAt < windowStartFor(day);
+
   /**
-   * One read. Only the person's rows inside the visible window are kept; the model's rows and
+   * One read. Only the person's rows inside the target window are kept; the model's rows and
    * older days are dropped as they pass, so an open panel does not grow with the conversation.
    */
-  async function readWindow(at: number, targetDays: number, budgetPages: number): Promise<WindowRead | null> {
-    const todayStart = localDayStartBefore(at, 0);
-    const tomorrowStart = localDayStartBefore(at, -1);
-    const windowStart = localDayStartBefore(at, targetDays - 1);
+  async function readWindow(at: number, targetDay: string, budgetPages: number): Promise<WindowRead | null> {
+    const todayKey = localDateKey(at);
+    const todayStart = windowStartFor(todayKey);
+    const tomorrowStart = windowStartFor(nextLocalDateKey(todayKey));
+    const windowStart = windowStartFor(targetDay);
     const rows: MyMessageRow[] = [];
     let machineToday = 0;
     let humanToday = 0;
     let oldestAt = Number.POSITIVE_INFINITY;
     let reachedStart = false;
+    let hasOlder = false;
+    /** A message from the person older than the window: a press of Earlier has something to show. */
     let sawOlderHuman = false;
 
     let page = await handle.timeline.refetch({ direction: "tail", projection: "projected" });
@@ -189,65 +207,97 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
       }
       // Strictly before the window start: a page that ends exactly at midnight leaves the
       // day's own midnight rows unproven, so it keeps reading.
-      if (oldestAt < windowStart) break;
+      if (oldestAt < windowStart) {
+        // Unread pages may still hold the person's older messages, so Earlier stays offered.
+        hasOlder = page.hasOlder === true;
+        break;
+      }
       if (!page.hasOlder || !page.startCursor) {
         reachedStart = true;
         break;
       }
-      if (pages >= budgetPages) break;
+      if (pages >= budgetPages) {
+        hasOlder = true;
+        break;
+      }
       page = await handle.timeline.refetch({ direction: "before", cursor: page.startCursor, projection: "projected" });
     }
     if (stopped) return null;
     rows.sort((left, right) => right.at - left.at || right.seq - left.seq);
-    return { at, rows, machineToday, humanToday, oldestAt, reachedStart, sawOlderHuman };
+    return { at, day: localDateKey(at), rows, machineToday, humanToday, oldestAt, reachedStart, hasOlder, sawOlderHuman };
   }
 
-  function coveredFor(read: WindowRead, targetDays: number): boolean {
-    return read.reachedStart || read.oldestAt < localDayStartBefore(read.at, targetDays - 1);
-  }
-
-  function publish(read: WindowRead, publishedDays: number, pendingDayAt: number | null, busy: boolean): void {
-    const committedStart = localDayStartBefore(read.at, publishedDays - 1);
-    const rows = pendingDayAt === null ? read.rows : read.rows.filter(row => row.at >= committedStart);
-    const partial = !coveredFor(read, publishedDays);
-    lastPublished = {
-      status: "ready",
-      loadedDays: publishedDays,
-      machineToday: read.machineToday,
-      humanToday: read.humanToday,
-      rows,
-      hasEarlier: partial || pendingDayAt !== null || read.sawOlderHuman,
-      partial,
-      pendingDayAt,
-      earlierBusy: busy,
-      live,
-      error: null,
-    };
-    publishMyMessages(input.agentId, lastPublished);
-  }
-
-  /** Republishing to change a flag replays the last result; it never takes a new clock value. */
   function publishLatest(change: Partial<MyMessagesFields> = {}): void {
     if (!lastPublished || stopped) return;
     // The live flag belongs to the subscription, not to the read that published last.
-    lastPublished = { ...lastPublished, live, ...change };
+    lastPublished = { ...lastPublished, live, earlierBusy, ...change };
     publishMyMessages(input.agentId, lastPublished);
+  }
+
+  /**
+   * Applies a read. A covered read replaces the window; a read that stopped short keeps what
+   * the reader already had and says it is partial, rather than quietly showing fewer rows.
+   */
+  function applyRead(read: WindowRead, targetDay: string): void {
+    if (isCovered(read, targetDay)) {
+      // A window only ever widens: a refresh queued before an Earlier press must not pull it
+      // back to the day it was reading.
+      if (targetDay < coveredFrom) coveredFrom = targetDay;
+      if (pendingDay !== null && pendingDay >= coveredFrom) pendingDay = null;
+      retryFactor = 1;
+      lastPublished = {
+        status: "ready",
+        day: read.day,
+        coveredFrom,
+        machineToday: read.machineToday,
+        humanToday: read.humanToday,
+        rows: read.rows,
+        hasEarlier: read.hasOlder || read.sawOlderHuman,
+        partial: false,
+        pendingDay,
+        earlierBusy,
+        live,
+        stale: false,
+        error: null,
+      };
+    } else {
+      const known = lastPublished ?? myMessagesSnapshot(input.agentId);
+      if (targetDay < coveredFrom) pendingDay = targetDay;
+      // Show what this read found when it found more than is on screen; never quietly show
+      // fewer rows than the last complete read.
+      const keep = known.rows.length > read.rows.length;
+      lastPublished = {
+        status: "ready",
+        day: read.day,
+        coveredFrom,
+        machineToday: keep ? known.machineToday : read.machineToday,
+        humanToday: keep ? known.humanToday : read.humanToday,
+        rows: keep ? known.rows : read.rows,
+        hasEarlier: true,
+        partial: true,
+        pendingDay,
+        earlierBusy,
+        live,
+        // Retained values from an earlier day must not be shown as today's.
+        stale: keep && known.day !== read.day,
+        error: null,
+      };
+    }
+    publishMyMessages(input.agentId, lastPublished);
+    armMidnight(now());
   }
 
   function publishError(error: unknown): void {
     if (stopped) return;
     const known = lastPublished ?? myMessagesSnapshot(input.agentId);
+    const today = localDateKey(now());
     lastPublished = {
+      ...known,
       status: "error",
-      loadedDays: known.loadedDays,
-      machineToday: known.machineToday,
-      humanToday: known.humanToday,
-      rows: known.rows,
-      hasEarlier: known.hasEarlier,
-      partial: known.partial,
-      pendingDayAt: known.pendingDayAt ?? null,
-      earlierBusy: false,
+      earlierBusy,
       live,
+      // Retained counts from an earlier day must not be shown as today's.
+      stale: known.status === "ready" && known.day !== today,
       error: error instanceof Error ? error.message : "Timeline unavailable",
     };
     publishMyMessages(input.agentId, lastPublished);
@@ -260,9 +310,7 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
     for (let attempt = 0; ; attempt += 1) {
       if (stopped) return null;
       try {
-        const result = await read();
-        if (result === null || stopped) return null;
-        return result;
+        return await read();
       } catch (error) {
         warnPanel("could not read the timeline", error);
         const delay = READ_RETRY_DELAYS_MS[attempt];
@@ -275,84 +323,55 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
     }
   };
 
-  /**
-   * True when the local day of `at` is still the current day. A read that lands after
-   * midnight describes yesterday; publishing it would show yesterday's counts under
-   * today's heading, so the caller reads again instead.
-   */
-  const stillCurrentDay = (at: number): boolean =>
-    localDayStartBefore(now(), 0) === localDayStartBefore(at, 0);
+  /** The page budget for a target window: its days, times the current retry factor. */
+  function budgetFor(targetDay: string): number {
+    const today = localDateKey(now());
+    const days = targetDay < today ? localDaySpan(targetDay, today) : 1;
+    return Math.min(maxPages, pagesPerDay * days * retryFactor);
+  }
 
-  /** Reads the visible window again and replaces the snapshot. */
-  const refreshOnce = async (): Promise<void> => {
-    // One clock value for the read and the rows it produces.
+  /** One read of one target window, then the result is applied. */
+  async function runRead(requested: string): Promise<"applied" | "stale" | "failed"> {
+    // Every read covers at least the window already on screen, whatever target was asked for.
+    const targetDay = requested < coveredFrom ? requested : coveredFrom;
     const at = now();
-    const read = await withReadRetry(() => readWindow(at, days, budgetFor("background")));
-    if (!read) return;
-    if (!stillCurrentDay(at)) {
-      rerun = true;
-      return;
-    }
-    publish(read, days, pendingDays, false);
-    armMidnight(now());
-  };
+    const budget = budgetFor(targetDay);
+    const read = await withReadRetry(() => readWindow(at, targetDay, budget));
+    if (stopped) return "failed";
+    if (!read) return "failed";
+    // A read that lands after midnight describes yesterday: throw it away and read again.
+    if (read.day !== localDateKey(now())) return "stale";
+    applyRead(read, targetDay);
+    return "applied";
+  }
 
   /**
-   * One refresh at a time. Overlapping triggers — a new message, a restored subscription,
-   * midnight, the foreground — share the run in progress and ask for one more when it ends.
+   * The one queue. A request that arrives while a read is running waits as a single target:
+   * the widest (earliest) one, so the result the reader asked for is never narrower than a
+   * refresh that raced it.
    */
-  const requestRefresh = (): Promise<void> => {
+  const requestRead = (targetDay: string): Promise<void> => {
     if (stopped) return Promise.resolve();
     if (running) {
-      rerun = true;
+      waitingTarget = waitingTarget === null || targetDay < waitingTarget ? targetDay : waitingTarget;
       return running;
     }
     running = (async () => {
+      let next: string | null = targetDay;
       try {
-        do {
-          rerun = false;
+        while (next !== null && !stopped) {
+          const outcome = await runRead(next);
           if (stopped) return;
-          await refreshOnce();
-        } while (rerun && !stopped);
+          if (outcome === "stale") continue;      // the day turned over mid-read: read again
+          if (outcome === "failed") break;        // the error is already published
+          next = waitingTarget;
+          waitingTarget = null;
+        }
       } finally {
         running = null;
       }
     })();
     return running;
-  };
-
-  /**
-   * Reads one earlier day. The visible window only grows once that day is covered; a read
-   * that stops short leaves the day pending, named in the panel, and Retry continues it.
-   */
-  const runEarlier = async (targetDays: number): Promise<void> => {
-    if (stopped) return;
-    // A second press while the first is still reading is dropped, not queued: the button is
-    // disabled while a read is in flight, and two reads of the same day would race.
-    if (earlierRunning) return;
-    earlierRunning = true;
-    pendingDays = targetDays;
-    publishLatest({ pendingDayAt: localDayStartBefore(now(), targetDays - 1), earlierBusy: true });
-    let finished = false;
-    try {
-      const at = now();
-      const read = await withReadRetry(() => readWindow(at, targetDays, budgetFor("earlier")));
-      if (!read || stopped) return;
-      if (!stillCurrentDay(at)) return;
-      finished = true;
-      if (coveredFor(read, targetDays)) {
-        days = targetDays;
-        pendingDays = null;
-        publish(read, days, null, false);
-      } else {
-        // Keep the visible window where it was and name the day that is still short.
-        publish(read, days, localDayStartBefore(at, targetDays - 1), false);
-      }
-      armMidnight(now());
-    } finally {
-      earlierRunning = false;
-      if (!stopped && !finished) publishLatest({ earlierBusy: false });
-    }
   };
 
   /**
@@ -365,6 +384,7 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
     subscribeAttempt += 1;
     subscribeTimer = timers.set(() => {
       subscribeTimer = null;
+      if (stopped) return;
       connect();
     }, delay);
   };
@@ -375,6 +395,7 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
     warnPanel("live updates are unavailable", error);
     const wasLive = live;
     live = false;
+    wentOffline = true;
     if (wasLive) publishLatest();
     scheduleSubscribe();
   };
@@ -382,11 +403,11 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
   const handleEvent = (event: PaseoAgentTimelineEvent["event"]): void => {
     if (event.type === "timeline") {
       // Only a user-side row can change a count or a row. The model's own words cannot.
-      if (event.item.type === "user_message") void requestRefresh();
+      if (event.item.type === "user_message") void requestRead(pendingDay ?? coveredFrom);
       return;
     }
     if (event.type === "replacement" || event.type === "subscription_restored") {
-      void requestRefresh();
+      void requestRead(pendingDay ?? coveredFrom);
       return;
     }
     if (event.type === "error") markLiveDown(generation, event.error);
@@ -430,15 +451,13 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
     const settled = next.ready.then(() => {
       if (stopped || mine !== generation) return;
       subscribeAttempt = 0;
-      const reconnect = everConnected && !live;
       const wasLive = live;
-      everConnected = true;
       live = true;
       if (!wasLive && lastPublished !== null) publishLatest();
       flushQueued();
-      // A subscription that comes back may have missed events: re-read. The first connection
-      // needs no extra read, because the first read is already on its way.
-      if (reconnect) void requestRefresh();
+      // Coming back from being offline — including a first subscription that failed — means
+      // the timeline may have moved on. The normal first start has one read on its way.
+      if (wentOffline) void requestRead(pendingDay ?? coveredFrom);
     }).catch(error => {
       if (stopped || mine !== generation) return;
       markLiveDown(mine, error);
@@ -454,14 +473,14 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
   function armMidnight(at: number): void {
     if (stopped) return;
     if (midnightTimer !== null) timers.clear(midnightTimer);
-    const nextMidnight = localDayStartBefore(at, -1);
+    const nextMidnight = localDayStartFor(nextLocalDateKey(localDateKey(at)));
     const delay = Math.max(50, nextMidnight - at + 50);
     midnightTimer = timers.set(() => {
       midnightTimer = null;
       if (stopped) return;
       // Re-arm before reading, so a failed read cannot leave the panel without a next wake.
       armMidnight(now());
-      void requestRefresh();
+      void requestRead(pendingDay ?? coveredFrom);
     }, delay);
   }
 
@@ -478,13 +497,16 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
   };
   const foreground = input.foreground ?? defaultForeground;
   const stopForeground = foreground.subscribe(() => {
-    // Returning to the foreground can cross midnight; re-read rather than trust the rows.
-    if (!stopped) void requestRefresh();
+    if (stopped) return;
+    // Returning to the foreground can cross midnight: re-anchor the wake to the current
+    // clock whatever the read does, then read.
+    armMidnight(now());
+    void requestRead(pendingDay ?? coveredFrom);
   });
 
   armMidnight(now());
   connect();
-  const firstRead = requestRefresh();
+  const firstRead = requestRead(coveredFrom);
   const ready = (async () => {
     // The panel may draw as soon as the first read and the first subscription settled, in
     // either order: a dead subscription must not hold the rows back, and a slow read must not
@@ -513,16 +535,28 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
     },
     async loadEarlier(): Promise<void> {
       if (stopped) return;
-      await runEarlier(pendingDays ?? days + 1);
+      // The busy state stays until this press's own read has finished, even if it had to wait
+      // behind another one.
+      if (earlierBusy) return;
+      const target = pendingDay ?? previousLocalDateKey(coveredFrom);
+      earlierBusy = true;
+      publishLatest({ earlierBusy, pendingDay: target });
+      try {
+        await requestRead(target);
+      } finally {
+        earlierBusy = false;
+        if (!stopped) publishLatest({ earlierBusy });
+      }
     },
     retry(): void {
       if (stopped) return;
       if (subscribeTimer !== null) timers.clear(subscribeTimer);
       subscribeTimer = null;
       subscribeAttempt = 0;
+      // A retry must get further than the attempt before it, so its budget doubles.
+      retryFactor = Math.min(MAX_RETRY_FACTOR, retryFactor * 2);
       if (!live) connect();
-      if (pendingDays !== null) void runEarlier(pendingDays);
-      else void requestRefresh();
+      void requestRead(pendingDay ?? coveredFrom);
     },
   };
 }

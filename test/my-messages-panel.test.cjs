@@ -123,6 +123,25 @@ const drawPanel = (h, extra = {}) => {
 
 const snapshot = (h) => h.load("client/my-messages-store.ts");
 
+/** The fields every published snapshot carries; a test overrides what it is about. */
+const fields = (extra = {}) => ({
+  status: "ready",
+  day: "2026-03-15",
+  coveredFrom: "2026-03-15",
+  machineToday: 0,
+  humanToday: 0,
+  rows: [],
+  hasEarlier: false,
+  partial: false,
+  pendingDay: null,
+  earlierBusy: false,
+  live: true,
+  stale: false,
+  error: null,
+  ...extra,
+});
+const row = (text, at, seq = 1) => ({ key: `${at}:${seq}`, at, seq, time: "09:00", text, preview: text, truncated: false, empty: false });
+
 test("the panel shows the counts and the person's messages, and copies one exactly", async t => {
   const { h, agent } = harness(t);
   agent.state.pages = [[
@@ -180,19 +199,12 @@ test("a day an Earlier press left short is named, and Try again continues it", a
   const { h } = harness(t);
   drawPanel(h);
   await settle();
-  snapshot(h).publishMyMessages("a", {
-    status: "ready",
-    loadedDays: 1,
-    machineToday: 0,
+  snapshot(h).publishMyMessages("a", fields({
     humanToday: 1,
-    rows: [{ key: "1:1", at: FROZEN, seq: 1, time: "09:00", text: "hello", preview: "hello", truncated: false, empty: false }],
+    rows: [row("hello", FROZEN)],
     hasEarlier: true,
-    partial: false,
-    pendingDayAt: at(-1, 0),
-    earlierBusy: false,
-    live: true,
-    error: null,
-  });
+    pendingDay: "2026-03-14",
+  }));
   const drawn = drawPanel(h);
   const notice = h.nodes(drawn, node => node.props.testID === "my-messages-partial")[0];
   assert.ok(notice, "the unfinished day is named");
@@ -204,21 +216,29 @@ test("a window that was not read completely says so", async t => {
   const { h } = harness(t);
   drawPanel(h);
   await settle();
-  snapshot(h).publishMyMessages("a", {
-    status: "ready",
-    loadedDays: 1,
-    machineToday: 0,
-    humanToday: 1,
-    rows: [],
-    hasEarlier: true,
-    partial: true,
-    pendingDayAt: null,
-    earlierBusy: false,
-    live: true,
-    error: null,
-  });
+  snapshot(h).publishMyMessages("a", fields({ humanToday: 1, hasEarlier: true, partial: true }));
   const drawn = drawPanel(h);
   assert.equal(h.nodes(drawn, node => node.props.testID === "my-messages-partial").length, 1);
+  assert.equal(h.nodes(drawn, node => node.props.testID === "my-messages-retry").length, 1);
+});
+
+test("counts from an earlier day are not shown as today's", async t => {
+  const { h } = harness(t);
+  drawPanel(h);
+  await settle();
+  snapshot(h).publishMyMessages("a", fields({
+    day: "2026-03-14",
+    machineToday: 4,
+    humanToday: 2,
+    rows: [row("yesterday", at(-1, 9))],
+    status: "error",
+    stale: true,
+    error: "timeline unavailable",
+  }));
+  const drawn = drawPanel(h);
+  const summary = h.nodes(drawn, node => node.props.testID === "my-messages-summary")[0];
+  assert.ok(h.text(summary).includes("earlier day"), h.text(summary));
+  assert.ok(!h.text(summary).includes("From you: 2"), "yesterday's count is not labelled as today's");
   assert.equal(h.nodes(drawn, node => node.props.testID === "my-messages-retry").length, 1);
 });
 
@@ -232,19 +252,7 @@ test("the read-error copy points at the control that retries", async t => {
     const { h } = harness(t, { locale });
     drawPanel(h);
     await settle();
-    snapshot(h).publishMyMessages("a", {
-      status: "error",
-      loadedDays: 1,
-      machineToday: 0,
-      humanToday: 0,
-      rows: [],
-      hasEarlier: false,
-      partial: false,
-      pendingDayAt: null,
-      earlierBusy: false,
-      live: false,
-      error: "timeline unavailable",
-    });
+    snapshot(h).publishMyMessages("a", fields({ status: "error", live: false, error: "timeline unavailable" }));
     const drawn = drawPanel(h);
     const error = h.nodes(drawn, node => node.props.testID === "my-messages-error")[0];
     assert.ok(error, `${locale}: the failure is shown`);
@@ -277,19 +285,12 @@ test("Earlier is disabled while its read is in flight", async t => {
   const { h } = harness(t);
   drawPanel(h);
   await settle();
-  snapshot(h).publishMyMessages("a", {
-    status: "ready",
-    loadedDays: 1,
-    machineToday: 0,
+  snapshot(h).publishMyMessages("a", fields({
     humanToday: 1,
-    rows: [{ key: "1:1", at: FROZEN, seq: 1, time: "09:00", text: "hello", preview: "hello", truncated: false, empty: false }],
+    rows: [row("hello", FROZEN)],
     hasEarlier: true,
-    partial: false,
-    pendingDayAt: null,
     earlierBusy: true,
-    live: true,
-    error: null,
-  });
+  }));
   const drawn = drawPanel(h);
   const earlier = h.nodes(drawn, node => node.props.testID === "my-messages-earlier")[0];
   assert.equal(earlier.props.disabled, true, "a second press cannot start a second read");
@@ -361,6 +362,10 @@ test("an open panel turns over at midnight, on its own timer", async t => {
   assert.equal(runLongest(), true, "a timer waits for the next local midnight");
   await settle(12);
   const after = drawPanel(h);
-  assert.ok(h.text(after).includes("From you: 0"), h.text(after));
-  assert.ok(!h.text(after).includes("before midnight"), "yesterday's rows leave today's list");
+  const text = h.text(after);
+  assert.ok(text.includes("From you: 0"), "the counts restart at today, not yesterday's day: " + text);
+  // The window starts on the day it always started on, which is now yesterday: the rows the
+  // reader was looking at stay, rather than disappearing at midnight.
+  assert.ok(text.includes("before midnight"), "the window is not silently emptied at midnight");
+  assert.equal(snapshot(h).myMessagesSnapshot("a").day, "2026-03-16", "the counts belong to the new day");
 });

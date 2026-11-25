@@ -72,6 +72,7 @@ function createHost(options = {}) {
       if (options.failOpen) throw new Error("Panel unavailable");
       opens.push({ id, ...input });
     },
+    get openAttempts() { return opens.length; },
     composers(selector) {
       if (!("focused" in selector)) return selector.agentId === activeAgent && focusObject ? [focusObject] : [];
       return focusObject ? [focusObject] : [];
@@ -201,6 +202,30 @@ test("a directory that says there is more without a cursor is not a complete one
   assert.equal(host.opens.length, 0);
 });
 
+test("when both placements fail the error reaches the host", async t => {
+  const { registration } = load(t);
+  const host = createHost({ failExplorer: true, failOpen: true });
+  const stop = registration.registerMyMessagesPanel(host.client);
+  t.after(stop);
+  await settle();
+  await assert.rejects(press(host), error => error.message === "Panel unavailable",
+    "the host's action handler turns this into its own toast");
+  assert.equal(host.opens.length, 0);
+});
+
+test("a workspace directory with a broken cursor is reported as partial, not whole", async t => {
+  const { registration } = load(t);
+  const host = createHost({ workspacePages: [[{ id: "w1" }], [{ id: "w2" }]], brokenCursor: true });
+  const warnings = [];
+  const original = console.warn;
+  console.warn = (...args) => { warnings.push(args.map(String).join(" ")); };
+  const stop = registration.registerMyMessagesPanel(host.client);
+  t.after(() => { stop(); console.warn = original; });
+  await settle(12);
+  assert.deepEqual([...host.buttons.keys()], ["w1"], "only the pages that were actually read get buttons");
+  assert.ok(warnings.some(line => line.includes("no cursor")), `said so: ${JSON.stringify(warnings)}`);
+});
+
 test("the header button finds the focused conversation on a later directory page", async t => {
   const { registration } = load(t);
   const host = createHost({
@@ -274,6 +299,7 @@ test("every workspace gets a button, and the rest is read from the first page's 
   assert.deepEqual([...host.buttons.keys()], ["w1", "w2", "w3"]);
   const cursors = host.listCalls.filter(call => call.kind === "workspaces").map(call => call.input?.page?.cursor ?? null);
   assert.deepEqual(cursors, [null, "1", "2"], "the rest is read by cursor, not by starting over");
+  assert.deepEqual(host.opens, []);
 });
 
 test("a one-page workspace directory is read once", async t => {

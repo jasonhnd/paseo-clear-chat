@@ -193,8 +193,17 @@ async function chooseConversation(host: MyMessagesHost, workspaceId: string): Pr
   return { blocked: "pickConversation" };
 }
 
-/** The rest of the workspace directory, continuing from the cursor the first page returned. */
-async function moreWorkspaceIds(host: MyMessagesHost, firstCursor: string): Promise<string[]> {
+/**
+ * The rest of the workspace directory, continuing from the cursor the first page returned.
+ *
+ * Returns what it read plus whether it saw the end. A cursor that goes missing while the host
+ * still says there is more, or the page cap, leaves `complete: false` — the caller registers
+ * the buttons it has and says so in the log rather than pretending the list was whole.
+ */
+async function moreWorkspaceIds(
+  host: MyMessagesHost,
+  firstCursor: string,
+): Promise<{ ids: string[]; complete: boolean }> {
   const ids: string[] = [];
   let cursor: string | undefined = firstCursor;
   for (let page = 0; page < MAX_DIRECTORY_PAGES && cursor; page += 1) {
@@ -204,10 +213,15 @@ async function moreWorkspaceIds(host: MyMessagesHost, firstCursor: string): Prom
       if (typeof entry.id === "string" && entry.id && !ids.includes(entry.id)) ids.push(entry.id);
     }
     const info: PageInfo | undefined = result?.pageInfo;
-    // A directory that says there is more without a cursor is not a complete one: stop.
-    cursor = info?.hasMore && info.nextCursor ? info.nextCursor : undefined;
+    if (!info?.hasMore) return { ids, complete: true };
+    if (!info.nextCursor) {
+      warn("workspace directory has more pages but no cursor; the list may be partial");
+      return { ids, complete: false };
+    }
+    cursor = info.nextCursor;
   }
-  return ids;
+  warn("workspace directory hit the page cap; the list may be partial");
+  return { ids, complete: false };
 }
 
 /**
@@ -255,16 +269,20 @@ export function registerMyMessagesPanel(client: MyMessagesHost): () => void {
    * the host cannot place it there (a compact layout with no explorer pane, for instance).
    */
   const openBeside = (workspaceId: string, agentId: string): void => {
+    let besideFailure: unknown = null;
     try {
       client.openPanel?.(MY_MESSAGES_PANEL_ID, { workspaceId, agentId, location: "explorer" });
       return;
     } catch (error) {
+      besideFailure = error;
       warn("could not open the panel beside the conversation", error);
     }
     try {
       client.openPanel?.(MY_MESSAGES_PANEL_ID, { workspaceId, agentId, location: "workspace" });
     } catch (error) {
       warn("could not open the panel", error);
+      // Nothing opened: the host's action handler turns this into its own toast.
+      throw error ?? besideFailure;
     }
   };
 
@@ -321,10 +339,12 @@ export function registerMyMessagesPanel(client: MyMessagesHost): () => void {
       // buttons from the page after this one, not by starting over.
       const next = first.pageInfo?.hasMore ? first.pageInfo.nextCursor : null;
       if (next) {
-        void moreWorkspaceIds(client, next).then(ids => {
+        void moreWorkspaceIds(client, next).then(rest => {
           if (stopped) return;
-          for (const id of ids) ensureButton(id);
+          for (const id of rest.ids) ensureButton(id);
         }).catch(error => warn("could not read the rest of the workspace directory", error));
+      } else if (first.pageInfo?.hasMore) {
+        warn("workspace directory has more pages but no cursor; the list may be partial");
       }
     }).catch(error => {
       warn("could not list workspaces", error);

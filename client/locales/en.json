@@ -72,6 +72,7 @@
     "pickConversation": "Open a conversation in this workspace first, then press this button.",
     "directory": "The conversation list could not be read. Try again in a moment.",
     "partialDay": "{{date}} has not been read completely yet. Select Try again to continue.",
-    "loadingEarlier": "Reading…"
+    "loadingEarlier": "Reading…",
+    "stale": "These counts are from an earlier day. Select Try again."
   }
 }

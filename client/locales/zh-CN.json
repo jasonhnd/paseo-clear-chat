@@ -72,6 +72,7 @@
     "pickConversation": "先在这个工作区打开一个对话，再点这个按钮。",
     "directory": "读不到对话列表，请稍后再试。",
     "partialDay": "{{date}} 还没读完。点「重试」继续读。",
-    "loadingEarlier": "正在读取…"
+    "loadingEarlier": "正在读取…",
+    "stale": "这些数字是前一天的。点「重试」重新统计。"
   }
 }

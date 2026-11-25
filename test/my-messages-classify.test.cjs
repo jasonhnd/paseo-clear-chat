@@ -93,9 +93,10 @@ test("a mid-turn message is the person's, and its body is the exact substring", 
   assert.equal(classified.text, body, "the body keeps its own spaces and line endings");
   assert.equal(kind.outOfBandBody(text), body);
 
-  // An opener without a closing marker keeps everything after the marker line.
+  // An opener with no closing marker is not a wrapper: the whole text stays the person's.
   const openOnly = `[OUT-OF-BAND USER MESSAGE — inserted]\r\n${body}`;
-  assert.equal(kind.outOfBandBody(openOnly), body);
+  assert.equal(kind.outOfBandBody(openOnly), null);
+  assert.equal(kind.classifyUserMessage(openOnly).text, openOnly);
 
   // A marker quoted inside the body is not the closing marker.
   const quoted = [
@@ -112,6 +113,22 @@ test("a mid-turn message is the person's, and its body is the exact substring", 
   h.dispose();
 });
 
+test("text that mentions the marker is the person's own message", () => {
+  const { h, kind } = load();
+  const sentence = "[OUT-OF-BAND USER MESSAGE is a label I am asking about]";
+  const classified = kind.classifyUserMessage(sentence);
+  assert.equal(classified.kind, "human");
+  assert.equal(classified.text, sentence, "nothing is stripped from a sentence about the marker");
+  assert.equal(kind.isEmptyMessageText(classified.text), false, "and it is not an image-only row");
+  assert.equal(kind.outOfBandBody(sentence), null);
+
+  // An opener line that does not end with `]` is not an opener either.
+  const unfinished = "[OUT-OF-BAND USER MESSAGE about the wrapper\nand a body\n[/OUT-OF-BAND USER MESSAGE]";
+  assert.equal(kind.outOfBandBody(unfinished), null);
+  assert.equal(kind.classifyUserMessage(unfinished).text, unfinished);
+  h.dispose();
+});
+
 test("a closing marker only counts when it stands alone on its own line", () => {
   const { h, kind } = load();
   const OPEN = "[OUT-OF-BAND USER MESSAGE — inserted]";
@@ -121,10 +138,15 @@ test("a closing marker only counts when it stands alone on its own line", () => 
   assert.equal(kind.outOfBandBody(`${OPEN}\nbody\n${CLOSE}`), "body");
   assert.equal(kind.outOfBandBody(`${OPEN}\r\nbody\r\n${CLOSE}\r\n`), "body");
 
-  // Text that merely ends with the marker's characters keeps every word the person wrote.
-  assert.equal(kind.outOfBandBody(`${OPEN}\nPlease print ${CLOSE}`), `Please print ${CLOSE}`);
-  assert.equal(kind.outOfBandBody(`${OPEN}\nline one\nPlease print ${CLOSE}`), `line one\nPlease print ${CLOSE}`);
-  assert.equal(kind.outOfBandBody(`${OPEN}\n${CLOSE} and then some`), `${CLOSE} and then some`);
+  // Without a standalone closer there is no wrapper, so every word the person wrote stays.
+  for (const text of [
+    `${OPEN}\nPlease print ${CLOSE}`,
+    `${OPEN}\nline one\nPlease print ${CLOSE}`,
+    `${OPEN}\n${CLOSE} and then some`,
+  ]) {
+    assert.equal(kind.outOfBandBody(text), null, JSON.stringify(text));
+    assert.equal(kind.classifyUserMessage(text).text, text);
+  }
   h.dispose();
 });
 
@@ -135,6 +157,7 @@ test("a message with only an image is still the person's message", () => {
     assert.equal(classified.kind, "human", JSON.stringify(text));
     assert.equal(kind.isEmptyMessageText(classified.text), true);
   }
+  // A wrapper with an empty body, both markers on their own lines.
   const wrapped = "[OUT-OF-BAND USER MESSAGE — inserted]\n[/OUT-OF-BAND USER MESSAGE]";
   assert.equal(kind.classifyUserMessage(wrapped).kind, "human");
   assert.equal(kind.classifyUserMessage(wrapped).text, "");

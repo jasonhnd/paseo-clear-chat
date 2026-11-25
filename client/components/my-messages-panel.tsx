@@ -82,21 +82,24 @@ export function MyMessagesPanel(props: PluginAgentPanelProps) {
   const bodyText = { color: tokens.foreground, fontFamily: tokens.fontUi, fontSize: tokens.fs(14) };
   const mutedText = { color: tokens.foregroundMuted, fontFamily: tokens.fontUi, fontSize: tokens.fs(12) };
   const retryStyle = { alignSelf: "flex-start" as const, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: tokens.border };
-  const dayLabel = (at: number) => {
-    const date = new Date(at);
-    return `${date.getMonth() + 1}/${date.getDate()}`;
+  // A pending day is a calendar date (`YYYY-MM-DD`), so the label never drifts across midnight.
+  const dayLabel = (key: string) => {
+    const [, month, day] = key.split("-");
+    return `${Number(month)}/${Number(day)}`;
   };
-  const needsRetry = state.status === "error" || state.pendingDayAt !== null || state.partial
+  const needsRetry = state.status === "error" || state.pendingDay !== null || state.partial
     || (state.status === "ready" && !state.live);
 
   const header = (
     <>
       <Text testID="my-messages-summary" style={{ ...mutedText, fontSize: tokens.fs(13) }} accessibilityRole="header">
-        {t("myMessages.summary", { machine: state.machineToday, human: state.humanToday })}
+        {state.stale
+          ? t("myMessages.stale")
+          : t("myMessages.summary", { machine: state.machineToday, human: state.humanToday })}
       </Text>
-      {state.pendingDayAt !== null ? (
+      {state.pendingDay !== null ? (
         <Text testID="my-messages-partial" style={{ ...mutedText, color: tokens.warning }}>
-          {t("myMessages.partialDay", { date: dayLabel(state.pendingDayAt) })}
+          {t("myMessages.partialDay", { date: dayLabel(state.pendingDay) })}
         </Text>
       ) : state.partial ? (
         <Text testID="my-messages-partial" style={{ ...mutedText, color: tokens.warning }}>{t("myMessages.partial")}</Text>
@@ -152,7 +155,7 @@ export function MyMessagesPanel(props: PluginAgentPanelProps) {
       keyExtractor={row => row.key}
       ListHeaderComponent={header}
       ListFooterComponent={footer}
-      extraData={`${state.earlierBusy}:${state.pendingDayAt}:${state.partial}:${state.live}:${state.status}`}
+      extraData={`${state.earlierBusy}:${state.pendingDay}:${state.partial}:${state.live}:${state.stale}:${state.status}`}
       renderItem={({ item: row }: { item: MyMessageRow }) => (
         <Pressable
           testID="my-message-row"

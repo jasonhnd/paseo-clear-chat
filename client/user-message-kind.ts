@@ -41,30 +41,32 @@ export interface ClassifiedMessage {
 }
 
 /**
- * The body inside an out-of-band wrapper, or null when the text is not one.
+ * The body inside an out-of-band wrapper, or null when the text is not a complete wrapper.
  *
- * The wrapper is a marker line, the message, and a closing marker line. Both marker lines
- * go; the body between them is returned exactly as it stands, line endings included, so a
- * copy reproduces what the person wrote. Only the line break that separates the body from
- * the closing marker is dropped, because it belongs to the wrapper's layout.
+ * A wrapper is an opening marker line, a body, and a closing marker line, and it only counts
+ * when both markers are real lines: the first line starts with the opening marker and ends
+ * with `]`, and the closing marker stands alone on its own line at the end. Anything else —
+ * a sentence that mentions the marker, an opener with no closer — is not a wrapper, and the
+ * whole text stays the person's own words, to read and to copy.
  *
- * A closing marker is only a marker when it stands alone on the last line. Text that merely
- * ends with the marker's characters — `Please print [/OUT-OF-BAND USER MESSAGE]` — keeps the
- * whole body: a person may write the marker, and cutting there would delete their words.
+ * The body between the markers is returned exactly as it stands, line endings included.
+ * Only the line break that separates the body from the closing marker is dropped, because it
+ * belongs to the wrapper's layout.
  */
 export function outOfBandBody(text: string): string | null {
   const leading = text.length - text.trimStart().length;
   if (!text.startsWith(OUT_OF_BAND_OPEN, leading)) return null;
   const openEnd = text.indexOf("\n", leading);
-  // A wrapper is always a marker line plus a body: without a line break there is no body.
-  if (openEnd < 0) return "";
+  // A marker line ends at a line break, and a marker does not end mid-sentence.
+  if (openEnd < 0) return null;
+  if (!text.slice(leading, openEnd).trimEnd().endsWith("]")) return null;
   const bodyStart = openEnd + 1;
   const trimmedEnd = text.replace(/\s+$/, "");
   const closeAt = trimmedEnd.lastIndexOf(OUT_OF_BAND_CLOSE);
   const standalone = closeAt >= bodyStart
     && trimmedEnd.slice(closeAt) === OUT_OF_BAND_CLOSE
     && (closeAt === bodyStart || trimmedEnd[closeAt - 1] === "\n");
-  if (!standalone) return text.slice(bodyStart);
+  if (!standalone) return null;
   let bodyEnd = closeAt;
   if (bodyEnd > bodyStart && text[bodyEnd - 1] === "\n") bodyEnd -= 1;
   if (bodyEnd > bodyStart && text[bodyEnd - 1] === "\r") bodyEnd -= 1;
