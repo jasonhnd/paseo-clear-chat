@@ -45,7 +45,7 @@ export interface ClassifiedMessage {
  *
  * A wrapper is an opening marker line, a body, and a closing marker line, and it only counts
  * when both markers are real lines: the first line starts with the opening marker and ends
- * with `]`, and the closing marker stands alone on its own line at the end. Anything else —
+ * with `]`, and the closing marker stands alone on its own line. Anything else —
  * a sentence that mentions the marker, an opener with no closer — is not a wrapper, and the
  * whole text stays the person's own words, to read and to copy.
  *
@@ -54,23 +54,20 @@ export interface ClassifiedMessage {
  * belongs to the wrapper's layout.
  */
 export function outOfBandBody(text: string): string | null {
-  const leading = text.length - text.trimStart().length;
-  if (!text.startsWith(OUT_OF_BAND_OPEN, leading)) return null;
-  const openEnd = text.indexOf("\n", leading);
-  // A marker line ends at a line break, and a marker does not end mid-sentence.
-  if (openEnd < 0) return null;
-  if (!text.slice(leading, openEnd).trimEnd().endsWith("]")) return null;
+  if (!text.startsWith(OUT_OF_BAND_OPEN)) return null;
+  const openEnd = text.indexOf("\n");
+  if (openEnd < 0 || !text.slice(0, openEnd).replace(/\r$/, "").endsWith("]")) return null;
   const bodyStart = openEnd + 1;
-  const trimmedEnd = text.replace(/\s+$/, "");
-  const closeAt = trimmedEnd.lastIndexOf(OUT_OF_BAND_CLOSE);
-  const standalone = closeAt >= bodyStart
-    && trimmedEnd.slice(closeAt) === OUT_OF_BAND_CLOSE
-    && (closeAt === bodyStart || trimmedEnd[closeAt - 1] === "\n");
-  if (!standalone) return null;
-  let bodyEnd = closeAt;
-  if (bodyEnd > bodyStart && text[bodyEnd - 1] === "\n") bodyEnd -= 1;
-  if (bodyEnd > bodyStart && text[bodyEnd - 1] === "\r") bodyEnd -= 1;
-  return text.slice(bodyStart, bodyEnd);
+  // Use the last standalone marker so quoted markers inside the body are preserved.
+  for (let closeAt = text.lastIndexOf(OUT_OF_BAND_CLOSE); closeAt >= bodyStart;
+    closeAt = text.lastIndexOf(OUT_OF_BAND_CLOSE, closeAt - 1)) {
+    const end = closeAt + OUT_OF_BAND_CLOSE.length;
+    if (text[closeAt - 1] !== "\n") continue;
+    if (end !== text.length && text[end] !== "\n" && !text.startsWith("\r\n", end)) continue;
+    const bodyEnd = closeAt === bodyStart ? bodyStart : closeAt - (text[closeAt - 2] === "\r" ? 2 : 1);
+    return text.slice(bodyStart, bodyEnd);
+  }
+  return null;
 }
 
 /** True when there is nothing a person could read in a message (spaces and blank lines only). */

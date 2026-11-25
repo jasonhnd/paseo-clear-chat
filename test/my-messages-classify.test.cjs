@@ -143,6 +143,8 @@ test("a closing marker only counts when it stands alone on its own line", () => 
     `${OPEN}\nPlease print ${CLOSE}`,
     `${OPEN}\nline one\nPlease print ${CLOSE}`,
     `${OPEN}\n${CLOSE} and then some`,
+    `${OPEN}\nbody\n ${CLOSE}`,
+    `${OPEN}\nbody\n${CLOSE} `,
   ]) {
     assert.equal(kind.outOfBandBody(text), null, JSON.stringify(text));
     assert.equal(kind.classifyUserMessage(text).text, text);
@@ -178,9 +180,7 @@ test("the local day starts at midnight on this device, not at a UTC hour", () =>
   const midnight = new Date(2026, 2, 15, 0, 0, 0, 0).getTime();
   assert.equal(day.startOfLocalDay(new Date(2026, 2, 15, 0, 0, 0, 1).getTime()), midnight);
   assert.equal(day.startOfLocalDay(new Date(2026, 2, 15, 23, 59, 59, 999).getTime()), midnight);
-  assert.equal(day.localDayStartBefore(midnight + 5, 0), midnight);
-  assert.equal(day.localDayStartBefore(midnight + 5, 1), new Date(2026, 2, 14, 0, 0, 0, 0).getTime());
-  assert.equal(day.localDayStartBefore(midnight + 5, -1), new Date(2026, 2, 16, 0, 0, 0, 0).getTime());
+  assert.equal(day.startOfNextLocalDay(midnight + 5), new Date(2026, 2, 16, 0, 0, 0, 0).getTime());
   h.dispose();
 });
 
@@ -190,4 +190,20 @@ test("a clock reads back as HH:MM on this device", () => {
   assert.equal(day.formatClock(new Date(2026, 2, 15, 23, 59).getTime()), "23:59");
   assert.equal(day.formatClock(new Date(2026, 2, 15, 0, 0).getTime()), "00:00");
   h.dispose();
+});
+
+test("a wrapper must start on the original first line", () => {
+  const { h, kind } = load();
+  try {
+    const wrapped = "[OUT-OF-BAND USER MESSAGE]\nexample\n[/OUT-OF-BAND USER MESSAGE]";
+    for (const prefix of ["\n", "\r\n", " "]) {
+      const text = prefix + wrapped;
+      assert.deepEqual(kind.classifyUserMessage(text), { kind: "human", text },
+        "a marker after a blank or indented first line is literal text");
+    }
+    const paddedOpener = "[OUT-OF-BAND USER MESSAGE] \nexample\n[/OUT-OF-BAND USER MESSAGE]";
+    assert.deepEqual(kind.classifyUserMessage(paddedOpener), { kind: "human", text: paddedOpener });
+  } finally {
+    h.dispose();
+  }
 });

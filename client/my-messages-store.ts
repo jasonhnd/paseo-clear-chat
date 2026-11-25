@@ -6,8 +6,8 @@
  * snapshot after every commit and compares by identity, so a fresh object per read would
  * re-render forever (React error #185).
  *
- * The snapshot holds only what the panel draws — the rows of the visible window and the two
- * counts. Timeline pages are not kept: every refresh reads them again.
+ * The snapshot holds the day's rows and counts. Timeline pages are not kept: every refresh
+ * reads them again.
  */
 
 export interface MyMessageRow {
@@ -16,8 +16,6 @@ export interface MyMessageRow {
   at: number;
   /** The timeline sequence of the row, so equal timestamps still order newest first. */
   seq: number;
-  /** The row's local day (`YYYY-MM-DD`); rows outside today are shown with their date. */
-  day: string;
   /** `HH:MM` on this device's clock. */
   time: string;
   /** The message the way it was sent: this is what a row copies. */
@@ -34,23 +32,15 @@ export interface MyMessagesSnapshot {
   status: "loading" | "ready" | "error";
   /** The local day (`YYYY-MM-DD`) the two counts belong to. */
   day: string;
-  /** The first local day the visible window covers, as `YYYY-MM-DD`. */
-  coveredFrom: string;
   machineToday: number;
   humanToday: number;
-  /** The visible window's messages from the person, newest first. */
+  /** The recorded day's messages from the person, newest first. */
   rows: readonly MyMessageRow[];
-  /** Whether one more day of history can be read. */
-  hasEarlier: boolean;
-  /** True when the visible window itself was not fully read: the counts are a lower bound. */
+  /** True when the recorded day was not fully read: the counts are a lower bound. */
   partial: boolean;
-  /** The day an Earlier press is reading, as `YYYY-MM-DD`, while that day is not covered. */
-  pendingDay: string | null;
-  /** True while an Earlier read is in flight, so the button cannot queue a second one. */
-  earlierBusy: boolean;
   /** False while the timeline subscription is down: rows would then stop updating. */
   live: boolean;
-  /** True when what is drawn belongs to an earlier day than the one the reader is in. */
+  /** True when the feed last observed a clock day different from the recorded day. */
   stale: boolean;
   error: string | null;
 }
@@ -65,14 +55,10 @@ function emptySnapshot(agentId: string): MyMessagesSnapshot {
     agentId,
     status: "loading",
     day: "",
-    coveredFrom: "",
     machineToday: 0,
     humanToday: 0,
     rows: [],
-    hasEarlier: false,
     partial: false,
-    pendingDay: null,
-    earlierBusy: false,
     live: false,
     stale: false,
     error: null,
@@ -94,11 +80,12 @@ export function myMessagesSnapshot(agentId: string): MyMessagesSnapshot {
 }
 
 function sameRows(left: readonly MyMessageRow[], right: readonly MyMessageRow[]): boolean {
+  if (left === right) return true;
   if (left.length !== right.length) return false;
   for (let i = 0; i < left.length; i += 1) {
     const a = left[i]!;
     const b = right[i]!;
-    if (a.key !== b.key || a.at !== b.at || a.seq !== b.seq || a.day !== b.day || a.text !== b.text || a.time !== b.time) return false;
+    if (a.key !== b.key || a.at !== b.at || a.seq !== b.seq || a.text !== b.text || a.time !== b.time) return false;
   }
   return true;
 }
@@ -106,13 +93,9 @@ function sameRows(left: readonly MyMessageRow[], right: readonly MyMessageRow[])
 function same(current: MyMessagesSnapshot, next: MyMessagesFields): boolean {
   return current.status === next.status
     && current.day === next.day
-    && current.coveredFrom === next.coveredFrom
     && current.machineToday === next.machineToday
     && current.humanToday === next.humanToday
-    && current.hasEarlier === next.hasEarlier
     && current.partial === next.partial
-    && current.pendingDay === next.pendingDay
-    && current.earlierBusy === next.earlierBusy
     && current.live === next.live
     && current.stale === next.stale
     && current.error === next.error

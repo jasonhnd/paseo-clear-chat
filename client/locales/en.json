@@ -59,7 +59,6 @@
     "title": "What I said",
     "summary": "Machine messages today: {{machine}} · From you: {{human}}",
     "empty": "Nothing from you today yet",
-    "earlier": "Earlier",
     "loading": "Reading this conversation…",
     "error": "Could not read this conversation. Select Try again.",
     "copied": "Copied",
@@ -71,8 +70,6 @@
     "retry": "Try again",
     "pickConversation": "Open a conversation in this workspace first, then press this button.",
     "directory": "The conversation list could not be read. Try again in a moment.",
-    "partialDay": "{{date}} has not been read completely yet. Select Try again to continue.",
-    "loadingEarlier": "Reading…",
     "stale": "These counts are from an earlier day. Select Try again."
   }
 }

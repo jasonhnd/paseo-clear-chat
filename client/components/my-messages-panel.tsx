@@ -4,13 +4,14 @@ import { usePaseo, useTranslation } from "@getpaseo/plugin/client";
 import type { PluginAgentPanelProps } from "@getpaseo/plugin/client";
 import { copyText, useToast } from "@getpaseo/plugin/client/ui";
 import { acquireMyMessagesFeed, useMyMessages } from "../my-messages-feed";
+import { localDateKey } from "../local-day";
+import { nowMs } from "../my-messages-clock";
 import type { MyMessageRow } from "../my-messages-store";
 import { messages } from "../messages";
 import { useEnhancerPreferences } from "../preferences";
 import { buildThemeTokens } from "./theme-tokens";
 
 interface MyMessagesFeedHandle {
-  loadEarlier(): Promise<void>;
   retry(): void;
   stop(): void;
 }
@@ -24,13 +25,12 @@ interface MyMessagesFeedHandle {
  * message and says so.
  *
  * What the panel says when something is missing:
- * - a day an Earlier press could not read is named, and Try again finishes that day;
- * - a window that could not be read at all says so and offers the same Try again;
+ * - a day that was only partly read says so, and Try again reads further;
+ * - counts that belong to an earlier day are marked stale and offer the same Try again;
+ * - a day that could not be read at all says so and offers the same Try again;
  * - a timeline subscription that stopped delivering says the list may be out of date.
  *
- * No jump to the original message: the plugin API has no scroll-to-message surface, and a
- * panel that reached into the host's own list would break on the next host release. The row
- * press is the one place a future jump would be added.
+ * A row press copies the original message without navigating away.
  */
 export function MyMessagesPanel(props: PluginAgentPanelProps) {
   const { t } = useTranslation(messages);
@@ -63,10 +63,6 @@ export function MyMessagesPanel(props: PluginAgentPanelProps) {
     };
   }, [agentId]);
 
-  /**
-   * The whole row press: copy the message and confirm it. Everything a future jump to the
-   * original message would need belongs here and nowhere else.
-   */
   const openMessage = React.useCallback((row: MyMessageRow) => {
     if (row.empty) {
       toastRef.current.show(t("myMessages.noText"), { variant: "info" });
@@ -82,26 +78,21 @@ export function MyMessagesPanel(props: PluginAgentPanelProps) {
   const bodyText = { color: tokens.foreground, fontFamily: tokens.fontUi, fontSize: tokens.fs(14) };
   const mutedText = { color: tokens.foregroundMuted, fontFamily: tokens.fontUi, fontSize: tokens.fs(12) };
   const retryStyle = { alignSelf: "flex-start" as const, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: tokens.border };
-  // A pending day is a calendar date (`YYYY-MM-DD`), so the label never drifts across midnight.
-  const dayLabel = (key: string) => {
-    const [, month, day] = key.split("-");
-    return `${Number(month)}/${Number(day)}`;
-  };
-  const needsRetry = state.status === "error" || state.pendingDay !== null || state.partial
+  // Compare with the current clock even if the rollover read has not finished yet.
+  const stale = state.day !== "" && state.day !== localDateKey(nowMs());
+  const needsRetry = stale || state.status === "error" || state.partial
     || (state.status === "ready" && !state.live);
 
   const header = (
     <>
-      <Text testID="my-messages-summary" style={{ ...mutedText, fontSize: tokens.fs(13) }} accessibilityRole="header">
-        {state.stale
-          ? t("myMessages.stale")
-          : t("myMessages.summary", { machine: state.machineToday, human: state.humanToday })}
-      </Text>
-      {state.pendingDay !== null ? (
-        <Text testID="my-messages-partial" style={{ ...mutedText, color: tokens.warning }}>
-          {t("myMessages.partialDay", { date: dayLabel(state.pendingDay) })}
+      {state.day !== "" ? (
+        <Text testID="my-messages-summary" style={{ ...mutedText, fontSize: tokens.fs(13) }} accessibilityRole="header">
+          {stale
+            ? t("myMessages.stale")
+            : t("myMessages.summary", { machine: state.machineToday, human: state.humanToday })}
         </Text>
-      ) : state.partial ? (
+      ) : null}
+      {!stale && state.partial ? (
         <Text testID="my-messages-partial" style={{ ...mutedText, color: tokens.warning }}>{t("myMessages.partial")}</Text>
       ) : null}
       {state.status === "error" ? (
@@ -127,35 +118,20 @@ export function MyMessagesPanel(props: PluginAgentPanelProps) {
       {state.status === "loading" && state.rows.length === 0 ? (
         <Text testID="my-messages-loading" style={mutedText}>{t("myMessages.loading")}</Text>
       ) : null}
-      {state.status === "ready" && state.rows.length === 0 ? (
+      {!stale && state.status === "ready" && state.rows.length === 0 ? (
         <Text testID="my-messages-empty" style={mutedText}>{t("myMessages.empty")}</Text>
       ) : null}
     </>
   );
-
-  const footer = state.hasEarlier ? (
-    <Pressable
-      testID="my-messages-earlier"
-      accessibilityRole="button"
-      accessibilityState={{ disabled: state.earlierBusy }}
-      disabled={state.earlierBusy}
-      onPress={() => { void feed.current?.loadEarlier(); }}
-      style={{ paddingVertical: 8, alignItems: "center", borderRadius: 8, borderWidth: 1, borderColor: tokens.borderSubtle, opacity: state.earlierBusy ? 0.5 : 1 }}
-    >
-      <Text style={mutedText}>{state.earlierBusy ? t("myMessages.loadingEarlier") : t("myMessages.earlier")}</Text>
-    </Pressable>
-  ) : null;
 
   return (
     <FlatList
       testID="my-messages-panel"
       style={{ flex: 1, backgroundColor: tokens.surface0 }}
       contentContainerStyle={{ paddingHorizontal: compact ? 12 : 16, paddingVertical: compact ? 10 : 16, gap: 8 }}
-      data={state.rows}
+      data={stale ? [] : state.rows}
       keyExtractor={row => row.key}
       ListHeaderComponent={header}
-      ListFooterComponent={footer}
-      extraData={`${state.earlierBusy}:${state.pendingDay}:${state.partial}:${state.live}:${state.stale}:${state.status}`}
       renderItem={({ item: row }: { item: MyMessageRow }) => (
         <Pressable
           testID="my-message-row"
@@ -165,7 +141,7 @@ export function MyMessagesPanel(props: PluginAgentPanelProps) {
           style={{ paddingVertical: 6, paddingHorizontal: compact ? 8 : 10, borderRadius: 8, backgroundColor: tokens.surface1, gap: 2 }}
         >
           <Text style={{ ...mutedText, fontSize: tokens.fs(11) }}>
-            {row.day === state.day ? row.time : `${dayLabel(row.day)} ${row.time}`}
+            {row.time}
           </Text>
           <Text style={bodyText} numberOfLines={3}>
             {row.empty ? t("myMessages.imageOnly") : row.preview}

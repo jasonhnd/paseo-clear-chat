@@ -127,21 +127,17 @@ const snapshot = (h) => h.load("client/my-messages-store.ts");
 const fields = (extra = {}) => ({
   status: "ready",
   day: "2026-03-15",
-  coveredFrom: "2026-03-15",
   machineToday: 0,
   humanToday: 0,
   rows: [],
-  hasEarlier: false,
   partial: false,
-  pendingDay: null,
-  earlierBusy: false,
   live: true,
   stale: false,
   error: null,
   ...extra,
 });
 const row = (text, at, seq = 1) => ({
-  key: `${at}:${seq}`, at, seq, day: "2026-03-15", time: "09:00", text, preview: text, truncated: false, empty: false,
+  key: `${at}:${seq}`, at, seq, time: "09:00", text, preview: text, truncated: false, empty: false,
 });
 
 test("the panel shows the counts and the person's messages, and copies one exactly", async t => {
@@ -197,28 +193,11 @@ test("the list is virtualized, and still scrolls on a compact layout", async t =
   assert.ok(h.text(drawn).includes("today"));
 });
 
-test("a day an Earlier press left short is named, and Try again continues it", async t => {
+test("a day that was not read completely says so", async t => {
   const { h } = harness(t);
   drawPanel(h);
   await settle();
-  snapshot(h).publishMyMessages("a", fields({
-    humanToday: 1,
-    rows: [row("hello", FROZEN)],
-    hasEarlier: true,
-    pendingDay: "2026-03-14",
-  }));
-  const drawn = drawPanel(h);
-  const notice = h.nodes(drawn, node => node.props.testID === "my-messages-partial")[0];
-  assert.ok(notice, "the unfinished day is named");
-  assert.ok(h.text(notice).includes("3/14"), h.text(notice));
-  assert.equal(h.nodes(drawn, node => node.props.testID === "my-messages-retry").length, 1);
-});
-
-test("a window that was not read completely says so", async t => {
-  const { h } = harness(t);
-  drawPanel(h);
-  await settle();
-  snapshot(h).publishMyMessages("a", fields({ humanToday: 1, hasEarlier: true, partial: true }));
+  snapshot(h).publishMyMessages("a", fields({ humanToday: 1, partial: true }));
   const drawn = drawPanel(h);
   assert.equal(h.nodes(drawn, node => node.props.testID === "my-messages-partial").length, 1);
   assert.equal(h.nodes(drawn, node => node.props.testID === "my-messages-retry").length, 1);
@@ -234,7 +213,7 @@ test("counts from an earlier day are not shown as today's", async t => {
     humanToday: 2,
     rows: [row("yesterday", at(-1, 9))],
     status: "error",
-    stale: true,
+    stale: false,
     error: "timeline unavailable",
   }));
   const drawn = drawPanel(h);
@@ -242,6 +221,7 @@ test("counts from an earlier day are not shown as today's", async t => {
   assert.ok(h.text(summary).includes("earlier day"), h.text(summary));
   assert.ok(!h.text(summary).includes("From you: 2"), "yesterday's count is not labelled as today's");
   assert.equal(h.nodes(drawn, node => node.props.testID === "my-messages-retry").length, 1);
+  assert.equal(h.nodes(drawn, node => node.props.testID === "my-message-row").length, 0, "yesterday's rows are hidden");
 });
 
 test("the read-error copy points at the control that retries", async t => {
@@ -281,23 +261,6 @@ test("the panel offers a retry while live delivery is down, and the retry asks t
   retry.props.onPress();
   await settle();
   assert.ok(agent.state.subscribeCount > attempts, "the retry asks the host for a subscription again");
-});
-
-test("Earlier is disabled while its read is in flight", async t => {
-  const { h } = harness(t);
-  drawPanel(h);
-  await settle();
-  snapshot(h).publishMyMessages("a", fields({
-    humanToday: 1,
-    rows: [row("hello", FROZEN)],
-    hasEarlier: true,
-    earlierBusy: true,
-  }));
-  const drawn = drawPanel(h);
-  const earlier = h.nodes(drawn, node => node.props.testID === "my-messages-earlier")[0];
-  assert.equal(earlier.props.disabled, true, "a second press cannot start a second read");
-  assert.equal(earlier.props.accessibilityState.disabled, true);
-  assert.ok(h.text(earlier).includes("Reading…"));
 });
 
 test("a copy the host refuses is reported instead of looking copied", async t => {
@@ -366,25 +329,6 @@ test("an open panel turns over at midnight, on its own timer", async t => {
   const after = drawPanel(h);
   const text = h.text(after);
   assert.ok(text.includes("From you: 0"), "the counts restart at today, not yesterday's day: " + text);
-  assert.ok(!text.includes("before midnight"), "with no day added, the window is the new day alone");
+  assert.ok(!text.includes("before midnight"), "only the new day is shown");
   assert.equal(snapshot(h).myMessagesSnapshot("a").day, "2026-03-16", "the counts belong to the new day");
-  assert.equal(snapshot(h).myMessagesSnapshot("a").coveredFrom, "2026-03-16");
-});
-
-test("a row from an earlier day carries its date", async t => {
-  const { h } = harness(t);
-  drawPanel(h);
-  await settle();
-  snapshot(h).publishMyMessages("a", fields({
-    humanToday: 1,
-    rows: [
-      row("today", FROZEN),
-      { ...row("yesterday", at(-1, 9)), day: "2026-03-14" },
-    ],
-    hasEarlier: true,
-  }));
-  const drawn = drawPanel(h);
-  const rows = h.nodes(drawn, node => node.props.testID === "my-message-row").map(node => h.text(node));
-  assert.ok(rows.some(text => text.includes("09:00") && !text.includes("3/14")), JSON.stringify(rows));
-  assert.ok(rows.some(text => text.includes("3/14 09:00")), `an older row is dated: ${JSON.stringify(rows)}`);
 });

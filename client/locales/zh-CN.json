@@ -59,7 +59,6 @@
     "title": "我说的话",
     "summary": "今天机器消息 {{machine}} 条 · 我说的话 {{human}} 条",
     "empty": "今天还没有你说的话",
-    "earlier": "更早",
     "loading": "正在读取这个对话…",
     "error": "读不到这个对话。点「重试」再试一次。",
     "copied": "已复制",
@@ -71,8 +70,6 @@
     "retry": "重试",
     "pickConversation": "先在这个工作区打开一个对话，再点这个按钮。",
     "directory": "读不到对话列表，请稍后再试。",
-    "partialDay": "{{date}} 还没读完。点「重试」继续读。",
-    "loadingEarlier": "正在读取…",
     "stale": "这些数字是前一天的。点「重试」重新统计。"
   }
 }
