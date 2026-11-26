@@ -718,6 +718,29 @@ test("a same-day partial read replaces an overlapping key without duplicating it
   assert.equal(new Set(snapshot.rows.map(row => row.key)).size, snapshot.rows.length);
 });
 
+test("a same-day partial read drops a removed row at the coverage boundary", async t => {
+  const { feed, store, client, agent } = fixture(t);
+  const tie = DAY(0, 10);
+  const a = entry("user_message", "a", tie, 1);
+  const b = entry("user_message", "b", tie, 2);
+  const c = entry("user_message", "c", DAY(0, 11), 4);
+  agent.state.pages = [[c, b, a]];
+  const started = start(feed, client, { budgets: { basePages: 2 } });
+  t.after(() => started.stop());
+  await started.ready;
+  assert.deepEqual(texts(store.myMessagesSnapshot("a")), ["c", "b", "a"]);
+
+  // The second page reaches b's position without returning a human message there.
+  // a has the same timestamp, but its lower sequence puts it outside the read.
+  agent.state.pages = [[c], [entry("assistant_message", "output", tie, 2)], [a]];
+  agent.emit({ type: "replacement", epoch: "e2" });
+  await settle();
+  const snapshot = store.myMessagesSnapshot("a");
+  assert.equal(snapshot.partial, true);
+  assert.deepEqual(texts(snapshot), ["c", "a"], "the read removes b but has not reached a");
+  assert.equal(snapshot.humanToday, 2);
+});
+
 test("Retry doubles the tail budget only up to its cap", async t => {
   const { feed, store, client, agent } = fixture(t);
   agent.state.pages = Array.from({ length: 4 }, (_, i) => [
@@ -795,8 +818,9 @@ test("seeded interleavings coalesce and discard against the history and clock or
       const includeMidnightTrigger = seed % 2 === 0;
       const pageSize = 4;
       let clock = DAY(0, 23, 59, 59);
-      const history = [];
-      const add = (at, kind, text) => history.push({ at, kind, text, seq: history.length + 1 });
+      let history = [];
+      let seq = 0;
+      const add = (at, kind, text) => history.push({ at, kind, text, seq: ++seq });
       const lastFirst = (a, b) => b.at - a.at || b.seq - a.seq;
       function setPages() {
         const entries = history.slice().sort(lastFirst).map(row => entry(
@@ -815,7 +839,10 @@ test("seeded interleavings coalesce and discard against the history and clock or
         const today = window.filter(row => localKey(row.at) === day);
         const readRows = today.filter(row => row.kind === "human");
         // The earlier oracle result supplies the expected screen, not the feed snapshot.
-        const retained = partial && screen?.day === day ? screen.rows : [];
+        const oldest = window.at(-1);
+        const retained = partial && screen?.day === day
+          ? screen.rows.filter(row => !oldest || lastFirst(row, oldest) > 0)
+          : [];
         const byKey = new Map([...retained, ...readRows].map(row => [`${row.at}:${row.seq}`, row]));
         const rows = [...byKey.values()].sort(lastFirst);
         const actual = store.myMessagesSnapshot("a");
@@ -830,9 +857,10 @@ test("seeded interleavings coalesce and discard against the history and clock or
         return { day, rows, partial };
       }
 
+      const rewound = "message removed during the held read";
       add(DAY(-1, 23), "human", "previous day");
       add(DAY(0, 8), "human", "first");
-      add(DAY(0, 9), "human", "second");
+      add(DAY(0, 15), "human", rewound);
       add(DAY(0, 11), "machine", "[IMPORTANT initial notice]");
       setPages();
       const started = feed.acquireMyMessagesFeed({
@@ -857,6 +885,7 @@ test("seeded interleavings coalesce and discard against the history and clock or
       }
 
       const sameDay = await holdForegroundTail();
+      history = history.filter(row => row.text !== rewound);
       const tie = DAY(0, 13, 0, 0, Math.floor(random() * 1000));
       add(tie, "human", "one event");
       add(tie, "human", "another event in the same millisecond");
@@ -865,14 +894,17 @@ test("seeded interleavings coalesce and discard against the history and clock or
       setPages();
 
       const steps = [
-        () => agent.emit({ type: "timeline", item: { type: "user_message", text: "one event" } }),
+        () => {
+          agent.emit({ type: "replacement", epoch: "e2" });
+          agent.emit({ type: "timeline", item: { type: "user_message", text: "one event" } });
+        },
         () => foreground.emit(),
         async () => {
           const wakes = timers.pending();
           assert.equal(wakes.length, 1, "only a midnight wake is armed before the error");
           assert.equal(store.myMessagesSnapshot("a").live, true);
           agent.emit({ type: "error", error: "disconnected" });
-          assert.equal(store.myMessagesSnapshot("a").live, false, "the subscription error took the feed offline");
+          assert.equal(store.myMessagesSnapshot("a").offline, true, "the subscription error took the feed offline");
           assert.equal(timers.pending().length, 2, "the error armed a replacement timer");
           if (retryOffline) {
             agent.state.holdReady = true;

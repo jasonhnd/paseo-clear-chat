@@ -36,11 +36,13 @@ function loadWithTimers(t) {
   const { h, registration } = load(t);
   const pending = new Map();
   const delays = [];
+  let peakPending = 0;
   h.load("client/my-messages-clock.ts").setMyMessagesTimers({
     set(callback, ms) {
       const handle = {};
       delays.push(ms);
       pending.set(handle, callback);
+      peakPending = Math.max(peakPending, pending.size);
       return handle;
     },
     clear(handle) { pending.delete(handle); },
@@ -49,6 +51,7 @@ function loadWithTimers(t) {
     registration,
     delays,
     pending,
+    get peakPending() { return peakPending; },
     runNext() {
       const next = pending.entries().next().value;
       if (!next) return;
@@ -68,6 +71,7 @@ function createHost(options = {}) {
   const released = [];
   const listCalls = [];
   let workspaceUpdates = null;
+  let workspaceStreamActive = false;
   let workspaceListFailures = options.workspaceListFailures ?? 0;
   const agentPages = options.agentPages ?? [[{ agent: { id: "a", workspaceId: "w1" } }]];
   const workspacePages = options.workspacePages ?? [[{ id: "w1" }]];
@@ -119,7 +123,12 @@ function createHost(options = {}) {
       workspaces: options.noWorkspaces ? undefined : {
         list: async input => {
           const page = await pagesOf(workspacePages)(input);
-          return { ...page, subscription: { release: async () => { released.push("workspaces"); } } };
+          if (!input?.subscribe) return page;
+          workspaceStreamActive = true;
+          return { ...page, subscription: { release: async () => {
+            workspaceStreamActive = false;
+            released.push("workspaces");
+          } } };
         },
         subscribe: handler => {
           workspaceUpdates = handler;
@@ -142,7 +151,9 @@ function createHost(options = {}) {
     removed,
     released,
     listCalls,
-    upsertWorkspace(workspace) { if (workspaceUpdates) workspaceUpdates({ kind: "upsert", workspace }); },
+    upsertWorkspace(workspace) {
+      if (workspaceStreamActive) workspaceUpdates?.({ kind: "upsert", workspace });
+    },
   };
 }
 
@@ -369,36 +380,47 @@ test("a failed first workspace list retries and registers the header button", as
   assert.equal(pending.size, 0);
 });
 
-test("workspace upserts register buttons even after every listing attempt fails", async t => {
-  const { registration, delays, pending, runNext } = loadWithTimers(t);
-  const host = createHost({ workspaceListFailures: Infinity });
-  t.after(registration.registerMyMessagesPanel(host.client));
-  for (let i = 0; i < 3; i += 1) {
+test("a workspace listing recovers on a later capped retry and starts delivering updates", async t => {
+  const clock = loadWithTimers(t);
+  const host = createHost({ workspaceListFailures: 5 });
+  t.after(clock.registration.registerMyMessagesPanel(host.client));
+  for (const delay of [500, 1000, 2000, 30_000, 30_000]) {
     await settle();
-    runNext();
+    host.upsertWorkspace({ id: "w9" });
+    assert.equal(host.buttons.size, 0, "failed subscribed listings do not deliver updates");
+    assert.equal(clock.pending.size, 1, `one workspace retry is pending at ${delay} ms`);
+    assert.equal(clock.delays.at(-1), delay);
+    clock.runNext();
   }
   await settle();
 
+  assert.equal(host.listCalls.length, 6);
+  assert.deepEqual([...host.buttons.keys()], ["w1"], "the successful listing registers the header button");
+  assert.equal(clock.pending.size, 0, "success stops the retries");
+  assert.equal(clock.peakPending, 1, "retry timers never overlap");
   host.upsertWorkspace({ id: "w9" });
-  assert.ok(host.buttons.has("w9"), "the upsert listener works even without a successful list");
-  assert.equal(host.listCalls.length, 4, "the initial attempt and three retries");
-  assert.deepEqual(delays, [500, 1000, 2000]);
-  assert.equal(pending.size, 0, "retries are bounded");
+  assert.ok(host.buttons.has("w9"), "the successful subscribed listing enables upserts");
 });
 
-test("stopping during workspace list backoff cancels the scheduled retry", async t => {
-  const { registration, pending, runNext } = loadWithTimers(t);
-  const host = createHost({ workspaceListFailures: 1 });
+test("stopping during capped workspace list backoff cancels the scheduled retry", async t => {
+  const { registration, delays, pending, runNext } = loadWithTimers(t);
+  const host = createHost({ workspaceListFailures: Infinity });
   const stop = registration.registerMyMessagesPanel(host.client);
   t.after(stop);
   await settle();
-  assert.equal(pending.size, 1, "the failed list schedules a backoff timer");
+  for (let i = 0; i < 3; i += 1) {
+    runNext();
+    await settle();
+  }
+  assert.equal(host.listCalls.length, 4);
+  assert.equal(pending.size, 1, "the fourth failure schedules a capped retry");
+  assert.equal(delays.at(-1), 30_000);
 
   stop();
   assert.equal(pending.size, 0, "stopping clears the backoff timer");
   runNext();
   await settle();
-  assert.equal(host.listCalls.length, 1, "no listing starts after stop");
+  assert.equal(host.listCalls.length, 4, "no listing starts after stop");
   host.upsertWorkspace({ id: "w9" });
   assert.equal(host.buttons.size, 0);
 });

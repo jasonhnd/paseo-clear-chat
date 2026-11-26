@@ -37,6 +37,7 @@ export const MY_MESSAGES_LOCATIONS = ["explorer", "workspace"] as const;
 const MAX_DIRECTORY_PAGES = 25;
 const DIRECTORY_PAGE_SIZE = 200;
 const WORKSPACE_LIST_RETRY_DELAYS_MS = [500, 1_000, 2_000];
+const WORKSPACE_LIST_RETRY_CAP_MS = 30_000;
 
 interface ButtonRegistration {
   update(patch: Record<string, unknown>): void;
@@ -324,7 +325,7 @@ export function registerMyMessagesPanel(client: MyMessagesHost): () => void {
   };
 
   const workspaces = client.paseo?.workspaces;
-  // A later upsert can register a button even when the initial directory read fails.
+  // This local listener receives updates once a subscribed directory listing succeeds.
   if (typeof workspaces?.subscribe === "function") {
     try {
       const stop = workspaces.subscribe(update => {
@@ -344,13 +345,11 @@ export function registerMyMessagesPanel(client: MyMessagesHost): () => void {
     } catch (error) {
       if (stopped) return;
       warn("could not list workspaces", error);
-      const delay = WORKSPACE_LIST_RETRY_DELAYS_MS[attempt];
-      if (delay !== undefined) {
-        workspaceRetryTimer = timers.set(() => {
-          workspaceRetryTimer = null;
-          void listWorkspaces(attempt + 1);
-        }, delay);
-      }
+      const delay = WORKSPACE_LIST_RETRY_DELAYS_MS[attempt] ?? WORKSPACE_LIST_RETRY_CAP_MS;
+      workspaceRetryTimer = timers.set(() => {
+        workspaceRetryTimer = null;
+        void listWorkspaces(Math.min(attempt + 1, WORKSPACE_LIST_RETRY_DELAYS_MS.length));
+      }, delay);
       return;
     }
     if (stopped) {

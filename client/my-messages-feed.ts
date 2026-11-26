@@ -57,7 +57,9 @@ function rowFor(seq: number, at: number, text: string): MyMessageRow {
   };
 }
 
-function newestFirst(left: MyMessageRow, right: MyMessageRow): number {
+type TimelinePosition = Pick<MyMessageRow, "at" | "seq">;
+
+function newestFirst(left: TimelinePosition, right: TimelinePosition): number {
   return right.at - left.at || right.seq - left.seq;
 }
 
@@ -101,6 +103,7 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
 
   async function readToday(from: number, until: number, budget: number) {
     const rows: MyMessageRow[] = [];
+    let oldest: TimelinePosition | null = null;
     let machineToday = 0;
     let humanToday = 0;
     let page = await timeline.refetch({ direction: "tail", projection: "projected" });
@@ -111,6 +114,8 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
       for (const { timestamp, item, seqStart } of page.entries) {
         const at = Date.parse(timestamp);
         if (!Number.isFinite(at)) continue;
+        const position = { at, seq: seqStart };
+        if (!oldest || newestFirst(position, oldest) > 0) oldest = position;
         if (at < from) crossedMidnight = true;
         if (at < from || at >= until || item.type !== "user_message") continue;
         const classified = classifyUserMessage(item.text);
@@ -124,7 +129,7 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
       const partial = page.hasOlder && !crossedMidnight;
       if (!partial || pages >= budget) {
         rows.sort(newestFirst);
-        return { rows, machineToday, humanToday, partial };
+        return { rows, machineToday, humanToday, partial, oldest };
       }
       const cursor = page.startCursor;
       if (!cursor) throw new Error("Timeline page is missing its cursor");
@@ -185,16 +190,20 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
       }
 
       if (result.read) {
-        const { read } = result;
+        const { machineToday, partial, oldest } = result.read;
         const known = snapshot();
-        let { rows, humanToday } = read;
-        if (read.partial && known.day === day) {
-          const byKey = new Map(known.rows.map(row => [row.key, row]));
+        let { rows, humanToday } = result.read;
+        if (partial && known.day === day) {
+          // Entries in the covered range come only from this read, including after a rewind.
+          const byKey = new Map<string, MyMessageRow>();
+          for (const row of known.rows) {
+            if (!oldest || newestFirst(row, oldest) > 0) byKey.set(row.key, row);
+          }
           for (const row of rows) byKey.set(row.key, row);
           rows = [...byKey.values()].sort(newestFirst);
           humanToday = Math.max(humanToday, rows.length);
         }
-        publish({ ...read, day, rows, humanToday, status: "ready", error: null }, currentDay);
+        publish({ day, rows, humanToday, machineToday, partial, status: "ready", error: null }, currentDay);
       }
       return;
     }
