@@ -70,6 +70,14 @@
     "retry": "Try again",
     "pickConversation": "Open a conversation in this workspace first, then press this button.",
     "directory": "The conversation list could not be read. Try again in a moment.",
-    "stale": "These counts are from an earlier day. Select Try again."
+    "stale": "These counts are from an earlier day. Select Try again.",
+    "screenSummary": "From you today: {{messages}} · Conversations: {{conversations}}",
+    "screenLoading": "Reading the conversation list…",
+    "screenProgress": "Reading {{done}} of {{total}}…",
+    "screenIncomplete": "This list may be incomplete.",
+    "screenUnavailable": "Conversations without readable history today: {{count}}",
+    "screenStale": "These messages are from an earlier day. Refresh to see today’s messages.",
+    "screenRefresh": "Refresh",
+    "screenUntitled": "Untitled conversation"
   }
 }
