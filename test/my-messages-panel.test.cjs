@@ -43,7 +43,7 @@ function page(entries, options = {}) {
 }
 
 function createAgent(id = "a") {
-  const state = { pages: [], subscribers: [], subscribeCount: 0, stopped: 0, holdReady: false, rejectNext: null };
+  const state = { pages: [], subscribers: [], subscribeCount: 0, stopped: 0, ready: null, rejectNext: null };
   const handle = {
     id,
     async refresh() {
@@ -73,7 +73,7 @@ function createAgent(id = "a") {
           const index = state.subscribers.indexOf(handler);
           if (index >= 0) state.subscribers.splice(index, 1);
         };
-        return Object.assign(stop, { ready: Promise.resolve(), async release() { stop(); } });
+        return Object.assign(stop, { ready: state.ready ?? Promise.resolve(), async release() { stop(); } });
       },
     },
   };
@@ -132,6 +132,7 @@ const fields = (extra = {}) => ({
   rows: [],
   partial: false,
   live: true,
+  offline: false,
   stale: false,
   error: null,
   ...extra,
@@ -243,6 +244,39 @@ test("the read-error copy points at the control that retries", async t => {
     h.unmount();
     h.dispose();
   }
+});
+
+test("the panel warns after a subscription fails, not while it is first connecting", async t => {
+  const { h, agent } = harness(t);
+  h.load("client/my-messages-clock.ts").setMyMessagesTimers({ set: () => ({}), clear: () => {} });
+  agent.state.pages = [[entry("user_message", "first", at(0, 9), 1)]];
+  let ready;
+  agent.state.ready = new Promise(resolve => { ready = resolve; });
+  t.after(ready);
+  drawPanel(h);
+  await settle();
+
+  const byId = (drawn, id) => h.nodes(drawn, node => node.props.testID === id);
+  const warning = "my-messages-live-error";
+  const retry = "my-messages-retry";
+  let drawn = drawPanel(h);
+  assert.ok(h.text(drawn).includes("From you: 1"), "the first read has finished");
+  assert.equal(byId(drawn, warning).length, 0, "no live warning before the first subscription settles");
+  assert.equal(byId(drawn, retry).length, 0);
+
+  const send = event => agent.state.subscribers[0]({ agentId: "a", event });
+  send({ type: "error", error: "subscription unavailable" });
+  ready();
+  await settle();
+  drawn = drawPanel(h);
+  assert.equal(byId(drawn, warning)[0]?.props.accessibilityRole, "alert", "the subscription failure is announced");
+  assert.equal(byId(drawn, retry).length, 1);
+
+  send({ type: "subscription_restored" });
+  await settle();
+  drawn = drawPanel(h);
+  assert.equal(byId(drawn, warning).length, 0, "restoration clears the warning");
+  assert.equal(byId(drawn, retry).length, 0);
 });
 
 test("the panel offers a retry while live delivery is down, and the retry asks the feed", async t => {

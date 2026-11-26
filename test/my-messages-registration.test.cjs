@@ -32,6 +32,33 @@ async function settle(times = 8) {
   for (let i = 0; i < times; i += 1) await new Promise(resolve => setImmediate(resolve));
 }
 
+function loadWithTimers(t) {
+  const { h, registration } = load(t);
+  const pending = new Map();
+  const delays = [];
+  h.load("client/my-messages-clock.ts").setMyMessagesTimers({
+    set(callback, ms) {
+      const handle = {};
+      delays.push(ms);
+      pending.set(handle, callback);
+      return handle;
+    },
+    clear(handle) { pending.delete(handle); },
+  });
+  return {
+    registration,
+    delays,
+    pending,
+    runNext() {
+      const next = pending.entries().next().value;
+      if (!next) return;
+      const [handle, callback] = next;
+      pending.delete(handle);
+      callback();
+    },
+  };
+}
+
 /** A host whose agent and workspace directories span `pages`, each page served by cursor. */
 function createHost(options = {}) {
   const panels = new Map();
@@ -41,6 +68,7 @@ function createHost(options = {}) {
   const released = [];
   const listCalls = [];
   let workspaceUpdates = null;
+  let workspaceListFailures = options.workspaceListFailures ?? 0;
   const agentPages = options.agentPages ?? [[{ agent: { id: "a", workspaceId: "w1" } }]];
   const workspacePages = options.workspacePages ?? [[{ id: "w1" }]];
   let focusObject = options.focus === null ? null : { id: "composer" };
@@ -48,6 +76,10 @@ function createHost(options = {}) {
   const pagesOf = (pages) => async input => {
     listCalls.push({ kind: pages === agentPages ? "agents" : "workspaces", input });
     if (options.failList) throw new Error("directory unavailable");
+    if (pages === workspacePages && workspaceListFailures > 0) {
+      workspaceListFailures -= 1;
+      throw new Error("workspace directory unavailable");
+    }
     const index = input?.page?.cursor ? Number(input.page.cursor) : 0;
     const entries = pages[index] ?? [];
     const hasMore = index + 1 < pages.length;
@@ -320,6 +352,55 @@ test("a workspace created later gets its own button", async t => {
   await settle();
   host.upsertWorkspace({ id: "w9" });
   assert.deepEqual([...host.buttons.keys()], ["w1", "w9"]);
+});
+
+test("a failed first workspace list retries and registers the header button", async t => {
+  const { registration, delays, pending, runNext } = loadWithTimers(t);
+  const host = createHost({ workspaceListFailures: 1 });
+  t.after(registration.registerMyMessagesPanel(host.client));
+  await settle();
+  assert.equal(host.buttons.size, 0, "the first listing failed");
+
+  runNext();
+  await settle();
+  assert.ok(host.buttons.has("w1"), "the second listing registers the button");
+  assert.equal(host.listCalls.length, 2);
+  assert.deepEqual(delays, [500]);
+  assert.equal(pending.size, 0);
+});
+
+test("workspace upserts register buttons even after every listing attempt fails", async t => {
+  const { registration, delays, pending, runNext } = loadWithTimers(t);
+  const host = createHost({ workspaceListFailures: Infinity });
+  t.after(registration.registerMyMessagesPanel(host.client));
+  for (let i = 0; i < 3; i += 1) {
+    await settle();
+    runNext();
+  }
+  await settle();
+
+  host.upsertWorkspace({ id: "w9" });
+  assert.ok(host.buttons.has("w9"), "the upsert listener works even without a successful list");
+  assert.equal(host.listCalls.length, 4, "the initial attempt and three retries");
+  assert.deepEqual(delays, [500, 1000, 2000]);
+  assert.equal(pending.size, 0, "retries are bounded");
+});
+
+test("stopping during workspace list backoff cancels the scheduled retry", async t => {
+  const { registration, pending, runNext } = loadWithTimers(t);
+  const host = createHost({ workspaceListFailures: 1 });
+  const stop = registration.registerMyMessagesPanel(host.client);
+  t.after(stop);
+  await settle();
+  assert.equal(pending.size, 1, "the failed list schedules a backoff timer");
+
+  stop();
+  assert.equal(pending.size, 0, "stopping clears the backoff timer");
+  runNext();
+  await settle();
+  assert.equal(host.listCalls.length, 1, "no listing starts after stop");
+  host.upsertWorkspace({ id: "w9" });
+  assert.equal(host.buttons.size, 0);
 });
 
 test("stopping the plugin removes the panel, its buttons and the workspace stream", async t => {

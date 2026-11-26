@@ -80,8 +80,8 @@ export function MyMessagesPanel(props: PluginAgentPanelProps) {
   const retryStyle = { alignSelf: "flex-start" as const, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: tokens.border };
   // Compare with the current clock even if the rollover read has not finished yet.
   const stale = state.day !== "" && state.day !== localDateKey(nowMs());
-  const needsRetry = stale || state.status === "error" || state.partial
-    || (state.status === "ready" && !state.live);
+  const liveStopped = state.status === "ready" && state.offline;
+  const needsRetry = stale || state.status === "error" || state.partial || liveStopped;
 
   const header = (
     <>
@@ -100,7 +100,7 @@ export function MyMessagesPanel(props: PluginAgentPanelProps) {
           {t("myMessages.error")}
         </Text>
       ) : null}
-      {state.status === "ready" && !state.live ? (
+      {liveStopped ? (
         <Text testID="my-messages-live-error" style={{ ...bodyText, color: tokens.warning }} accessibilityRole="alert">
           {t("myMessages.liveStopped")}
         </Text>

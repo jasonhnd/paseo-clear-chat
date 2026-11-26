@@ -654,37 +654,68 @@ test("a partial rollover replaces longer rows from yesterday with today's rows",
   assert.equal(snapshot.stale, false);
 });
 
-test("a partial read retains longer rows only on the same day", async t => {
+test("a shorter same-day partial read adds its newest row and keeps the older rows", async t => {
   const { feed, store, client, agent } = fixture(t);
   const first = entry("user_message", "first", DAY(0, 9), 1);
   const second = entry("user_message", "second", DAY(0, 10), 2);
-  agent.state.pages = [[first, second]];
+  const machine = entry("user_message", "[IMPORTANT notice]", DAY(0, 10, 30), 3);
+  agent.state.pages = [[first, second, machine]];
   const started = start(feed, client, { budgets: { basePages: 1, maxPages: 4 } });
   t.after(() => started.stop());
   await started.ready;
 
-  const third = entry("user_message", "third", DAY(0, 11), 3);
-  agent.state.pages = [[third], [second, first]];
+  const third = entry("user_message", "third", DAY(0, 11), 4);
+  agent.state.pages = [[third], [machine, second, first]];
   agent.emit({ type: "replacement", epoch: "e2" });
   await settle();
   let snapshot = store.myMessagesSnapshot("a");
   assert.equal(snapshot.partial, true);
-  assert.deepEqual(texts(snapshot), ["second", "first"], "a shorter partial read preserves the longer list already displayed");
-  assert.equal(snapshot.humanToday, 1, "partial counts describe what the current read found");
-
-  agent.state.pages = [[third, second], [first]];
-  agent.emit({ type: "replacement", epoch: "e3" });
-  await settle();
-  snapshot = store.myMessagesSnapshot("a");
-  assert.equal(snapshot.partial, true);
-  assert.deepEqual(texts(snapshot), ["third", "second"], "an equally long partial read replaces the list");
+  assert.deepEqual(texts(snapshot), ["third", "second", "first"], "the partial read must not hide the newest row");
+  assert.ok(snapshot.humanToday >= 3, "the human count covers all merged rows");
+  assert.equal(snapshot.machineToday, 0, "the machine count comes from the partial read");
 
   agent.state.pages = [[third]];
-  agent.emit({ type: "replacement", epoch: "e4" });
+  agent.emit({ type: "replacement", epoch: "e3" });
   await settle();
   snapshot = store.myMessagesSnapshot("a");
   assert.equal(snapshot.partial, false);
   assert.deepEqual(texts(snapshot), ["third"], "a complete read always replaces the list");
+  assert.equal(snapshot.humanToday, 1);
+});
+
+test("an equally long same-day partial read keeps rows it did not reach", async t => {
+  const { feed, store, client, agent } = fixture(t);
+  const first = entry("user_message", "first", DAY(0, 9), 1);
+  agent.state.pages = [[first]];
+  const started = start(feed, client, { budgets: { basePages: 1 } });
+  t.after(() => started.stop());
+  await started.ready;
+
+  const second = entry("user_message", "second", DAY(0, 10), 2);
+  agent.state.pages = [[second], [first]];
+  agent.emit({ type: "replacement" });
+  await settle();
+  const snapshot = store.myMessagesSnapshot("a");
+  assert.equal(snapshot.partial, true);
+  assert.deepEqual(texts(snapshot), ["second", "first"], "equal row counts do not erase the old row");
+});
+
+test("a same-day partial read replaces an overlapping key without duplicating it", async t => {
+  const { feed, store, client, agent } = fixture(t);
+  const first = entry("user_message", "first", DAY(0, 9), 1);
+  const tie = DAY(0, 10);
+  agent.state.pages = [[first, entry("user_message", "second", tie, 2)]];
+  const started = start(feed, client, { budgets: { basePages: 1 } });
+  t.after(() => started.stop());
+  await started.ready;
+
+  agent.state.pages = [[entry("user_message", "updated second", tie, 2), entry("user_message", "third", tie, 3)], [first]];
+  agent.emit({ type: "replacement" });
+  await settle();
+  const snapshot = store.myMessagesSnapshot("a");
+  assert.equal(snapshot.partial, true);
+  assert.deepEqual(texts(snapshot), ["third", "updated second", "first"], "the read wins for the shared key and ties sort by sequence");
+  assert.equal(new Set(snapshot.rows.map(row => row.key)).size, snapshot.rows.length);
 });
 
 test("Retry doubles the tail budget only up to its cap", async t => {
@@ -750,13 +781,19 @@ function localKey(at) {
 }
 
 test("seeded interleavings coalesce and discard against the history and clock oracle", async t => {
+  const covered = { partial: 0, failedHeldRead: 0, offlineRetry: 0 };
   for (let seed = 1; seed <= 24; seed += 1) {
     await t.test(`seed ${seed}`, async t => {
       const { feed, store, client, agent } = fixture(t);
       const random = mulberry32(seed);
       const foreground = foregroundSignal();
       const timers = fakeTimers();
+      const basePages = random() < 0.5 ? 1 : 4;
+      const retryPages = basePages * 2;
+      const failHeldRead = random() < 0.5;
+      const retryOffline = random() < 0.5;
       const includeMidnightTrigger = seed % 2 === 0;
+      const pageSize = 4;
       let clock = DAY(0, 23, 59, 59);
       const history = [];
       const add = (at, kind, text) => history.push({ at, kind, text, seq: history.length + 1 });
@@ -767,32 +804,45 @@ test("seeded interleavings coalesce and discard against the history and clock or
           row.text, row.at, row.seq,
         ));
         agent.state.pages = [];
-        for (let i = 0; i < entries.length; i += 4) agent.state.pages.push(entries.slice(i, i + 4));
+        for (let i = 0; i < entries.length; i += pageSize) {
+          agent.state.pages.push(entries.slice(i, i + pageSize));
+        }
       }
-      function checkOracle(label) {
+      function checkOracle(label, pages, screen) {
         const day = localKey(clock);
-        const today = history.filter(row => localKey(row.at) === day);
-        const expected = today.filter(row => row.kind === "human").sort(lastFirst);
+        const window = history.slice().sort(lastFirst).slice(0, pages * pageSize);
+        const partial = window.length < history.length && window.every(row => localKey(row.at) >= day);
+        const today = window.filter(row => localKey(row.at) === day);
+        const readRows = today.filter(row => row.kind === "human");
+        // The earlier oracle result supplies the expected screen, not the feed snapshot.
+        const retained = partial && screen?.day === day ? screen.rows : [];
+        const byKey = new Map([...retained, ...readRows].map(row => [`${row.at}:${row.seq}`, row]));
+        const rows = [...byKey.values()].sort(lastFirst);
         const actual = store.myMessagesSnapshot("a");
         assert.equal(actual.day, day, `${label}: day matches the clock`);
         assert.equal(actual.status, "ready", `${label}: a read finished`);
         assert.equal(actual.stale, false, `${label}: the snapshot is current`);
-        assert.equal(actual.partial, false, `${label}: the read reached the day boundary`);
-        assert.equal(actual.humanToday, expected.length, `${label}: human count`);
-        assert.equal(actual.machineToday, today.filter(row => row.kind === "machine").length, `${label}: machine count`);
+        assert.equal(actual.partial, partial, `${label}: partial reflects the read coverage`);
         assert.deepEqual(actual.rows.map(({ text, seq }) => ({ text, seq })),
-          expected.map(({ text, seq }) => ({ text, seq })), `${label}: exact newest-first rows`);
+          rows.map(({ text, seq }) => ({ text, seq })), `${label}: exact newest-first rows`);
+        assert.equal(actual.humanToday, Math.max(readRows.length, rows.length), `${label}: human count`);
+        assert.equal(actual.machineToday, today.filter(row => row.kind === "machine").length, `${label}: machine count`);
+        return { day, rows, partial };
       }
 
       add(DAY(-1, 23), "human", "previous day");
       add(DAY(0, 8), "human", "first");
+      add(DAY(0, 9), "human", "second");
       add(DAY(0, 11), "machine", "[IMPORTANT initial notice]");
-      add(DAY(0, 12), "assistant", "answer");
       setPages();
-      const started = feed.acquireMyMessagesFeed({ agentId: "a", client, foreground, timers, now: () => clock });
+      const started = feed.acquireMyMessagesFeed({
+        agentId: "a", client, foreground, timers, now: () => clock,
+        budgets: { basePages, maxPages: retryPages },
+      });
       t.after(() => started.stop());
       await started.ready;
-      checkOracle("initial read");
+      const initial = checkOracle("initial read", basePages);
+      assert.equal(initial.partial, false, "the starting screen has both older human rows");
 
       async function holdForegroundTail() {
         const gate = deferred();
@@ -811,34 +861,71 @@ test("seeded interleavings coalesce and discard against the history and clock or
       add(tie, "human", "one event");
       add(tie, "human", "another event in the same millisecond");
       add(tie, "machine", "[IMPORTANT delivered during the read]");
+      for (let i = 0; i < 5; i += 1) add(DAY(0, 14), "assistant", `output ${i}`);
       setPages();
 
       const steps = [
         () => agent.emit({ type: "timeline", item: { type: "user_message", text: "one event" } }),
-        () => started.retry(),
         () => foreground.emit(),
-        () => {
+        async () => {
           const wakes = timers.pending();
           assert.equal(wakes.length, 1, "only a midnight wake is armed before the error");
+          assert.equal(store.myMessagesSnapshot("a").live, true);
           agent.emit({ type: "error", error: "disconnected" });
           assert.equal(store.myMessagesSnapshot("a").live, false, "the subscription error took the feed offline");
           assert.equal(timers.pending().length, 2, "the error armed a replacement timer");
-          agent.emit({ type: "subscription_restored" });
-          assert.equal(store.myMessagesSnapshot("a").live, true, "the restore event took it back online");
-          assert.deepEqual(timers.pending(), wakes, "restoration canceled only the replacement timer");
+          if (retryOffline) {
+            agent.state.holdReady = true;
+            started.retry();
+            await settle(1);
+            assert.equal(store.myMessagesSnapshot("a").live, false, "the replacement is not ready yet");
+            assert.equal(agent.state.opened.length, 2, "offline retry opened a replacement");
+            assert.equal(agent.state.opened[0].releaseCalls, 1, "offline retry released the failed handle");
+            assert.equal(agent.live.length, 1);
+            agent.live[0].resolve();
+            await settle(1);
+            covered.offlineRetry += 1;
+          } else {
+            agent.emit({ type: "subscription_restored" });
+          }
+          assert.equal(store.myMessagesSnapshot("a").live, true, "recovery took the feed back online");
+          assert.deepEqual(timers.pending(), wakes, "only the midnight timer remains after recovery");
         },
       ];
+      if (!retryOffline) steps.push(() => started.retry());
       while (steps.length > 0) {
         const [trigger] = steps.splice(Math.floor(random() * steps.length), 1);
-        trigger();
+        await trigger();
         await settle(1);
         assert.equal(agent.state.activeReads, 1, "each trigger overlaps the held response");
         assert.equal(tailCalls(agent), sameDay.before + 1, "no trigger starts a concurrent tail read");
       }
-      sameDay.gate.resolve();
+      const heldAttempts = failHeldRead ? 4 : 1;
+      if (failHeldRead) {
+        let sawReadError = false;
+        const unsubscribe = store.subscribeMyMessages(() => {
+          if (store.myMessagesSnapshot("a").status === "error") sawReadError = true;
+        });
+        t.after(unsubscribe);
+        agent.state.failReads = heldAttempts - 1;
+        sameDay.gate.reject(new Error("held read failed"));
+        for (let attempt = 1; attempt < heldAttempts; attempt += 1) {
+          await settle(1);
+          assert.equal(timers.pending().length, 2, "the read retry and midnight timers are armed");
+          assert.equal(timers.runShort(), true, "run the shorter read retry timer");
+        }
+        await settle(1);
+        assert.ok(sawReadError, "the held read fails through all its attempts");
+        covered.failedHeldRead += 1;
+      } else {
+        sameDay.gate.resolve();
+      }
       await settle();
-      assert.equal(tailCalls(agent), sameDay.before + 2, "overlapping triggers produce exactly one follow-up");
-      checkOracle("coalesced follow-up");
+      assert.equal(tailCalls(agent), sameDay.before + heldAttempts + 1,
+        "overlapping triggers produce exactly one follow-up");
+      const coalesced = checkOracle("coalesced follow-up", retryPages, initial);
+      assert.equal(coalesced.partial, basePages === 1, "the small budget covers only the newest part of the day");
+      if (coalesced.partial) covered.partial += 1;
 
       const unpublished = "old day update held across midnight";
       add(DAY(0, 22), "human", unpublished);
@@ -862,13 +949,15 @@ test("seeded interleavings coalesce and discard against the history and clock or
       assert.ok(published.length > 0, "publication was observed after the day changed");
       assert.ok(published.every(rows => !rows.includes(unpublished)), "a response for the previous day was never published");
       assert.equal(tailCalls(agent), rollover.before + 2, "the day change causes one fresh tail even without a timer event");
-      checkOracle("rollover");
+      checkOracle("rollover", retryPages, coalesced);
       assert.equal(agent.state.maxActiveReads, 1, "all page reads were serialized");
 
       started.stop();
-      assert.equal(agent.state.opened.length, 1, "a restore on the same handle did not open a duplicate");
-      assert.equal(agent.state.opened[0].releaseCalls, 1, "the last close released the handle exactly once");
+      assert.equal(agent.state.opened.length, retryOffline ? 2 : 1, "no extra subscription was opened");
+      assert.ok(agent.state.opened.every(record => record.releaseCalls === 1), "each handle was released exactly once");
       assert.equal(agent.live.length, 0, "closing leaves no subscription");
     });
   }
+  t.diagnostic(`seed coverage: ${JSON.stringify(covered)}`);
+  for (const [branch, count] of Object.entries(covered)) assert.ok(count > 0, `${branch} ran at least once`);
 });

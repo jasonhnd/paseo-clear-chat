@@ -38,8 +38,10 @@ export interface MyMessagesSnapshot {
   rows: readonly MyMessageRow[];
   /** True when the recorded day was not fully read: the counts are a lower bound. */
   partial: boolean;
-  /** False while the timeline subscription is down: rows would then stop updating. */
+  /** True after the timeline subscription has connected or been restored. */
   live: boolean;
+  /** True after a subscription failure and until live delivery resumes. */
+  offline: boolean;
   /** True when the feed last observed a clock day different from the recorded day. */
   stale: boolean;
   error: string | null;
@@ -60,6 +62,7 @@ function emptySnapshot(agentId: string): MyMessagesSnapshot {
     rows: [],
     partial: false,
     live: false,
+    offline: false,
     stale: false,
     error: null,
   };
@@ -97,6 +100,7 @@ function same(current: MyMessagesSnapshot, next: MyMessagesFields): boolean {
     && current.humanToday === next.humanToday
     && current.partial === next.partial
     && current.live === next.live
+    && current.offline === next.offline
     && current.stale === next.stale
     && current.error === next.error
     && sameRows(current.rows, next.rows);

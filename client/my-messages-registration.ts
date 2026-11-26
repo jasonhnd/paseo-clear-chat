@@ -1,5 +1,6 @@
 import { MyMessagesPanel } from "./components/my-messages-panel";
 import { messages } from "./messages";
+import { currentTimers } from "./my-messages-clock";
 
 /**
  * Where the host can find the panel, and the button that opens it.
@@ -35,6 +36,7 @@ export const MY_MESSAGES_LOCATIONS = ["explorer", "workspace"] as const;
 /** Directory pages one press may read before it stops guessing. */
 const MAX_DIRECTORY_PAGES = 25;
 const DIRECTORY_PAGE_SIZE = 200;
+const WORKSPACE_LIST_RETRY_DELAYS_MS = [500, 1_000, 2_000];
 
 interface ButtonRegistration {
   update(patch: Record<string, unknown>): void;
@@ -260,8 +262,10 @@ export function registerMyMessagesPanel(client: MyMessagesHost): () => void {
   }
 
   const buttons = new Map<string, ButtonRegistration>();
+  const timers = currentTimers();
   let workspaceStream: { release?: () => Promise<void> } | null = null;
   let stopUpdates: (() => void) | null = null;
+  let workspaceRetryTimer: unknown = null;
   let stopped = false;
 
   /**
@@ -320,39 +324,60 @@ export function registerMyMessagesPanel(client: MyMessagesHost): () => void {
   };
 
   const workspaces = client.paseo?.workspaces;
-  if (workspaces?.list) {
-    void workspaces.list({ subscribe: {}, page: { limit: DIRECTORY_PAGE_SIZE } }).then(first => {
-      if (stopped) {
-        void first.subscription?.release?.().catch(() => {});
-        return;
-      }
-      workspaceStream = first.subscription ?? null;
-      for (const entry of first.entries ?? []) ensureButton(entry.id);
-      // A workspace created later gets its button without reopening the app.
-      if (typeof workspaces.subscribe === "function") {
-        const stop = workspaces.subscribe(update => {
-          if (update?.kind === "upsert") ensureButton(update.workspace?.id ?? update.id);
-        });
-        if (typeof stop === "function") stopUpdates = stop;
-      }
-      // A long directory does not fit in one page: the rest of the workspaces get their
-      // buttons from the page after this one, not by starting over.
-      const next = first.pageInfo?.hasMore ? first.pageInfo.nextCursor : null;
-      if (next) {
-        void moreWorkspaceIds(client, next).then(rest => {
-          if (stopped) return;
-          for (const id of rest.ids) ensureButton(id);
-        }).catch(error => warn("could not read the rest of the workspace directory", error));
-      } else if (first.pageInfo?.hasMore) {
-        warn("workspace directory has more pages but no cursor; the list may be partial");
-      }
-    }).catch(error => {
-      warn("could not list workspaces", error);
-    });
+  // A later upsert can register a button even when the initial directory read fails.
+  if (typeof workspaces?.subscribe === "function") {
+    try {
+      const stop = workspaces.subscribe(update => {
+        if (update?.kind === "upsert") ensureButton(update.workspace?.id ?? update.id);
+      });
+      if (typeof stop === "function") stopUpdates = stop;
+    } catch (error) {
+      warn("could not listen for workspace updates", error);
+    }
   }
 
+  async function listWorkspaces(attempt: number): Promise<void> {
+    if (stopped || !workspaces?.list) return;
+    let first: DirectoryPage<WorkspaceEntry>;
+    try {
+      first = await workspaces.list({ subscribe: {}, page: { limit: DIRECTORY_PAGE_SIZE } });
+    } catch (error) {
+      if (stopped) return;
+      warn("could not list workspaces", error);
+      const delay = WORKSPACE_LIST_RETRY_DELAYS_MS[attempt];
+      if (delay !== undefined) {
+        workspaceRetryTimer = timers.set(() => {
+          workspaceRetryTimer = null;
+          void listWorkspaces(attempt + 1);
+        }, delay);
+      }
+      return;
+    }
+    if (stopped) {
+      void first.subscription?.release?.().catch(() => {});
+      return;
+    }
+    workspaceStream = first.subscription ?? null;
+    for (const entry of first.entries ?? []) ensureButton(entry.id);
+    // A long directory does not fit in one page: the rest of the workspaces get their
+    // buttons from the page after this one, not by starting over.
+    const next = first.pageInfo?.hasMore ? first.pageInfo.nextCursor : null;
+    if (next) {
+      void moreWorkspaceIds(client, next).then(rest => {
+        if (stopped) return;
+        for (const id of rest.ids) ensureButton(id);
+      }).catch(error => warn("could not read the rest of the workspace directory", error));
+    } else if (first.pageInfo?.hasMore) {
+      warn("workspace directory has more pages but no cursor; the list may be partial");
+    }
+  }
+  void listWorkspaces(0);
+
   return () => {
+    if (stopped) return;
     stopped = true;
+    if (workspaceRetryTimer !== null) timers.clear(workspaceRetryTimer);
+    workspaceRetryTimer = null;
     stopUpdates?.();
     stopUpdates = null;
     const stream = workspaceStream;

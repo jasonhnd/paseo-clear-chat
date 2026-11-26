@@ -57,6 +57,10 @@ function rowFor(seq: number, at: number, text: string): MyMessageRow {
   };
 }
 
+function newestFirst(left: MyMessageRow, right: MyMessageRow): number {
+  return right.at - left.at || right.seq - left.seq;
+}
+
 const appForeground = {
   subscribe(listener: () => void): () => void {
     const registered = AppState?.addEventListener?.("change", state => {
@@ -91,7 +95,7 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
 
   function publish(change: Partial<MyMessagesFields> = {}, currentDay = localDateKey(now())): void {
     if (stopped) return;
-    const next = { ...snapshot(), ...change, live };
+    const next = { ...snapshot(), ...change, live, offline };
     publishMyMessages(input.agentId, { ...next, stale: next.day !== "" && next.day !== currentDay });
   }
 
@@ -119,7 +123,7 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
       }
       const partial = page.hasOlder && !crossedMidnight;
       if (!partial || pages >= budget) {
-        rows.sort((left, right) => right.at - left.at || right.seq - left.seq);
+        rows.sort(newestFirst);
         return { rows, machineToday, humanToday, partial };
       }
       const cursor = page.startCursor;
@@ -183,8 +187,14 @@ export function startMyMessagesFeed(input: StartMyMessagesFeedInput): MyMessages
       if (result.read) {
         const { read } = result;
         const known = snapshot();
-        const keepRows = read.partial && known.day === day && known.rows.length > read.rows.length;
-        publish({ ...read, day, rows: keepRows ? known.rows : read.rows, status: "ready", error: null }, currentDay);
+        let { rows, humanToday } = read;
+        if (read.partial && known.day === day) {
+          const byKey = new Map(known.rows.map(row => [row.key, row]));
+          for (const row of rows) byKey.set(row.key, row);
+          rows = [...byKey.values()].sort(newestFirst);
+          humanToday = Math.max(humanToday, rows.length);
+        }
+        publish({ ...read, day, rows, humanToday, status: "ready", error: null }, currentDay);
       }
       return;
     }
