@@ -16,7 +16,7 @@
 
 ## This version
 
-Clear Chat 0.17.4.3 follows Paseo 0.17.4: the first three parts of the version are the Paseo version the checks ran on. This release adds the **What I said** screen. A **What I said** row in the sidebar header opens a full screen that lists the messages you typed today across this host's conversations, conversations archived today included. Each row shows the conversation title, its local `HH:MM` and up to three lines of the body; press a row to copy that message exactly as it was sent, and a **Copied** toast confirms it. The top line counts the day, for example `From you today: 12 · Conversations: 3`; while the screen reads it shows `Reading 3 of 7…`, and rows appear as each conversation is read. A list that was only partly read says `This list may be incomplete.` and offers **Try again**; **Refresh** reads again; conversations whose history the host could not give back are counted in a line of their own. The panel beside the conversation and the answer card are unchanged from the previous release. The limits are listed in [Known limitations](#known-limitations): the screen lists today and nothing earlier, a row copies but does not jump, conversations another agent started are not listed, and opening the screen right after a daemon restart takes about a second per conversation restored from storage with Codex, where a test agent took about 4 s.
+Clear Chat 0.17.5.1 follows Paseo 0.17.5: the first three parts of the version are the Paseo version this release is for. This release adds the **What I said** screen. A **What I said** row in the sidebar header opens a full screen that lists the messages you typed today across this host's conversations, conversations archived today included. Each row shows the conversation title, its local `HH:MM` and up to three lines of the body; press a row to copy that message exactly as it was sent, and a **Copied** toast confirms it. The top line counts the day, for example `From you today: 12 · Conversations: 3`; while the screen reads it shows `Reading 3 of 7…`, and rows appear as each conversation is read. A list that was only partly read says `This list may be incomplete.` and offers **Try again**; **Refresh** reads again; conversations whose history the host could not give back are counted in a line of their own. The panel beside the conversation and the answer card are unchanged from the previous release. The limits are listed in [Known limitations](#known-limitations): the screen lists today and nothing earlier, a row copies but does not jump, conversations another agent started are not listed, and opening the screen right after a daemon restart takes about a second per conversation restored from storage with Codex, where a test agent took about 4 s.
 
 The full list of changes is in the [changelog](CHANGELOG.md).
 
@@ -78,10 +78,10 @@ The top line counts the day, for example `From you today: 12 · Conversations: 3
 
 ## Install
 
-Clear Chat 0.17.4.3 needs Paseo 0.16.0 or later. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x. Paseo 0.17.4 is the host the browser checks ran on; it was not checked on Paseo 0.16.x, 0.17.1, 0.17.2, or 0.17.3. The install command was not checked on Paseo 0.16.x; Paseo 0.16.0 and 0.16.1 were not checked.
+Clear Chat 0.17.5.1 needs Paseo 0.16.0 or later. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x. Paseo 0.17.4 is the host the browser checks ran on; it was not checked on Paseo 0.16.x, 0.17.1, 0.17.2, or 0.17.3. The install command was not checked on Paseo 0.16.x; Paseo 0.16.0 and 0.16.1 were not checked. Also checked on Paseo 0.17.5: [[HOST-0175]].
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.4.3
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.5.1
 ```
 
 Installation runs `npm ci --include=dev --ignore-scripts` on the daemon host, so Node.js and npm must be available there and the host must be able to reach the npm registry.
@@ -89,7 +89,7 @@ Installation runs `npm ci --include=dev --ignore-scripts` on the daemon host, so
 To update an existing install to this version:
 
 ```bash
-paseo plugin update clear-chat --ref v0.17.4.3 --yes
+paseo plugin update clear-chat --ref v0.17.5.1 --yes
 ```
 
 Open **Settings → Plugins → Clear Chat** and read the version line in the **Answer card** card. A directory install keeps the version information already in that directory, so it can show an older release. If the build carries no usable version, the line shows **Unknown**.
@@ -131,7 +131,7 @@ A Clear Chat version is the Paseo version it is built for, plus one more number 
 ## Upgrade and rollback
 
 ```bash
-paseo plugin update clear-chat --ref v0.17.4.3 --yes
+paseo plugin update clear-chat --ref v0.17.5.1 --yes
 ```
 
 An update keeps the settings file. Values for the answer card, saved replies, dismissed false detections, and unfinished drafts are kept. A stored draft entry that is damaged, of an older shape, or of an unknown shape is ignored when the settings are read; it stays in the file until the settings are next written. The other drafts and your preferences still load, and the settings page no longer reports the whole file as invalid because of it. Keys for features this version no longer shows stay in the file and have no control on the settings page. A rollback to an earlier ref also keeps the file, but the effect of a specific rollback on settings is not guaranteed, so back the file up first if the settings matter. A rollback to the previous release keeps the settings and removes the **What I said** screen, which that release does not have; the panel beside the conversation stays, because that release has it. A rollback to an earlier release keeps the saved choices, but that version ignores `resumed: true`, so a card you continued asks for **Continue answering** again after a reload. Removing the plugin deletes its settings.
@@ -223,7 +223,7 @@ Clear Chat's own text follows the Paseo app language: English, Simplified Chines
 | Problem | What to do |
 |---|---|
 | Installing through the Cafe plugin fails. | Retry with the Paseo CLI command in [Install](#install), using the same repository and release ref. Clear Chat installs its dependencies with `npm ci --include=dev --ignore-scripts`, so Node.js and npm must be available on the daemon host, and its network must reach the npm registry. If you manage the checkout yourself, run `npm ci --include=dev --ignore-scripts` there before retrying. |
-| Installation stops because the plugin needs a newer Paseo version. | Clear Chat 0.17.4.3 needs Paseo 0.16.0 or newer on the daemon host and on every connected app. On Paseo 0.15.x, stay on Clear Chat 0.15.4.x. For older hosts, see the [Install](#install) section. |
+| Installation stops because the plugin needs a newer Paseo version. | Clear Chat 0.17.5.1 needs Paseo 0.16.0 or newer on the daemon host and on every connected app. On Paseo 0.15.x, stay on Clear Chat 0.15.4.x. For older hosts, see the [Install](#install) section. |
 | Clear Chat says it requires plugin RPC, a settings screen, settings registration, and a request handler. | Update Paseo on the daemon host and in every connected app, then reload Clear Chat. The Paseo version Clear Chat needs is declared in `paseo-plugin.json`. |
 | Clear Chat cannot start because plugin registration failed. | Update Paseo and reload Clear Chat. If it still fails, back up the plugin settings before you reinstall from the CLI. |
 | Clear Chat cannot read its settings from the host. | Reconnect to the host and choose **Retry** on the settings page. If it still fails, check that the daemon can access the plugin settings folder. |
@@ -258,7 +258,7 @@ If the `beautiful-chat` settings folder does not exist, you never changed Beauti
 **2. Install**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.4.3
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.5.1
 ```
 
 **3. Check, then remove the old plugin**

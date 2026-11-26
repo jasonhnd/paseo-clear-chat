@@ -1,4 +1,4 @@
-## [0.17.4.3] - 2026-11-26
+## [0.17.5.1] - 2026-11-26
 
 ### Added
 
@@ -9,18 +9,19 @@
 
 ### Changed
 
-- **The version stays on Paseo 0.17.4.** This is the third Clear Chat release for Paseo 0.17.4. The first three parts of the version are the Paseo version the checks ran on, and the fourth counts Clear Chat's releases for it. The minimum host version is unchanged at Paseo 0.16.0.
+- **The version follows Paseo 0.17.5.** This is the first Clear Chat release for Paseo 0.17.5. The first three parts of the version are the Paseo version this release is for, and the fourth counts Clear Chat's releases for it. The minimum host version is unchanged at Paseo 0.16.0.
 - **The panel beside the conversation and the answer card are unchanged.** The screen registers its own sidebar row and screen, reuses the panel's message classification, and adds no settings of its own ([PR #532](https://github.com/jasonhnd/paseo-clear-chat/pull/532)).
 - **The locales gain eight `screen*` keys in the `myMessages` block.** The summary, loading and progress lines, the incomplete-list and unreadable-history notices, the earlier-day notice, **Refresh**, and the untitled-conversation fallback are translated in `en`, `zh-CN` and `ja`; the screen reuses the panel's `myMessages.title` for its name ([PR #532](https://github.com/jasonhnd/paseo-clear-chat/pull/532)).
 - **The plugin's one-line description names the screen too.** `paseo-plugin.json` still opens with the version and now reads `… in a panel beside the conversation or a sidebar screen.`
 
 ### Upgrade notes
 
-- Clear Chat 0.17.4.3 needs Paseo 0.16.0 or newer. The minimum host version is unchanged: the three host interfaces the screen uses — a sidebar header item, a screen, and an open-screen call — are present since Paseo 0.16.0, and on a host without the first two the screen and its sidebar row are not registered. The browser checks ran on Paseo 0.17.4; it was not checked on Paseo 0.16.x, 0.17.1, 0.17.2 or 0.17.3. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x.
-- Update with `paseo plugin update clear-chat --ref v0.17.4.3 --yes`, or install with `paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.4.3`.
+- Clear Chat 0.17.5.1 needs Paseo 0.16.0 or newer. The minimum host version is unchanged: the three host interfaces the screen uses — a sidebar header item, a screen, and an open-screen call — are present since Paseo 0.16.0, and on a host without the first two the screen and its sidebar row are not registered. The browser checks ran on Paseo 0.17.4; it was not checked on Paseo 0.16.x, 0.17.1, 0.17.2 or 0.17.3. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x.
+- Update with `paseo plugin update clear-chat --ref v0.17.5.1 --yes`, or install with `paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.5.1`.
 - The settings file is kept. The screen has no settings of its own and writes none: the answer card switch, saved replies, dismissed false detections and unfinished drafts stay as they are. A rollback to the previous release keeps the settings and removes the screen, because that release does not have it. Removing the plugin still deletes its settings.
 - **How long the screen takes, measured.** On Paseo 0.17.4 with a real provider (Codex): 20 conversations already loaded were read in 0.38 s; right after a daemon restart, when all 20 had to come back from storage — 5 of them archived — the same list took 20.4 s, about a second each. A test agent that needs no model took about 4 s per conversation restored from storage, so another provider can be slower. Rows appear as each conversation is read. These are measurements under those conditions, not a promise for other hosts or providers.
 - **What was checked.** The browser checks ran in the interface of Paseo 0.17.4 (the web UI the `paseo` command starts), in a headless browser, at 1280×800 and 390×844, on commit 0b334a91. The sidebar row opened the screen; rows and conversation titles were right; a row copy was byte-identical and showed its toast; at 390 wide the row is in the sidebar drawer and the list does not overflow sideways; the panel's button beside the conversation was still there; the console showed no plugin errors; a conversation of a real provider (Codex) that had been archived still listed its messages after the daemon restarted; and a conversation of the test agent, which cannot replay its history, was counted as unreadable. The release head was smoke-checked on commit f3e154dd (the code is the same as this version; the commits after it change documents only) in the browser interface of Paseo 0.17.4: 20 Codex conversations, 5 of them archived, all listed in 19.6 s after a daemon restart with no warning; a row copy was byte-for-byte identical; at 390×844 the entry was in the sidebar drawer; the console showed no plugin errors; the settings page reads `Clear Chat version 0.17.4.3` and the plugin list reads `v0.17.4.3`. It was not checked in the desktop app, on physical iOS or Android devices, in the dark theme, in other interface languages, or at other viewport sizes. `npm test` passes 726 of 726 in `TZ=UTC` and in `TZ=Asia/Tokyo`, and `npx tsc --noEmit` exits 0.
+- Also checked on Paseo 0.17.5: [[HOST-0175]].
 
 ### Known limitations
 
@@ -919,7 +920,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
-[0.17.4.3]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.17.4.2...v0.17.4.3
+[0.17.5.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.17.4.2...v0.17.5.1
 [0.17.4.2]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.17.4.1...v0.17.4.2
 [0.17.4.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.17.3.1...v0.17.4.1
 [0.17.3.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.17.2.1...v0.17.3.1

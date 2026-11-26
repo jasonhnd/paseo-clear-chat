@@ -16,7 +16,7 @@
 
 ## 这一版
 
-Clear Chat 0.17.4.3 跟上 Paseo 0.17.4：版本号前三段就是检查时跑的 Paseo 版本。这一版加了 **我说的话** 整页：左边栏头部有一行 **我说的话**，点开是一整页，把本机各对话里你今天打过的消息收在一起，今天归档的对话也算在内（读不到哪些见[已知限制](#已知限制)）。每一行是对话名、本地时间（`HH:MM`）和最多三行正文；点一行就把这条消息按原样复制下来，弹出「已复制」提示。顶上一行数今天，例如 `今天你发了 12 条消息 · 来自 3 个对话`；读取时显示「正在读取对话（3 / 7）…」，读完一个对话就先出它的行。没读全的列表会写「消息列表可能不完整。」并给出 **重试**；**刷新** 重新读；读不到历史的对话单独有一行计数。对话旁边的面板和回答卡片与上一版一样。限制写在[已知限制](#已知限制)：整页只列今天、点一行只复制不跳回、别的 Agent 开的对话不列、daemon 刚重启时打开整页每个要从存储恢复的对话约一秒（Codex 实测；测试用 provider 约 4 秒一个）。
+Clear Chat 0.17.5.1 跟上 Paseo 0.17.5：版本号前三段就是这一版对应的 Paseo 版本。这一版加了 **我说的话** 整页：左边栏头部有一行 **我说的话**，点开是一整页，把本机各对话里你今天打过的消息收在一起，今天归档的对话也算在内（读不到哪些见[已知限制](#已知限制)）。每一行是对话名、本地时间（`HH:MM`）和最多三行正文；点一行就把这条消息按原样复制下来，弹出「已复制」提示。顶上一行数今天，例如 `今天你发了 12 条消息 · 来自 3 个对话`；读取时显示「正在读取对话（3 / 7）…」，读完一个对话就先出它的行。没读全的列表会写「消息列表可能不完整。」并给出 **重试**；**刷新** 重新读；读不到历史的对话单独有一行计数。对话旁边的面板和回答卡片与上一版一样。限制写在[已知限制](#已知限制)：整页只列今天、点一行只复制不跳回、别的 Agent 开的对话不列、daemon 刚重启时打开整页每个要从存储恢复的对话约一秒（Codex 实测；测试用 provider 约 4 秒一个）。
 
 完整改动见 [变更记录](CHANGELOG.md)。
 
@@ -78,10 +78,10 @@ Clear Chat 0.17.4.3 跟上 Paseo 0.17.4：版本号前三段就是检查时跑�
 
 ## 安装
 
-Clear Chat 0.17.4.3 需要 Paseo 0.16.0 或更新。在 Paseo 0.15.x 上这一版无法正常安装或运行，请留在 Clear Chat 0.15.4.x。浏览器检查跑在 Paseo 0.17.4 上；没有在 Paseo 0.16.x、0.17.1、0.17.2、0.17.3 上检查。安装命令没有在 Paseo 0.16.x 上检查过；Paseo 0.16.0 和 0.16.1 没有检查。
+Clear Chat 0.17.5.1 需要 Paseo 0.16.0 或更新。在 Paseo 0.15.x 上这一版无法正常安装或运行，请留在 Clear Chat 0.15.4.x。浏览器检查跑在 Paseo 0.17.4 上；没有在 Paseo 0.16.x、0.17.1、0.17.2、0.17.3 上检查。安装命令没有在 Paseo 0.16.x 上检查过；Paseo 0.16.0 和 0.16.1 没有检查。也在 Paseo 0.17.5 上查过：[[HOST-0175]]。
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.4.3
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.5.1
 ```
 
 安装会在 daemon 主机上运行 `npm ci --include=dev --ignore-scripts`，所以那台机器要有 Node.js 和 npm，并且能连到 npm 仓库。
@@ -89,7 +89,7 @@ paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.4.3
 把已经安装的 Clear Chat 更新到这一版：
 
 ```bash
-paseo plugin update clear-chat --ref v0.17.4.3 --yes
+paseo plugin update clear-chat --ref v0.17.5.1 --yes
 ```
 
 打开 **Settings → Plugins → Clear Chat**，看 **回答卡片** 卡片里的版本行。从目录安装时会沿用该目录里已有的版本信息，因此可能显示旧版本。构建里没有可用版本时，这一行显示 **未知**。
@@ -131,7 +131,7 @@ Clear Chat 的版本号是它所对应的 Paseo 版本，再加一位，表示�
 ## 升级与回退
 
 ```bash
-paseo plugin update clear-chat --ref v0.17.4.3 --yes
+paseo plugin update clear-chat --ref v0.17.5.1 --yes
 ```
 
 升级会保留设置文件。回答卡片、常用回答、被收起的误认，以及没写完的草稿都会留下。存下来的草稿里，坏掉的、旧形状的、或形状不认识的记录会在读取设置时被忽略（这条记录留在文件里，等下一次写入设置才消失）；其它草稿和你的偏好照常读出来，设置页也不会再因为这一条把整个文件报成无效。这一版不再显示的功能，它们的键还在文件里，设置页上没有对应控件。退回更早的 ref 一般也保留文件，但某一次回退对设置的影响没有保证，设置重要的话先备份。退回上一版会保留设置，但 **我说的话** 整页不再有（那一版没有这一页）；对话旁边的面板照旧，因为那一版有它。退回更早的版本，存下的选项还在，但那一版会忽略 `resumed: true`，点过 **继续作答** 的卡片刷新后要再点一次 **继续作答**。卸载插件会删掉它的设置。
@@ -223,7 +223,7 @@ Clear Chat 自己的文字跟随 Paseo 的应用语言：英文、简体中文�
 | 问题 | 怎么办 |
 |---|---|
 | 用 Cafe 插件安装失败。 | 用[安装](#安装)里的 Paseo CLI 命令重试，仓库和版本标签保持不变。Clear Chat 用 `npm ci --include=dev --ignore-scripts` 安装依赖，所以运行 daemon 的主机上要有 Node.js 和 npm，网络也要能连到 npm 仓库。如果代码目录是你自己管理的，请先在那里运行 `npm ci --include=dev --ignore-scripts` 再重试。 |
-| 安装停止，提示插件需要更新的 Paseo 版本。 | Clear Chat 0.17.4.3 需要 daemon 主机和所有连接的应用都用 Paseo 0.16.0 或更新版本。在 Paseo 0.15.x 上请留在 Clear Chat 0.15.4.x。更旧的宿主见[安装](#安装)。 |
+| 安装停止，提示插件需要更新的 Paseo 版本。 | Clear Chat 0.17.5.1 需要 daemon 主机和所有连接的应用都用 Paseo 0.16.0 或更新版本。在 Paseo 0.15.x 上请留在 Clear Chat 0.15.4.x。更旧的宿主见[安装](#安装)。 |
 | Clear Chat 提示需要插件 RPC、设置页面、设置注册和请求处理。 | 把运行 daemon 的主机和所有连着的应用都更新 Paseo，再重新加载 Clear Chat。需要的版本写在 `paseo-plugin.json` 里。 |
 | 插件注册失败，Clear Chat 启动不了。 | 更新 Paseo，再重新加载 Clear Chat。还不行的话，先备份插件设置，再用 CLI 重新安装。 |
 | Clear Chat 读不到主机上的设置。 | 重新连接主机，在设置页点 **重试**。还不行的话，检查 daemon 能不能访问插件设置文件夹。 |
@@ -258,7 +258,7 @@ cp -a "${PASEO_HOME:-$HOME/.paseo}/plugin-settings/beautiful-chat" "$legacy_back
 **2. 安装**
 
 ```bash
-paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.4.3
+paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.5.1
 ```
 
 **3. 确认后卸载旧插件**
