@@ -70,6 +70,13 @@
     "retry": "再試行",
     "pickConversation": "このワークスペースで会話を開いてから、このボタンを押してください。",
     "directory": "会話の一覧を読めませんでした。しばらくしてからもう一度お試しください。",
-    "stale": "この数字は前の日のものです。「再試行」を押してください。"
+    "stale": "この数字は前の日のものです。「再試行」を押してください。",
+    "screenSummary": "今日の発言 {{messages}} 件 · {{conversations}} 件の会話",
+    "screenLoading": "会話一覧を読み込んでいます…",
+    "screenProgress": "会話を読み込み中（{{done}} / {{total}} 件）…",
+    "screenIncomplete": "一部のメッセージが表示されていない可能性があります。",
+    "screenStale": "前日以前のメッセージを表示しています。更新すると今日の発言を確認できます。",
+    "screenRefresh": "更新",
+    "screenUntitled": "無題の会話"
   }
 }
