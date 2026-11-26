@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="バージョン" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=date"></a>
   <a href="LICENSE"><img alt="ライセンス: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <a href="https://paseo.sh"><img alt="Paseo 0.16.0 以降。バッジは 0.17.4" src="https://img.shields.io/badge/Paseo-%3E%3D0.16.0%20%C2%B7%20tested%200.17.4-5b5bd6"></a>
+  <a href="https://paseo.sh"><img alt="Paseo 0.16.0 以降。バッジは 0.17.5" src="https://img.shields.io/badge/Paseo-%3E%3D0.16.0%20%C2%B7%20tested%200.17.5-5b5bd6"></a>
 </p>
 
 ## この版
@@ -78,7 +78,7 @@ Clear Chat 0.17.5.1 は Paseo 0.17.5 に合わせた版です。バージョン�
 
 ## インストール
 
-Clear Chat 0.17.5.1 には Paseo 0.16.0 以降が必要です。Paseo 0.15.x ではこの版を通常どおりインストールまたは実行できないので、Clear Chat 0.15.4.x のままにしてください。ブラウザーの確認は Paseo 0.17.4 で行いました。Paseo 0.16.x、0.17.1、0.17.2、0.17.3 では確認していません。インストールのコマンドは Paseo 0.16.x では確認していません。Paseo 0.16.0 と 0.16.1 は確認していません。Paseo 0.17.5 でも確認しました：[[HOST-0175]]。
+Clear Chat 0.17.5.1 には Paseo 0.16.0 以降が必要です。Paseo 0.15.x ではこの版を通常どおりインストールまたは実行できないので、Clear Chat 0.15.4.x のままにしてください。ブラウザーの確認は Paseo 0.17.4 で行いました。Paseo 0.16.x、0.17.1、0.17.2、0.17.3 では確認していません。インストールのコマンドは Paseo 0.16.x では確認していません。Paseo 0.16.0 と 0.16.1 は確認していません。Paseo 0.17.5 でも確認しました：回答カード（1280×800、390×844、簡体字中国語の画面）、前の版から更新したときに途中までの下書きと設定が残ること、会話の横のパネル、「自分の発言」画面（1280×800、390×844。画面タイトルがサイドバーの開閉ボタンと重ならない）、Codex の会話 6 件（うち 2 件はアーカイブ済み）が daemon の再起動後にすべて表示されること、コンソールにプラグインのエラーがないこと。表示速度は Paseo 0.17.5 では測り直していません。
 
 ```bash
 paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.5.1

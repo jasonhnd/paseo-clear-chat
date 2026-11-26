@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://github.com/jasonhnd/paseo-clear-chat/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/jasonhnd/paseo-clear-chat?label=version&sort=date"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
-  <a href="https://paseo.sh"><img alt="Paseo 0.16.0+, tested on 0.17.4" src="https://img.shields.io/badge/Paseo-%3E%3D0.16.0%20%C2%B7%20tested%200.17.4-5b5bd6"></a>
+  <a href="https://paseo.sh"><img alt="Paseo 0.16.0+, tested on 0.17.5" src="https://img.shields.io/badge/Paseo-%3E%3D0.16.0%20%C2%B7%20tested%200.17.5-5b5bd6"></a>
 </p>
 
 ## This version
@@ -78,7 +78,7 @@ The top line counts the day, for example `From you today: 12 · Conversations: 3
 
 ## Install
 
-Clear Chat 0.17.5.1 needs Paseo 0.16.0 or later. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x. Paseo 0.17.4 is the host the browser checks ran on; it was not checked on Paseo 0.16.x, 0.17.1, 0.17.2, or 0.17.3. The install command was not checked on Paseo 0.16.x; Paseo 0.16.0 and 0.16.1 were not checked. Also checked on Paseo 0.17.5: [[HOST-0175]].
+Clear Chat 0.17.5.1 needs Paseo 0.16.0 or later. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x. Paseo 0.17.4 is the host the browser checks ran on; it was not checked on Paseo 0.16.x, 0.17.1, 0.17.2, or 0.17.3. The install command was not checked on Paseo 0.16.x; Paseo 0.16.0 and 0.16.1 were not checked. Also checked on Paseo 0.17.5: the answer card at 1280×800 and 390×844 and in the Simplified Chinese interface; a half-answered draft and the settings kept across the update from the previous release; the panel beside the conversation; the What I said screen at 1280×800 and 390×844, with its title clear of the sidebar toggle; 6 Codex conversations, 2 of them archived, all listed after a daemon restart; and no plugin errors in the console. How long the screen takes was not measured again on Paseo 0.17.5.
 
 ```bash
 paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.5.1
