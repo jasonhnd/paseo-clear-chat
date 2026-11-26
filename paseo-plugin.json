@@ -1,7 +1,7 @@
 {
   "id": "clear-chat",
   "name": "Clear Chat",
-  "description": "v0.17.4.1 · Answer an agent's lettered questions with a card: pick an option or write your own, preview, and send.",
+  "description": "v0.17.4.2 · Answer an agent's lettered questions with a card: pick an option or write your own, preview, and send.",
   "requirements": {
     "paseo": ">=0.16.0"
   },
