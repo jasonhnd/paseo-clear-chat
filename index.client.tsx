@@ -6,6 +6,7 @@ import { requireHostMethods, STARTUP_MESSAGES } from "./shared/startup-diagnosti
 import { ClearChatSettingsPage } from "./client/settings-page";
 import { setOptionSender, setAnswerDraftStore, setAnswerStatePublisher } from "./client/option-session";
 import { startAnswerFeed } from "./client/answer-feed";
+import { registerMyMessagesPanel } from "./client/my-messages-registration";
 import { createAnswerPill, type AnswerPillFocus } from "./client/answer-pill";
 import { AnswerPillContent } from "./client/components/answer-pill-content";
 import {
@@ -85,8 +86,12 @@ function registerClient(client: PluginClientContext) {
   });
 
   const stopAnswerPill = registerAnswerPill(client);
+  // The "what I said" panel lives beside the conversation, so it registers its own host
+  // surface (an agent panel) and the header button that opens it.
+  const stopMyMessages = registerMyMessagesPanel(client as unknown as Parameters<typeof registerMyMessagesPanel>[0]);
 
   return () => {
+    stopMyMessages();
     stopAnswerPill();
     setOptionSender(null);
   };

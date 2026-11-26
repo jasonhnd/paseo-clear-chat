@@ -1,6 +1,7 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { getPaseoClient } from "@getpaseo/plugin/client";
 import type { PaseoAgentTimelineEvent, PaseoApi } from "@getpaseo/client";
+import { isSystemEnvelope } from "./envelope";
 import {
   hasNewerAnswerCard,
   listOptionSessions,
@@ -21,10 +22,6 @@ import {
  * System envelopes are not the model's words and are not published.
  */
 
-const ENVELOPE_TAGS = new Set([
-  "system-notice", "system-reminder", "irc", "system-interrupt", "paseo-system", "agent-response",
-]);
-const PROCESS_LINE = /^Supervised process ([\w.-]+) ((?:exited|started|stopped|restarted|failed|is ready)\b.*)$/;
 const READ_RETRY_DELAYS_MS = [10, 20, 40];
 // One summary object per agent while the card's identity does not change (see below).
 const cardSnapshots = new Map<string, AnswerCardSummary | null>();
@@ -46,14 +43,6 @@ export interface AnswerFeed {
   ready: Promise<void>;
   stop(): void;
   currentCard(): AnswerCardSummary | null;
-}
-
-function isSystemEnvelope(text: string): boolean {
-  const trimmed = text.trim();
-  const process = trimmed.match(PROCESS_LINE);
-  if (process && !trimmed.includes("\n")) return true;
-  const tag = trimmed.match(/^<([\w-]+)(?:\s[^>]*)?>/)?.[1]?.toLowerCase();
-  return tag ? ENVELOPE_TAGS.has(tag) : false;
 }
 
 function warnFeed(message: string, error: unknown): void {

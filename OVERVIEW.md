@@ -1,4 +1,4 @@
-Clear Chat is a Paseo plugin for the answer card. When a reply asks lettered questions, the card lets you pick an option or write your own, preview the answer, and send it. It does not draw the conversation. For the conversation view, use the separate plugin Better Paseo.
+Clear Chat is a Paseo plugin for the answer card and the **What I said** panel. When a reply asks lettered questions, the card lets you pick an option or write your own, preview the answer, and send it. The panel, opened from a workspace header button, lists your messages from today and copies one when you press its row. It does not draw the conversation. For the conversation view, use the separate plugin Better Paseo.
 
 The interface text follows the app language: English, Simplified Chinese, or Japanese. The plugin list shows the English description.
 
@@ -13,6 +13,8 @@ The interface text follows the app language: English, Simplified Chinese, or Jap
 After a reply that asks lettered questions has finished, a button above the message box opens the card. It shows the progress, for example **Answer 0/2**; a desktop tooltip and a narrow screen's panel title carry the full name, for example **Answer card · 0/2 answered**. It opens the whole card in a panel, which is a sheet on a narrow screen. In the desktop panel the question area scrolls inside the card, and the progress line and **Send** stay in one row at the bottom, so **Send** is visible without scrolling the panel. Choosing answers updates the count, closing and reopening the panel keeps them, and the button is gone after **Send** until the next such reply finishes. The button belongs to the conversation on screen.
 
 The settings page can be opened.
+
+**What I said** opens from a button in the workspace header (the message icon) and sits beside the conversation; when the host cannot place it there, it opens as a main-pane tab. At phone width the button is in the **Workspace actions** sheet and the panel opens full screen. Its top line counts today's machine messages and yours, for example `Machine messages today: 5 · From you: 7`; below it your messages are listed newest first with their local time and up to three lines. Press a row to copy that message exactly as it was sent; a toast confirms it, and the row does not navigate. The panel reads today, re-reads at the next local midnight and on returning to the foreground, and updates while it is open. A day it could not read in full is marked partial with **Try again**; counts from an earlier day are marked stale. Machine messages are counted, not listed.
 
 ## Setup
 
@@ -45,6 +47,12 @@ Settings are saved on the host and shared by every client connected to it.
 
 ## Limitations
 
+- **What I said** shows today's messages and nothing earlier: the device's local calendar day.
+- A panel row copies the message and does not jump to it: the plugin API has no scroll-to-message surface.
+- A machine message is recognised by its leading text, so a message that opens with one of those shapes for another reason is counted as machine and is not listed.
+- A day has a page budget. A read that stops short says it is partial and offers **Try again**, and the counts are then a lower bound, at least the number of rows listed. While the panel is open, every timeline event asks for a fresh read of today.
+- With several conversations in the workspace and none in front, the **What I said** button does not guess; Paseo shows Clear Chat's message in its own toast.
+- At phone width the **What I said** button is in the **Workspace actions** sheet, and the panel covers the conversation while the host's Explorer overlay is open.
 - Clear Chat does not draw the conversation. Use Better Paseo for that view.
 - `Plan 2B` can still be read as an answer.
 - In the desktop panel a long written answer previews in at most two lines: the whole answer index, then the start of the first written answer. The message that is sent keeps the full answer, and the narrow panel shows the full preview.
@@ -53,8 +61,8 @@ Settings are saved on the host and shared by every client connected to it.
 - For up to about half a second after the agent starts answering, the button can still be there; a panel opened in that moment can show the wait message.
 - At phone width, Esc does not close the card; tap outside the panel to close it. **Not options** dismisses that reply for good, card and button alike.
 - A draft read that fails after the saved preferences are ready, and before a new reply or a new message from you arrives, leaves the card out of reach until one of those arrives or you reload. The draft itself is not lost. A read that finds no draft, or a shape this version rejects, is final and not retried.
-- A rollback to the previous release keeps the saved choices but not the continued state: a card you continued asks for **Continue answering** again after a reload.
-- This build was checked in the browser interface of Paseo 0.17.4, in a headless browser, at 1280×900, with a test agent that needs no model, on commit b8a43a81 (the code is the same as this build; the commits after it change the version and the documents only). The full set ran in English: the button hiding while the agent answers and returning when it finishes, on the conversation and after switching away and back; a continued card after a reload (the switch away and back was checked for the button, not for the reopen, and both use the same restore path); two quick presses on **Continue answering**; the answer card switched off and on; the card ending after a send; a null drafts block; and an ordinary message with no draft. One pass ran in Chinese, covering the button and a continued card after a reload. The same set also ran on Paseo 0.17.3, with the same result. The version reads 0.17.4.1 in `paseo plugin ls` and on the settings page, and an update from the previous release kept the half-answered draft and the settings. It was not checked in the desktop app, with a real model, on physical iOS or Android devices, on Paseo 0.16.x, 0.17.1 and 0.17.2, in the dark theme, in other interface languages, or at other viewport sizes. A draft store that fails its first read was exercised by unit tests only, not on a real host.
+- A rollback to the previous release keeps the settings and removes the **What I said** panel, which that release does not have. A rollback to an earlier release keeps the saved choices but not the continued state: a card you continued asks for **Continue answering** again after a reload.
+- The browser checks ran in the interface of Paseo 0.17.4, in a headless browser, at 1280×800 and 390×844, with a test agent that needs no model, on commit acd5b7e3. The commits after it keep retrying the workspace list and drop rows that a partial read no longer finds; the release head gets its own smoke check; the result is in the repository changelog. The full set ran in English: the panel opens beside the conversation; no “not coming through” warning appears in the first 3 seconds after it opens; the list holds your messages while machine messages are counted; a real conversation replayed from its original text; a row copy is byte-for-byte identical and shows its toast; live updates while the panel is open; at 390×844 the button is in the **Workspace actions** sheet and the panel opens full screen; the console shows no plugin errors; the answer card still works; and with several conversations and none in front the host shows Clear Chat's message in its own toast and nothing opens. It was not checked in the desktop app, with a real model, on physical iOS or Android devices, on Paseo 0.16.x, 0.17.1, 0.17.2 and 0.17.3, in the dark theme, in other interface languages, or at other viewport sizes.
 - Removing the plugin deletes its settings. Back them up first.
 
-The repository README has the answer-card steps and troubleshooting.
+The repository README has the answer-card and **What I said** steps and troubleshooting.
