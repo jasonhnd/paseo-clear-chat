@@ -41,7 +41,8 @@ export function MyMessagesScreen({ theme, layout, host, feed }: PluginScreenProp
 
   // With no clock timer, check on render and on interactions that need not otherwise render.
   const checkDay = () => observeDay(localDateKey(nowMs()));
-  const stale = state.day !== "" && state.day !== localDateKey(nowMs());
+  const directoryKnown = state.status !== "error" && state.progress !== null;
+  const stale = directoryKnown && state.day !== localDateKey(nowMs());
   const incomplete = state.directoryPartial || state.partial.length > 0 || state.failed.length > 0;
   const reading = state.status === "reading";
   const showRetry = !stale && (incomplete || state.status === "error");
@@ -67,14 +68,18 @@ export function MyMessagesScreen({ theme, layout, host, feed }: PluginScreenProp
   return (
     <View style={{ flex: 1, backgroundColor: tokens.surface0 }}>
       <View style={{ padding, gap: 8 }}>
-        <Text testID="my-messages-screen-summary" style={body}>
-          {stale
-            ? t("myMessages.screenStale")
-            : t("myMessages.screenSummary", { messages: state.rows.length, conversations: state.conversations })}
-        </Text>
+        {directoryKnown ? (
+          <Text testID="my-messages-screen-summary" style={body}>
+            {stale
+              ? t("myMessages.screenStale")
+              : t("myMessages.screenSummary", { messages: state.rows.length, conversations: state.conversations })}
+          </Text>
+        ) : null}
         {!stale && reading ? (
           <Text testID="my-messages-screen-progress" style={muted}>
-            {state.progress ? t("myMessages.screenProgress", state.progress) : t("myMessages.screenLoading")}
+            {state.progress ? t("myMessages.screenProgress", {
+              done: Math.min(state.progress.done + 1, state.progress.total), total: state.progress.total,
+            }) : t("myMessages.screenLoading")}
           </Text>
         ) : null}
         {showRetry ? (

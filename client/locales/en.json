@@ -71,7 +71,7 @@
     "pickConversation": "Open a conversation in this workspace first, then press this button.",
     "directory": "The conversation list could not be read. Try again in a moment.",
     "stale": "These counts are from an earlier day. Select Try again.",
-    "screenSummary": "From you today: {{messages}} · in {{conversations}} conversations",
+    "screenSummary": "From you today: {{messages}} · Conversations: {{conversations}}",
     "screenLoading": "Reading the conversation list…",
     "screenProgress": "Reading {{done}} of {{total}}…",
     "screenIncomplete": "This list may be incomplete.",

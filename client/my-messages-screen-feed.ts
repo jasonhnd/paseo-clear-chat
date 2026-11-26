@@ -1,6 +1,6 @@
 import type { PaseoApi } from "@getpaseo/client";
 import { localDateKey, startOfLocalDay, startOfNextLocalDay } from "./local-day";
-import { nowMs } from "./my-messages-clock";
+import { currentTimers, nowMs } from "./my-messages-clock";
 import { classifyUserMessage } from "./user-message-kind";
 
 const DIRECTORY_PAGE_SIZE = 200;
@@ -8,7 +8,9 @@ const DIRECTORY_PAGE_LIMIT = 25;
 const BASE_PAGES = 40;
 const MAX_PAGES = 320;
 const READ_RETRIES = 2;
+const READ_RETRY_DELAY_MS = 250;
 const CACHE_LIMIT = 1_000;
+const PARENT_AGENT_ID_LABEL = "paseo.parent-agent-id";
 
 interface Conversation {
   id: string;
@@ -80,17 +82,23 @@ async function listConversations(agents: Agents, from: number, isOpen: () => boo
   for (let page = 0; page < DIRECTORY_PAGE_LIMIT && isOpen(); page += 1) {
     const result = await agents.list({
       filter: { includeArchived: true },
+      sort: [{ key: "updated_at", direction: "desc" }],
       page: cursor === undefined ? { limit: DIRECTORY_PAGE_SIZE } : { limit: DIRECTORY_PAGE_SIZE, cursor },
     });
-    for (const { agent: { id, title, lastUserMessageAt } } of result.entries) {
-      if (!lastUserMessageAt) continue;
-      const lastAt = Date.parse(lastUserMessageAt);
-      if (!(lastAt >= from)) continue;
+    let hasTodayCandidate = false;
+    for (const { agent: { id, title, updatedAt, lastUserMessageAt, labels } } of result.entries) {
+      const lastAt = Date.parse(lastUserMessageAt ?? "");
+      // The host updates these timestamps separately, so either can reach midnight first.
+      if (!(Date.parse(updatedAt) < from && (!lastUserMessageAt || lastAt < from))) hasTodayCandidate = true;
+      if (!lastUserMessageAt || !(lastAt >= from) || labels?.[PARENT_AGENT_ID_LABEL] !== undefined) continue;
       const previous = byId.get(id);
       if (!previous || lastAt >= previous.lastAt) byId.set(id, { id, title, lastUserMessageAt, lastAt });
     }
-    directoryPartial = result.pageInfo.hasMore;
-    if (!directoryPartial) break;
+    if (!result.pageInfo.hasMore || !hasTodayCandidate) break;
+    if (page + 1 === DIRECTORY_PAGE_LIMIT) {
+      directoryPartial = true;
+      break;
+    }
     const next = result.pageInfo.nextCursor;
     if (!next || seenCursors.has(next)) throw new Error("Conversation directory returned an invalid cursor");
     seenCursors.add(next);
@@ -129,12 +137,15 @@ async function readConversation(agents: Agents, agentId: string, from: number, u
   return null;
 }
 
-async function readWithRetries(read: () => ReturnType<typeof readConversation>, isOpen: () => boolean) {
+async function readWithRetries(
+  read: () => ReturnType<typeof readConversation>, isOpen: () => boolean, waitToRetry: () => Promise<void>,
+) {
   for (let attempt = 0; attempt <= READ_RETRIES && isOpen(); attempt += 1) {
     try {
       return await read();
     } catch {
       // Restart at the tail so a stale cursor never carries over to the next attempt.
+      if (attempt < READ_RETRIES && isOpen()) await waitToRetry();
     }
   }
   return null;
@@ -146,7 +157,28 @@ export function createMyMessagesScreenFeed(now: () => number = nowMs) {
   let cacheHost: string | null = null;
   let active: Session | null = null;
   let running: Promise<void> | null = null;
+  let cancelReadDelay: (() => void) | null = null;
   let stopped = false;
+
+  function waitToRetry(): Promise<void> {
+    const timers = currentTimers();
+    return new Promise(resolve => {
+      const finish = () => {
+        cancelReadDelay = null;
+        resolve();
+      };
+      const timer = timers.set(finish, READ_RETRY_DELAY_MS);
+      cancelReadDelay = () => {
+        timers.clear(timer);
+        finish();
+      };
+    });
+  }
+
+  function closeActiveSession() {
+    active = null;
+    cancelReadDelay?.();
+  }
 
   async function run(session: Session, mode: Request): Promise<void> {
     const isOpen = () => active === session;
@@ -196,6 +228,7 @@ export function createMyMessagesScreenFeed(now: () => number = nowMs) {
         const result = await readWithRetries(
           () => readConversation(session.agents, agent.id, from, until, budget, isOpen),
           isOpen,
+          waitToRetry,
         );
         if (!isOpen()) return;
         entry = result && { ...result, day, lastUserMessageAt: agent.lastUserMessageAt };
@@ -244,17 +277,20 @@ export function createMyMessagesScreenFeed(now: () => number = nowMs) {
   return {
     mount(input: ScreenMount) {
       const session: Session = { ...input, pending: null, day: "", incompleteBudgets: new Map() };
-      if (!stopped) active = session;
+      if (!stopped) {
+        closeActiveSession();
+        active = session;
+      }
       return {
         ready: request(session, "refresh"),
         refresh: () => request(session, "refresh"),
         retry: () => request(session, "retry"),
-        stop() { if (active === session) active = null; },
+        stop() { if (active === session) closeActiveSession(); },
       };
     },
     stop() {
       stopped = true;
-      active = null;
+      closeActiveSession();
       cache.clear();
     },
   };
