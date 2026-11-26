@@ -1,3 +1,39 @@
+## [0.17.4.3] - 2026-11-26
+
+### Added
+
+- **A “What I said” screen for today's messages across the whole workspace.** A **What I said** row in the sidebar header opens a full screen that lists every message you typed today — the device's local calendar day — in any conversation on this host, conversations archived today included. Each row shows the conversation title, the local `HH:MM` and up to three lines of the body; pressing a row copies the message exactly as it was sent and shows a **Copied** toast, and a row that holds only an image says there is no text to copy. The top line counts the day, for example `From you today: 12 · Conversations: 3`; while the screen reads it shows `Reading 3 of 7…`, and rows appear as each conversation is read. A conversation that could not be read, one that ran out of its page budget, and the count of conversations whose history the host could not give back are reported together: the screen says `This list may be incomplete.` and offers **Try again** ([PR #532](https://github.com/jasonhnd/paseo-clear-chat/pull/532)).
+- **Refresh, Try again, and a day that has moved on.** **Refresh** reads again; **Try again** reads the conversations that failed or stopped short, a partial one with a doubled page budget up to a cap. A screen left open past local midnight marks its rows as an earlier day's until **Refresh**. One read runs at a time, and a request that arrives during a read collapses into one follow-up. The screen shows the read in progress and keeps the rows it already has ([PR #532](https://github.com/jasonhnd/paseo-clear-chat/pull/532)).
+- **The conversation list is read newest first and paging stops early.** The directory is listed with archived conversations included, 200 per page, sorted by update time descending; paging stops at the first page on which no conversation could belong to today, so the length of the archive does not change the work, and reaching the 25-page cap while today's conversations are still showing marks the list partial. Conversations created by another agent are skipped, and nothing typed into them directly is listed either: their prompts were written by an agent, not by you ([PR #532](https://github.com/jasonhnd/paseo-clear-chat/pull/532)).
+- **One conversation at a time, cached for the day.** Each kept conversation is read on its own from the timeline tail back to the start of the day, with the same user-message classification as the panel; archived conversations go through the host's history path, and a failed read is retried twice, 250 ms apart. A complete read is cached for the day per conversation while its last user message time is unchanged; the cache holds at most 1,000 conversations and drops entries from an earlier day ([PR #532](https://github.com/jasonhnd/paseo-clear-chat/pull/532)).
+
+### Changed
+
+- **The version stays on Paseo 0.17.4.** This is the third Clear Chat release for Paseo 0.17.4. The first three parts of the version are the Paseo version the checks ran on, and the fourth counts Clear Chat's releases for it. The minimum host version is unchanged at Paseo 0.16.0.
+- **The panel beside the conversation and the answer card are unchanged.** The screen registers its own sidebar row and screen, reuses the panel's message classification, and adds no settings of its own ([PR #532](https://github.com/jasonhnd/paseo-clear-chat/pull/532)).
+- **The locales gain `screen*` keys in the `myMessages` block.** The screen title, its summary, loading and progress lines, the incomplete-list and unreadable-history notices, the earlier-day notice, **Refresh**, and the untitled-conversation fallback are translated in `en`, `zh-CN` and `ja` ([PR #532](https://github.com/jasonhnd/paseo-clear-chat/pull/532)).
+- **The plugin's one-line description names the screen too.** `paseo-plugin.json` still opens with the version and now reads `… in a panel beside the conversation or a sidebar screen.`
+
+### Upgrade notes
+
+- Clear Chat 0.17.4.3 needs Paseo 0.16.0 or newer. The minimum host version is unchanged: the three host interfaces the screen uses — a sidebar header item, a screen, and an open-screen call — are present since Paseo 0.16.0, and on a host without them nothing is registered. The browser checks ran on Paseo 0.17.4; it was not checked on Paseo 0.16.x, 0.17.1, 0.17.2 or 0.17.3. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x.
+- Update with `paseo plugin update clear-chat --ref v0.17.4.3 --yes`, or install with `paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.4.3`.
+- The settings file is kept. The screen has no settings of its own and writes none: the answer card switch, saved replies, dismissed false detections and unfinished drafts stay as they are. A rollback to the previous release keeps the settings and removes the screen, because that release does not have it. Removing the plugin still deletes its settings.
+- **How long the screen takes, measured.** On Paseo 0.17.4 with a real provider (Codex): with every conversation already loaded, a few dozen conversations were read within a few seconds and the first row appeared in under a second. Right after a daemon restart, each conversation the daemon had to restore from storage took about a second — 20 conversations, 5 of them archived, took 20.4 s to read from cold, and opening the screen again took 0.38 s. Rows already read are shown while the rest are still being read. These are measurements under those conditions, not a promise for other hosts or providers.
+- **What was checked.** The browser checks ran in the interface of Paseo 0.17.4 (the web UI the `paseo` command starts), in a headless browser, at 1280×800 and 390×844, on commit 0b334a91. The sidebar row opened the screen; rows and conversation titles were right; a row copy was byte-identical and showed its toast; at 390 wide the row is in the sidebar drawer and the list does not overflow sideways; the panel's button beside the conversation was still there; the console showed no plugin errors; a conversation of a real provider (Codex) that had been archived still listed its messages after the daemon restarted; and a conversation whose provider cannot replay its history was counted as unreadable. The release head gets its own smoke check, recorded here as [[SMOKE-HEAD]]. It was not checked in the desktop app, on physical iOS or Android devices, in the dark theme, in other interface languages, or at other viewport sizes. `npm test` passes 726 of 726 in `TZ=UTC` and in `TZ=Asia/Tokyo`, and `npx tsc --noEmit` exits 0.
+
+### Known limitations
+
+- The screen lists today's messages, the device's local calendar day; nothing from an earlier day is listed.
+- Conversations created by another agent are not listed, and nothing typed into them directly is listed either.
+- Some providers cannot give back the history of a conversation restored from storage. Such conversations are counted as `Conversations without readable history today: N` instead of being listed; they are not cached, and **Refresh** and **Try again** read them again.
+- Reading a conversation that is not loaded makes the daemon load it from storage, which takes time and memory until the daemon's idle cleanup.
+- A total loss of today's history is detected; a partial loss is not reported, and the screen lists what the provider gave back without a warning.
+- Conversations whose provider is unavailable are not listed by the host, so they are not read.
+- A row copies the message and does not jump back to it: the plugin API has no scroll-to-message surface.
+- Right after a daemon restart, opening the screen takes about a second per conversation restored from storage, measured as described above.
+- Removing the plugin deletes its settings. Back them up first.
+
 ## [0.17.4.2] - 2026-11-26
 
 ### Added
@@ -883,6 +919,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.17.4.3]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.17.4.2...v0.17.4.3
 [0.17.4.2]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.17.4.1...v0.17.4.2
 [0.17.4.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.17.3.1...v0.17.4.1
 [0.17.3.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.17.2.1...v0.17.3.1
