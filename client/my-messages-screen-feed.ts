@@ -38,12 +38,13 @@ export interface MyMessagesScreenSnapshot {
   progress: { done: number; total: number } | null;
   partial: readonly string[];
   failed: readonly string[];
+  unavailable: readonly string[];
   directoryPartial: boolean;
 }
 
 export const emptyMessagesScreen: MyMessagesScreenSnapshot = {
   day: "", status: "reading", rows: [], conversations: 0, progress: null,
-  partial: [], failed: [], directoryPartial: false,
+  partial: [], failed: [], unavailable: [], directoryPartial: false,
 };
 
 type Agents = PaseoApi["agents"];
@@ -51,11 +52,15 @@ type Timeline = ReturnType<Agents["ref"]>["timeline"];
 type Cursor = NonNullable<Awaited<ReturnType<Timeline["refetch"]>>["startCursor"]>;
 type Request = "refresh" | "retry";
 
-interface CacheEntry {
-  day: string;
-  lastUserMessageAt: string;
+interface ConversationRead {
   rows: readonly Message[];
   partial: boolean;
+  unavailable: boolean;
+}
+
+interface CacheEntry extends ConversationRead {
+  day: string;
+  lastUserMessageAt: string;
 }
 
 interface ScreenMount {
@@ -90,7 +95,7 @@ async function listConversations(agents: Agents, from: number, isOpen: () => boo
       const lastAt = Date.parse(lastUserMessageAt ?? "");
       // The host updates these timestamps separately, so either can reach midnight first.
       if (!(Date.parse(updatedAt) < from && (!lastUserMessageAt || lastAt < from))) hasTodayCandidate = true;
-      if (!lastUserMessageAt || !(lastAt >= from) || labels?.[PARENT_AGENT_ID_LABEL] !== undefined) continue;
+      if (!lastUserMessageAt || !(lastAt >= from) || labels?.[PARENT_AGENT_ID_LABEL]?.trim()) continue;
       const previous = byId.get(id);
       if (!previous || lastAt >= previous.lastAt) byId.set(id, { id, title, lastUserMessageAt, lastAt });
     }
@@ -108,26 +113,33 @@ async function listConversations(agents: Agents, from: number, isOpen: () => boo
   return { conversations, directoryPartial };
 }
 
-async function readConversation(agents: Agents, agentId: string, from: number, until: number, budget: number, isOpen: () => boolean) {
-  const { timeline } = agents.ref(agentId);
+async function readConversation(
+  agents: Agents, agent: Conversation, from: number, until: number, budget: number, isOpen: () => boolean,
+): Promise<ConversationRead | null> {
+  const { timeline } = agents.ref(agent.id);
   const rows = new Map<number, Message>();
+  let sawUserMessage = false;
   let cursor: Cursor | undefined;
   for (let pages = 1; isOpen(); pages += 1) {
     const page = await timeline.refetch(cursor
       ? { direction: "before", cursor, projection: "projected" }
       : { direction: "tail", projection: "projected" });
-    if (!isOpen()) return null;
     if (page.error || page.gap || page.staleCursor) throw new Error(page.error || "Timeline page is incomplete");
     let crossedMidnight = false;
     for (const { item, timestamp, seqStart } of page.entries) {
       const at = Date.parse(timestamp);
       if (at < from) crossedMidnight = true;
       if (!(at >= from && at < until) || item.type !== "user_message") continue;
+      sawUserMessage = true;
       const classified = classifyUserMessage(item.text);
       if (classified.kind === "human") rows.set(seqStart, { at, seq: seqStart, text: classified.text });
     }
     const partial = page.hasOlder && !crossedMidnight;
-    if (!partial || pages >= budget) return { rows: [...rows.values()], partial };
+    if (!partial || pages >= budget) {
+      // Machine prompts also confirm that the host could read today's history.
+      const unavailable = !partial && !sawUserMessage && agent.lastAt >= from && agent.lastAt < until;
+      return { rows: [...rows.values()], partial, unavailable };
+    }
     const next = page.startCursor;
     if (!next || (cursor && next.epoch === cursor.epoch && next.seq >= cursor.seq)) {
       throw new Error("Timeline page did not advance its cursor");
@@ -226,7 +238,7 @@ export function createMyMessagesScreenFeed(now: () => number = nowMs) {
         entry = cached;
       } else {
         const result = await readWithRetries(
-          () => readConversation(session.agents, agent.id, from, until, budget, isOpen),
+          () => readConversation(session.agents, agent, from, until, budget, isOpen),
           isOpen,
           waitToRetry,
         );
@@ -234,7 +246,7 @@ export function createMyMessagesScreenFeed(now: () => number = nowMs) {
         entry = result && { ...result, day, lastUserMessageAt: agent.lastUserMessageAt };
         // Insertion order tracks actual reads, so a cache hit does not postpone eviction.
         cache.delete(agent.id);
-        if (entry) cache.set(agent.id, entry);
+        if (entry && !entry.unavailable) cache.set(agent.id, entry);
         if (cache.size > CACHE_LIMIT) cache.delete(cache.keys().next().value!);
       }
       if (!entry || entry.partial) session.incompleteBudgets.set(agent.id, budget);
@@ -249,6 +261,7 @@ export function createMyMessagesScreenFeed(now: () => number = nowMs) {
         progress: { done: index + 1, total },
         partial: entry?.partial ? [...state.partial, agent.id] : state.partial,
         failed: entry ? state.failed : [...state.failed, agent.id],
+        unavailable: entry?.unavailable ? [...state.unavailable, agent.id] : state.unavailable,
       };
       session.publish(state);
     }

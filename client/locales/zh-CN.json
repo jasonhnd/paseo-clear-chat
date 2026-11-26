@@ -75,6 +75,7 @@
     "screenLoading": "正在读取对话列表…",
     "screenProgress": "正在读取对话（{{done}} / {{total}}）…",
     "screenIncomplete": "消息列表可能不完整。",
+    "screenUnavailable": "今天有 {{count}} 个对话读不到历史。",
     "screenStale": "这些是前一天的消息。刷新后可查看今天的消息。",
     "screenRefresh": "刷新",
     "screenUntitled": "未命名对话"

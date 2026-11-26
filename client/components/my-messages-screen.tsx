@@ -43,12 +43,14 @@ export function MyMessagesScreen({ theme, layout, host, feed }: PluginScreenProp
   const checkDay = () => observeDay(localDateKey(nowMs()));
   const directoryKnown = state.status !== "error" && state.progress !== null;
   const stale = directoryKnown && state.day !== localDateKey(nowMs());
-  const incomplete = state.directoryPartial || state.partial.length > 0 || state.failed.length > 0;
+  const unavailableCount = state.unavailable.length;
+  const incomplete = state.directoryPartial || state.partial.length > 0 || state.failed.length > 0 || unavailableCount > 0;
   const reading = state.status === "reading";
   const showRetry = !stale && (incomplete || state.status === "error");
   const padding = layout.compact ? 12 : 16;
   const body = { color: tokens.foreground, fontFamily: tokens.fontUi, fontSize: tokens.fs(14) };
   const muted = { color: tokens.foregroundMuted, fontFamily: tokens.fontUi, fontSize: tokens.fs(12) };
+  const warning = { ...muted, color: tokens.warning };
   const button = { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: tokens.border };
 
   async function copyRow(row: MyMessagesScreenRow): Promise<void> {
@@ -84,8 +86,13 @@ export function MyMessagesScreen({ theme, layout, host, feed }: PluginScreenProp
         ) : null}
         {showRetry ? (
           <Text testID="my-messages-screen-incomplete" accessibilityRole="alert"
-            style={{ ...muted, color: state.status === "error" ? tokens.danger : tokens.warning }}>
+            style={state.status === "error" ? { ...muted, color: tokens.danger } : warning}>
             {state.status === "error" ? t("myMessages.directory") : t("myMessages.screenIncomplete")}
+          </Text>
+        ) : null}
+        {!stale && unavailableCount > 0 ? (
+          <Text testID="my-messages-screen-unavailable" accessibilityRole="alert" style={warning}>
+            {t("myMessages.screenUnavailable", { count: unavailableCount })}
           </Text>
         ) : null}
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>

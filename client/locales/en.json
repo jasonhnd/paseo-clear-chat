@@ -75,6 +75,7 @@
     "screenLoading": "Reading the conversation list…",
     "screenProgress": "Reading {{done}} of {{total}}…",
     "screenIncomplete": "This list may be incomplete.",
+    "screenUnavailable": "Conversations without readable history today: {{count}}",
     "screenStale": "These messages are from an earlier day. Refresh to see today’s messages.",
     "screenRefresh": "Refresh",
     "screenUntitled": "Untitled conversation"

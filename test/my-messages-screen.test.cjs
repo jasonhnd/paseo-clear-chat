@@ -24,6 +24,8 @@ function message(text, time, seq, type = "user_message") {
   return { timestamp: iso(time), seqStart: seq, item: { type, text } };
 }
 
+const machineMessage = time => message("[IMPORTANT automated", time, 1);
+
 function timelinePage(entries, index, count) {
   const hasOlder = index + 1 < count;
   return {
@@ -250,6 +252,19 @@ test("a child agent is not read or counted, but its parent is", async t => {
   assert.deepEqual(session.latest().progress, { done: 1, total: 1 });
 });
 
+test("empty and whitespace-only parent labels do not mark child agents", async t => {
+  const host = fakeHost([[
+    agent("empty", at(0, 11), { labels: { "paseo.parent-agent-id": "" } }),
+    agent("spaces", at(0, 10), { labels: { "paseo.parent-agent-id": "  " } }),
+  ]]);
+  host.histories.set("empty", [[message("empty label", at(0, 11), 1)]]);
+  host.histories.set("spaces", [[message("spaces label", at(0, 10), 1)]]);
+  const session = feedCase(t, host).mount();
+  await session.ready;
+  assert.deepEqual(readIds(host), ["empty", "spaces"]);
+  assert.deepEqual(texts(session.latest()), ["empty label", "spaces label"]);
+});
+
 test("timeline reads are serial and each finished conversation publishes sorted progress", async t => {
   const ids = ["newest-activity", "b", "a"];
   const host = fakeHost([[agent("a", at(0, 10)), agent("newest-activity", at(0, 12)), agent("b", at(0, 11))]]);
@@ -283,6 +298,7 @@ test("timeline reads are serial and each finished conversation publishes sorted 
 test("an unchanged complete agent hits the cache across mounts and a changed timestamp misses it", async t => {
   const host = fakeHost([[agent("a", at(0, 9)), agent("b", at(0, 9))]]);
   host.histories.set("a", [[message("first version", at(0, 8), 1)]]);
+  host.histories.set("b", [[machineMessage(at(0, 9))]]);
   const { mount } = feedCase(t, host);
   const initial = mount();
   await initial.ready;
@@ -304,6 +320,8 @@ test("an unchanged complete agent hits the cache across mounts and a changed tim
 test("the cache drops its oldest read above 1,000 entries even if that entry was just used", async t => {
   const agents = Array.from({ length: 1001 }, (_, i) => agent(String(i).padStart(4, "0"), at(0, 9)));
   const host = fakeHost(Array.from({ length: 5 }, (_, i) => agents.slice(i * 200, (i + 1) * 200)));
+  const history = [[machineMessage(at(0, 9))]];
+  for (const { id } of agents) host.histories.set(id, history);
   const session = feedCase(t, host).mount();
   await session.ready;
   assert.equal(host.reads.length, 1000);
@@ -317,12 +335,81 @@ test("the cache drops its oldest read above 1,000 entries even if that entry was
   assert.deepEqual(readIds(host).slice(1000), ["1000", "0000", "0001", "0002"], "each new read evicts the next oldest read");
 });
 
+test("an empty complete read with today's directory timestamp is unavailable", async t => {
+  const host = fakeHost([[agent("empty", at(0))]]);
+  const session = feedCase(t, host).mount();
+  await session.ready;
+  const snapshot = session.latest();
+  assert.deepEqual(snapshot.unavailable, ["empty"]);
+  assert.deepEqual(snapshot.partial, []);
+  assert.deepEqual(snapshot.failed, []);
+  assert.deepEqual(texts(snapshot), []);
+  assert.equal(snapshot.status, "ready");
+});
+
+test("unavailable history respects the local day and ignores non-user entries", async t => {
+  const host = fakeHost([[agent("today", at(0, 10)), agent("next-day", at(1))]]);
+  host.histories.set("today", [[
+    message("next day's user message", at(1), 3),
+    message("today's reply", at(0, 10), 2, "assistant_message"),
+    message("yesterday's user message", at(0) - 1, 1),
+  ]]);
+  const session = feedCase(t, host).mount();
+  await session.ready;
+  assert.deepEqual(session.latest().unavailable, ["today"]);
+});
+
+test("a machine-only day is readable and cacheable without human rows", async t => {
+  const host = fakeHost([[agent("machine", at(0))]]);
+  host.histories.set("machine", [[machineMessage(at(0))], [message("yesterday", at(0) - 1, 0)]]);
+  const session = feedCase(t, host).mount();
+  await session.ready;
+  await session.refresh();
+  assert.deepEqual(session.latest().unavailable, []);
+  assert.deepEqual(texts(session.latest()), []);
+  assert.equal(session.latest().conversations, 0);
+  assert.deepEqual(readIds(host), ["machine", "machine"], "two pages on the first run and a cache hit on Refresh");
+});
+
+test("a partial read with no user entries today is not unavailable", async t => {
+  const host = fakeHost([[agent("partial", at(0, 10))]]);
+  host.histories.set("partial", index => timelinePage([], index, 41));
+  const session = feedCase(t, host).mount();
+  await session.ready;
+  assert.deepEqual(session.latest().partial, ["partial"]);
+  assert.deepEqual(session.latest().unavailable, []);
+  assert.equal(host.reads.length, 40);
+});
+
+test("Refresh re-reads unavailable history even with the same directory timestamp", async t => {
+  const host = fakeHost([[agent("missing", at(0, 10))]]);
+  const session = feedCase(t, host).mount();
+  await session.ready;
+  host.histories.set("missing", [[message("recovered history", at(0, 10), 1)]]);
+  await session.refresh();
+  assert.deepEqual(readIds(host), ["missing", "missing"]);
+  assert.deepEqual(texts(session.latest()), ["recovered history"]);
+  assert.deepEqual(session.latest().unavailable, []);
+});
+
+test("Try again starts unavailable history at the original page budget", async t => {
+  const host = fakeHost([[agent("missing", at(0, 10))]]);
+  const session = feedCase(t, host).mount();
+  await session.ready;
+  host.histories.set("missing", index => timelinePage([], index, 41));
+  await session.retry();
+  assert.equal(host.reads.length - 1, 40, "the retry uses the original budget, not a cache hit or a doubled budget");
+  assert.deepEqual(session.latest().partial, ["missing"]);
+  assert.deepEqual(session.latest().unavailable, []);
+});
+
 test("partial and failed agents do not stop the run, and retry grows only their page budgets to 320", async t => {
   const host = fakeHost([[agent("partial", at(0, 11)), agent("failed", at(0, 10)), agent("complete", at(0, 9)), agent("changed", at(0, 8))]]);
   const serve = (name, count) => index => timelinePage(index === 0 ? [message(name, at(0, 7), 1)] : [], index, count);
   host.histories.set("partial", serve("partial row", 321));
   host.histories.set("failed", index => ({ ...timelinePage([], index, 1), error: "Unavailable" }));
   host.histories.set("complete", serve("complete row", 1));
+  host.histories.set("changed", [[machineMessage(at(0, 8))]]);
   const { mount, retryTimers } = feedCase(t, host, { allowRetryTimers: true });
   const session = mount();
   let cursor = 0;
@@ -374,7 +461,7 @@ test("Refresh during a run queues exactly one follow-up", async t => {
   t.after(() => held.open());
   host.histories.set("a", async index => {
     await held.wait;
-    return timelinePage([], index, 1);
+    return timelinePage([machineMessage(at(0, 9))], index, 1);
   });
   const session = feedCase(t, host).mount();
   await settle();
@@ -488,6 +575,39 @@ test("a directory failure offers Try again without a summary, and retry starts a
   assert.equal(node(recovered, "retry"), undefined);
   assert.match(h.text(recovered), /Nothing from you today yet/);
   assert.equal(host.lists.length, 2);
+});
+
+test("the screen warns separately with the unavailable conversation count", async t => {
+  const host = fakeHost([[agent("missing-a", at(0, 11)), agent("missing-b", at(0, 10)), agent("machine", at(0, 9))]]);
+  host.histories.set("machine", [[machineMessage(at(0, 9))]]);
+  const { h, draw, node } = screenCase(t, host);
+  draw();
+  await settle();
+  const view = draw();
+  const warning = node(view, "unavailable");
+  assert.equal(h.text(warning), "Conversations without readable history today: 2");
+  assert.equal(warning.props.accessibilityRole, "alert");
+  assert.equal(warning.props.style.color, node(view, "incomplete").props.style.color);
+  assert.doesNotMatch(h.text(view), /Nothing from you today yet/);
+});
+
+test("the screen offers Try again for unavailable history and re-reads it", async t => {
+  const host = fakeHost([[agent("missing", at(0, 11)), agent("readable", at(0, 10))]]);
+  host.histories.set("readable", [[message("readable history", at(0, 10), 1)]]);
+  const { h, draw, node } = screenCase(t, host);
+  draw();
+  await settle();
+  const retry = node(draw(), "retry");
+  assert.equal(h.text(retry), "Try again");
+  host.histories.set("missing", [[message("recovered history", at(0, 11), 1)]]);
+  retry.props.onPress();
+  await settle();
+  const recovered = draw();
+  assert.deepEqual(readIds(host), ["missing", "readable", "missing"]);
+  assert.equal(node(recovered, "unavailable"), undefined);
+  assert.equal(node(recovered, "incomplete"), undefined);
+  assert.equal(node(recovered, "retry"), undefined);
+  assert.match(h.text(node(recovered, "row")), /recovered history/);
 });
 
 test("the screen renders progressive rows and queues Try again for an incomplete result", async t => {
@@ -640,6 +760,7 @@ test("missing either host method registers nothing and warns only once", t => {
 test("all three locales have the new text with matching interpolation", () => {
   const keys = {
     screenSummary: ["conversations", "messages"], screenProgress: ["done", "total"],
+    screenUnavailable: ["count"],
     screenLoading: [], screenIncomplete: [], screenStale: [], screenRefresh: [], screenUntitled: [],
   };
   for (const locale of ["en", "zh-CN", "ja"]) {
@@ -653,4 +774,7 @@ test("all three locales have the new text with matching interpolation", () => {
   const { myMessages: chinese } = require("../client/locales/zh-CN.json");
   assert.equal(chinese.screenUntitled, "未命名对话");
   assert.equal(chinese.screenStale, "这些是前一天的消息。刷新后可查看今天的消息。");
+  assert.equal(chinese.screenUnavailable, "今天有 {{count}} 个对话读不到历史。");
+  const { myMessages: japanese } = require("../client/locales/ja.json");
+  assert.equal(japanese.screenUnavailable, "今日の会話のうち {{count}} 件は履歴を読めませんでした。");
 });
