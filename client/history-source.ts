@@ -76,10 +76,13 @@ export function defaultTimeZone(): string {
 
 /**
  * Codes that mean "this host has no such method". Paseo surfaces a failed RPC as a
- * `DaemonRpcError` whose `code` comes from the `rpc_error` payload; the daemon also reports
- * an unregistered plugin method as `handler_error`, which is a failed call, not a missing
- * surface. Reading the code (never the message) keeps an ordinary read failure from being
- * mistaken for an old host.
+ * `DaemonRpcError` whose `code` comes from the `rpc_error` payload. The current hosts
+ * (0.16.0 and 0.17.5) have no dedicated code: an unregistered plugin method is reported as
+ * `handler_error`, the same code as any failed call, so on those hosts a missing method
+ * shows as `error`, never `unsupported`. `unsupported` is therefore reached only when the
+ * client has no call to make; the codes below are for a host that adds an explicit one.
+ * Reading the code (never the message) keeps an ordinary read failure from being mistaken
+ * for an old host.
  */
 const UNKNOWN_METHOD_CODES = new Set([
   "METHOD_NOT_FOUND",

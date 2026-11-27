@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, type Dirent } from "node:fs";
+import { closeSync, existsSync, openSync, readdirSync, readSync, type Dirent } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
@@ -29,11 +29,12 @@ import type { HistoryDayResult, HistoryDaysResult } from "../shared/history-rpc"
  *
  * Nothing here writes: every handle is opened read-only, every statement is a `SELECT` or a
  * schema-reading pragma, and a database that cannot be opened or lacks an expected column is
- * skipped so its conversations fall back to the slow timeline path. A database whose `-wal`,
- * `-shm` and `-journal` side files are all absent opens through `mode=ro&immutable=1`, so
- * SQLite does not create those files next to someone else's data; when any exists, the
- * ordinary read-only open is used because immutable would ignore live WAL content or a
- * journal that needs recovery.
+ * skipped so its conversations fall back to the slow timeline path. A WAL-format database
+ * whose `-wal`, `-shm` and `-journal` side files are all absent opens through
+ * `mode=ro&immutable=1`, so SQLite does not create those files next to someone else's data.
+ * A rollback-format database always takes the ordinary read-only open (immutable could skip
+ * a journal it needs, and the ordinary open creates no side files), and so does a WAL store
+ * with any side file, because immutable would ignore live WAL content or journal recovery.
  */
 
 /** One Paseo conversation, reduced to what the fast path needs. */
@@ -339,7 +340,7 @@ function openDatabase(entry: DatabaseEntry): OpenDatabase | null {
   if (!sqlite) return null;
   let db: DatabaseSync;
   try {
-    db = new sqlite.DatabaseSync(openTarget(entry.path), { readOnly: true });
+    db = openReadOnlyDatabase(sqlite, entry.path, openTarget(entry.path));
   } catch {
     return null;
   }
@@ -361,21 +362,83 @@ function openDatabase(entry: DatabaseEntry): OpenDatabase | null {
 /**
  * Where to open a database read-only.
  *
- * When `-wal`, `-shm` and `-journal` are all absent, no writer is attached and every
- * committed row is in the main file, so `immutable=1` is safe and SQLite does not create
- * those side files next to someone else's data. When any exists, a writer may be live, the
- * WAL may hold newer rows, or a journal may need recovery; immutable would ignore them, so
- * the plain path is used and SQLite's ordinary read-only open handles them. `pathToFileURL`
- * escapes spaces, `#` and `?`, so only the query string is read as URI parameters.
+ * `immutable=1` is used only for a WAL-format store whose `-wal`, `-shm` and `-journal` side
+ * files are all absent: then every committed row is in the main file, and SQLite must not
+ * create the side files next to someone else's data. The header check matters: a rollback
+ * (DELETE-journal) store can also have no side files while a writer is attached, and
+ * immutable would skip any journal recovery it needs. Rollback stores therefore always take
+ * the plain read-only path, which does not create side files anyway. When a WAL store has any
+ * side file, a writer may be live or the WAL may hold newer rows; immutable would ignore
+ * them, so the plain path is used and SQLite reads them. `pathToFileURL` escapes spaces, `#`
+ * and `?`, so only the query string is read as URI parameters.
  */
 function openTarget(path: string): string | URL {
-  // A rollback journal also means a writer stopped mid-transaction; immutable must not
-  // skip its recovery, so that case takes the ordinary read-only open too.
+  if (!isWalStore(path)) return path;
   if (existsSync(`${path}-wal`) || existsSync(`${path}-shm`) || existsSync(`${path}-journal`)) return path;
   const url = pathToFileURL(path);
   url.searchParams.set("mode", "ro");
   url.searchParams.set("immutable", "1");
   return url;
+}
+
+/** Test hook: the target `openDatabase` would use for a database path. */
+export function openTargetForTests(path: string): string | URL {
+  return openTarget(path);
+}
+
+const SQLITE_HEADER_BYTES = 100;
+const SQLITE_FILE_FORMAT_WRITE = 18;
+const SQLITE_FILE_FORMAT_READ = 19;
+const SQLITE_WAL_FORMAT = 2;
+
+/**
+ * Whether the SQLite header says this is a WAL-format store. Bytes 18 and 19 are the file
+ * format write and read versions; both are 2 for WAL. A short or unreadable file is not
+ * treated as WAL, so it takes the ordinary read-only path (and fails there if it is broken).
+ */
+function isWalStore(path: string): boolean {
+  let descriptor: number | null = null;
+  try {
+    descriptor = openSync(path, "r");
+    const header = Buffer.alloc(SQLITE_HEADER_BYTES);
+    const read = readSync(descriptor, header, 0, header.length, 0);
+    return read > SQLITE_FILE_FORMAT_READ
+      && header[SQLITE_FILE_FORMAT_WRITE] === SQLITE_WAL_FORMAT
+      && header[SQLITE_FILE_FORMAT_READ] === SQLITE_WAL_FORMAT;
+  } catch {
+    return false;
+  } finally {
+    if (descriptor !== null) {
+      try {
+        closeSync(descriptor);
+      } catch {
+        // The descriptor is already gone; nothing left to release.
+      }
+    }
+  }
+}
+
+/**
+ * Open read-only, with one fallback for hosts whose `node:sqlite` does not accept a URL path.
+ * Node 22.13 and 22.14 ship `node:sqlite` but only take string paths; they raise a TypeError
+ * with `ERR_INVALID_ARG_TYPE`. Retrying the plain path can create WAL side files, so this
+ * retry is limited to that error shape. Any other failure, or an error that cannot be
+ * classified, stays a skip.
+ */
+function openReadOnlyDatabase(
+  sqlite: SqliteModule, path: string, target: string | URL,
+): DatabaseSync {
+  try {
+    return new sqlite.DatabaseSync(target, { readOnly: true });
+  } catch (error) {
+    if (!(target instanceof URL) || !isUnsupportedUrlPath(error)) throw error;
+    return new sqlite.DatabaseSync(path, { readOnly: true });
+  }
+}
+
+function isUnsupportedUrlPath(error: unknown): boolean {
+  return error instanceof TypeError
+    && (error as { code?: unknown }).code === "ERR_INVALID_ARG_TYPE";
 }
 
 function hasColumns(db: DatabaseSync, table: string, required: readonly string[]): boolean {
@@ -391,20 +454,17 @@ function* readUserRows(
   db: DatabaseSync, sessionIds: readonly string[], scope: DayScope | undefined,
 ): Generator<RawMessageRow> {
   const window = scope ? " AND timestamp >= ? AND timestamp < ?" : "";
-  for (let start = 0; start < sessionIds.length; start += SESSION_BATCH) {
-    const chunk = sessionIds.slice(start, start + SESSION_BATCH);
-    const sql = `SELECT id, session_id, content, timestamp, active, compacted FROM messages
-      WHERE role = 'user' AND (active = 1 OR compacted = 1)
-        AND COALESCE(json_extract(CASE WHEN json_valid(display_metadata) THEN display_metadata ELSE '{}' END, '$.model_only'), 0) = 0${window}
-        AND session_id IN (${chunk.map(() => "?").join(",")})
-      ORDER BY session_id, id`;
-    const parameters: Array<string | number> = scope
-      ? [scope.fromSeconds, scope.untilSeconds, ...chunk]
-      : [...chunk];
-    for (const row of db.prepare(sql).iterate(...parameters)) {
-      const parsed = rawMessageRow(row);
-      if (parsed) yield parsed;
-    }
+  const sql = `SELECT id, session_id, content, timestamp, active, compacted FROM messages
+    WHERE role = 'user' AND (active = 1 OR compacted = 1)
+      AND COALESCE(json_extract(CASE WHEN json_valid(display_metadata) THEN display_metadata ELSE '{}' END, '$.model_only'), 0) = 0${window}
+      AND session_id IN (${sessionIds.map(() => "?").join(",")})
+    ORDER BY session_id, id`;
+  const parameters: Array<string | number> = scope
+    ? [scope.fromSeconds, scope.untilSeconds, ...sessionIds]
+    : [...sessionIds];
+  for (const row of db.prepare(sql).iterate(...parameters)) {
+    const parsed = rawMessageRow(row);
+    if (parsed) yield parsed;
   }
 }
 
@@ -455,9 +515,19 @@ function rawMessageRow(row: Record<string, unknown>): RawMessageRow | null {
   };
 }
 
-function readDatabase(
+/**
+ * The person's rows from one database, yielded batch by batch.
+ *
+ * Sessions are split into `SESSION_BATCH` chunks and each chunk is queried separately, so a
+ * statement that fails partway (a corrupt page, an unreadable value) throws only after the
+ * earlier chunks were read. `readHistory` then drops every row this database contributed and
+ * puts its conversations on the slow path, which is why this must be a generator rather than
+ * a function returning one array: a caller has to see the rows a later chunk failure makes
+ * invalid.
+ */
+function* readDatabase(
   db: DatabaseSync, sessionIds: readonly string[], timeZone: string | null, scope: DayScope | undefined,
-): DedupedRow[] {
+): Generator<DedupedRow> {
   // The newest removed copy of each (session, timestamp, text) identity. Removed rows never
   // add a message; they only hide a visible copy they are newer than.
   const removed = new Map<string, number>();
@@ -472,33 +542,41 @@ function readDatabase(
     if (previous === undefined || raw.id > previous) removed.set(key, raw.id);
   }
 
-  const groups = new Map<string, { live: DedupedRow[]; compacted: Map<string, DedupedRow> }>();
-  for (const raw of readUserRows(db, sessionIds, scope)) {
-    const at = Math.round(raw.timestamp * 1000);
-    if (!Number.isFinite(at)) continue;
-    if (scope && zoneDayKey(at, timeZone) !== scope.day) continue;
-    const text = flattenContent(raw.content);
-    if (!text) continue;
-    const key = `${raw.sessionId}\u0000${raw.timestamp}`;
-    let group = groups.get(key);
-    if (!group) {
-      group = { live: [], compacted: new Map() };
-      groups.set(key, group);
+  for (let start = 0; start < sessionIds.length; start += SESSION_BATCH) {
+    const chunk = sessionIds.slice(start, start + SESSION_BATCH);
+    const groups = new Map<string, { live: DedupedRow[]; compacted: Map<string, DedupedRow> }>();
+    for (const raw of readUserRows(db, chunk, scope)) {
+      const at = Math.round(raw.timestamp * 1000);
+      if (!Number.isFinite(at)) continue;
+      if (scope && zoneDayKey(at, timeZone) !== scope.day) continue;
+      const text = flattenContent(raw.content);
+      if (!text) continue;
+      const key = `${raw.sessionId}\u0000${raw.timestamp}`;
+      let group = groups.get(key);
+      if (!group) {
+        group = { live: [], compacted: new Map() };
+        groups.set(key, group);
+      }
+      const row: DedupedRow = { id: raw.id, sessionId: raw.sessionId, timestamp: raw.timestamp, at, text };
+      if (raw.active) group.live.push(row);
+      else {
+        // Keep the newest archived copy of this text. A removed copy between two archived
+        // copies must hide neither: Hermes compares the newest copy, not the first one.
+        const previous = group.compacted.get(text);
+        if (!previous || row.id > previous.id) group.compacted.set(text, row);
+      }
     }
-    const row: DedupedRow = { id: raw.id, sessionId: raw.sessionId, timestamp: raw.timestamp, at, text };
-    if (raw.active) group.live.push(row);
-    else if (!group.compacted.has(text)) group.compacted.set(text, row);
+    const deduped: DedupedRow[] = [];
+    for (const group of groups.values()) {
+      if (group.live.length) deduped.push(...group.live);
+      else deduped.push(...group.compacted.values());
+    }
+    const visible = deduped.filter(row => {
+      const removedId = removed.get(removedKey(row.sessionId, row.timestamp, row.text));
+      return removedId === undefined || removedId <= row.id;
+    });
+    for (const row of keepHumanMessages(visible)) yield row;
   }
-  const deduped: DedupedRow[] = [];
-  for (const group of groups.values()) {
-    if (group.live.length) deduped.push(...group.live);
-    else deduped.push(...group.compacted.values());
-  }
-  const visible = deduped.filter(row => {
-    const removedId = removed.get(removedKey(row.sessionId, row.timestamp, row.text));
-    return removedId === undefined || removedId <= row.id;
-  });
-  return keepHumanMessages(visible);
 }
 
 function removedKey(sessionId: string, timestamp: number, text: string): string {

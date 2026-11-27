@@ -48,6 +48,26 @@ const NULLABLE_TIMESTAMP_SCHEMA = `
   );
 `;
 
+// A `messages` view that passes PRAGMA table_info but throws for one session when read.
+// The index keeps the chunk without that session from evaluating its failing expression.
+const FAILING_VIEW_SCHEMA = `
+  CREATE TABLE sessions (id TEXT PRIMARY KEY);
+  CREATE TABLE raw_messages (
+    id INTEGER PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT,
+    timestamp REAL NOT NULL,
+    active INTEGER NOT NULL DEFAULT 1,
+    compacted INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX idx_raw_messages_session ON raw_messages(session_id, id);
+  CREATE VIEW messages AS
+    SELECT id, session_id, role, content, timestamp, active, compacted,
+      CASE WHEN session_id = 'bad-500' THEN json_extract('{bad', '$.x') ELSE NULL END AS display_metadata
+    FROM raw_messages;
+`;
+
 function createFixture(t, { hermesName = "hermes" } = {}) {
   const root = fs.mkdtempSync(join(os.tmpdir(), "clear-chat-history-"));
   assert.equal(
@@ -96,6 +116,41 @@ function createFixture(t, { hermesName = "hermes" } = {}) {
     }
   }
   return { root, hermes, database, close };
+}
+
+/**
+ * A stand-in for `node:sqlite` that can reject a URL target the way Node 22.13/22.14 does.
+ * It answers only what `openDatabase` asks: the column pragmas and the session index.
+ */
+function fakeSqliteModule({ rejectUrl = false, error = null } = {}) {
+  class FakeDatabaseSync {
+    constructor(target) {
+      if (rejectUrl && target instanceof URL) throw error;
+      this.target = target;
+      this.isOpen = true;
+    }
+    prepare(sql) {
+      return {
+        all: () => {
+          if (sql.includes("table_info(sessions)")) return [{ name: "id" }];
+          if (sql.includes("table_info(messages)")) {
+            return ["session_id", "role", "content", "timestamp", "active", "compacted", "display_metadata"]
+              .map(name => ({ name }));
+          }
+          return [];
+        },
+        iterate: () => (sql.includes("SELECT id FROM sessions") ? [{ id: "s1" }] : []),
+      };
+    }
+    close() { this.isOpen = false; }
+  }
+  return { DatabaseSync: FakeDatabaseSync };
+}
+
+function withSqliteModule(t, module) {
+  const original = process.getBuiltinModule;
+  process.getBuiltinModule = id => (id === "node:sqlite" ? module : original.call(process, id));
+  t.after(() => { process.getBuiltinModule = original; });
 }
 
 function conversation(id, sessionId, lastActiveAt = 0) {
@@ -457,6 +512,17 @@ test("one malformed display_metadata row neither drops its database nor hides ot
   assert.deepEqual(detail.rows.map(row => row.text), ["good after", "bad metadata row", "good before"]);
 });
 
+test("a removed copy between two archived copies does not hide the newer archived copy", t => {
+  const f = createFixture(t);
+  const db = f.database().session("s1");
+  db.add({ at: T, text: "kept words", active: 0, compacted: 1 });
+  db.add({ at: T, text: "kept words", active: 0, compacted: 0 });
+  db.add({ at: T, text: "kept words", active: 0, compacted: 1 });
+  const days = readDays(f, [conversation("agent-a", "s1")]);
+  assert.deepEqual(days.days, [{ day: "2026-11-20", count: 1 }]);
+  assert.deepEqual(readDay(f, [conversation("agent-a", "s1")], "2026-11-20").rows.map(row => row.text), ["kept words"]);
+});
+
 test("a removed copy newer than a visible copy hides that message", t => {
   const f = createFixture(t);
   const db = f.database().session("s1");
@@ -580,6 +646,89 @@ test("a live writer's uncheckpointed WAL rows are read without changing either f
   } finally {
     if (writer.isOpen) writer.close();
   }
+});
+
+test("only a WAL store with no side files takes the immutable target", t => {
+  const f = createFixture(t);
+  const rollback = f.database().session("s1");
+  rollback.add({ at: T, text: "rollback words" });
+  const wal = f.database("wal").session("s2");
+  wal.db.exec("PRAGMA journal_mode=WAL");
+  wal.add({ at: T, text: "wal words" });
+  f.close();
+  assert.equal(typeof reader.openTargetForTests(rollback.path), "string",
+    "a rollback-journal store never takes immutable");
+  const immutable = reader.openTargetForTests(wal.path);
+  assert.equal(typeof immutable, "object");
+  assert.match(String(immutable), /[?&]immutable=1/);
+  fs.writeFileSync(`${wal.path}-wal`, "");
+  assert.equal(typeof reader.openTargetForTests(wal.path), "string", "a -wal side file means plain");
+  fs.rmSync(`${wal.path}-wal`);
+  fs.writeFileSync(`${wal.path}-shm`, "");
+  assert.equal(typeof reader.openTargetForTests(wal.path), "string", "a -shm side file means plain");
+  fs.rmSync(`${wal.path}-shm`);
+  fs.writeFileSync(`${wal.path}-journal`, "");
+  assert.equal(typeof reader.openTargetForTests(wal.path), "string", "a -journal means plain");
+  fs.rmSync(`${wal.path}-journal`);
+  assert.equal(typeof reader.openTargetForTests(wal.path), "object");
+});
+
+test("a database that fails mid-read drops all its rows and keeps the other databases", t => {
+  const f = createFixture(t);
+  const bad = f.database(undefined, FAILING_VIEW_SCHEMA);
+  const good = f.database("work").session("good-profile");
+  good.add({ at: T, text: "from the good database" });
+  const insert = bad.db.prepare(`
+    INSERT INTO raw_messages (id, session_id, role, content, timestamp, active, compacted)
+    VALUES (?, ?, 'user', ?, ?, 1, 0)
+  `);
+  const conversations = [];
+  bad.db.exec("BEGIN");
+  for (let index = 0; index < 500; index += 1) {
+    const id = `good-${String(index).padStart(3, "0")}`;
+    bad.session(id);
+    insert.run(index + 1, id, `row ${index}`, T / 1000);
+    conversations.push(conversation(`agent-${id}`, id));
+  }
+  bad.session("bad-500");
+  insert.run(501, "bad-500", "boom", T / 1000);
+  conversations.push(conversation("agent-bad", "bad-500"));
+  bad.db.exec("COMMIT");
+  conversations.push(conversation("agent-profile", "good-profile"));
+  const days = readDays(f, conversations);
+  // The first chunk (500 good sessions) was read and then dropped with the failing chunk.
+  assert.deepEqual(days.days, [{ day: "2026-11-20", count: 1 }]);
+  assert.equal(days.fastConversations, 1, "only the other database stays fast");
+  assert.deepEqual(days.skippedDatabases, ["state.db"]);
+  assert.equal(days.slowConversationIds.length, 501, "every conversation in the failed database is slow");
+});
+
+test("the reader retries the plain path when the host rejects a URL target", t => {
+  const f = createFixture(t);
+  const db = f.database().session("s1");
+  db.db.exec("PRAGMA journal_mode=WAL");
+  db.add({ at: T, text: "wal words" });
+  f.close();
+  const error = new TypeError("The path argument must be a string or Buffer");
+  error.code = "ERR_INVALID_ARG_TYPE";
+  withSqliteModule(t, fakeSqliteModule({ rejectUrl: true, error }));
+  const days = readDays(f, [conversation("agent-a", "s1")]);
+  assert.equal(days.fastConversations, 1);
+  assert.deepEqual(days.slowConversationIds, []);
+  assert.deepEqual(days.skippedDatabases, []);
+});
+
+test("the reader skips a database when a URL open fails for an unclassified reason", t => {
+  const f = createFixture(t);
+  const db = f.database().session("s1");
+  db.db.exec("PRAGMA journal_mode=WAL");
+  db.add({ at: T, text: "wal words" });
+  f.close();
+  withSqliteModule(t, fakeSqliteModule({ rejectUrl: true, error: new Error("URL not supported") }));
+  const days = readDays(f, [conversation("agent-a", "s1")]);
+  assert.equal(days.fastConversations, 0);
+  assert.deepEqual(days.slowConversationIds, ["agent-a"]);
+  assert.deepEqual(days.skippedDatabases, ["state.db"]);
 });
 
 test("no server module imports node:sqlite as a value, so loading the plugin never needs it", () => {
