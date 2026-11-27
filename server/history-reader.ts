@@ -131,6 +131,10 @@ export interface HistoryDataSnapshot {
   messages: HistoryMessageRow[];
   /** Sessions whose database was read completely, even when they had no messages. */
   readSessions: string[];
+  /** Every session id in every completely read database, whether a conversation points at
+   * it or not. The archive uses this to drop a session Hermes still has but Paseo no
+   * longer points at (a fork or session switch). */
+  presentSessions: string[];
   fastConversations: number;
   slowConversationIds: string[];
   skippedDatabases: string[];
@@ -140,6 +144,7 @@ export interface HistoryDataSnapshot {
 interface HistoryRead {
   messages: HistoryMessage[];
   readSessions: string[];
+  presentSessions: string[];
   fastConversations: number;
   slowConversationIds: string[];
   skippedDatabases: string[];
@@ -178,6 +183,7 @@ export function readHistoryData(options: HistoryReaderOptions, day?: string): Hi
   return {
     messages: read.messages.map(({ sessionId, agentId, at, text }) => ({ sessionId, agentId, at, text })),
     readSessions: read.readSessions,
+    presentSessions: read.presentSessions,
     fastConversations: read.fastConversations,
     slowConversationIds: read.slowConversationIds,
     skippedDatabases: read.skippedDatabases,
@@ -267,6 +273,7 @@ function readHistory(options: HistoryReaderOptions, scope?: DayScope): HistoryRe
 
   const messages: HistoryMessage[] = [];
   const readSessions = new Set<string>();
+  const failedDatabases = new Set<OpenDatabase>();
   try {
     const sessionDatabase = new Map<string, OpenDatabase>();
     for (const database of databases) {
@@ -315,11 +322,21 @@ function readHistory(options: HistoryReaderOptions, scope?: DayScope): HistoryRe
         // fails mid-iteration). Drop this database's rows whole and let its conversations
         // use the slow path, exactly as an unopenable file does.
         messages.length = before;
+        failedDatabases.add(database);
         skippedDatabases.push(database.label);
       }
     }
   } finally {
     for (const database of databases) closeQuietly(database.db);
+  }
+
+  // A database whose session index was built and whose message reads (if any) all
+  // succeeded still has every session it listed. Sessions no conversation points at are
+  // present too: the archive must not keep a second copy of them (fork, session switch).
+  const presentSessions = new Set<string>();
+  for (const database of databases) {
+    if (failedDatabases.has(database)) continue;
+    for (const sessionId of database.sessions) presentSessions.add(sessionId);
   }
 
   let fastConversations = 0;
@@ -333,6 +350,7 @@ function readHistory(options: HistoryReaderOptions, scope?: DayScope): HistoryRe
   return {
     messages,
     readSessions: [...readSessions],
+    presentSessions: [...presentSessions],
     fastConversations,
     slowConversationIds,
     skippedDatabases,
@@ -393,6 +411,10 @@ function openDatabase(entry: DatabaseEntry): OpenDatabase | null {
   }
   openHandles += 1;
   try {
+    // One read transaction covers the session index and every message query, so a prune
+    // that commits between them cannot turn a live session into "read, zero messages".
+    // Closing the handle ends the transaction; a read-only transaction has nothing to keep.
+    db.exec("BEGIN");
     if (!hasColumns(db, "sessions", SESSION_COLUMNS)) throw new Error("sessions columns");
     if (!hasColumns(db, "messages", MESSAGE_COLUMNS)) throw new Error("messages columns");
     const sessions = new Set<string>();

@@ -83,6 +83,61 @@ function createHermes(t, rows) {
   return { hermes, databasePath };
 }
 
+function createWalHermes(t, rows) {
+  const root = fs.mkdtempSync(join(os.tmpdir(), "clear-chat-archive-wal-"));
+  assert.equal(outsideRepository(root), true, "the Hermes root must live outside the repository");
+  const hermes = join(root, "hermes");
+  fs.mkdirSync(hermes, { recursive: true });
+  const databasePath = join(hermes, "state.db");
+  const writer = new DatabaseSync(databasePath);
+  writer.exec("PRAGMA journal_mode=WAL");
+  writer.exec(SCHEMA);
+  for (const sessionId of new Set(rows.map(row => row.sessionId))) {
+    writer.prepare("INSERT INTO sessions (id) VALUES (?)").run(sessionId);
+  }
+  const insert = writer.prepare(`
+    INSERT INTO messages (session_id, role, content, timestamp, active, compacted, display_metadata)
+    VALUES (?, 'user', ?, ?, 1, 0, NULL)
+  `);
+  for (const row of rows) insert.run(row.sessionId, row.text, row.at / 1000);
+  t.after(() => {
+    try {
+      writer.close();
+    } catch {
+      // Already closed by a test.
+    }
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  return { hermes, databasePath, writer };
+}
+
+/** Run *callback* just before the reader prepares its first `FROM messages` query. */
+function interceptFirstMessagesPrepare(t, callback) {
+  const prototype = DatabaseSync.prototype;
+  const original = prototype.prepare;
+  let fired = false;
+  prototype.prepare = function patchedPrepare(sql, ...args) {
+    if (!fired && typeof sql === "string" && sql.includes("FROM messages")) {
+      fired = true;
+      callback();
+    }
+    return original.call(this, sql, ...args);
+  };
+  t.after(() => {
+    prototype.prepare = original;
+  });
+  return () => fired;
+}
+
+function deferred() {
+  let resolve;
+  const promise = new Promise(done => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+
 function createFailingDatabase(t, hermes) {
   const path = join(hermes, "state.db");
   fs.rmSync(path, { force: true });
@@ -268,16 +323,30 @@ test("corrupt content is renamed with a timestamp and rebuilt", async t => {
   assert.deepEqual(readJson(monthFile).messages.map(record => record.text), ["recover me"]);
 });
 
-test("at most three renamed copies of one file are kept", async t => {
+test("keeps the first damaged copy and the newest two", async t => {
   const home = createHome(t);
   const rows = [message("s1", "agent-a", T, "still here")];
   await merge(archive(home), rows);
   const monthFile = archivePath(home, `messages-${MONTH}.json`);
-  for (let index = 0; index < 4; index += 1) {
-    fs.writeFileSync(monthFile, "{not json");
-    await merge(archive(home), rows);
+  const prefix = `messages-${MONTH}.json.bad`;
+  const directory = archiveDirectory(home);
+  for (const [stamp, text] of [
+    ["1000000000001", "oldest"],
+    ["1000000000002", "second"],
+    ["1000000000003", "third"],
+    ["1000000000004", "fourth"],
+  ]) {
+    fs.writeFileSync(join(directory, `${prefix}-${stamp}-1-a`), text);
   }
-  assert.equal(badFiles(home).length, 3);
+  fs.writeFileSync(monthFile, "{not json");
+  await merge(archive(home), rows);
+  const kept = badFiles(home).map(name => fs.readFileSync(join(directory, name), "utf8"));
+  assert.equal(kept.length, 3);
+  assert.ok(kept.includes("oldest"), "the first damaged copy must survive");
+  assert.ok(kept.includes("fourth"), "the newest copy must survive");
+  assert.ok(kept.includes("{not json"), "the copy made now must survive");
+  assert.equal(kept.includes("second"), false);
+  assert.equal(kept.includes("third"), false);
 });
 
 test("an old version 1 archive and a truncated file are both treated as corrupt", async t => {
@@ -554,12 +623,11 @@ test("two RPC calls at once leave the union of both fast reads", async t => {
     { sessionId: "s2", at: T + 1000, text: "message on another session" },
   ]);
   const handlers = register(t, { root: fixture.hermes, home });
-  const first = paseo([agent("agent-a", "s1")]);
-  const second = paseo([agent("agent-b", "s2")]);
+  const list = paseo([agent("agent-a", "s1"), agent("agent-b", "s2")]);
   const days = handlers.get("history.days");
   await Promise.all([
-    days({ timeZone: "Asia/Tokyo" }, { paseo: first }),
-    days({ timeZone: "Asia/Tokyo" }, { paseo: second }),
+    days({ timeZone: "Asia/Tokyo" }, { paseo: list }),
+    days({ timeZone: "Asia/Tokyo" }, { paseo: list }),
   ]);
   const records = allRecords(home);
   assert.deepEqual(records.map(record => record.text).sort(), [
@@ -728,11 +796,256 @@ test("a changed classification result replaces the old record instead of doublin
   assert.deepEqual(detail.rows.map(row => row.text), ["changed words"]);
 });
 
-test("the archive key is derived from the session id, instant and text", () => {
+test("a session Hermes still has but no conversation points at is dropped", async t => {
+  const home = createHome(t);
+  const fixture = createHermes(t, [
+    { sessionId: "s1", at: T, text: "copied words" },
+    { sessionId: "s2", at: T, text: "copied words" },
+  ]);
+  const handlers = register(t, { root: fixture.hermes, home });
+  const first = await handlers.get("history.days")(
+    { timeZone: "Asia/Tokyo" },
+    { paseo: paseo([agent("agent-a", "s1")]) },
+  );
+  assert.deepEqual(first.days, [{ day: "2026-11-20", count: 1 }]);
+
+  const switched = await handlers.get("history.days")(
+    { timeZone: "Asia/Tokyo" },
+    { paseo: paseo([agent("agent-b", "s2")]) },
+  );
+  assert.deepEqual(switched.days, [{ day: "2026-11-20", count: 1 }]);
+  assert.equal(switched.fromCache, 0);
+  assert.deepEqual(allRecords(home).map(record => record.sessionId), ["s2"]);
+
+  const detail = await handlers.get("history.day")(
+    { day: "2026-11-20", timeZone: "Asia/Tokyo" },
+    { paseo: paseo([agent("agent-b", "s2")]) },
+  );
+  assert.deepEqual(detail.rows.map(row => row.text), ["copied words"]);
+
+  editDatabase(fixture.databasePath, db => {
+    db.prepare("DELETE FROM messages WHERE session_id = ?").run("s1");
+    db.prepare("DELETE FROM sessions WHERE id = ?").run("s1");
+  });
+  const afterDelete = await handlers.get("history.days")(
+    { timeZone: "Asia/Tokyo" },
+    { paseo: paseo([agent("agent-b", "s2")]) },
+  );
+  assert.deepEqual(afterDelete.days, [{ day: "2026-11-20", count: 1 }]);
+  assert.equal(afterDelete.fromCache, 0);
+  assert.deepEqual(allRecords(home).map(record => record.sessionId), ["s2"]);
+});
+
+test("the size cap still holds when the capped session is replaced", async t => {
+  const home = createHome(t);
+  const rows = Array.from({ length: 10 }, (_, index) =>
+    message("s1", "agent-a", T + index * 1000, `capped message ${index}`));
+  const later = [...rows, message("s1", "agent-a", T + 20_000, "one new message")];
+  const instance = archive(home, { maxMonthBytes: 1000 });
+  const first = await merge(instance, rows, ["s1"]);
+  assert.deepEqual(first.cacheFull, [MONTH]);
+  const monthFile = archivePath(home, `messages-${MONTH}.json`);
+  const firstSize = fs.statSync(monthFile).size;
+  assert.ok(firstSize <= 1000, `the count-only file is ${firstSize} bytes`);
+  assert.equal(monthRecords(home).every(record => record.text === undefined), true);
+
+  const second = await merge(instance, later, ["s1"]);
+  assert.equal(second.cacheError, false);
+  assert.ok(fs.statSync(monthFile).size <= 1000,
+    `the replaced month is ${fs.statSync(monthFile).size} bytes`);
+  assert.equal(monthRecords(home).every(record => record.text === undefined), true);
+  const afterSecond = fs.statSync(monthFile).mtimeMs;
+
+  const third = await merge(instance, later, ["s1"]);
+  assert.equal(third.cacheError, false);
+  assert.ok(fs.statSync(monthFile).size <= 1000);
+  assert.equal(fs.statSync(monthFile).mtimeMs, afterSecond, "a capped read must not rewrite the month");
+});
+
+test("two identical rows in one millisecond stay two and do not rewrite", async t => {
+  const home = createHome(t);
+  const fixture = createHermes(t, [
+    { sessionId: "s1", at: T, text: "ok" },
+    { sessionId: "s1", at: T, text: "ok" },
+  ]);
+  const handlers = register(t, { root: fixture.hermes, home });
+  const list = paseo([agent("agent-a", "s1")]);
+  const first = await handlers.get("history.days")({ timeZone: "Asia/Tokyo" }, { paseo: list });
+  assert.deepEqual(first.days, [{ day: "2026-11-20", count: 2 }]);
+  const detail = await handlers.get("history.day")(
+    { day: "2026-11-20", timeZone: "Asia/Tokyo" }, { paseo: list },
+  );
+  assert.equal(detail.rows.length, 2);
+  assert.equal(allRecords(home).length, 2);
+  const monthFile = archivePath(home, `messages-${MONTH}.json`);
+  const mtime = fs.statSync(monthFile).mtimeMs;
+
+  const second = await handlers.get("history.days")({ timeZone: "Asia/Tokyo" }, { paseo: list });
+  assert.deepEqual(second.days, [{ day: "2026-11-20", count: 2 }]);
+  assert.equal(fs.statSync(monthFile).mtimeMs, mtime, "an identical read must not rewrite the month");
+});
+
+test("a prune that commits during a read keeps the archived session", async t => {
+  const home = createHome(t);
+  const fixture = createWalHermes(t, [
+    { sessionId: "old", at: T, text: "survives the prune" },
+    { sessionId: "new", at: T + 1000, text: "still in Hermes" },
+  ]);
+  const handlers = register(t, { root: fixture.hermes, home });
+  const list = paseo([agent("agent-a", "old"), agent("agent-b", "new")]);
+  const first = await handlers.get("history.days")({ timeZone: "Asia/Tokyo" }, { paseo: list });
+  assert.deepEqual(first.days, [{ day: "2026-11-20", count: 2 }]);
+
+  const fired = interceptFirstMessagesPrepare(t, () => {
+    fixture.writer.exec("BEGIN IMMEDIATE");
+    fixture.writer.prepare("DELETE FROM messages WHERE session_id = ?").run("old");
+    fixture.writer.prepare("DELETE FROM sessions WHERE id = ?").run("old");
+    fixture.writer.exec("COMMIT");
+  });
+  const second = await handlers.get("history.days")({ timeZone: "Asia/Tokyo" }, { paseo: list });
+  assert.equal(fired(), true);
+  assert.deepEqual(second.days, [{ day: "2026-11-20", count: 2 }]);
+  assert.equal(second.fromCache, 0);
+  assert.deepEqual(allRecords(home).map(record => record.text).sort(), [
+    "still in Hermes",
+    "survives the prune",
+  ]);
+});
+
+test("only one instance takes over an expired lock", async t => {
+  const home = createHome(t);
+  const now = Date.UTC(2026, 10, 20, 4, 0, 0);
+  await merge(archive(home), [message("base", "agent-z", T - 1000, "base")], ["base"]);
+  const lock = join(archiveDirectory(home), ".lock");
+  fs.writeFileSync(lock, JSON.stringify({ pid: 1, token: "old-token", at: now - 60_000 }));
+  const monthFile = archivePath(home, `messages-${MONTH}.json`);
+
+  const bReady = deferred();
+  const bGate = deferred();
+  const aReady = deferred();
+  const aGate = deferred();
+  let bReadsLock = false;
+  let aMonthReads = 0;
+  const second = archive(home, {
+    now: () => now,
+    files: {
+      readFile: async path => {
+        const raw = await fs.promises.readFile(path, "utf8");
+        if (path === lock && !bReadsLock) {
+          bReadsLock = true;
+          bReady.resolve();
+          await bGate.promise;
+        }
+        return raw;
+      },
+    },
+  });
+  const first = archive(home, {
+    now: () => now,
+    files: {
+      readFile: async path => {
+        const raw = await fs.promises.readFile(path, "utf8");
+        if (path === monthFile && ++aMonthReads === 2) {
+          aReady.resolve();
+          await aGate.promise;
+        }
+        return raw;
+      },
+    },
+  });
+
+  const bMerge = second.merge([message("s2", "agent-b", T + 1000, "from B")], ["s2"], ["s2"]);
+  await bReady.promise;
+  const aMerge = first.merge([message("s1", "agent-a", T, "from A")], ["s1"], ["s1"]);
+  await aReady.promise;
+  bGate.resolve();
+  const bResult = await bMerge;
+  aGate.resolve();
+  const aResult = await aMerge;
+
+  assert.equal(aResult.cacheError, false);
+  assert.equal(bResult.cacheError, true);
+  assert.deepEqual(allRecords(home).map(record => record.text).sort(), ["base", "from A"]);
+
+  const retry = await second.merge([message("s2", "agent-b", T + 1000, "from B")], ["s2"], ["s2"]);
+  assert.equal(retry.cacheError, false);
+  assert.deepEqual(allRecords(home).map(record => record.text).sort(), ["base", "from A", "from B"]);
+});
+
+test("release does not delete a lock owned by another process", async t => {
+  const home = createHome(t);
+  await merge(archive(home), [message("base", "agent-z", T - 1000, "base")], ["base"]);
+  const lock = join(archiveDirectory(home), ".lock");
+  const monthFile = archivePath(home, `messages-${MONTH}.json`);
+  const ready = deferred();
+  const gate = deferred();
+  let monthReads = 0;
+  const instance = archive(home, {
+    files: {
+      readFile: async path => {
+        const raw = await fs.promises.readFile(path, "utf8");
+        if (path === monthFile && ++monthReads === 2) {
+          ready.resolve();
+          await gate.promise;
+        }
+        return raw;
+      },
+    },
+  });
+  const mergePromise = instance.merge([message("s1", "agent-a", T, "mine")], ["s1"], ["s1"]);
+  await ready.promise;
+  fs.writeFileSync(lock, JSON.stringify({ pid: 999, token: "other-owner", at: Date.now() }));
+  gate.resolve();
+  await mergePromise;
+  const body = JSON.parse(fs.readFileSync(lock, "utf8"));
+  assert.equal(body.token, "other-owner", "the release must leave another owner's lock");
+});
+
+test("the merge re-reads the archive after it takes the lock", async t => {
+  const home = createHome(t);
+  await merge(archive(home), [message("base", "agent-z", T - 1000, "base")], ["base"]);
+  const monthFile = archivePath(home, `messages-${MONTH}.json`);
+  const injected = {
+    key: archiveModule.archiveKey("from-another-process", T + 2000, "written elsewhere"),
+    sessionId: "from-another-process",
+    agentId: "agent-x",
+    at: T + 2000,
+    text: "written elsewhere",
+  };
+  let monthReads = 0;
+  const instance = archive(home, {
+    files: {
+      readFile: async path => {
+        let raw = await fs.promises.readFile(path, "utf8");
+        if (path === monthFile && ++monthReads === 2) {
+          const parsed = JSON.parse(raw);
+          parsed.messages.push(injected);
+          raw = JSON.stringify(parsed);
+          await fs.promises.writeFile(path, raw, "utf8");
+        }
+        return raw;
+      },
+    },
+  });
+  const merged = await instance.merge([message("s1", "agent-a", T, "mine")], ["s1"], ["s1"]);
+  assert.equal(merged.cacheError, false);
+  assert.deepEqual(allRecords(home).map(record => record.text).sort(), [
+    "base",
+    "mine",
+    "written elsewhere",
+  ]);
+});
+
+
+test("the archive key is derived from the session id, instant, text and occurrence", () => {
   const key = archiveModule.archiveKey("session-1", 1234, "hello");
   assert.match(key, /^[0-9a-f]{16}$/);
-  assert.equal(key, createHash("sha256").update("session-1\u00001234\u0000hello", "utf8").digest("hex").slice(0, 16));
+  assert.equal(
+    key,
+    createHash("sha256").update("session-1\u00001234\u0000hello\u00000", "utf8").digest("hex").slice(0, 16),
+  );
   assert.notEqual(key, archiveModule.archiveKey("session-2", 1234, "hello"));
   assert.notEqual(key, archiveModule.archiveKey("session-1", 1235, "hello"));
   assert.notEqual(key, archiveModule.archiveKey("session-1", 1234, "hello!"));
+  assert.notEqual(key, archiveModule.archiveKey("session-1", 1234, "hello", 1));
 });

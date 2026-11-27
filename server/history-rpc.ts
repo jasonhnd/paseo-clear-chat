@@ -59,8 +59,8 @@ export function registerHistoryHandlers(
       requireCompleteRegistration(registration);
       const { conversations, directoryPartial } = await listHistoryConversations(context.paseo);
       const fast = readHistoryData({ conversations, root: options.root, timeZone: input.timeZone });
-      const merged = await archive.merge(fast.messages, fast.readSessions);
-      const readSessions = new Set(fast.readSessions);
+      const merged = await archive.merge(fast.messages, fast.readSessions, fast.presentSessions);
+      const presentSessions = new Set(fast.presentSessions);
       return {
         ...countByDay(merged.messages, input.timeZone),
         fastConversations: fast.fastConversations,
@@ -69,7 +69,7 @@ export function registerHistoryHandlers(
         directoryPartial,
         readMs: fast.readMs,
         fromCache: merged.messages.reduce(
-          (count, record) => count + (readSessions.has(record.sessionId) ? 0 : 1), 0,
+          (count, record) => count + (presentSessions.has(record.sessionId) ? 0 : 1), 0,
         ),
         ...archiveFlags(merged),
       };
@@ -93,10 +93,11 @@ export function registerHistoryHandlers(
           cacheError: true,
         };
       }
-      const readSessions = new Set(fast.readSessions);
-      // Sessions Hermes still has are already covered by this fast read; the archive only
-      // adds sessions this read did not complete (deleted by Hermes, or unreadable now).
-      const archived = store.messages.filter(record => !readSessions.has(record.sessionId)
+      const presentSessions = new Set(fast.presentSessions);
+      // A session still in a complete database is Hermes's (whether or not a conversation
+      // points at it), so only sessions missing from every readable database come from the
+      // archive: Hermes deleted them, or their database is unreadable now.
+      const archived = store.messages.filter(record => !presentSessions.has(record.sessionId)
         && typeof record.text === "string" && record.text.length > 0
         && zoneDayKey(record.at, input.timeZone) === input.day);
       const rows = [

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { chmod, mkdir, open, readdir, readFile, rename, rm, stat } from "node:fs/promises";
+import { chmod, link, mkdir, open, readdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { zoneDayKey, type HistoryMessageRow } from "./history-reader";
@@ -12,11 +12,13 @@ import { zoneDayKey, type HistoryMessageRow } from "./history-reader";
  * `<Paseo home>/plugin-data/clear-chat/history/`, split into UTC months.
  *
  * Alignment rule: a session Hermes still has is represented by what this read returned for
- * it. A merge replaces every stored record of each session the fast read completed (even a
- * session with no messages, so a rewrite or a retraction disappears), and leaves every other
- * session untouched. A session Hermes has deleted, or whose database could not be read
- * completely, therefore never shrinks: that is what "only grows" means here. A record carries
- * its `sessionId`, so the replacement never has to guess from the key.
+ * it. A merge replaces every stored record of each session with a conversation (even a
+ * session with no messages, so a rewrite or a retraction disappears), removes the stored
+ * records of a session that is still in a completely read database but that no conversation
+ * points at (a fork or session switch), and leaves every other session untouched. A session
+ * missing from every completely readable database was deleted by Hermes (or its database is
+ * unreadable now), so its archive copy never shrinks: that is what "only grows" means here.
+ * A record carries its `sessionId`, so the replacement never has to guess from the key.
  *
  * Files are private (history directory 0700, files 0600; the parent directories keep the
  * normal umask), written through a same-directory temporary file with `fsync`, renamed into
@@ -50,8 +52,29 @@ const BAD_SUFFIX = ".bad";
 const CORRUPT = Symbol("corrupt");
 const READ_ERROR = Symbol("read-error");
 
+interface LockBody {
+  pid?: number;
+  token?: string;
+  at?: number;
+}
+
+function parseLock(raw: string): LockBody | null {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    const value = parsed as { pid?: unknown; token?: unknown; at?: unknown };
+    return {
+      pid: typeof value.pid === "number" ? value.pid : undefined,
+      token: typeof value.token === "string" ? value.token : undefined,
+      at: Number(value.at),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export interface ArchivedMessage {
-  /** sha256 of the session id, instant and text, first 16 hex characters. */
+  /** sha256 of session id, instant, text and occurrence, first 16 hex characters. */
   key: string;
   /** The Hermes session this message belongs to; replacement is per session. */
   sessionId: string;
@@ -95,10 +118,11 @@ export function historyArchiveDirectory(home?: string): string {
   return join(root, "plugin-data", "clear-chat", "history");
 }
 
-/** Stable identity for one Hermes message: session id, millisecond instant and text. */
-export function archiveKey(sessionId: string, at: number, text: string): string {
+/** Stable identity for one Hermes message: session id, millisecond instant, text and the
+ * occurrence index among identical rows in the same session at the same instant. */
+export function archiveKey(sessionId: string, at: number, text: string, ordinal = 0): string {
   return createHash("sha256")
-    .update(`${sessionId}\u0000${at}\u0000${text}`, "utf8")
+    .update(`${sessionId}\u0000${at}\u0000${text}\u0000${ordinal}`, "utf8")
     .digest("hex")
     .slice(0, 16);
 }
@@ -157,7 +181,8 @@ interface StoreRead {
 interface AppliedSessions {
   records: Map<string, ArchivedMessage>;
   changed: Set<string>;
-  added: Map<string, Set<string>>;
+  /** Keys written by this merge that may lose their text when a month is over the cap. */
+  cappable: Map<string, Set<string>>;
 }
 
 export class HistoryArchive {
@@ -174,14 +199,17 @@ export class HistoryArchive {
   }
 
   /**
-   * Align the archive with one complete fast read. *readSessions* lists every session whose
-   * database was read without a mid-read failure; those sessions are replaced wholesale,
-   * every other session is left alone.
+   * Align the archive with one complete fast read. *readSessions* lists the sessions a
+   * conversation points at whose database was read without a mid-read failure; those are
+   * replaced wholesale. *presentSessions* lists every session in every completely read
+   * database; a present session without a conversation is removed from the archive (a fork
+   * or switch), while a session missing from every readable database is kept.
    */
   merge(
     fast: readonly HistoryMessageRow[], readSessions: readonly string[],
+    presentSessions: readonly string[] = readSessions,
   ): Promise<ArchiveMerge> {
-    return this.enqueue(() => this.mergeNow(fast, readSessions));
+    return this.enqueue(() => this.mergeNow(fast, readSessions, presentSessions));
   }
 
   /** Read every stored record without writing anything (the day RPC is read-only). */
@@ -202,13 +230,20 @@ export class HistoryArchive {
 
   private async mergeNow(
     fast: readonly HistoryMessageRow[], readSessions: readonly string[],
+    presentSessions: readonly string[],
   ): Promise<ArchiveMerge> {
     const directory = historyArchiveDirectory(this.options.home);
     const fastRecords: ArchivedMessage[] = [];
+    // Hermes can store two identical user rows in the same millisecond. They are two
+    // messages, so the key includes the occurrence index; without it the Map kept one.
+    const occurrences = new Map<string, number>();
     for (const row of fast) {
       if (!Number.isFinite(row.at) || Number.isNaN(new Date(row.at).getTime())) continue;
+      const base = `${row.sessionId}\u0000${row.at}\u0000${row.text}`;
+      const ordinal = occurrences.get(base) ?? 0;
+      occurrences.set(base, ordinal + 1);
       fastRecords.push({
-        key: archiveKey(row.sessionId, row.at, row.text),
+        key: archiveKey(row.sessionId, row.at, row.text, ordinal),
         sessionId: row.sessionId,
         agentId: row.agentId,
         at: row.at,
@@ -223,17 +258,17 @@ export class HistoryArchive {
     // holds the lock. Corrupt content is simply skipped here; the locked read repairs it.
     const initial = await this.readStore(directory, { repair: false, corruptIsError: false });
     if (initial.cacheError) return { messages: fastRecords, cacheError: true, cacheFull: [] };
-    const memory = applySessions(initial.records, fastRecords, readSessions);
+    const memory = applySessions(initial.records, fastRecords, readSessions, presentSessions);
 
     const lock = await this.acquireLock(directory);
-    if (lock !== "acquired") {
+    if (lock === "busy" || lock === "error") {
       return { messages: [...memory.records.values()], cacheError: true, cacheFull: [] };
     }
     try {
       // Re-read under the lock so another process's committed writes are not overwritten.
       const current = await this.readStore(directory, { repair: true, corruptIsError: false });
       if (current.cacheError) return { messages: fastRecords, cacheError: true, cacheFull: [] };
-      const applied = applySessions(current.records, fastRecords, readSessions);
+      const applied = applySessions(current.records, fastRecords, readSessions, presentSessions);
       const cacheFull: string[] = [];
       let writeError = false;
       if (await this.writeMonths(directory, applied, cacheFull)) writeError = true;
@@ -241,7 +276,7 @@ export class HistoryArchive {
       if (writeError) return { messages: fastRecords, cacheError: true, cacheFull };
       return { messages: [...applied.records.values()], cacheError: false, cacheFull };
     } finally {
-      await this.releaseLock(directory);
+      await this.releaseLock(directory, lock.token);
     }
   }
 
@@ -254,9 +289,10 @@ export class HistoryArchive {
       let payload = monthRecords(applied.records, month);
       let json = serializeMonth(payload);
       if (Buffer.byteLength(json, "utf8") > limit) {
-        // Stop adding text to this month, but only for rows new to the archive: text that
-        // was already stored stays, even when the file is already over the limit.
-        for (const key of applied.added.get(month) ?? []) {
+        // Stop adding text to this month for rows new to the archive and for rows whose
+        // stored copy was count-only (a previous cap). Text already stored stays, even
+        // when the file is already over the limit.
+        for (const key of applied.cappable.get(month) ?? []) {
           const record = applied.records.get(key);
           if (record?.text !== undefined) {
             applied.records.set(key, {
@@ -381,18 +417,20 @@ export class HistoryArchive {
     }
   }
 
-  private async acquireLock(directory: string): Promise<"acquired" | "busy" | "error"> {
+  private async acquireLock(directory: string): Promise<{ token: string } | "busy" | "error"> {
     const lock = join(directory, LOCK_FILE);
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    const now = this.options.now ?? Date.now;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const token = randomUUID();
       try {
         const handle = await open(lock, "wx", 0o600);
         try {
-          await handle.writeFile(JSON.stringify({ pid: process.pid, at: (this.options.now ?? Date.now)() }));
+          await handle.writeFile(JSON.stringify({ pid: process.pid, token, at: now() }));
           await handle.sync();
         } finally {
           await handle.close();
         }
-        return "acquired";
+        return { token };
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "EEXIST") return "error";
         let raw: string;
@@ -402,18 +440,43 @@ export class HistoryArchive {
           if ((readError as NodeJS.ErrnoException).code === "ENOENT") continue;
           return "busy";
         }
-        let at = Number.NaN;
-        try {
-          const parsed: unknown = JSON.parse(raw);
-          if (parsed && typeof parsed === "object") at = Number((parsed as { at?: unknown }).at);
-        } catch {
-          // An unreadable lock body is treated as stale: its owner cannot release it safely.
+        const body = parseLock(raw);
+        // An unreadable body has no token: its owner cannot release it safely, so it is
+        // treated as stale, as before.
+        if (body?.at !== undefined && Number.isFinite(body.at) && now() - body.at <= LOCK_STALE_MS) {
+          return "busy";
         }
-        if (Number.isFinite(at) && (this.options.now ?? Date.now)() - at <= LOCK_STALE_MS) {
+        // Rename is the atomic part: only one process can move this path. Re-read the
+        // moved file and refuse to delete it when the path was replaced between the read
+        // and the rename (then we moved a newer owner's lock, not the stale one).
+        const moved = `${lock}.stale-${randomUUID()}`;
+        try {
+          await rename(lock, moved);
+        } catch (renameError) {
+          if ((renameError as NodeJS.ErrnoException).code === "ENOENT") continue;
+          return "error";
+        }
+        let movedBody: LockBody | null = null;
+        try {
+          movedBody = parseLock(await this.readText(moved));
+        } catch {
+          movedBody = null;
+        }
+        if (body?.token !== undefined && movedBody?.token !== body.token) {
+          // Put the newer owner's lock back without overwriting a third owner. `link`
+          // fails with EEXIST instead of replacing, unlike `rename`.
+          let restored = false;
+          try {
+            await link(moved, lock);
+            restored = true;
+          } catch {
+            // Another owner already created the lock path; leave the moved file alone.
+          }
+          if (restored) await rm(moved, { force: true }).catch(() => undefined);
           return "busy";
         }
         try {
-          await rm(lock, { force: true });
+          await rm(moved, { force: true });
         } catch {
           return "error";
         }
@@ -422,9 +485,17 @@ export class HistoryArchive {
     return "busy";
   }
 
-  private async releaseLock(directory: string): Promise<void> {
+  private async releaseLock(directory: string, token: string): Promise<void> {
+    const lock = join(directory, LOCK_FILE);
+    let raw: string;
     try {
-      await rm(join(directory, LOCK_FILE), { force: true });
+      raw = await this.readText(lock);
+    } catch {
+      return; // Missing or unreadable: nothing of ours to delete.
+    }
+    if (parseLock(raw)?.token !== token) return; // Someone else's lock: never delete it.
+    try {
+      await rm(lock, { force: true });
     } catch {
       // A lock that cannot be removed is taken over once it is stale.
     }
@@ -435,6 +506,7 @@ function applySessions(
   records: Map<string, ArchivedMessage>,
   fastRecords: readonly ArchivedMessage[],
   readSessions: readonly string[],
+  presentSessions: readonly string[],
 ): AppliedSessions {
   const incoming = new Map<string, ArchivedMessage[]>();
   for (const record of fastRecords) {
@@ -443,8 +515,13 @@ function applySessions(
     incoming.set(record.sessionId, list);
   }
   const changed = new Set<string>();
-  const added = new Map<string, Set<string>>();
-  const beforeKeys = new Set(records.keys());
+  const cappable = new Map<string, Set<string>>();
+  const before = new Map(records);
+  const markCappable = (month: string, key: string) => {
+    const keys = cappable.get(month) ?? new Set<string>();
+    keys.add(key);
+    cappable.set(month, keys);
+  };
   for (const sessionId of new Set(readSessions)) {
     const next = incoming.get(sessionId) ?? [];
     const previous = [...records.values()].filter(record => record.sessionId === sessionId);
@@ -457,14 +534,25 @@ function applySessions(
       records.set(record.key, record);
       const month = utcMonthOf(record.at);
       changed.add(month);
-      if (!beforeKeys.has(record.key)) {
-        const keys = added.get(month) ?? new Set<string>();
-        keys.add(record.key);
-        added.set(month, keys);
-      }
+      const old = before.get(record.key);
+      // New keys, and keys whose stored copy lost its text to an earlier size cap, may
+      // have to be written count-only again. Text that was already stored stays.
+      if (!old || (old.text === undefined && record.text !== undefined)) markCappable(month, record.key);
     }
   }
-  return { records, changed, added };
+  // A session the snapshot still lists but no conversation points at is not "Hermes
+  // deleted": Hermes has it, so its archive copy goes away (fork, session switch). Only
+  // sessions absent from every complete database are kept.
+  const read = new Set(readSessions);
+  for (const sessionId of new Set(presentSessions)) {
+    if (read.has(sessionId)) continue;
+    for (const record of [...records.values()]) {
+      if (record.sessionId !== sessionId) continue;
+      records.delete(record.key);
+      changed.add(utcMonthOf(record.at));
+    }
+  }
+  return { records, changed, cappable };
 }
 
 function sameSession(previous: readonly ArchivedMessage[], next: readonly ArchivedMessage[]): boolean {
@@ -474,7 +562,9 @@ function sameSession(previous: readonly ArchivedMessage[], next: readonly Archiv
     const old = byKey.get(record.key);
     if (!old) return false;
     if (old.agentId !== record.agentId) return false;
-    if (old.text !== record.text) return false;
+    // A count-only record has no text to compare; the size cap chose that state, and a
+    // later read must not rewrite the month just to drop the text again.
+    if (old.text !== record.text && old.text !== undefined) return false;
   }
   return true;
 }
@@ -511,7 +601,8 @@ async function renameBad(directory: string, name: string): Promise<boolean> {
   return true;
 }
 
-/** Keep the newest three renamed copies of one name; older ones are removed (best effort). */
+/** Keep the first damaged copy and the newest two; older rebuilds are removed (best effort).
+ * The first copy is the one that may still hold rows Hermes has already deleted. */
 async function pruneBad(directory: string, name: string): Promise<void> {
   try {
     const entries = await readdir(directory, { withFileTypes: true });
@@ -520,7 +611,11 @@ async function pruneBad(directory: string, name: string): Promise<void> {
       .filter(entry => entry.name.startsWith(prefix))
       .map(entry => entry.name)
       .sort();
-    for (const old of names.slice(0, Math.max(0, names.length - MAX_BAD_FILES))) {
+    const keepFirst = names.slice(0, 1);
+    const keepNewest = names.slice(-(MAX_BAD_FILES - 1));
+    const keep = new Set([...keepFirst, ...keepNewest]);
+    for (const old of names) {
+      if (keep.has(old)) continue;
       await rm(join(directory, old), { force: true, recursive: true }).catch(() => undefined);
     }
   } catch {

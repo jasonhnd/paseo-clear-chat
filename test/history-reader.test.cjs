@@ -144,6 +144,7 @@ function fakeSqliteModule({ rejectUrl = false, error = null } = {}) {
         iterate: () => (sql.includes("SELECT id FROM sessions") ? [{ id: "s1" }] : []),
       };
     }
+    exec() {}
     close() { this.isOpen = false; }
   }
   return { DatabaseSync: FakeDatabaseSync, calls };
@@ -673,6 +674,21 @@ test("only a WAL store with no side files takes the immutable target", t => {
   assert.equal(typeof reader.openTargetForTests(wal.path), "string", "a -journal means plain");
   fs.rmSync(`${wal.path}-journal`);
   assert.equal(typeof reader.openTargetForTests(wal.path), "object");
+});
+
+test("presentSessions includes sessions no conversation points at", t => {
+  const f = createFixture(t);
+  const db = f.database();
+  db.session("s1").add({ text: "pointed at", at: T });
+  db.session("s2").add({ text: "not pointed at", at: T + 1000 });
+  f.close();
+  const data = reader.readHistoryData({
+    conversations: [conversation("agent-a", "s1")],
+    root: f.hermes,
+    timeZone: "Asia/Tokyo",
+  });
+  assert.deepEqual(data.readSessions, ["s1"]);
+  assert.deepEqual([...data.presentSessions].sort(), ["s1", "s2"]);
 });
 
 test("a session with no messages still counts as read", t => {
