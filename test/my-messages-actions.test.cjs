@@ -312,13 +312,16 @@ test("Quote inserts into the composer the host reports after focus", async t => 
 });
 
 test("Quote stays fast for a message with many CRLF line breaks", async t => {
-  const text = "first" + "\r\n".repeat(64) + "  \r\n".repeat(64);
-  const started = Date.now();
+  // Line breaks between two text lines are the shape that makes a nested-quantifier
+  // trim backtrack; a run at the very end does not.
+  const text = "p1" + "\r\n".repeat(26) + "p2" + "\r\n".repeat(26);
   const { h, quote } = await fixture(t, { surface: "panel", text });
+  const started = Date.now();
   quote.props.onPress();
   await settle();
-  assert.deepEqual(h.copies, ["> first\n\n"]);
-  assert.ok(Date.now() - started < 2000, "quoting must not backtrack on repeated line breaks");
+  const elapsed = Date.now() - started;
+  assert.deepEqual(h.copies, ["> p1\n" + ">\n".repeat(25) + "> p2\n\n"]);
+  assert.ok(elapsed < 1000, `quoting must not backtrack on repeated line breaks (${elapsed} ms)`);
 });
 
 test("Quote falls back to the first composer when the host returns none after focus", async t => {
