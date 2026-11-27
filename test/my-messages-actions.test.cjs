@@ -291,7 +291,7 @@ test("Quote on a message without text says so and inserts or copies nothing", as
     assert.deepEqual(calls, [], `${surface}: no focus or insert for an empty message`);
     assert.deepEqual(events.filter(event => event[0] !== "composers"), [], `${surface}: no navigation or clipboard`);
     assert.deepEqual(h.copies, []);
-    assert.deepEqual(h.toasts, ["This message has no text to copy"]);
+    assert.deepEqual(h.toasts, ["This message has no text to quote"]);
   }
 });
 
@@ -308,5 +308,28 @@ test("Quote inserts into the composer the host reports after focus", async t => 
   quote.props.onPress();
   await settle();
   assert.deepEqual(calls, [["focus", "target", 1], ["insert", "target", 2, quotedText]]);
+  assert.deepEqual(h.copies, []);
+});
+
+test("Quote stays fast for a message with many CRLF line breaks", async t => {
+  const text = "first" + "\r\n".repeat(64) + "  \r\n".repeat(64);
+  const started = Date.now();
+  const { h, quote } = await fixture(t, { surface: "panel", text });
+  quote.props.onPress();
+  await settle();
+  assert.deepEqual(h.copies, ["> first\n\n"]);
+  assert.ok(Date.now() - started < 2000, "quoting must not backtrack on repeated line breaks");
+});
+
+test("Quote falls back to the first composer when the host returns none after focus", async t => {
+  const calls = [];
+  let asked = 0;
+  const { h, quote } = await fixture(t, { composers: ({ agentId }) => (++asked === 1 ? [{
+    async focus() { calls.push(["focus", agentId]); },
+    insertText(value) { calls.push(["insert", agentId, value]); },
+  }] : []) });
+  quote.props.onPress();
+  await settle();
+  assert.deepEqual(calls, [["focus", "target"], ["insert", "target", quotedText]]);
   assert.deepEqual(h.copies, []);
 });

@@ -65,6 +65,7 @@
     "copy": "Copy",
     "quote": "Quote",
     "quoteCopied": "Can't insert into this conversation — quote copied",
+    "quoteNoText": "This message has no text to quote",
     "copyFailed": "Could not copy this message",
     "noText": "This message has no text to copy",
     "imageOnly": "(image)",

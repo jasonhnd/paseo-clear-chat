@@ -65,6 +65,7 @@
     "copy": "复制",
     "quote": "引用",
     "quoteCopied": "无法将引用插入此对话，已复制引用",
+    "quoteNoText": "这条消息没有文字可引用",
     "copyFailed": "复制不了这条消息",
     "noText": "这条消息没有文字可复制",
     "imageOnly": "（图片）",
