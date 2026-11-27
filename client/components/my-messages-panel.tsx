@@ -36,7 +36,8 @@ export function createMyMessagesPanel(composerHost: MyMessagesComposerHost) {
  * - a day that could not be read at all says so and offers the same Try again;
  * - a timeline subscription that stopped delivering says the list may be out of date.
  *
- * A row press copies the original message without navigating away.
+ * A row press copies the original message without navigating away. Each row also has Copy and
+ * Quote buttons; Quote puts the message, as a Markdown quote, into this conversation's input.
  */
 export function MyMessagesPanel(props: PluginAgentPanelProps & { composerHost?: MyMessagesComposerHost }) {
   const { t } = useTranslation(messages);

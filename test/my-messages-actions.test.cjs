@@ -4,7 +4,7 @@ const { createToolHarness } = require("./helpers/tool-harness.cjs");
 
 const at = new Date(2026, 2, 15, 9).getTime();
 const exactText = "  first line\r\n\r\nlast line  \r\n";
-const quotedText = ">   first line\n>\n> last line  \n>\n\n";
+const quotedText = ">   first line\n>\n> last line  \n\n";
 const copiedQuoteToast = "Can't insert into this conversation — quote copied";
 const destination = { agentId: "target", serverId: "screen-host" };
 const settle = () => new Promise(resolve => setImmediate(resolve));
@@ -160,7 +160,7 @@ for (const surface of ["screen", "panel"]) {
       assert.deepEqual(f.h.toasts, ["Copied"]);
       pressButton(f.tree, f.quote, f.row);
       await settle();
-      assert.deepEqual(f.events, [["clipboard", exactText], ["composers", { agentId: "target" }]]);
+      assert.deepEqual(f.events, [["clipboard", exactText], ["composers", { agentId: "target" }], ["composers", { agentId: "target" }]]);
       assert.deepEqual(f.h.toasts, ["Copied"], "inserting a quote does not copy or toast");
       assert.equal(inserts.length, 1);
     });
@@ -190,7 +190,8 @@ test("Quote prefixes every line and adds one blank line after the quote", async 
   for (const [text, expected] of [
     ["line1\nline2", "> line1\n> line2\n\n"],
     ["line1\n\nline2", "> line1\n>\n> line2\n\n"],
-    ["line1\n", "> line1\n>\n\n"],
+    ["line1\n", "> line1\n\n"],
+    ["\n\nline1\n  \nline2\n\n", "> line1\n>\n> line2\n\n"],
     [exactText, quotedText],
   ]) {
     const { h, quote } = await fixture(t, { surface: "panel", text });
@@ -276,4 +277,36 @@ test("all three locales define action labels, accessibility text and the quote f
     await settle();
     assert.deepEqual(h.toasts, [myMessages.quoteCopied]);
   }
+});
+
+test("Quote on a message without text says so and inserts or copies nothing", async t => {
+  for (const surface of ["screen", "panel"]) {
+    const calls = [];
+    const { h, events, quote } = await fixture(t, { surface, text: "   ", composers: () => [{
+      async focus() { calls.push("focus"); },
+      insertText(value) { calls.push(["insert", value]); },
+    }] });
+    quote.props.onPress();
+    await settle();
+    assert.deepEqual(calls, [], `${surface}: no focus or insert for an empty message`);
+    assert.deepEqual(events.filter(event => event[0] !== "composers"), [], `${surface}: no navigation or clipboard`);
+    assert.deepEqual(h.copies, []);
+    assert.deepEqual(h.toasts, ["This message has no text to copy"]);
+  }
+});
+
+test("Quote inserts into the composer the host reports after focus", async t => {
+  const calls = [];
+  let generation = 0;
+  const { h, quote } = await fixture(t, { composers: ({ agentId }) => {
+    const handle = ++generation;
+    return [{
+      async focus() { calls.push(["focus", agentId, handle]); },
+      insertText(value) { calls.push(["insert", agentId, handle, value]); },
+    }];
+  } });
+  quote.props.onPress();
+  await settle();
+  assert.deepEqual(calls, [["focus", "target", 1], ["insert", "target", 2, quotedText]]);
+  assert.deepEqual(h.copies, []);
 });

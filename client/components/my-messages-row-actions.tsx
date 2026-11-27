@@ -11,7 +11,7 @@ interface RowActionsProps {
 
 // Keep these controls outside the row's Pressable so neither can activate it.
 export function MyMessagesRowActions({ copyLabel, quoteLabel, onCopy, onQuote, labelStyle, borderColor }: RowActionsProps) {
-  const button = { minHeight: 36, justifyContent: "center" as const, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor };
+  const button = { minHeight: 44, justifyContent: "center" as const, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor };
   return (
     <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", gap: 6 }}>
       <Pressable testID="my-message-copy" accessibilityRole="button" accessibilityLabel={copyLabel} style={button} onPress={onCopy}>
