@@ -62,6 +62,9 @@
     "loading": "Reading this conversation…",
     "error": "Could not read this conversation. Select Try again.",
     "copied": "Copied",
+    "copy": "Copy",
+    "quote": "Quote",
+    "quoteCopied": "Can't insert into this conversation — quote copied",
     "copyFailed": "Could not copy this message",
     "noText": "This message has no text to copy",
     "imageOnly": "(image)",
@@ -78,6 +81,7 @@
     "screenUnavailable": "Conversations without readable history today: {{count}}",
     "screenStale": "These messages are from an earlier day. Refresh to see today’s messages.",
     "screenRefresh": "Refresh",
-    "screenUntitled": "Untitled conversation"
+    "screenUntitled": "Untitled conversation",
+    "screenOpenHint": "Opens the conversation"
   }
 }

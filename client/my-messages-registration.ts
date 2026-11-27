@@ -1,5 +1,6 @@
-import { MyMessagesPanel } from "./components/my-messages-panel";
+import { createMyMessagesPanel } from "./components/my-messages-panel";
 import { messages } from "./messages";
+import type { MyMessagesComposerHost } from "./my-messages-actions";
 import { currentTimers } from "./my-messages-clock";
 
 /**
@@ -71,7 +72,7 @@ interface DirectoryListOptions {
 export type BlockedReason = "pickConversation" | "directory";
 
 /** Only the host methods this feature touches; every one of them is optional on old hosts. */
-export interface MyMessagesHost {
+export interface MyMessagesHost extends MyMessagesComposerHost {
   addAgentPanel?: (contribution: {
     id: string;
     title: unknown;
@@ -85,7 +86,6 @@ export interface MyMessagesHost {
     button: { title: unknown; icon: string; behavior: { kind: "action"; onPress: () => void | Promise<void> } };
   }) => ButtonRegistration | undefined;
   openPanel?: (id: string, options: { workspaceId: string; agentId?: string; location?: "workspace" | "explorer" }) => void;
-  composers?: (selector: { focused: true } | { agentId: string }) => readonly unknown[];
   i18n?: { t(definition: typeof messages, key: string): string };
   paseo?: {
     workspaces?: {
@@ -249,7 +249,7 @@ export function registerMyMessagesPanel(client: MyMessagesHost): () => void {
       title,
       icon: "MessageSquare",
       locations: MY_MESSAGES_LOCATIONS,
-      Component: MyMessagesPanel,
+      Component: createMyMessagesPanel(client),
     });
   } catch (error) {
     warn("could not register the panel", error);

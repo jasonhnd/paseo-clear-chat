@@ -62,6 +62,9 @@
     "loading": "この会話を読み込んでいます…",
     "error": "この会話を読めませんでした。「再試行」を押してください。",
     "copied": "コピーしました",
+    "copy": "コピー",
+    "quote": "引用",
+    "quoteCopied": "この会話に挿入できなかったため、引用文をコピーしました",
     "copyFailed": "このメッセージをコピーできませんでした",
     "noText": "このメッセージにはコピーできる文字がありません",
     "imageOnly": "（画像）",
@@ -78,6 +81,7 @@
     "screenUnavailable": "今日の会話のうち {{count}} 件は履歴を読めませんでした。",
     "screenStale": "前日以前のメッセージを表示しています。更新すると今日の発言を確認できます。",
     "screenRefresh": "更新",
-    "screenUntitled": "無題の会話"
+    "screenUntitled": "無題の会話",
+    "screenOpenHint": "会話を開きます"
   }
 }

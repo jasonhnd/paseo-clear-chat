@@ -2,6 +2,7 @@ import { useTranslation, type PluginClientContext, type PluginSidebarItemProps }
 import { SidebarRow } from "@getpaseo/plugin/client/ui";
 import { MyMessagesScreen } from "./components/my-messages-screen";
 import { messages } from "./messages";
+import type { MyMessagesComposerHost } from "./my-messages-actions";
 import { createMyMessagesScreenFeed } from "./my-messages-screen-feed";
 
 const SCREEN_ID = "my-messages-today";
@@ -17,7 +18,7 @@ function MyMessagesSidebarItem({ openScreen, currentScreen }: PluginSidebarItemP
   );
 }
 
-export function registerMyMessagesScreen(client: Partial<Pick<PluginClientContext, "addScreen" | "addSidebarHeaderItem">>) {
+export function registerMyMessagesScreen(client: Partial<Pick<PluginClientContext, "addScreen" | "addSidebarHeaderItem">> & MyMessagesComposerHost) {
   if (typeof client.addScreen !== "function" || typeof client.addSidebarHeaderItem !== "function") {
     if (!warnedMissingApis) {
       warnedMissingApis = true;
@@ -31,7 +32,7 @@ export function registerMyMessagesScreen(client: Partial<Pick<PluginClientContex
   const removeScreen = client.addScreen({
     id: SCREEN_ID,
     title,
-    Component: props => <MyMessagesScreen key={props.host.id} {...props} feed={feed} />,
+    Component: props => <MyMessagesScreen key={props.host.id} {...props} feed={feed} composerHost={client} />,
   });
   const removeSidebar = client.addSidebarHeaderItem({ id: SCREEN_ID, title, Component: MyMessagesSidebarItem });
   return async () => {

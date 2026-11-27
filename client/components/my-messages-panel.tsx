@@ -1,14 +1,15 @@
 import React from "react";
-import { FlatList, Pressable, Text } from "react-native";
+import { FlatList, Pressable, Text, View } from "react-native";
 import { usePaseo, useTranslation } from "@getpaseo/plugin/client";
 import type { PluginAgentPanelProps } from "@getpaseo/plugin/client";
-import { copyText, useToast } from "@getpaseo/plugin/client/ui";
+import { useMyMessageActions, type MyMessagesComposerHost } from "../my-messages-actions";
 import { acquireMyMessagesFeed, useMyMessages } from "../my-messages-feed";
 import { localDateKey } from "../local-day";
 import { nowMs } from "../my-messages-clock";
 import type { MyMessageRow } from "../my-messages-store";
 import { messages } from "../messages";
 import { useEnhancerPreferences } from "../preferences";
+import { MyMessagesRowActions } from "./my-messages-row-actions";
 import { buildThemeTokens } from "./theme-tokens";
 
 interface MyMessagesFeedHandle {
@@ -16,13 +17,18 @@ interface MyMessagesFeedHandle {
   stop(): void;
 }
 
+export function createMyMessagesPanel(composerHost: MyMessagesComposerHost) {
+  return function RegisteredMyMessagesPanel(props: PluginAgentPanelProps) {
+    return <MyMessagesPanel {...props} composerHost={composerHost} />;
+  };
+}
+
 /**
  * "What I said": today's counts at the top, then the person's own messages, newest first.
  *
  * The panel draws beside the conversation in a host tab, so it owns its scroll container and
  * keeps no timeline spacing. The rows are a virtualized list: an open panel may keep a long
- * day on screen without drawing every row of it. A row opens nothing, it copies the whole
- * message and says so.
+ * day on screen without drawing every row of it.
  *
  * What the panel says when something is missing:
  * - a day that was only partly read says so, and Try again reads further;
@@ -32,10 +38,10 @@ interface MyMessagesFeedHandle {
  *
  * A row press copies the original message without navigating away.
  */
-export function MyMessagesPanel(props: PluginAgentPanelProps) {
+export function MyMessagesPanel(props: PluginAgentPanelProps & { composerHost?: MyMessagesComposerHost }) {
   const { t } = useTranslation(messages);
   const paseo = usePaseo();
-  const toast = useToast();
+  const { copy, quote } = useMyMessageActions(t, props.composerHost);
   const preferences = useEnhancerPreferences();
   const tokens = React.useMemo(() => buildThemeTokens(props.theme.colors, preferences), [props.theme, preferences]);
   // `params.agentId` is the current field; the flat `agentId` is the host's deprecated copy.
@@ -43,9 +49,6 @@ export function MyMessagesPanel(props: PluginAgentPanelProps) {
   const compact = props.layout?.compact === true;
   const state = useMyMessages(agentId ?? "");
   const feed = React.useRef<MyMessagesFeedHandle | null>(null);
-  // The toast API is read through a ref so a row press never depends on a stale render.
-  const toastRef = React.useRef(toast);
-  toastRef.current = toast;
   // The host's API object is stable; holding it in a ref keeps a host that hands back a new
   // wrapper from restarting the feed on every render.
   const paseoRef = React.useRef(paseo);
@@ -62,18 +65,6 @@ export function MyMessagesPanel(props: PluginAgentPanelProps) {
       started.stop();
     };
   }, [agentId]);
-
-  const openMessage = React.useCallback((row: MyMessageRow) => {
-    if (row.empty) {
-      toastRef.current.show(t("myMessages.noText"), { variant: "info" });
-      return;
-    }
-    void copyText(row.text).then(() => {
-      toastRef.current.show(t("myMessages.copied"), { variant: "success" });
-    }).catch(() => {
-      toastRef.current.error(t("myMessages.copyFailed"));
-    });
-  }, [t]);
 
   const bodyText = { color: tokens.foreground, fontFamily: tokens.fontUi, fontSize: tokens.fs(14) };
   const mutedText = { color: tokens.foregroundMuted, fontFamily: tokens.fontUi, fontSize: tokens.fs(12) };
@@ -132,23 +123,36 @@ export function MyMessagesPanel(props: PluginAgentPanelProps) {
       data={stale ? [] : state.rows}
       keyExtractor={row => row.key}
       ListHeaderComponent={header}
-      renderItem={({ item: row }: { item: MyMessageRow }) => (
-        <Pressable
-          testID="my-message-row"
-          accessibilityRole="button"
-          accessibilityLabel={row.empty ? t("myMessages.imageOnly") : row.preview}
-          onPress={() => openMessage(row)}
-          style={{ paddingVertical: 6, paddingHorizontal: compact ? 8 : 10, borderRadius: 8, backgroundColor: tokens.surface1, gap: 2 }}
-        >
-          <Text style={{ ...mutedText, fontSize: tokens.fs(11) }}>
-            {row.time}
-          </Text>
-          <Text style={bodyText} numberOfLines={3}>
-            {row.empty ? t("myMessages.imageOnly") : row.preview}
-            {row.truncated ? "…" : ""}
-          </Text>
-        </Pressable>
-      )}
+      renderItem={({ item: row }: { item: MyMessageRow }) => {
+        const copyRow = () => { void copy(row.text, row.empty); };
+        return (
+          <View style={{ paddingVertical: 6, paddingHorizontal: compact ? 8 : 10, borderRadius: 8, backgroundColor: tokens.surface1, gap: 4 }}>
+            <Pressable
+              testID="my-message-row"
+              accessibilityRole="button"
+              accessibilityLabel={row.empty ? t("myMessages.imageOnly") : row.preview}
+              onPress={copyRow}
+              style={{ gap: 2 }}
+            >
+              <Text style={{ ...mutedText, fontSize: tokens.fs(11) }}>
+                {row.time}
+              </Text>
+              <Text style={bodyText} numberOfLines={3}>
+                {row.empty ? t("myMessages.imageOnly") : row.preview}
+                {row.truncated ? "…" : ""}
+              </Text>
+            </Pressable>
+            <MyMessagesRowActions
+              copyLabel={t("myMessages.copy")}
+              quoteLabel={t("myMessages.quote")}
+              onCopy={copyRow}
+              onQuote={() => { void quote(row.text, agentId); }}
+              labelStyle={mutedText}
+              borderColor={tokens.border}
+            />
+          </View>
+        );
+      }}
     />
   );
 }

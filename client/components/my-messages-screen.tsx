@@ -1,9 +1,9 @@
 import React from "react";
 import { FlatList, Pressable, Text, View } from "react-native";
 import { usePaseo, useTranslation, type PluginScreenProps } from "@getpaseo/plugin/client";
-import { copyText, useToast } from "@getpaseo/plugin/client/ui";
 import { formatClock, localDateKey } from "../local-day";
 import { messages } from "../messages";
+import { useMyMessageActions, type MyMessagesComposerHost } from "../my-messages-actions";
 import { nowMs } from "../my-messages-clock";
 import {
   emptyMessagesScreen,
@@ -12,18 +12,25 @@ import {
 } from "../my-messages-screen-feed";
 import { useEnhancerPreferences } from "../preferences";
 import { isEmptyMessageText, messagePreview } from "../user-message-kind";
+import { MyMessagesRowActions } from "./my-messages-row-actions";
 import { buildThemeTokens } from "./theme-tokens";
 
 type Feed = ReturnType<typeof createMyMessagesScreenFeed>;
 
-export function MyMessagesScreen({ theme, layout, host, feed }: PluginScreenProps & { feed: Feed }) {
+interface ScreenCapabilities {
+  navigation?: {
+    openAgent?: (input: { agentId: string; serverId?: string; focusHost?: boolean }) => void;
+  };
+  composerHost?: MyMessagesComposerHost;
+}
+
+export function MyMessagesScreen({ theme, layout, host, navigation, composerHost, feed }: PluginScreenProps & ScreenCapabilities & { feed: Feed }) {
   const { t } = useTranslation(messages);
   const { agents } = usePaseo();
   const agentsRef = React.useRef(agents);
   agentsRef.current = agents;
-  const toast = useToast();
-  const toastRef = React.useRef(toast);
-  toastRef.current = toast;
+  const { copy, quote } = useMyMessageActions(t, composerHost);
+  const openAgent = typeof navigation?.openAgent === "function" ? navigation.openAgent.bind(navigation) : undefined;
   const preferences = useEnhancerPreferences();
   const tokens = React.useMemo(() => buildThemeTokens(theme.colors, preferences), [theme, preferences]);
   const [state, setState] = React.useState(emptyMessagesScreen);
@@ -53,18 +60,9 @@ export function MyMessagesScreen({ theme, layout, host, feed }: PluginScreenProp
   const warning = { ...muted, color: tokens.warning };
   const button = { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: tokens.border };
 
-  async function copyRow(row: MyMessagesScreenRow): Promise<void> {
+  function copyRow(row: MyMessagesScreenRow) {
     checkDay();
-    if (isEmptyMessageText(row.text)) {
-      toastRef.current.show(t("myMessages.noText"), { variant: "info" });
-      return;
-    }
-    try {
-      await copyText(row.text);
-      toastRef.current.show(t("myMessages.copied"), { variant: "success" });
-    } catch {
-      toastRef.current.error(t("myMessages.copyFailed"));
-    }
+    return copy(row.text, isEmptyMessageText(row.text));
   }
 
   return (
@@ -124,20 +122,42 @@ export function MyMessagesScreen({ theme, layout, host, feed }: PluginScreenProp
           const { preview, truncated } = messagePreview(row.text);
           const label = isEmptyMessageText(row.text) ? t("myMessages.imageOnly") : preview + (truncated ? "…" : "");
           const time = formatClock(row.at);
+          const openConversation = openAgent && (() => openAgent({ agentId: row.agentId, serverId: host.id }));
           return (
-            <Pressable
-              testID="my-messages-screen-row"
-              accessibilityRole="button"
-              accessibilityLabel={`${title}, ${time}, ${label}`}
-              onPress={() => { void copyRow(row); }}
-              style={{ paddingVertical: 8, paddingHorizontal: layout.compact ? 8 : 10, borderRadius: 8, backgroundColor: tokens.surface1, gap: 3 }}
-            >
-              <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8 }}>
-                <Text style={{ ...muted, flex: 1 }}>{title}</Text>
-                <Text style={muted}>{time}</Text>
-              </View>
-              <Text style={body} numberOfLines={3}>{label}</Text>
-            </Pressable>
+            <View style={{ paddingVertical: 8, paddingHorizontal: layout.compact ? 8 : 10, borderRadius: 8, backgroundColor: tokens.surface1, gap: 4 }}>
+              <Pressable
+                testID="my-messages-screen-row"
+                accessibilityRole="button"
+                accessibilityLabel={`${title}, ${time}, ${label}`}
+                accessibilityHint={openConversation ? t("myMessages.screenOpenHint") : undefined}
+                onPress={() => {
+                  if (openConversation) {
+                    checkDay();
+                    openConversation();
+                  } else {
+                    void copyRow(row);
+                  }
+                }}
+                style={{ gap: 3 }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "baseline", gap: 8 }}>
+                  <Text style={{ ...muted, flex: 1 }}>{title}</Text>
+                  <Text style={muted}>{time}</Text>
+                </View>
+                <Text style={body} numberOfLines={3}>{label}</Text>
+              </Pressable>
+              <MyMessagesRowActions
+                copyLabel={t("myMessages.copy")}
+                quoteLabel={t("myMessages.quote")}
+                onCopy={() => { void copyRow(row); }}
+                onQuote={() => {
+                  checkDay();
+                  void quote(row.text, row.agentId, openConversation);
+                }}
+                labelStyle={muted}
+                borderColor={tokens.border}
+              />
+            </View>
           );
         }}
       />
