@@ -1816,8 +1816,8 @@ test("a pointer press does not flash the focus outline", async t => {
 
   grid().props.onFocus();
   assert.equal(outline("Mar 15 Sun"), 2, "tabbing into the grid draws the outline");
-  // Capture runs before focus, so the draw after focus is already clear.
-  grid().props.onPointerDownCapture();
+  // The pointer down bubbles ahead of focus, so the draw after focus is already clear.
+  grid().props.onPointerDown();
   grid().props.onFocus();
   assert.equal(outline("Mar 15 Sun"), 0, "a selectable cell does not flash");
   cell(draw(), "Mar 10 Tue").props.onPressIn();
@@ -1827,13 +1827,13 @@ test("a pointer press does not flash the focus outline", async t => {
 
   const disabled = cell(draw(), "Mar 20 Fri");
   assert.equal(disabled.props.accessibilityState.disabled, true);
-  grid().props.onPointerDownCapture();
+  grid().props.onPointerDown();
   disabled.props.onFocus();
   grid().props.onFocus();
   assert.equal(outline("Mar 14 Sat"), 0, "a disabled cell leaves no outline");
   assert.equal(outline("Mar 20 Fri"), 0);
 
-  grid().props.onPointerDownCapture();
+  grid().props.onPointerDown();
   grid().props.onFocus();
   assert.equal(outline("Mar 20 Fri"), 0, "a press on the grid chrome leaves no outline");
 
@@ -1841,7 +1841,7 @@ test("a pointer press does not flash the focus outline", async t => {
   week.draw();
   await flush();
   const weekGrid = () => week.one(week.draw(), "my-messages-calendar-grid");
-  weekGrid().props.onPointerDownCapture();
+  weekGrid().props.onPointerDown();
   weekGrid().props.onFocus();
   assert.equal(week.cell(week.draw(), "Mar 15 Sun").props.style.outlineWidth, 0);
   weekGrid().props.onKeyDown(keyEvent("ArrowLeft"));
@@ -1852,18 +1852,74 @@ test("a pointer press does not flash the focus outline", async t => {
   const yearOutline = label => monthCell(draw(), label).props.style.outlineWidth;
   yearGrid().props.onFocus();
   assert.equal(yearOutline("March 2026"), 2);
-  yearGrid().props.onPointerDownCapture();
+  yearGrid().props.onPointerDown();
   yearGrid().props.onFocus();
   assert.equal(yearOutline("March 2026"), 0, "a year cell does not flash");
   yearGrid().props.onKeyDown(keyEvent("ArrowLeft"));
   assert.equal(yearOutline("March 2026"), 2, "an arrow key draws the year outline");
   const future = monthCell(draw(), "December 2026");
   assert.equal(future.props.accessibilityState.disabled, true);
-  yearGrid().props.onPointerDownCapture();
+  yearGrid().props.onPointerDown();
   future.props.onFocus();
   yearGrid().props.onFocus();
   assert.equal(yearOutline("March 2026"), 0, "a disabled month leaves no outline");
   assert.equal(yearOutline("December 2026"), 0);
+});
+
+test("the grid keeps every pointer handler on the web view's forwarded list", async t => {
+  const history = historyFor(daysResult({ [dayKey(0)]: 2, [dayKey(-1)]: 2 }), { [dayKey(0)]: dayResult([]) });
+  const { draw, one } = fixture(t, { historyRpc: history });
+  draw();
+  await flush();
+  // The web view copies a fixed list of pointer props onto the DOM node. A capture
+  // suffix is not on that list, so such a handler never runs in the browser. This
+  // test keeps the ring logic on names the DOM really receives.
+  const forwarded = new Set([
+    "onPointerDown", "onPointerUp", "onPointerCancel", "onPointerEnter", "onPointerLeave",
+    "onPointerMove", "onPointerOver", "onPointerOut", "onLostPointerCapture",
+  ]);
+  const grids = [["month", one(draw(), "my-messages-calendar-grid")]];
+  one(draw(), "my-messages-calendar-title").props.onPress();
+  grids.push(["year", one(draw(), "my-messages-calendar-year")]);
+  for (const [name, node] of grids) {
+    const pointer = Object.keys(node.props).filter(key => /^onPointer|^onLostPointer/.test(key));
+    assert.deepEqual(pointer.filter(key => !forwarded.has(key)), [],
+      `the ${name} grid uses a pointer prop the web view drops`);
+    assert.equal(pointer.includes("onPointerDown"), true, `the ${name} grid arms on the forwarded pointer down`);
+    // A touch focuses its cell after pointer up, so a flag cleared there would flash.
+    assert.equal(node.props.onPointerUp, undefined,
+      `the ${name} grid must not clear the press flag on pointer up`);
+    assert.equal(node.props.onPointerCancel, undefined);
+  }
+});
+
+test("a touch tap that focuses after pointer up leaves no ring", async t => {
+  const history = historyFor(daysResult({ [dayKey(0)]: 2, [dayKey(-2)]: 1 }), { [dayKey(0)]: dayResult([]) });
+  const { draw, cell, one } = fixture(t, { historyRpc: history });
+  draw();
+  await flush();
+  const grid = () => one(draw(), "my-messages-calendar-grid");
+  const outline = label => cell(draw(), label).props.style.outlineWidth;
+
+  // A touch sends pointer down, pointer up, then focus. Nothing on the way up may
+  // clear the flag the down set, or this focus draws the ring.
+  grid().props.onPointerDown();
+  const tapped = cell(draw(), "Mar 13 Fri");
+  tapped.props.onPressIn();
+  // The browser sends pointer up before the cell takes focus; keep the real order.
+  const pointerUp = grid().props.onPointerUp;
+  if (typeof pointerUp === "function") pointerUp();
+  tapped.props.onFocus();
+  grid().props.onFocus();
+  assert.equal(outline("Mar 13 Fri"), 0, "a tap does not leave the ring");
+
+  // A press whose focus never lands still clears its flag, so the next focus is keyboard.
+  grid().props.onPointerDown();
+  grid().props.onBlur();
+  grid().props.onFocus();
+  assert.equal(outline("Mar 13 Fri"), 2, "tabbing back after a press draws the ring");
+  grid().props.onKeyDown(keyEvent("ArrowRight"));
+  assert.equal(outline("Mar 14 Sat"), 2);
 });
 
 test("year cells show a short month, keep the full label, and reserve the today mark", async t => {
@@ -2028,4 +2084,29 @@ test("day numbers stay on one fixed line whether or not the cell shows a count",
   const year = month.draw();
   assert.equal(month.h.nodes(year, node => node.props?.testID === "my-messages-calendar-day-number").length, 0);
   assert.equal(month.h.nodes(month.monthCell(year, "March 2026"), node => node.props?.testID === "my-messages-calendar-day-count").length, 0);
+});
+
+test("the date line grows with the text scale", async t => {
+  const preferences = { ...BASE_PREFERENCES, textScale: 1.35 };
+  const history = historyFor(daysResult({ [dayKey(0)]: 4, [dayKey(-1)]: 2 }), { [dayKey(0)]: dayResult([]) });
+  const { draw, cell, h } = fixture(t, {
+    historyRpc: history, realTheme: true, themeColors: DARK_THEME, preferences,
+  });
+  draw();
+  await flush();
+  const tokens = h.load("client/components/theme-tokens.ts").buildThemeTokens(DARK_THEME, preferences);
+  assert.equal(tokens.textScale, 1.35);
+  assert.equal(tokens.fs(14), 19);
+  const line = (node, id) => h.nodes(node, child => child.props?.testID === id)[0];
+  for (const label of ["Mar 15 Sun", "Mar 14 Sat"]) {
+    const node = cell(draw(), label);
+    const number = line(node, "my-messages-calendar-day-number");
+    const count = line(node, "my-messages-calendar-day-count");
+    assert.equal(number.props.style.height, tokens.fs(14), `${label} date line follows the text scale`);
+    assert.equal(number.props.style.height > 14, true, `${label} date line is not the fixed authored size`);
+    assert.equal(count.props.style.height, tokens.fs(14));
+    const text = h.nodes(number, child => child.type === "Text")[0];
+    assert.equal(text.props.style.fontSize, tokens.fs(11));
+    assert.equal(text.props.style.lineHeight, tokens.fs(14));
+  }
 });

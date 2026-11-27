@@ -381,9 +381,16 @@ function TodayMark({ color }: { color: string | null }) {
 }
 
 /**
- * Web only. Capture runs before the browser moves focus, including a press on a
- * disabled cell, a weekday header or a gap. Pressable's press-in is later and
- * does not fire for those targets, so it cannot hide the ring in time.
+ * Web only. A pointer press bubbles through the grid before the browser moves
+ * focus, including a press on a disabled cell, a weekday header or a gap.
+ * Pressable's press-in is later and does not fire for those targets, so it
+ * cannot hide the ring in time.
+ *
+ * The flag is set on the way down and stays set: the web View forwards
+ * `onPointerDown`, but not `onPointerUpCapture` or its siblings, so the browser
+ * never sees a pointer-up handler. A touch press focuses its cell after
+ * pointer-up, and a flag cleared there would let that focus draw the ring. Focus
+ * (one cell moving to another), grid blur and every key clear it instead.
  */
 function pointerKeyProps(
   platform: "ios" | "android" | "web",
@@ -392,15 +399,12 @@ function pointerKeyProps(
   setKeysVisible: (visible: boolean) => void,
 ): Partial<ViewProps> {
   if (platform !== "web") return {};
-  const release = () => { pointerDown.current = false; };
   return {
     onKeyDown,
-    onPointerDownCapture: () => {
+    onPointerDown: () => {
       pointerDown.current = true;
       setKeysVisible(false);
     },
-    onPointerUpCapture: release,
-    onPointerCancelCapture: release,
   } as unknown as Partial<ViewProps>;
 }
 
@@ -583,7 +587,7 @@ export function CalendarMonthView({
         if (pointerDown.current) pointerDown.current = false;
         else setKeysVisible(true);
       }}
-      onBlur={() => { setFocusInside(false); setKeysVisible(false); }}
+      onBlur={() => { pointerDown.current = false; setFocusInside(false); setKeysVisible(false); }}
       {...keyProps}
       style={{ borderWidth: 1, borderColor: tokens.border, borderRadius: 10, padding: 6, gap: 2 }}
     >
@@ -644,7 +648,7 @@ export function CalendarMonthView({
                   ref={node => registerCell(day, node as unknown as FocusTarget | null)}
                   tabIndex={focused ? 0 : -1}
                   onPressIn={() => {
-                    if (platform !== "web") pointerDown.current = true;
+                    pointerDown.current = true;
                     setKeysVisible(false);
                   }}
                   onPress={() => { pointerDown.current = false; onSelect(day); }}
@@ -819,7 +823,7 @@ export function CalendarYearView({
         if (pointerDown.current) pointerDown.current = false;
         else setKeysVisible(true);
       }}
-      onBlur={() => { setFocusInside(false); setKeysVisible(false); }}
+      onBlur={() => { pointerDown.current = false; setFocusInside(false); setKeysVisible(false); }}
       onLayout={event => {
         const width = event.nativeEvent.layout.width;
         if (width > 0) setRowWidth(current => current === width ? current : width);
@@ -873,7 +877,7 @@ export function CalendarYearView({
               ref={node => registerMonth(index, node as unknown as FocusTarget | null)}
               tabIndex={focused && cell.selectable ? 0 : -1}
               onPressIn={() => {
-                if (platform !== "web") pointerDown.current = true;
+                pointerDown.current = true;
                 setKeysVisible(false);
               }}
               onPress={() => { pointerDown.current = false; onEnterMonth(cell.month); }}
