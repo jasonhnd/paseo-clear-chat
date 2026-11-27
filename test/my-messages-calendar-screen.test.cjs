@@ -441,7 +441,7 @@ test("the year view aggregates months, greys the record edges, switches years an
   assert.equal(all(year, "my-messages-calendar-year-month").length, 12);
   assert.equal(monthCell(year, "January 2026").props.accessibilityState.disabled, false);
   assert.equal(monthCell(year, "December 2026").props.accessibilityState.disabled, true);
-  assert.equal(h.text(monthCell(year, "January 2026")), "January 2026\n2 messages");
+  assert.equal(h.text(monthCell(year, "January 2026")), "Jan\n2 messages");
   assert.equal(one(year, "my-messages-calendar-next").props.accessibilityState.disabled, true);
 
   monthCell(year, "January 2026").props.onHoverIn();
@@ -662,7 +662,7 @@ test("slow conversation counts stay stable when today is visited five times", as
   }
   const march = h.nodes(draw(), node => node.props.testID === "my-messages-calendar-year-month")
     .find(node => String(node.props.accessibilityLabel).startsWith("March 2026"));
-  assert.equal(h.text(march), "March 2026\n3 messages");
+  assert.equal(h.text(march), "Mar\n3 messages");
 });
 
 test("an incomplete slow read offers Retry and is not cached as finished", async t => {
@@ -952,7 +952,7 @@ test("one message uses singular labels in the cell, bubble, summary and year vie
   assert.equal(h.text(one(draw(), "my-messages-screen-summary")), "Mar 14 Sat · 1 message · 1 conversation");
   one(draw(), "my-messages-calendar-title").props.onPress();
   assert.equal(h.text(h.nodes(draw(), node => node.props.testID === "my-messages-calendar-year-month")
-    .find(node => String(node.props.accessibilityLabel).startsWith("January 2026"))), "January 2026\n1 message");
+    .find(node => String(node.props.accessibilityLabel).startsWith("January 2026"))), "Jan\n1 message");
 });
 
 test("Chinese and Japanese month titles use the locale's own year-month order", async t => {
@@ -963,7 +963,7 @@ test("Chinese and Japanese month titles use the locale's own year-month order", 
   await flush();
   assert.equal(h.text(one(draw(), "my-messages-calendar-title")), "2026年3月");
   one(draw(), "my-messages-calendar-title").props.onPress();
-  assert.equal(h.text(monthCell(draw(), "2026年1月")), "2026年1月\n1 条");
+  assert.equal(h.text(monthCell(draw(), "2026年1月")), "1月\n1 条");
   monthCell(draw(), "2026年1月").props.onHoverIn();
   assert.equal(h.text(h.nodes(draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0]),
     "2026年1月 · 1 条");
@@ -1792,4 +1792,131 @@ test("another year does not wear the open month ring", async t => {
   const previous = draw();
   assert.equal(h.text(one(previous, "my-messages-calendar-title")), "2025");
   assert.equal(h.nodes(previous, node => node.props?.testID === "my-messages-calendar-month-fill").length, 0);
+
+  const openHistory = historyFor(daysResult({
+    "2025-03-02": 1, [dayKey(0)]: 1,
+  }, { firstDay: "2025-03-01" }), { [dayKey(0)]: dayResult([]) });
+  const open = fixture(t, { historyRpc: openHistory });
+  open.draw();
+  await flush();
+  open.one(open.draw(), "my-messages-calendar-title").props.onPress();
+  open.one(open.draw(), "my-messages-calendar-prev").props.onPress();
+  const selectable = open.monthCell(open.draw(), "March 2025");
+  assert.equal(selectable.props.accessibilityState.disabled, false, "March 2025 is inside the record");
+  assert.equal(open.h.nodes(selectable, node => node.props?.testID === "my-messages-calendar-month-fill").length, 0);
+});
+
+test("a pointer press does not flash the focus outline", async t => {
+  const history = historyFor(daysResult({ [dayKey(0)]: 2, [dayKey(-1)]: 2 }), { [dayKey(0)]: dayResult([]) });
+  const { draw, cell, one, monthCell } = fixture(t, { historyRpc: history });
+  draw();
+  await flush();
+  const grid = () => one(draw(), "my-messages-calendar-grid");
+  const outline = label => cell(draw(), label).props.style.outlineWidth;
+
+  grid().props.onFocus();
+  assert.equal(outline("Mar 15 Sun"), 2, "tabbing into the grid draws the outline");
+  // Capture runs before focus, so the draw after focus is already clear.
+  grid().props.onPointerDownCapture();
+  grid().props.onFocus();
+  assert.equal(outline("Mar 15 Sun"), 0, "a selectable cell does not flash");
+  cell(draw(), "Mar 10 Tue").props.onPressIn();
+  assert.equal(outline("Mar 15 Sun"), 0);
+  grid().props.onKeyDown(keyEvent("ArrowLeft"));
+  assert.equal(outline("Mar 14 Sat"), 2, "an arrow key after a press draws the outline");
+
+  const disabled = cell(draw(), "Mar 20 Fri");
+  assert.equal(disabled.props.accessibilityState.disabled, true);
+  grid().props.onPointerDownCapture();
+  disabled.props.onFocus();
+  grid().props.onFocus();
+  assert.equal(outline("Mar 14 Sat"), 0, "a disabled cell leaves no outline");
+  assert.equal(outline("Mar 20 Fri"), 0);
+
+  grid().props.onPointerDownCapture();
+  grid().props.onFocus();
+  assert.equal(outline("Mar 20 Fri"), 0, "a press on the grid chrome leaves no outline");
+
+  const week = fixture(t, { historyRpc: history, compact: true });
+  week.draw();
+  await flush();
+  const weekGrid = () => week.one(week.draw(), "my-messages-calendar-grid");
+  weekGrid().props.onPointerDownCapture();
+  weekGrid().props.onFocus();
+  assert.equal(week.cell(week.draw(), "Mar 15 Sun").props.style.outlineWidth, 0);
+  weekGrid().props.onKeyDown(keyEvent("ArrowLeft"));
+  assert.equal(week.cell(week.draw(), "Mar 14 Sat").props.style.outlineWidth, 2);
+
+  one(draw(), "my-messages-calendar-title").props.onPress();
+  const yearGrid = () => one(draw(), "my-messages-calendar-year");
+  const yearOutline = label => monthCell(draw(), label).props.style.outlineWidth;
+  yearGrid().props.onFocus();
+  assert.equal(yearOutline("March 2026"), 2);
+  yearGrid().props.onPointerDownCapture();
+  yearGrid().props.onFocus();
+  assert.equal(yearOutline("March 2026"), 0, "a year cell does not flash");
+  yearGrid().props.onKeyDown(keyEvent("ArrowLeft"));
+  assert.equal(yearOutline("March 2026"), 2, "an arrow key draws the year outline");
+  const future = monthCell(draw(), "December 2026");
+  assert.equal(future.props.accessibilityState.disabled, true);
+  yearGrid().props.onPointerDownCapture();
+  future.props.onFocus();
+  yearGrid().props.onFocus();
+  assert.equal(yearOutline("March 2026"), 0, "a disabled month leaves no outline");
+  assert.equal(yearOutline("December 2026"), 0);
+});
+
+test("year cells show a short month, keep the full label, and reserve the today mark", async t => {
+  const history = historyFor(daysResult({
+    "2026-01-02": 2, [dayKey(0)]: 1,
+  }, { firstDay: "2026-01-02" }), { [dayKey(0)]: dayResult([]) });
+  const shorts = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const full = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  function slotStyle(h, node) {
+    const mark = h.nodes(node, child => child.props?.testID === "my-messages-calendar-mark-slot")[0];
+    assert.ok(mark, "the today mark keeps a slot when the dot is absent");
+    return mark.props.style;
+  }
+
+  const { draw, cell, one, monthCell, h } = fixture(t, { historyRpc: history });
+  draw();
+  await flush();
+  const today = cell(draw(), "Mar 15 Sun");
+  const neighbour = cell(draw(), "Mar 14 Sat");
+  assert.equal(slotStyle(h, today).height, slotStyle(h, neighbour).height);
+  assert.equal(slotStyle(h, today).width, slotStyle(h, neighbour).width);
+  assert.equal(h.nodes(today, node => node.props?.testID === "my-messages-calendar-today-dot").length, 1);
+  assert.equal(h.nodes(neighbour, node => node.props?.testID === "my-messages-calendar-today-dot").length, 0);
+
+  one(draw(), "my-messages-calendar-title").props.onPress();
+  const year = draw();
+  for (const [index, name] of full.entries()) {
+    const node = monthCell(year, `${name} 2026`);
+    assert.equal(h.text(node).split("\n")[0], shorts[index]);
+    assert.equal(h.text(node).includes("2026"), false);
+    assert.equal(String(node.props.accessibilityLabel).includes(`${name} 2026`), true);
+  }
+  const january = monthCell(year, "January 2026");
+  const march = monthCell(year, "March 2026");
+  january.props.onHoverIn();
+  assert.equal(h.text(h.nodes(draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0]),
+    "January 2026 · 2 messages");
+  assert.equal(slotStyle(h, march).height, slotStyle(h, january).height);
+  assert.equal(slotStyle(h, march).width, slotStyle(h, january).width);
+  assert.equal(h.nodes(march, node => node.props?.testID === "my-messages-calendar-today-dot").length, 1);
+  assert.equal(h.nodes(january, node => node.props?.testID === "my-messages-calendar-today-dot").length, 0);
+
+  for (const locale of ["zh-CN", "ja"]) {
+    const local = fixture(t, { historyRpc: history, locale });
+    local.draw();
+    await flush();
+    local.one(local.draw(), "my-messages-calendar-title").props.onPress();
+    const node = local.monthCell(local.draw(), "2026年1月");
+    assert.equal(local.h.text(node).split("\n")[0], "1月");
+    assert.equal(local.h.text(node).includes("2026"), false);
+    assert.equal(String(node.props.accessibilityLabel).startsWith("2026年1月"), true);
+    node.props.onHoverIn();
+    const tip = local.h.text(local.h.nodes(local.draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0]);
+    assert.equal(tip.startsWith("2026年1月"), true);
+  }
 });

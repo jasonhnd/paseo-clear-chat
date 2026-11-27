@@ -14,7 +14,7 @@ import {
   type MonthKey,
   type YearMonthCell,
 } from "../my-messages-calendar";
-import { formatDayLabel, formatMonthTitle, formatWeekday } from "../my-messages-calendar-labels";
+import { formatDayLabel, formatMonthShort, formatMonthTitle, formatWeekday } from "../my-messages-calendar-labels";
 import { displayedDayCount } from "../my-messages-calendar-feed";
 import type { Translate } from "../translation";
 import { mix, type ExtendedThemeTokens } from "./theme-tokens";
@@ -37,6 +37,8 @@ const TOOLTIP_WIDTH = 170;
 const SELECTION_RING = 2;
 const SELECTION_GAP = 1;
 const FOCUS_RING = 2;
+/** Reserved on every cell so today's dot does not change the row height. */
+const MARK_SLOT = 4;
 const MONTH_FOCUS_OFFSET = 1;
 const YEAR_FOCUS_OFFSET = 2;
 /** Quiet year cells pad 8 inside a 1px border. The open month matches that inset. */
@@ -362,6 +364,41 @@ function LevelWash({ opacity, color, radius }: { opacity: number; color: string;
   );
 }
 
+/** Same box on every cell. The dot is painted only for today, so a row stays level. */
+function TodayMark({ color }: { color: string | null }) {
+  return (
+    <View testID="my-messages-calendar-mark-slot" style={{ width: MARK_SLOT, height: MARK_SLOT }}>
+      {color ? (
+        <View testID="my-messages-calendar-today-dot" style={{ width: MARK_SLOT, height: MARK_SLOT, borderRadius: MARK_SLOT / 2, backgroundColor: color }} />
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * Web only. Capture runs before the browser moves focus, including a press on a
+ * disabled cell, a weekday header or a gap. Pressable's press-in is later and
+ * does not fire for those targets, so it cannot hide the ring in time.
+ */
+function pointerKeyProps(
+  platform: "ios" | "android" | "web",
+  onKeyDown: (event: unknown) => void,
+  pointerDown: React.MutableRefObject<boolean>,
+  setKeysVisible: (visible: boolean) => void,
+): Partial<ViewProps> {
+  if (platform !== "web") return {};
+  const release = () => { pointerDown.current = false; };
+  return {
+    onKeyDown,
+    onPointerDownCapture: () => {
+      pointerDown.current = true;
+      setKeysVisible(false);
+    },
+    onPointerUpCapture: release,
+    onPointerCancelCapture: release,
+  } as unknown as Partial<ViewProps>;
+}
+
 interface MonthViewProps {
   month: MonthKey;
   selectedDay: DayKey;
@@ -498,6 +535,7 @@ export function CalendarMonthView({
   const page = flattenColor(tokens.surface0, "#ffffff") ?? tokens.surface0;
 
   function handleKeyDown(event: unknown) {
+    pointerDown.current = false;
     const key = keyFromEvent(event);
     if (!key) return;
     const prevent = () => (event as { preventDefault?: () => void } | null)?.preventDefault?.();
@@ -527,7 +565,7 @@ export function CalendarMonthView({
     moveFocusTo(next);
   }
 
-  const keyProps = platform === "web" ? ({ onKeyDown: handleKeyDown } as unknown as Partial<ViewProps>) : {};
+  const keyProps = pointerKeyProps(platform, handleKeyDown, pointerDown, setKeysVisible);
 
   return (
     <View
@@ -599,7 +637,10 @@ export function CalendarMonthView({
                   focusable
                   ref={node => registerCell(day, node as unknown as FocusTarget | null)}
                   tabIndex={focused ? 0 : -1}
-                  onPressIn={() => { pointerDown.current = true; setKeysVisible(false); }}
+                  onPressIn={() => {
+                    if (platform !== "web") pointerDown.current = true;
+                    setKeysVisible(false);
+                  }}
                   onPress={() => { pointerDown.current = false; onSelect(day); }}
                   onFocus={() => { commitFocusDay(day); setFocusInside(true); }}
                   onHoverIn={() => setHoverDay(day)}
@@ -628,7 +669,7 @@ export function CalendarMonthView({
                     {Number(day.slice(8, 10))}
                   </Text>
                   {countsKnown && count > 0 ? <Text style={{ color, fontFamily: tokens.fontUi, fontSize: tokens.fs(11) }}>{count}</Text> : null}
-                  {dot ? <View testID="my-messages-calendar-today-dot" style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: dot }} /> : null}
+                  <TodayMark color={dot} />
                 </Pressable>
                 {showTooltip ? (
                   <View testID="my-messages-calendar-tooltip" pointerEvents="none" style={bubbleStyle(column, 7, rowWidth, tokens)}>
@@ -723,6 +764,7 @@ export function CalendarYearView({
   const yearPage = flattenColor(tokens.surface0, "#ffffff") ?? tokens.surface0;
 
   function handleKeyDown(event: unknown) {
+    pointerDown.current = false;
     const key = keyFromEvent(event);
     if (!key) return;
     const prevent = () => (event as { preventDefault?: () => void } | null)?.preventDefault?.();
@@ -750,7 +792,7 @@ export function CalendarYearView({
     moveMonthFocusTo(next);
   }
 
-  const keyProps = platform === "web" ? ({ onKeyDown: handleKeyDown } as unknown as Partial<ViewProps>) : {};
+  const keyProps = pointerKeyProps(platform, handleKeyDown, pointerDown, setKeysVisible);
   const width = `${100 / columns}%` as `${number}%`;
 
   return (
@@ -780,6 +822,7 @@ export function CalendarYearView({
         const wash = quiet ? null : palette.washes[level] ?? null;
         const color = quiet ? tokens.foreground : palette.text[level] ?? tokens.foreground;
         const monthTitle = formatMonthTitle(locale, cell.month);
+        const monthShort = formatMonthShort(locale, cell.month);
         const label = cell.total === 1
           ? t("myMessages.calendar.yearMonthLabelOne", { month: monthTitle, count: cell.total })
           : t("myMessages.calendar.yearMonthLabel", { month: monthTitle, count: cell.total });
@@ -794,13 +837,13 @@ export function CalendarYearView({
         const yearFocus = focused ? markerRing(flatMonth, yearPage, tokens) : null;
         const monthBody = (
           <>
-            <Text style={{ color, fontFamily: tokens.fontUi, fontSize: tokens.fs(14), fontWeight: current ? "600" : "400" }}>{monthTitle}</Text>
+            <Text style={{ color, fontFamily: tokens.fontUi, fontSize: tokens.fs(14), fontWeight: current ? "600" : "400" }}>{monthShort}</Text>
             <Text style={{ color, fontFamily: tokens.fontUi, fontSize: tokens.fs(11) }}>
               {cell.total === 1
                 ? t("myMessages.calendar.monthTotalOne")
                 : t("myMessages.calendar.monthTotal", { count: cell.total })}
             </Text>
-            {yearDot ? <View testID="my-messages-calendar-today-dot" style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: yearDot }} /> : null}
+            <TodayMark color={yearDot} />
           </>
         );
         return (
@@ -815,7 +858,10 @@ export function CalendarYearView({
               focusable
               ref={node => registerMonth(index, node as unknown as FocusTarget | null)}
               tabIndex={focused && cell.selectable ? 0 : -1}
-              onPressIn={() => { pointerDown.current = true; setKeysVisible(false); }}
+              onPressIn={() => {
+                if (platform !== "web") pointerDown.current = true;
+                setKeysVisible(false);
+              }}
               onPress={() => { pointerDown.current = false; onEnterMonth(cell.month); }}
               onFocus={() => { commitFocusMonth(index); setFocusInside(true); }}
               onHoverIn={() => setHoverMonth(cell.month)}

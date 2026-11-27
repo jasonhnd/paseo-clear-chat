@@ -43,9 +43,14 @@ export function formatMonthDay(locale: string, day: DayKey): string {
   return format(locale, utcDate(day), { month: "short", day: "numeric" });
 }
 
-/** "November" in the year view. */
+/** "November", without the year. */
 export function formatMonthName(locale: string, month: MonthKey): string {
   return format(locale, monthDate(month), { month: "long" });
+}
+
+/** "Nov" / "11月" inside a year cell. The header already shows the year. */
+export function formatMonthShort(locale: string, month: MonthKey): string {
+  return format(locale, monthDate(month), { month: "short" });
 }
 
 /** "Mon", "周一", "月". */
