@@ -1,7 +1,7 @@
 {
   "id": "clear-chat",
   "name": "Clear Chat",
-  "description": "v0.18.0.1 · Answer an agent's lettered questions with a card, open the conversation from a What I said row, and copy or quote it from the sidebar screen.",
+  "description": "v0.18.0.1 · Answer an agent's lettered questions with a card, open What I said as a calendar of the days you typed, and copy or quote a message from its row.",
   "requirements": {
     "paseo": ">=0.16.0"
   },
