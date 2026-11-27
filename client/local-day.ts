@@ -1,5 +1,5 @@
 /**
- * Local-calendar arithmetic for the panel.
+ * Local-calendar arithmetic for the "What I said" screen.
  *
  * "Today" means the reader's own calendar day on this device, not a UTC day and not a
  * rolling 24 hours. Day boundaries are built with the local calendar so a day that is 23

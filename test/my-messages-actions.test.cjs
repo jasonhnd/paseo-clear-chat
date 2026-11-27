@@ -11,7 +11,7 @@ const settle = () => new Promise(resolve => setImmediate(resolve));
 
 async function fixture(t, options = {}) {
   const {
-    surface = "screen", platform = "web", locale = "en", text = exactText, composers,
+    platform = "web", locale = "en", text = exactText, composers,
     navigation, copyFails = false, archived = false,
   } = options;
   const events = [];
@@ -38,7 +38,6 @@ async function fixture(t, options = {}) {
             item: { type: "user_message", text: id === "target" ? text : "another message" },
           }] };
         },
-        subscribe: () => ({ ready: Promise.resolve(), async release() {} }),
       } };
     },
   } };
@@ -56,36 +55,26 @@ async function fixture(t, options = {}) {
     theme: { colors: {} },
     layout: { platform, compact: true },
     host: { id: "screen-host", label: "Host" },
-    params: surface === "panel" ? { agentId: "target" } : {},
-    // The panel should prefer its current params over the deprecated flat field.
-    agentId: "other",
+    params: {},
     navigation: Object.hasOwn(options, "navigation") ? navigation : {
       openAgent(input) { events.push(["open", input]); },
     },
   };
   let Component;
   const host = composers ? { composers(selector) { events.push(["composers", selector]); return composers(selector); } } : {};
-  if (surface === "screen") {
-    const stop = h.load("client/my-messages-screen-registration.tsx").registerMyMessagesScreen({
-      ...host,
-      addScreen(screen) { Component = screen.Component; return () => {}; },
-      addSidebarHeaderItem: () => () => {},
-    });
-    t.after(stop);
-  } else {
-    const stop = h.load("client/my-messages-registration.ts").registerMyMessagesPanel({
-      ...host,
-      addAgentPanel(panel) { Component = panel.Component; return () => {}; },
-    });
-    t.after(stop);
-  }
+  const stop = h.load("client/my-messages-screen-registration.tsx").registerMyMessagesScreen({
+    ...host,
+    addScreen(screen) { Component = screen.Component; return () => {}; },
+    addSidebarHeaderItem: () => () => {},
+  });
+  t.after(stop);
   const draw = () => h.draw({ type: Component, props });
   draw();
   await settle();
   const tree = draw();
   const elements = id => h.nodes(tree, n => n.props.testID === id);
-  const rows = elements(surface === "screen" ? "my-messages-screen-row" : "my-message-row");
-  assert.equal(rows.length, surface === "screen" ? 2 : 1);
+  const rows = elements("my-messages-screen-row");
+  assert.equal(rows.length, 2);
   assert.equal(elements("my-message-copy").length, rows.length);
   assert.equal(elements("my-message-quote").length, rows.length);
   const index = rows.length - 1;
@@ -138,53 +127,43 @@ test("screen row copies and toasts when navigation or openAgent is missing", asy
   }
 });
 
-test("panel row still copies the original and toasts without opening a conversation", async t => {
-  const { h, events, row } = await fixture(t, { surface: "panel" });
-  row.props.onPress();
-  await settle();
-  assert.deepEqual(events, [["clipboard", exactText]]);
-  assert.deepEqual(h.toasts, ["Copied"]);
-});
-
-for (const surface of ["screen", "panel"]) {
-  for (const platform of ["web", "ios", "android"]) {
-    test(`${surface} Copy and Quote buttons do not trigger the row press on ${platform} at 390 px`, async t => {
-      const inserts = [];
-      const f = await fixture(t, { surface, platform, composers: () => [{
-        async focus() {},
-        insertText: value => inserts.push(value),
-      }] });
-      pressButton(f.tree, f.copy, f.row);
-      await settle();
-      assert.deepEqual(f.events, [["clipboard", exactText]]);
-      assert.deepEqual(f.h.toasts, ["Copied"]);
-      pressButton(f.tree, f.quote, f.row);
-      await settle();
-      assert.deepEqual(f.events, [["clipboard", exactText], ["composers", { agentId: "target" }], ["composers", { agentId: "target" }]]);
-      assert.deepEqual(f.h.toasts, ["Copied"], "inserting a quote does not copy or toast");
-      assert.equal(inserts.length, 1);
-    });
-  }
-
-  test(`${surface} Quote waits for the selected composer's focus before inserting at the cursor`, async t => {
-    let resolveFocus;
-    const focus = new Promise(resolve => { resolveFocus = resolve; });
-    const calls = [];
-    const { h, events, quote } = await fixture(t, { surface, composers: ({ agentId }) => [{
-      focus() { calls.push(["focus", agentId]); return focus; },
-      insertText(value) { calls.push(["insert", agentId, value]); },
+for (const platform of ["web", "ios", "android"]) {
+  test(`screen Copy and Quote buttons do not trigger the row press on ${platform} at 390 px`, async t => {
+    const inserts = [];
+    const f = await fixture(t, { platform, composers: () => [{
+      async focus() {},
+      insertText: value => inserts.push(value),
     }] });
-    quote.props.onPress();
+    pressButton(f.tree, f.copy, f.row);
     await settle();
-    assert.deepEqual(events, [["composers", { agentId: "target" }]]);
-    assert.deepEqual(calls, [["focus", "target"]], "must not insert while focus is pending");
-    resolveFocus();
+    assert.deepEqual(f.events, [["clipboard", exactText]]);
+    assert.deepEqual(f.h.toasts, ["Copied"]);
+    pressButton(f.tree, f.quote, f.row);
     await settle();
-    assert.deepEqual(calls, [["focus", "target"], ["insert", "target", quotedText]]);
-    assert.deepEqual(h.copies, []);
-    assert.deepEqual(h.toasts, []);
+    assert.deepEqual(f.events, [["clipboard", exactText], ["composers", { agentId: "target" }], ["composers", { agentId: "target" }]]);
+    assert.deepEqual(f.h.toasts, ["Copied"], "inserting a quote does not copy or toast");
+    assert.equal(inserts.length, 1);
   });
 }
+
+test("screen Quote waits for the selected composer's focus before inserting at the cursor", async t => {
+  let resolveFocus;
+  const focus = new Promise(resolve => { resolveFocus = resolve; });
+  const calls = [];
+  const { h, events, quote } = await fixture(t, { composers: ({ agentId }) => [{
+    focus() { calls.push(["focus", agentId]); return focus; },
+    insertText(value) { calls.push(["insert", agentId, value]); },
+  }] });
+  quote.props.onPress();
+  await settle();
+  assert.deepEqual(events, [["composers", { agentId: "target" }]]);
+  assert.deepEqual(calls, [["focus", "target"]], "must not insert while focus is pending");
+  resolveFocus();
+  await settle();
+  assert.deepEqual(calls, [["focus", "target"], ["insert", "target", quotedText]]);
+  assert.deepEqual(h.copies, []);
+  assert.deepEqual(h.toasts, []);
+});
 
 test("Quote prefixes every line and adds one blank line after the quote", async t => {
   for (const [text, expected] of [
@@ -194,7 +173,7 @@ test("Quote prefixes every line and adds one blank line after the quote", async 
     ["\n\nline1\n  \nline2\n\n", "> line1\n>\n> line2\n\n"],
     [exactText, quotedText],
   ]) {
-    const { h, quote } = await fixture(t, { surface: "panel", text });
+    const { h, quote } = await fixture(t, { text });
     quote.props.onPress();
     await settle();
     assert.deepEqual(h.copies, [expected]);
@@ -236,19 +215,17 @@ test("screen Quote copies on an older host and still copies if navigation throws
 });
 
 test("Copy uses the existing no-text and clipboard-failed feedback", async t => {
-  for (const surface of ["screen", "panel"]) {
-    const image = await fixture(t, { surface, text: "  " });
-    image.copy.props.onPress();
-    await settle();
-    assert.deepEqual(image.h.copies, []);
-    assert.deepEqual(image.h.toasts, ["This message has no text to copy"]);
+  const image = await fixture(t, { text: "  " });
+  image.copy.props.onPress();
+  await settle();
+  assert.deepEqual(image.h.copies, []);
+  assert.deepEqual(image.h.toasts, ["This message has no text to copy"]);
 
-    const failed = await fixture(t, { surface, copyFails: true });
-    failed.copy.props.onPress();
-    await settle();
-    assert.deepEqual(failed.h.copies, [exactText]);
-    assert.deepEqual(failed.h.toasts, ["Could not copy this message"]);
-  }
+  const failed = await fixture(t, { copyFails: true });
+  failed.copy.props.onPress();
+  await settle();
+  assert.deepEqual(failed.h.copies, [exactText]);
+  assert.deepEqual(failed.h.toasts, ["Could not copy this message"]);
 });
 
 test("Quote fallback reports a clipboard failure without claiming the quote was copied", async t => {
@@ -280,19 +257,17 @@ test("all three locales define action labels, accessibility text and the quote f
 });
 
 test("Quote on a message without text says so and inserts or copies nothing", async t => {
-  for (const surface of ["screen", "panel"]) {
-    const calls = [];
-    const { h, events, quote } = await fixture(t, { surface, text: "   ", composers: () => [{
-      async focus() { calls.push("focus"); },
-      insertText(value) { calls.push(["insert", value]); },
-    }] });
-    quote.props.onPress();
-    await settle();
-    assert.deepEqual(calls, [], `${surface}: no focus or insert for an empty message`);
-    assert.deepEqual(events.filter(event => event[0] !== "composers"), [], `${surface}: no navigation or clipboard`);
-    assert.deepEqual(h.copies, []);
-    assert.deepEqual(h.toasts, ["This message has no text to quote"]);
-  }
+  const calls = [];
+  const { h, events, quote } = await fixture(t, { text: "   ", composers: () => [{
+    async focus() { calls.push("focus"); },
+    insertText(value) { calls.push(["insert", value]); },
+  }] });
+  quote.props.onPress();
+  await settle();
+  assert.deepEqual(calls, [], "no focus or insert for an empty message");
+  assert.deepEqual(events.filter(event => event[0] !== "composers"), [], "no navigation or clipboard");
+  assert.deepEqual(h.copies, []);
+  assert.deepEqual(h.toasts, ["This message has no text to quote"]);
 });
 
 test("Quote inserts into the composer the host reports after focus", async t => {
@@ -315,7 +290,7 @@ test("Quote stays fast for a message with many CRLF line breaks", async t => {
   // Line breaks between two text lines are the shape that makes a nested-quantifier
   // trim backtrack; a run at the very end does not.
   const text = "p1" + "\r\n".repeat(26) + "p2" + "\r\n".repeat(26);
-  const { h, quote } = await fixture(t, { surface: "panel", text });
+  const { h, quote } = await fixture(t, { text });
   const started = Date.now();
   quote.props.onPress();
   await settle();
