@@ -65,7 +65,7 @@ Clear Chat 0.17.5.2 跟上 Paseo 0.17.5：版本号前三段就是这一版对�
 - 实测打开速度（Paseo 0.17.4、真实 provider：Codex）：20 个对话都已载入时 0.38 秒读完；daemon 刚重启、20 个都要从存储恢复（其中 5 个已归档）时，同一批 20.4 秒读完，约一秒一个。不需要模型的测试 agent 从存储恢复约 4 秒一个，所以别的 provider 可能更慢。读的时候每读完一个对话就先出它的行。这些是在这些条件下的实测数字，不是对其他宿主或 provider 的保证。
 
 <p align="center">
-  <img width="520" alt="1280 宽的「我说的话」整页（英文界面），左边栏这一行是选中状态：顶上一行写着 From you today: 9 · Conversations: 4，下面是 Refresh 按钮，再下面每条消息一行，带对话名、时间、消息正文，以及 Copy 和 Quote 按钮" src="docs/images/what-i-said-buttons.png">
+  <img width="520" alt="1280 宽的「我说的话」整页（英文界面），左边栏这一行是选中状态：顶上一行写着 From you today: 6 · Conversations: 4，下面是 Refresh 按钮，再下面每条消息一行，带对话名、时间、消息正文，以及 Copy 和 Quote 按钮" src="docs/images/what-i-said-buttons.png">
 </p>
 
 ## 安装

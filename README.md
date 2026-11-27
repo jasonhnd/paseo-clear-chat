@@ -65,7 +65,7 @@ The top line counts the day, for example `From you today: 12 · Conversations: 3
 - How long it takes, measured on Paseo 0.17.4 with a real provider (Codex): 20 conversations already loaded were read in 0.38 s; right after a daemon restart, when all 20 had to come back from storage — 5 of them archived — the same list took 20.4 s, about a second each. A test agent that needs no model took about 4 s per conversation restored from storage, so another provider can be slower. Rows appear as each conversation is read. These are measurements under those conditions, not a promise for other hosts or providers.
 
 <p align="center">
-  <img width="520" alt="The What I said screen at 1280 wide, with its sidebar row selected: the summary line reads From you today: 9 · Conversations: 4, below it a Refresh button, and one row per message with the conversation title, the local time, the message, and Copy and Quote buttons" src="docs/images/what-i-said-buttons.png">
+  <img width="520" alt="The What I said screen at 1280 wide, with its sidebar row selected: the summary line reads From you today: 6 · Conversations: 4, below it a Refresh button, and one row per message with the conversation title, the local time, the message, and Copy and Quote buttons" src="docs/images/what-i-said-buttons.png">
 </p>
 
 ## Install
