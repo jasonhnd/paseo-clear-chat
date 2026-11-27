@@ -1,7 +1,7 @@
 import React from "react";
 import { FlatList, Pressable, Text, View } from "react-native";
 import { usePaseo, useTranslation, type PluginScreenProps } from "@getpaseo/plugin/client";
-import { formatClock, localDateKey } from "../local-day";
+import { formatClock, localDateKey } from "../../shared/local-day";
 import { messages } from "../messages";
 import { useMyMessageActions, type MyMessagesComposerHost } from "../my-messages-actions";
 import { nowMs } from "../my-messages-clock";
@@ -11,7 +11,7 @@ import {
   type MyMessagesScreenRow,
 } from "../my-messages-screen-feed";
 import { useEnhancerPreferences } from "../preferences";
-import { isEmptyMessageText, messagePreview } from "../user-message-kind";
+import { isEmptyMessageText, messagePreview } from "../../shared/user-message-kind";
 import { MyMessagesRowActions } from "./my-messages-row-actions";
 import { buildThemeTokens } from "./theme-tokens";
 

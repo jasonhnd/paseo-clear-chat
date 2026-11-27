@@ -1,6 +1,6 @@
 import React from "react";
 import { usePaseo, type PluginScreenProps } from "@getpaseo/plugin/client";
-import { localDateKey } from "../local-day";
+import { localDateKey } from "../../shared/local-day";
 import type { HistorySource } from "../history-source";
 import { nowMs } from "../my-messages-clock";
 import {

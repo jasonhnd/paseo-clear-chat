@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { copyText, useToast } from "@getpaseo/plugin/client/ui";
-import { isEmptyMessageText } from "./user-message-kind";
+import { isEmptyMessageText } from "../shared/user-message-kind";
 
 interface QuoteComposer {
   focus(): Promise<void>;

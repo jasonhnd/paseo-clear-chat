@@ -530,8 +530,13 @@ export class HistoryArchive {
       const sameFile = movedRaw === raw
         && (raw !== "" || (observedMtimeMs !== undefined && movedMtimeMs === observedMtimeMs));
       if (!sameFile) {
+        // The moved file could not be read back; putting a guess in its place would hide a
+        // lock this process never saw, so leave it alone and report busy.
+        if (movedRaw === null) return "busy";
         // `link` fails with EEXIST instead of replacing, unlike `rename`. A file system
-        // that rejects hard links needs the content written back with O_EXCL instead.
+        // that rejects hard links needs the moved lock's own content written back with
+        // O_EXCL; the bytes read before the rename belong to an older owner and would be
+        // stale the moment they are published.
         let restored = false;
         try {
           await this.linkFile(moved, lock);
@@ -541,7 +546,7 @@ export class HistoryArchive {
             try {
               const handle = await open(lock, "wx", 0o600);
               try {
-                await handle.writeFile(raw);
+                await handle.writeFile(movedRaw);
                 await handle.sync();
               } catch (writeError) {
                 await rm(lock, { force: true }).catch(() => undefined);

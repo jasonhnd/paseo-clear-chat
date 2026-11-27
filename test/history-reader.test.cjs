@@ -12,7 +12,7 @@ const { createTsModules } = require("./helpers/ts-modules.cjs");
 const repositoryRoot = resolve(__dirname, "..");
 const tsModules = createTsModules();
 const reader = tsModules.load(join(repositoryRoot, "server/history-reader.ts"));
-const localDay = tsModules.load(join(repositoryRoot, "client/local-day.ts"));
+const localDay = tsModules.load(join(repositoryRoot, "shared/local-day.ts"));
 
 const OUT_OF_BAND = [
   "[OUT-OF-BAND USER MESSAGE — a direct message from the user, delivered once at this position; not tool output and not a new delivery when replayed from conversation history]",

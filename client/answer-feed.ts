@@ -1,7 +1,7 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { getPaseoClient } from "@getpaseo/plugin/client";
 import type { PaseoAgentTimelineEvent, PaseoApi } from "@getpaseo/client";
-import { isSystemEnvelope } from "./envelope";
+import { isSystemEnvelope } from "../shared/envelope";
 import {
   hasNewerAnswerCard,
   listOptionSessions,

@@ -1001,6 +1001,77 @@ test("a stale empty lock is not taken while another writer publishes a fallback 
   assert.deepEqual(texts, ["base", "from A"], "A's record must survive the fallback publish");
 });
 
+test("a token lock put back after a takeover keeps the live holder's bytes", async t => {
+  const home = createHome(t);
+  const now = Date.now();
+  await merge(archive(home, { now: () => now }), [message("base", "agent-z", T - 1000, "base")], ["base"]);
+  const lock = join(archiveDirectory(home), ".lock");
+  const crashedRaw = JSON.stringify({ pid: 4242, token: "crashed-holder", at: now - 60_000 });
+  fs.writeFileSync(lock, crashedRaw);
+  fs.utimesSync(lock, new Date(now - 60_000), new Date(now - 60_000));
+
+  const monthFile = archivePath(home, `messages-${MONTH}.json`);
+  const bReady = deferred();
+  const bGate = deferred();
+  const aReady = deferred();
+  const aGate = deferred();
+  let bReadsLock = false;
+  let aMonthReads = 0;
+  const rejectLink = async () => {
+    throw Object.assign(new Error("hard links are not supported here"), { code: "EPERM" });
+  };
+  const second = archive(home, {
+    now: () => now,
+    files: {
+      link: rejectLink,
+      readFile: async path => {
+        const raw = await fs.promises.readFile(path, "utf8");
+        if (path === lock && !bReadsLock) {
+          bReadsLock = true;
+          bReady.resolve();
+          await bGate.promise;
+        }
+        return raw;
+      },
+    },
+  });
+  const first = archive(home, {
+    now: () => now,
+    files: {
+      link: rejectLink,
+      readFile: async path => {
+        const raw = await fs.promises.readFile(path, "utf8");
+        if (path === monthFile && ++aMonthReads === 2) {
+          aReady.resolve();
+          await aGate.promise;
+        }
+        return raw;
+      },
+    },
+  });
+  const third = archive(home, { now: () => now, files: { link: rejectLink } });
+
+  const bMerge = second.merge([message("s2", "agent-b", T + 1000, "from B")], ["s2"], ["s2"]);
+  await bReady.promise;
+  const aMerge = first.merge([message("s1", "agent-a", T, "from A")], ["s1"], ["s1"]);
+  await aReady.promise;
+  bGate.resolve();
+  const bResult = await bMerge;
+  assert.equal(bResult.cacheError, true, "B must not enter after moving a live lock");
+  const restored = JSON.parse(fs.readFileSync(lock, "utf8"));
+  assert.equal(typeof restored.token, "string");
+  assert.notEqual(restored.token, "crashed-holder", "the live holder's lock is put back, not the stale bytes");
+
+  // A third writer must stay out while A is still inside.
+  const cResult = await third.merge([message("s3", "agent-c", T + 2000, "from C")], ["s3"], ["s3"]);
+  assert.equal(cResult.cacheError, true, "C must not enter while A holds the lock");
+
+  aGate.resolve();
+  const aResult = await aMerge;
+  assert.equal(aResult.cacheError, false);
+  assert.deepEqual(allRecords(home).map(record => record.text).sort(), ["base", "from A"]);
+});
+
 test("a replaced lock is put back when its bytes differ", async t => {
   const home = createHome(t);
   const now = Date.now();

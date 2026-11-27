@@ -226,7 +226,7 @@ export function CalendarMonthView({
   function handleKeyDown(event: unknown) {
     const key = keyFromEvent(event);
     if (!key) return;
-    const prevent = (event as { preventDefault?: () => void } | null)?.preventDefault;
+    const prevent = () => (event as { preventDefault?: () => void } | null)?.preventDefault?.();
     if (key === "t" || key === "T") {
       prevent?.();
       onToday();
@@ -415,7 +415,7 @@ export function CalendarYearView({
   function handleKeyDown(event: unknown) {
     const key = keyFromEvent(event);
     if (!key) return;
-    const prevent = (event as { preventDefault?: () => void } | null)?.preventDefault;
+    const prevent = () => (event as { preventDefault?: () => void } | null)?.preventDefault?.();
     if (key === "t" || key === "T") {
       prevent?.();
       onToday();

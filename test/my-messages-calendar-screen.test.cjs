@@ -157,6 +157,35 @@ function historyFor(days, rowsByDay) {
 }
 
 /**
+ * A keyboard event shaped like React's SyntheticEvent: preventDefault and stopPropagation
+ * are prototype methods that write through `this`, so a handler that detaches one throws
+ * the same TypeError a browser does.
+ */
+const KEY_EVENT = Symbol("key-event");
+class KeyEvent {
+  constructor(key) {
+    this.key = key;
+    this[KEY_EVENT] = true;
+    this.defaultPrevented = false;
+    this.propagationStopped = false;
+  }
+
+  preventDefault() {
+    if (this[KEY_EVENT] !== true) throw new TypeError("Cannot read properties of undefined (reading 'defaultPrevented')");
+    this.defaultPrevented = true;
+  }
+
+  stopPropagation() {
+    if (this[KEY_EVENT] !== true) throw new TypeError("Cannot read properties of undefined (reading 'propagationStopped')");
+    this.propagationStopped = true;
+  }
+}
+
+function keyEvent(key) {
+  return new KeyEvent(key);
+}
+
+/**
  * The web Pressable keeps its DOM node in a ref. Hand each cell a fake node so a test can
  * see which one a key press focused, the way a browser would move focus.
  */
@@ -273,7 +302,7 @@ test("arrow keys move only the keyboard focus, show its bubble, and Enter select
   dom.attach(tree);
   cell(tree, "Mar 15 Sun").props.onFocus();
   const before = history.calls.filter(([kind]) => kind === "day").length;
-  one(draw(), "my-messages-calendar-grid").props.onKeyDown({ key: "ArrowLeft" });
+  one(draw(), "my-messages-calendar-grid").props.onKeyDown(keyEvent("ArrowLeft"));
   await flush();
   tree = draw();
   dom.attach(tree);
@@ -303,13 +332,54 @@ test("arrow focus may cross a month without reading until Enter", async t => {
   await flush();
   const before = history.calls.filter(([kind]) => kind === "day").length;
   one(draw(), "my-messages-calendar-grid").props.onFocus();
-  one(draw(), "my-messages-calendar-grid").props.onKeyDown({ key: "ArrowLeft" });
+  one(draw(), "my-messages-calendar-grid").props.onKeyDown(keyEvent("ArrowLeft"));
   await flush();
   assert.equal(h.text(one(draw(), "my-messages-calendar-title")), "February 2026");
   assert.equal(history.calls.filter(([kind]) => kind === "day").length, before, "focus across a month is not a read");
   cell(draw(), "Feb 28 Sat").props.onPress();
   await flush();
   assert.equal(history.calls.at(-1)[1].day, "2026-02-28");
+});
+
+test("calendar key handling cancels the browser default with a real event shape", async t => {
+  const history = historyFor(daysResult({ [dayKey(-1)]: 1, [dayKey(0)]: 1 }), { [dayKey(0)]: dayResult([]) });
+  const { draw, one } = fixture(t, { historyRpc: history });
+  draw();
+  await flush();
+  const tree = draw();
+  const grid = one(tree, "my-messages-calendar-grid");
+  grid.props.onFocus();
+
+  const left = keyEvent("ArrowLeft");
+  grid.props.onKeyDown(left);
+  assert.equal(left.defaultPrevented, true, "the arrow key's default scroll is cancelled");
+
+  const today = keyEvent("t");
+  grid.props.onKeyDown(today);
+  assert.equal(today.defaultPrevented, true);
+
+  const enter = keyEvent("Enter");
+  grid.props.onKeyDown(enter);
+  assert.equal(enter.defaultPrevented, true);
+});
+
+test("the grid's Enter branch selects the day the arrow key just focused", async t => {
+  const history = historyFor(daysResult({ [dayKey(-1)]: 1, [dayKey(0)]: 1 }), {
+    [dayKey(-1)]: dayResult([{ agentId: "alpha", at: at(-1, 9), text: "focused row" }]),
+  });
+  const directory = [agent("alpha", "Alpha conversation")];
+  const { draw, one, h } = fixture(t, { historyRpc: history, directory });
+  draw();
+  await flush();
+  const tree = draw();
+  const grid = one(tree, "my-messages-calendar-grid");
+  grid.props.onFocus();
+  grid.props.onKeyDown(keyEvent("ArrowLeft"));
+  // No redraw between the two keys: a handler that reads the state value sees the old day,
+  // while the ref the browser path uses already holds the day under the focus.
+  grid.props.onKeyDown(keyEvent("Enter"));
+  await flush();
+  assert.equal(h.text(one(draw(), "my-messages-screen-summary")), "Mar 14 Sat · 1 message · 1 conversation");
 });
 
 test("the year view aggregates months, greys the record edges, switches years and shows a month bubble", async t => {
@@ -356,11 +426,11 @@ test("year view arrows move focus with a bubble and Enter opens that month", asy
   one(draw(), "my-messages-calendar-title").props.onPress();
   const grid = one(draw(), "my-messages-calendar-year");
   grid.props.onFocus();
-  grid.props.onKeyDown({ key: "ArrowLeft" });
-  grid.props.onKeyDown({ key: "ArrowLeft" });
+  grid.props.onKeyDown(keyEvent("ArrowLeft"));
+  grid.props.onKeyDown(keyEvent("ArrowLeft"));
   const tip = h.nodes(draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0];
   assert.equal(h.text(tip), "January 2026 · 1 message");
-  one(draw(), "my-messages-calendar-year").props.onKeyDown({ key: "ArrowRight" });
+  one(draw(), "my-messages-calendar-year").props.onKeyDown(keyEvent("ArrowRight"));
   // Enter reaches the Pressable that holds DOM focus, not the grid.
   monthCell(draw(), "February 2026").props.onPress();
   await flush();
@@ -405,11 +475,11 @@ test("clicking a day then using the arrow keys selects the day under the keyboar
   dom.attach(tree);
   assert.equal(dom.focused, null, "a mouse click does not move keyboard focus in this harness");
 
-  one(tree, "my-messages-calendar-grid").props.onKeyDown({ key: "ArrowLeft" });
+  one(tree, "my-messages-calendar-grid").props.onKeyDown(keyEvent("ArrowLeft"));
   await flush();
   tree = draw();
   dom.attach(tree);
-  one(tree, "my-messages-calendar-grid").props.onKeyDown({ key: "ArrowLeft" });
+  one(tree, "my-messages-calendar-grid").props.onKeyDown(keyEvent("ArrowLeft"));
   await flush();
   tree = draw();
   dom.attach(tree);
@@ -445,20 +515,20 @@ test("arrow keys keep moving focus after crossing a month boundary", async t => 
   tree = draw();
   dom.attach(tree);
 
-  one(tree, "my-messages-calendar-grid").props.onKeyDown({ key: "ArrowLeft" });
+  one(tree, "my-messages-calendar-grid").props.onKeyDown(keyEvent("ArrowLeft"));
   await flush();
   tree = draw();
   dom.attach(tree);
   assert.equal(h.text(one(tree, "my-messages-calendar-title")), "February 2026");
   assert.equal(dom.focused.startsWith("Feb 28 Sat"), true, "the new month's cell takes DOM focus once it mounts");
 
-  one(tree, "my-messages-calendar-grid").props.onKeyDown({ key: "ArrowLeft" });
+  one(tree, "my-messages-calendar-grid").props.onKeyDown(keyEvent("ArrowLeft"));
   await flush();
   tree = draw();
   dom.attach(tree);
   assert.equal(dom.focused.startsWith("Feb 27 Fri"), true, "arrows still work after the month changed");
 
-  one(tree, "my-messages-calendar-grid").props.onKeyDown({ key: "ArrowUp" });
+  one(tree, "my-messages-calendar-grid").props.onKeyDown(keyEvent("ArrowUp"));
   await flush();
   tree = draw();
   dom.attach(tree);
@@ -492,18 +562,18 @@ test("the year view keeps one tab stop and skips months with no records", async 
   assert.equal(tabStops.length, 1, "the year grid has one tab stop");
   assert.equal(tabStops[0].props.accessibilityLabel.startsWith("June 2025"), true);
 
-  one(tree, "my-messages-calendar-year").props.onKeyDown({ key: "ArrowRight" });
+  one(tree, "my-messages-calendar-year").props.onKeyDown(keyEvent("ArrowRight"));
   await flush();
   tree = draw();
   dom.attach(tree);
   assert.equal(dom.focused.startsWith("July 2025"), true);
   assert.equal(monthCell(tree, "July 2025").props.tabIndex, 0);
 
-  one(tree, "my-messages-calendar-year").props.onKeyDown({ key: "ArrowLeft" });
+  one(tree, "my-messages-calendar-year").props.onKeyDown(keyEvent("ArrowLeft"));
   await flush();
   tree = draw();
   dom.attach(tree);
-  one(tree, "my-messages-calendar-year").props.onKeyDown({ key: "ArrowLeft" });
+  one(tree, "my-messages-calendar-year").props.onKeyDown(keyEvent("ArrowLeft"));
   await flush();
   tree = draw();
   dom.attach(tree);
@@ -807,7 +877,7 @@ test("arrow keys never focus a day before the first record", async t => {
   await flush();
   const before = history.calls.filter(([kind]) => kind === "day").length;
   one(draw(), "my-messages-calendar-grid").props.onFocus();
-  one(draw(), "my-messages-calendar-grid").props.onKeyDown({ key: "ArrowLeft" });
+  one(draw(), "my-messages-calendar-grid").props.onKeyDown(keyEvent("ArrowLeft"));
   const tooltip = h.nodes(draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0];
   assert.equal(h.text(tooltip), "Mar 10 Tue · 1 message");
   cell(draw(), "Mar 10 Tue").props.onPress();
@@ -950,7 +1020,7 @@ test("today and the keyboard focus ring stay visible on the darkest level", asyn
     const dom = domFocus(all);
     dom.attach(tree);
     cell(tree, "Mar 14 Sat").props.onFocus();
-    one(tree, "my-messages-calendar-grid").props.onKeyDown({ key: "ArrowLeft" });
+    one(tree, "my-messages-calendar-grid").props.onKeyDown(keyEvent("ArrowLeft"));
     await flush();
     tree = draw();
     dom.attach(tree);

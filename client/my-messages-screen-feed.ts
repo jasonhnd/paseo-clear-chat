@@ -1,7 +1,7 @@
 import type { PaseoApi } from "@getpaseo/client";
-import { localDateKey, startOfLocalDay, startOfNextLocalDay } from "./local-day";
+import { localDateKey, startOfLocalDay, startOfNextLocalDay } from "../shared/local-day";
 import { currentTimers, nowMs } from "./my-messages-clock";
-import { classifyUserMessage } from "./user-message-kind";
+import { classifyUserMessage } from "../shared/user-message-kind";
 
 const DIRECTORY_PAGE_SIZE = 200;
 const DIRECTORY_PAGE_LIMIT = 25;

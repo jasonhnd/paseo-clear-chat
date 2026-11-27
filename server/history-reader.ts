@@ -3,8 +3,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
-import { localDateKey } from "../client/local-day";
-import { classifyUserMessage, isEmptyMessageText } from "../client/user-message-kind";
+import { localDateKey } from "../shared/local-day";
+import { classifyUserMessage, isEmptyMessageText } from "../shared/user-message-kind";
 import type { HistoryDayResult, HistoryDaysResult } from "../shared/history-rpc";
 
 /**

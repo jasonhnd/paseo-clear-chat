@@ -1,7 +1,7 @@
 import React from "react";
 import { FlatList, Pressable, Text, View } from "react-native";
 import { useTranslation, type PluginScreenProps } from "@getpaseo/plugin/client";
-import { formatClock, localDateKey } from "../local-day";
+import { formatClock, localDateKey } from "../../shared/local-day";
 import { messages } from "../messages";
 import { useMyMessageActions, type MyMessagesComposerHost } from "../my-messages-actions";
 import {
@@ -21,7 +21,7 @@ import { displayedDayCount, type MyMessagesCalendarSnapshot } from "../my-messag
 import { formatDayLabel, formatMonthTitle, formatWeekRange } from "../my-messages-calendar-labels";
 import { nowMs } from "../my-messages-clock";
 import { useEnhancerPreferences } from "../preferences";
-import { isEmptyMessageText, messagePreview } from "../user-message-kind";
+import { isEmptyMessageText, messagePreview } from "../../shared/user-message-kind";
 import { CalendarMonthView, CalendarYearView, buildLevelPalette } from "./my-messages-calendar-views";
 import { MyMessagesRowActions } from "./my-messages-row-actions";
 import { buildThemeTokens } from "./theme-tokens";

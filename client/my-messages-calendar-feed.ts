@@ -1,7 +1,7 @@
 import type { PaseoApi } from "@getpaseo/client";
 import type { HistoryDayResult, HistoryDaysResult } from "../shared/history-rpc";
 import type { HistorySource } from "./history-source";
-import { startOfNextLocalDay, localDateKey } from "./local-day";
+import { startOfNextLocalDay, localDateKey } from "../shared/local-day";
 import { DayKey, parseDayKey } from "./my-messages-calendar";
 import { currentTimers, nowMs } from "./my-messages-clock";
 import {
