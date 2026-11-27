@@ -5,6 +5,10 @@ import { isEmptyMessageText } from "../shared/user-message-kind";
 interface QuoteComposer {
   focus(): Promise<void>;
   insertText(text: string): void;
+  /** Present on the host composer. Absent on an older host. */
+  prompt?: string;
+  /** Present when the host reports a cursor. Absent means the insert lands at the end. */
+  selection?: { start: number; end: number } | null;
 }
 
 export interface MyMessagesComposerHost {
@@ -25,6 +29,47 @@ function quoteLines(text: string): string {
   while (start < end && (lines[start] ?? "").trim() === "") start++;
   while (end > start && (lines[end - 1] ?? "").trim() === "") end--;
   return lines.slice(start, end).map(line => line.trim() === "" ? ">" : `> ${line}`).join("\n") + "\n\n";
+}
+
+/** How many line breaks sit at the end of `text`, counting `\r\n` as one. */
+function trailingBreaks(text: string): number {
+  let count = 0;
+  let index = text.length;
+  while (index > 0) {
+    if (index >= 2 && text[index - 2] === "\r" && text[index - 1] === "\n") {
+      count += 1;
+      index -= 2;
+    } else if (text[index - 1] === "\n" || text[index - 1] === "\r") {
+      count += 1;
+      index -= 1;
+    } else {
+      break;
+    }
+  }
+  return count;
+}
+
+/**
+ * Newlines to put in front of a quote so it does not stick to the draft.
+ * Nothing before the cursor stays as it is. One break gets one more. Two or more
+ * already leave a blank line.
+ */
+function gapBeforeQuote(before: string): string {
+  if (before.length === 0) return "";
+  const breaks = trailingBreaks(before);
+  if (breaks >= 2) return "";
+  if (breaks === 1) return "\n";
+  return "\n\n";
+}
+
+function textBeforeInsert(composer: QuoteComposer): string {
+  const prompt = typeof composer.prompt === "string" ? composer.prompt : "";
+  const start = composer.selection?.start;
+  if (typeof start === "number" && Number.isFinite(start)) {
+    const index = Math.max(0, Math.min(prompt.length, Math.trunc(start)));
+    return prompt.slice(0, index);
+  }
+  return prompt;
 }
 
 export function useMyMessageActions(t: (key: Feedback) => string, host?: MyMessagesComposerHost) {
@@ -61,7 +106,8 @@ export function useMyMessageActions(t: (key: Feedback) => string, host?: MyMessa
         await composer.focus();
         // Focusing may open another tab; ask again so the text goes to the live composer.
         const live = host?.composers?.({ agentId })[0];
-        (typeof live?.insertText === "function" ? live : composer).insertText(quoted);
+        const target = typeof live?.insertText === "function" ? live : composer;
+        target.insertText(gapBeforeQuote(textBeforeInsert(target)) + quoted);
         return;
       }
     } catch {

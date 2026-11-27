@@ -214,6 +214,47 @@ test("screen Quote copies on an older host and still copies if navigation throws
   assert.equal(navigationAttempts, 1);
 });
 
+test("Quote keeps a blank line between an existing draft and the inserted quote", async t => {
+  const note = "> note\n\n";
+  const cases = [
+    ["", note],
+    ["DRAFT-KEEP", `\n\n${note}`],
+    ["DRAFT-KEEP\n", `\n${note}`],
+    ["DRAFT-KEEP\n\n", note],
+  ];
+  for (const [prompt, expected] of cases) {
+    const inserted = [];
+    const { quote } = await fixture(t, {
+      text: "note",
+      composers: () => [{
+        prompt,
+        async focus() {},
+        insertText(value) { inserted.push(value); },
+      }],
+    });
+    quote.props.onPress();
+    await settle();
+    assert.equal(inserted.at(-1), expected, `draft ${JSON.stringify(prompt)}`);
+  }
+});
+
+test("Quote reads a cursor when the composer exposes one", async t => {
+  const note = "> note\n\n";
+  const inserted = [];
+  const { quote } = await fixture(t, {
+    text: "note",
+    composers: () => [{
+      prompt: "DRAFT-KEEP\n\n",
+      selection: { start: "DRAFT-KEEP".length, end: "DRAFT-KEEP".length },
+      async focus() {},
+      insertText(value) { inserted.push(value); },
+    }],
+  });
+  quote.props.onPress();
+  await settle();
+  assert.equal(inserted.at(-1), `\n\n${note}`, "the gap follows the character before the cursor");
+});
+
 test("Copy uses the existing no-text and clipboard-failed feedback", async t => {
   const image = await fixture(t, { text: "  " });
   image.copy.props.onPress();

@@ -85,6 +85,37 @@ function inkFor(background: string, dark: string, light: string, fallback: strin
   return darkRatio >= lightRatio ? dark : light;
 }
 
+const EMPTY_LEVEL_GAP = 1.3;
+
+/** A neutral fill that does not sit on the first heat step. Steps away from the page until it does. */
+function neutralApart(page: string, neighbor: string): string {
+  const current = contrastOf(page, neighbor);
+  if (current !== null && current >= EMPTY_LEVEL_GAP) return page;
+  let best = page;
+  let bestRatio = current ?? 0;
+  for (let step = 1; step <= 10; step += 1) {
+    for (const toward of ["#000000", "#ffffff"]) {
+      const mixed = mix(page, toward, step / 10);
+      const ratio = contrastOf(mixed, neighbor);
+      if (ratio === null) continue;
+      if (ratio >= EMPTY_LEVEL_GAP) return mixed;
+      if (ratio > bestRatio) {
+        best = mixed;
+        bestRatio = ratio;
+      }
+    }
+  }
+  return best;
+}
+
+/** Background for a selectable cell with no messages, measured against the first heat step. */
+export function emptyCellFill(tokens: ExtendedThemeTokens, palette: LevelPalette): string {
+  const page = flattenColor(tokens.surface0, "#ffffff") ?? tokens.surface0;
+  const levelFill = palette.backgrounds[1] ?? tokens.surface1;
+  const neighbor = flattenColor(levelFill, page) ?? levelFill;
+  return neutralApart(page, neighbor);
+}
+
 /**
  * Four tinted steps from the host accent. `mix` only parses hex and rgb(); a theme that
  * hands us hsl()/oklch() falls back to an accent overlay at the same opacity, so the four
@@ -282,6 +313,7 @@ export function CalendarMonthView({
     ? [buildWeek(weekAnchor)]
     : Array.from({ length: 6 }, (_, week) => grid.slice(week * 7, week * 7 + 7));
   const tooltipDay = hoverDay ?? (focusInside ? focusedDay : null);
+  const emptyFill = emptyCellFill(tokens, palette);
 
   function handleKeyDown(event: unknown) {
     const key = keyFromEvent(event);
@@ -351,8 +383,9 @@ export function CalendarMonthView({
                   : t("myMessages.calendar.dayCellLabel", { date: formatDayLabel(locale, day), count })
                 : t("myMessages.calendar.dayCellEmpty", { date: formatDayLabel(locale, day) })
               : formatDayLabel(locale, day);
-            const background = selected ? tokens.accent : palette.backgrounds[level] ?? tokens.surface1;
-            const wash = selected ? null : palette.washes[level] ?? null;
+            const quietDay = countsKnown && count === 0 && !disabled && !selected;
+            const background = selected ? tokens.accent : quietDay ? emptyFill : palette.backgrounds[level] ?? tokens.surface1;
+            const wash = selected || quietDay ? null : palette.washes[level] ?? null;
             const color = selected ? tokens.accentForeground : palette.text[level] ?? tokens.foreground;
             const showTooltip = countsKnown && tooltipDay === day;
             const tooltip = count === 1
@@ -378,7 +411,7 @@ export function CalendarMonthView({
                     minHeight: compact ? 44 : 54, borderRadius: 6, paddingVertical: 3,
                     alignItems: "center", justifyContent: "center", gap: 1,
                     backgroundColor: background, opacity: disabled ? 0.35 : 1,
-                    borderWidth: selected || focused || isToday ? 2 : 0,
+                    borderWidth: selected || focused || isToday ? 2 : quietDay ? 1 : 0,
                     borderColor: selected ? tokens.accentForeground : focused || isToday ? tokens.foreground : tokens.border,
                   }}
                 >
@@ -471,6 +504,7 @@ export function CalendarYearView({
     node.focus?.();
   }, [focusedMonth, months]);
   const tooltipMonth = hoverMonth ?? (focusInside ? months[focusedMonth]?.month ?? null : null);
+  const emptyFill = emptyCellFill(tokens, palette);
 
   function handleKeyDown(event: unknown) {
     const key = keyFromEvent(event);
@@ -514,7 +548,7 @@ export function CalendarYearView({
         const level = countLevel(cell.total, thresholds);
         const focused = index === focusedMonth;
         const quiet = cell.selectable && cell.total === 0;
-        const background = quiet ? tokens.surface2 : palette.backgrounds[level] ?? tokens.surface1;
+        const background = quiet ? emptyFill : palette.backgrounds[level] ?? tokens.surface1;
         const wash = quiet ? null : palette.washes[level] ?? null;
         const color = quiet ? tokens.foreground : palette.text[level] ?? tokens.foreground;
         const monthTitle = formatMonthTitle(locale, cell.month);

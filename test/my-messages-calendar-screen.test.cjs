@@ -1153,8 +1153,68 @@ test("a quiet month inside the record range is a dim cell, not a greyed-out mont
   assert.equal(december.props.accessibilityState.disabled, true);
   assert.equal(february.props.style.opacity, 1);
   assert.equal(december.props.style.opacity, 0.35);
-  assert.equal(february.props.style.backgroundColor, tokens.surface2);
+  assert.equal(february.props.style.borderWidth, 1);
+  assert.equal(february.props.style.borderColor, tokens.border);
   assert.notEqual(february.props.style.backgroundColor, december.props.style.backgroundColor);
+});
+
+test("wide header arrows stay at the text size", async t => {
+  const history = historyFor(daysResult({ "2026-01-02": 1, [dayKey(0)]: 1 }, { firstDay: "2026-01-02" }),
+    { [dayKey(0)]: dayResult([]) });
+  const { draw, one } = fixture(t, { historyRpc: history, compact: false });
+  draw();
+  await flush();
+  for (const id of ["my-messages-calendar-prev", "my-messages-calendar-next"]) {
+    const style = one(draw(), id).props.style;
+    assert.equal(style.minWidth, undefined, id);
+    assert.equal(style.minHeight, undefined, id);
+  }
+});
+
+test("an empty cell stays visually apart from the first heat level", async t => {
+  const themes = [
+    {
+      surface0: "#181b1a", foreground: "#fafafa", foregroundMuted: "#8b949e",
+      accent: "#20744a", accentForeground: "#ffffff", statusDanger: "#f85149",
+    },
+    {
+      surface0: "#ffffff", foreground: "#18181b", foregroundMuted: "#59636e",
+      accent: "#20744a", accentForeground: "#ffffff", statusDanger: "#cf222e",
+    },
+  ];
+  const history = historyFor(daysResult({
+    "2026-01-02": 1, [dayKey(-5)]: 1, [dayKey(0)]: 8,
+  }, { firstDay: "2026-01-02" }), { [dayKey(0)]: dayResult([]) });
+  for (const themeColors of themes) {
+    const { draw, one, cell, monthCell, h } = fixture(t, {
+      historyRpc: history, realTheme: true, themeColors,
+      preferences: { ...BASE_PREFERENCES, accent: "host" },
+    });
+    draw();
+    await flush();
+    const tokens = h.load("client/components/theme-tokens.ts").buildThemeTokens(
+      themeColors, { ...BASE_PREFERENCES, accent: "host" },
+    );
+    const emptyDay = cell(draw(), "Mar 14 Sat");
+    const busyDay = cell(draw(), "Mar 10 Tue");
+    const emptyPaint = paintedOn(emptyDay.props.style.backgroundColor, tokens.surface0);
+    const busyPaint = paintedOn(busyDay.props.style.backgroundColor, tokens.surface0);
+    const dayGap = contrastRatio(emptyPaint, busyPaint);
+    assert.ok(dayGap >= 1.3, `day gap ${dayGap.toFixed(2)} on ${themeColors.surface0}`);
+    assert.equal(emptyDay.props.style.borderWidth, 1);
+
+    one(draw(), "my-messages-calendar-title").props.onPress();
+    const year = draw();
+    const february = monthCell(year, "February 2026");
+    const january = monthCell(year, "January 2026");
+    const monthGap = contrastRatio(
+      paintedOn(february.props.style.backgroundColor, tokens.surface0),
+      paintedOn(january.props.style.backgroundColor, tokens.surface0),
+    );
+    assert.ok(monthGap >= 1.3, `month gap ${monthGap.toFixed(2)} on ${themeColors.surface0}`);
+    assert.equal(february.props.style.borderWidth, 1);
+    assert.equal(february.props.accessibilityState.disabled, false);
+  }
 });
 
 test("the compact header arrows are at least a 44 pixel target", async t => {
