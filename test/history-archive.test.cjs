@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const { createHash } = require("node:crypto");
 const fs = require("node:fs");
+const fsp = require("node:fs/promises");
 const os = require("node:os");
 const { DatabaseSync } = require("node:sqlite");
 const { dirname, join, resolve, sep } = require("node:path");
@@ -760,16 +761,19 @@ test("a fresh lock blocks the write and answers from memory; a stale lock is tak
 
 test("an empty or old-format lock is not stolen while its file is fresh", async t => {
   const home = createHome(t);
-  await merge(archive(home), [message("base", "agent-z", T - 1000, "base")], ["base"]);
+  const freshAt = Date.UTC(2026, 10, 20, 4, 0, 0);
+  await merge(archive(home, { now: () => freshAt }), [message("base", "agent-z", T - 1000, "base")], ["base"]);
   const lock = join(archiveDirectory(home), ".lock");
   fs.writeFileSync(lock, "");
-  const empty = await merge(archive(home), [message("s1", "agent-a", T, "from empty")], ["s1"]);
+  fs.utimesSync(lock, new Date(freshAt), new Date(freshAt));
+  const empty = await merge(archive(home, { now: () => freshAt }), [message("s1", "agent-a", T, "from empty")], ["s1"]);
   assert.equal(empty.cacheError, true);
   assert.equal(fs.readFileSync(lock, "utf8"), "");
   assert.deepEqual(allRecords(home).map(record => record.text), ["base"]);
 
-  fs.writeFileSync(lock, JSON.stringify({ pid: 1, at: Date.UTC(2026, 10, 20, 3, 0, 0) }));
-  const oldFormat = await merge(archive(home), [message("s1", "agent-a", T, "from old")], ["s1"]);
+  fs.writeFileSync(lock, JSON.stringify({ pid: 1, at: freshAt - 60 * 60 * 1000 }));
+  fs.utimesSync(lock, new Date(freshAt), new Date(freshAt));
+  const oldFormat = await merge(archive(home, { now: () => freshAt }), [message("s1", "agent-a", T, "from old")], ["s1"]);
   assert.equal(oldFormat.cacheError, true);
   assert.equal(allRecords(home).map(record => record.text).join(), "base");
 });
@@ -848,6 +852,86 @@ test("two processes do not both take over a lock without a token", async t => {
   const aResult = await aMerge;
   assert.equal(aResult.cacheError, false);
   assert.deepEqual(allRecords(home).map(record => record.text).sort(), ["base", "from A"]);
+});
+
+test("an empty old lock is not taken while a new holder publishes its lock", async t => {
+  const home = createHome(t);
+  const now = Date.now();
+  await merge(archive(home, { now: () => now }), [message("base", "agent-z", T - 1000, "base")], ["base"]);
+  const lock = join(archiveDirectory(home), ".lock");
+  fs.writeFileSync(lock, "");
+  fs.utimesSync(lock, new Date(now - 60_000), new Date(now - 60_000));
+
+  const realStat = fsp.stat;
+  const realOpen = fsp.open;
+  const statReady = deferred();
+  const statGate = deferred();
+  const openReady = deferred();
+  const openGate = deferred();
+  let statPaused = false;
+  let openPaused = false;
+  fsp.stat = async (path, ...args) => {
+    const info = await realStat(path, ...args);
+    if (path === lock && !statPaused) {
+      statPaused = true;
+      statReady.resolve();
+      await statGate.promise;
+    }
+    return info;
+  };
+  fsp.open = async (path, flags, ...args) => {
+    const handle = await realOpen(path, flags, ...args);
+    if (path === lock && flags === "wx" && !openPaused) {
+      openPaused = true;
+      openReady.resolve();
+      await openGate.promise;
+    }
+    return handle;
+  };
+  t.after(() => {
+    fsp.stat = realStat;
+    fsp.open = realOpen;
+  });
+
+  const monthFile = archivePath(home, `messages-${MONTH}.json`);
+  const aReady = deferred();
+  const aGate = deferred();
+  let aMonthReads = 0;
+  const second = archive(home, { now: () => now });
+  const first = archive(home, {
+    now: () => now,
+    files: {
+      readFile: async path => {
+        const raw = await fsp.readFile(path, "utf8");
+        if (path === monthFile && ++aMonthReads === 2) {
+          aReady.resolve();
+          await aGate.promise;
+        }
+        return raw;
+      },
+    },
+  });
+  const bMerge = second.merge([message("s2", "agent-b", T + 1000, "from B")], ["s2"], ["s2"]);
+  await statReady.promise;
+  const aMerge = first.merge([message("s1", "agent-a", T, "from A")], ["s1"], ["s1"]);
+  // New code publishes a full lock and reaches its locked read, where it pauses. Old code
+  // pauses in open(lock, "wx") before writing; the race resolves either way.
+  await Promise.race([aReady.promise, new Promise(resolve => setTimeout(resolve, 100))]);
+  statGate.resolve();
+  const bResult = await bMerge;
+  assert.equal(bResult.cacheError, true, "B must not enter while A publishes its lock");
+  aGate.resolve();
+  openGate.resolve();
+  const aResult = await aMerge;
+
+  const texts = allRecords(home).map(record => record.text);
+  assert.equal(aResult.cacheError, false);
+  assert.ok(texts.includes("from A"));
+  assert.equal(
+    fs.readdirSync(archiveDirectory(home)).some(name => name.startsWith(".lock.tmp-")),
+    false,
+    "the private lock temporary must be removed",
+  );
 });
 
 test("a replaced lock is put back when its bytes differ", async t => {
