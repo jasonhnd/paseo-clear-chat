@@ -422,24 +422,38 @@ export class HistoryArchive {
     const now = this.options.now ?? Date.now;
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const token = randomUUID();
+      // Write the body to a private temporary file first, then publish it with an atomic
+      // hard link. The lock path therefore never exists with an empty body, even for the
+      // instant between creation and the first write.
+      const temporary = join(directory, `.lock.tmp-${randomUUID()}`);
+      let published = false;
       try {
-        const handle = await open(lock, "wx", 0o600);
+        const handle = await open(temporary, "wx", 0o600);
         try {
           await handle.writeFile(JSON.stringify({ pid: process.pid, token, at: now() }));
           await handle.sync();
         } finally {
           await handle.close();
         }
-        return { token };
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST") return "error";
-        let raw: string;
         try {
-          raw = await this.readText(lock);
-        } catch (readError) {
-          if ((readError as NodeJS.ErrnoException).code === "ENOENT") continue;
-          return "busy";
+          await link(temporary, lock);
+          published = true;
+        } catch (linkError) {
+          if ((linkError as NodeJS.ErrnoException).code !== "EEXIST") return "error";
         }
+      } catch {
+        return "error";
+      } finally {
+        await rm(temporary, { force: true }).catch(() => undefined);
+      }
+      if (published) return { token };
+      let raw: string;
+      try {
+        raw = await this.readText(lock);
+      } catch (readError) {
+        if ((readError as NodeJS.ErrnoException).code === "ENOENT") continue;
+        return "busy";
+      }
         const body = parseLock(raw);
         // A lock with a token carries its own timestamp. An empty, malformed or old-format
         // lock has no token, so its file modification time decides freshness: a process
@@ -491,7 +505,6 @@ export class HistoryArchive {
           return "error";
         }
       }
-    }
     return "busy";
   }
 
