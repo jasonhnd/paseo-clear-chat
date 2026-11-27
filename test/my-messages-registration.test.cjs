@@ -29,6 +29,6 @@ test("client startup registers What I said only in the sidebar", async t => {
   assert.deepEqual(screens, ["my-messages-today"]);
   assert.deepEqual(sidebarItems, ["my-messages-today"]);
   assert.equal(registerPanel.mock.callCount(), 0);
-  const headerButtonIds = registerHeaderButton.mock.calls.map(call => call.arguments[0].id);
-  assert.ok(!headerButtonIds.includes("clear-chat-my-messages"));
+  // Clear Chat registers no conversation header button at all.
+  assert.equal(registerHeaderButton.mock.callCount(), 0);
 });
