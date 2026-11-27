@@ -5,10 +5,8 @@ import { isEmptyMessageText } from "../shared/user-message-kind";
 interface QuoteComposer {
   focus(): Promise<void>;
   insertText(text: string): void;
-  /** Present on the host composer. Absent on an older host. */
-  prompt?: string;
-  /** Present when the host reports a cursor. Absent means the insert lands at the end. */
-  selection?: { start: number; end: number } | null;
+  setPrompt?(text: string): void;
+  readonly prompt?: string;
 }
 
 export interface MyMessagesComposerHost {
@@ -62,14 +60,8 @@ function gapBeforeQuote(before: string): string {
   return "\n\n";
 }
 
-function textBeforeInsert(composer: QuoteComposer): string {
-  const prompt = typeof composer.prompt === "string" ? composer.prompt : "";
-  const start = composer.selection?.start;
-  if (typeof start === "number" && Number.isFinite(start)) {
-    const index = Math.max(0, Math.min(prompt.length, Math.trunc(start)));
-    return prompt.slice(0, index);
-  }
-  return prompt;
+function quoteOnto(prompt: string, quoted: string): string {
+  return prompt + gapBeforeQuote(prompt) + quoted;
 }
 
 export function useMyMessageActions(t: (key: Feedback) => string, host?: MyMessagesComposerHost) {
@@ -102,13 +94,20 @@ export function useMyMessageActions(t: (key: Feedback) => string, host?: MyMessa
     const quoted = quoteLines(text);
     try {
       const composer = typeof host?.composers === "function" ? host.composers({ agentId })[0] : undefined;
-      if (typeof composer?.focus === "function" && typeof composer.insertText === "function") {
+      if (typeof composer?.focus === "function") {
         await composer.focus();
-        // Focusing may open another tab; ask again so the text goes to the live composer.
+        // Resolve the same agent again after navigation. Never write a stale draft snapshot.
         const live = host?.composers?.({ agentId })[0];
-        const target = typeof live?.insertText === "function" ? live : composer;
-        target.insertText(gapBeforeQuote(textBeforeInsert(target)) + quoted);
-        return;
+        if (typeof live?.prompt === "string" && typeof live.setPrompt === "function") {
+          // Replace the draft with its exact current text plus the quote. Inserting at the
+          // cursor would split the draft or put the quote before it after navigation.
+          live.setPrompt(quoteOnto(live.prompt, quoted));
+          return;
+        }
+        if (typeof live?.insertText === "function" && !live.prompt) {
+          live.insertText(quoted);
+          return;
+        }
       }
     } catch {
       // An unavailable composer still leaves a quote the reader can paste.

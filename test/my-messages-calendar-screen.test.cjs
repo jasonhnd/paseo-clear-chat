@@ -1090,16 +1090,17 @@ function colorChannels(color) {
 }
 
 /** WCAG contrast of two opaque colours, computed here rather than by the palette. */
-function contrastRatio(first, second) {
+function luminance(color) {
   const linear = value => {
     const channel = value / 255;
     return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
   };
-  const luminance = color => {
-    const channels = colorChannels(color);
-    if (!channels) throw new Error(`unreadable colour ${color}`);
-    return 0.2126 * linear(channels[0]) + 0.7152 * linear(channels[1]) + 0.0722 * linear(channels[2]);
-  };
+  const channels = colorChannels(color);
+  if (!channels) throw new Error(`unreadable colour ${color}`);
+  return 0.2126 * linear(channels[0]) + 0.7152 * linear(channels[1]) + 0.0722 * linear(channels[2]);
+}
+
+function contrastRatio(first, second) {
   const left = luminance(first);
   const right = luminance(second);
   return (Math.max(left, right) + 0.05) / (Math.min(left, right) + 0.05);
@@ -1171,7 +1172,7 @@ test("wide header arrows stay at the text size", async t => {
   }
 });
 
-test("an empty cell stays visually apart from the first heat level", async t => {
+test("empty dates stay at the quiet end of all four heat levels in both views", async t => {
   const themes = [
     {
       surface0: "#181b1a", foreground: "#fafafa", foregroundMuted: "#8b949e",
@@ -1183,8 +1184,9 @@ test("an empty cell stays visually apart from the first heat level", async t => 
     },
   ];
   const history = historyFor(daysResult({
-    "2026-01-02": 1, [dayKey(-5)]: 1, [dayKey(0)]: 8,
-  }, { firstDay: "2026-01-02" }), { [dayKey(0)]: dayResult([]) });
+    "2025-07-02": 1, "2025-09-02": 6, "2025-10-02": 3, "2025-11-02": 9, "2025-12-02": 50,
+    [dayKey(-5)]: 1, [dayKey(-4)]: 4, [dayKey(-3)]: 7, [dayKey(-2)]: 30,
+  }, { firstDay: "2025-07-02" }), { [dayKey(0)]: dayResult([]) });
   for (const themeColors of themes) {
     const { draw, one, cell, monthCell, h } = fixture(t, {
       historyRpc: history, realTheme: true, themeColors,
@@ -1195,25 +1197,50 @@ test("an empty cell stays visually apart from the first heat level", async t => 
     const tokens = h.load("client/components/theme-tokens.ts").buildThemeTokens(
       themeColors, { ...BASE_PREFERENCES, accent: "host" },
     );
-    const emptyDay = cell(draw(), "Mar 14 Sat");
-    const busyDay = cell(draw(), "Mar 10 Tue");
-    const emptyPaint = paintedOn(emptyDay.props.style.backgroundColor, tokens.surface0);
-    const busyPaint = paintedOn(busyDay.props.style.backgroundColor, tokens.surface0);
-    const dayGap = contrastRatio(emptyPaint, busyPaint);
-    assert.ok(dayGap >= 1.3, `day gap ${dayGap.toFixed(2)} on ${themeColors.surface0}`);
-    assert.equal(emptyDay.props.style.borderWidth, 1);
+    const paint = node => paintedOn(node.props.style.backgroundColor, tokens.surface0);
+    const check = (empty, busy, pane) => {
+      const emptyPaint = paint(empty);
+      assert.ok(contrastRatio(emptyPaint, paint(busy[0])) >= 1.3, `${pane} first level gap`);
+      const direction = themeColors.surface0 === "#181b1a" ? 1 : -1;
+      const levels = [empty, ...busy].map(node => luminance(paint(node)));
+      for (let index = 1; index < levels.length; index += 1) {
+        assert.ok(direction * (levels[index] - levels[index - 1]) > 0,
+          `${pane} heat order on ${themeColors.surface0}: ${levels.join(", ")}`);
+      }
+      for (const node of [empty, ...busy]) {
+        for (const text of h.nodes(node, child => child.type === "Text")) {
+          assert.ok(contrastRatio(text.props.style.color, paint(node)) >= 4.5,
+            `${pane} text contrast on ${themeColors.surface0}`);
+        }
+      }
+      assert.equal(empty.props.style.borderWidth, 1);
+      assert.equal(empty.props.accessibilityState.disabled, false);
+    };
+    const month = draw();
+    check(cell(month, "Mar 14 Sat"), ["Mar 10", "Mar 11", "Mar 12", "Mar 13"].map(label => cell(month, label)), "month");
 
     one(draw(), "my-messages-calendar-title").props.onPress();
+    one(draw(), "my-messages-calendar-prev").props.onPress();
     const year = draw();
-    const february = monthCell(year, "February 2026");
-    const january = monthCell(year, "January 2026");
-    const monthGap = contrastRatio(
-      paintedOn(february.props.style.backgroundColor, tokens.surface0),
-      paintedOn(january.props.style.backgroundColor, tokens.surface0),
-    );
-    assert.ok(monthGap >= 1.3, `month gap ${monthGap.toFixed(2)} on ${themeColors.surface0}`);
-    assert.equal(february.props.style.borderWidth, 1);
-    assert.equal(february.props.accessibilityState.disabled, false);
+    check(monthCell(year, "August 2025"), ["July 2025", "September 2025", "November 2025", "December 2025"].map(label => monthCell(year, label)), "year");
+  }
+});
+
+test("an empty cell keeps the page fill when the quiet end cannot reach the contrast gap", t => {
+  const h = createToolHarness("web", { themeTokens: true });
+  t.after(() => h.dispose());
+  const { buildLevelPalette, emptyCellFill } = h.load("client/components/my-messages-calendar-views.tsx");
+  const { buildThemeTokens } = h.load("client/components/theme-tokens.ts");
+  const preferences = { ...BASE_PREFERENCES, accent: "host" };
+  for (const theme of [
+    { surface0: "#030303", foreground: "#fafafa", accent: "#111111" },
+    { surface0: "#fcfcfc", foreground: "#18181b", accent: "#dddddd" },
+  ]) {
+    const tokens = buildThemeTokens({ ...DARK_THEME, ...theme }, preferences);
+    const palette = buildLevelPalette(tokens);
+    const fill = paintedOn(emptyCellFill(tokens, palette), tokens.surface0);
+    assert.equal(fill, paintedOn(tokens.surface0, tokens.surface0));
+    assert.ok(contrastRatio(fill, palette.backgrounds[1]) < 1.3);
   }
 });
 

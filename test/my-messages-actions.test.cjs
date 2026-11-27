@@ -218,41 +218,73 @@ test("Quote keeps a blank line between an existing draft and the inserted quote"
   const note = "> note\n\n";
   const cases = [
     ["", note],
-    ["DRAFT-KEEP", `\n\n${note}`],
-    ["DRAFT-KEEP\n", `\n${note}`],
-    ["DRAFT-KEEP\n\n", note],
+    ["DRAFT-KEEP", `DRAFT-KEEP\n\n${note}`],
+    ["DRAFT-KEEP\n", `DRAFT-KEEP\n\n${note}`],
+    ["DRAFT-KEEP\n\n", `DRAFT-KEEP\n\n${note}`],
+    ["DRAFT-KEEP\r\n", `DRAFT-KEEP\r\n\n${note}`],
+    ["DRAFT-KEEP\r\n\r\n", `DRAFT-KEEP\r\n\r\n${note}`],
+    ["   ", `   \n\n${note}`],
+    ["\n", `\n\n${note}`],
   ];
   for (const [prompt, expected] of cases) {
-    const inserted = [];
+    const written = [];
     const { quote } = await fixture(t, {
       text: "note",
       composers: () => [{
         prompt,
         async focus() {},
-        insertText(value) { inserted.push(value); },
+        setPrompt(value) { written.push(value); },
+        insertText(value) { written.push(value); },
       }],
     });
     quote.props.onPress();
     await settle();
-    assert.equal(inserted.at(-1), expected, `draft ${JSON.stringify(prompt)}`);
+    assert.equal(written.at(-1), expected, `draft ${JSON.stringify(prompt)}`);
+    assert.equal(written.length, 1, "the draft is replaced once, not inserted again");
   }
 });
 
-test("Quote reads a cursor when the composer exposes one", async t => {
+test("Quote appends after the draft even when the cursor is in the middle", async t => {
   const note = "> note\n\n";
-  const inserted = [];
+  const written = [];
   const { quote } = await fixture(t, {
     text: "note",
     composers: () => [{
       prompt: "DRAFT-KEEP\n\n",
-      selection: { start: "DRAFT-KEEP".length, end: "DRAFT-KEEP".length },
+      selection: { start: 5, end: 5 },
       async focus() {},
-      insertText(value) { inserted.push(value); },
+      setPrompt(value) { written.push(value); },
+      insertText() { written.push("inserted"); },
     }],
   });
   quote.props.onPress();
   await settle();
-  assert.equal(inserted.at(-1), `\n\n${note}`, "the gap follows the character before the cursor");
+  assert.deepEqual(written, [`DRAFT-KEEP\n\n${note}`]);
+});
+
+test("Quote reads the composer returned after focus, not the one from before", async t => {
+  const note = "> note\n\n";
+  const written = [];
+  let focused = false;
+  const { quote } = await fixture(t, {
+    text: "note",
+    composers: () => focused
+      ? [{
+        prompt: "DRAFT-KEEP",
+        async focus() {},
+        setPrompt(value) { written.push(["live", value]); },
+        insertText(value) { written.push(["live-insert", value]); },
+      }]
+      : [{
+        prompt: "",
+        async focus() { focused = true; },
+        setPrompt(value) { written.push(["before", value]); },
+        insertText(value) { written.push(["before-insert", value]); },
+      }],
+  });
+  quote.props.onPress();
+  await settle();
+  assert.deepEqual(written, [["live", `DRAFT-KEEP\n\n${note}`]]);
 });
 
 test("Copy uses the existing no-text and clipboard-failed feedback", async t => {
@@ -340,15 +372,17 @@ test("Quote stays fast for a message with many CRLF line breaks", async t => {
   assert.ok(elapsed < 1000, `quoting must not backtrack on repeated line breaks (${elapsed} ms)`);
 });
 
-test("Quote falls back to the first composer when the host returns none after focus", async t => {
+test("Quote copies instead of changing a stale composer when the target disappears after focus", async t => {
   const calls = [];
   let asked = 0;
   const { h, quote } = await fixture(t, { composers: ({ agentId }) => (++asked === 1 ? [{
+    prompt: "draft",
     async focus() { calls.push(["focus", agentId]); },
+    setPrompt(value) { calls.push(["set", agentId, value]); },
     insertText(value) { calls.push(["insert", agentId, value]); },
   }] : []) });
   quote.props.onPress();
   await settle();
-  assert.deepEqual(calls, [["focus", "target"], ["insert", "target", quotedText]]);
-  assert.deepEqual(h.copies, []);
+  assert.deepEqual(calls, [["focus", "target"]]);
+  assert.deepEqual(h.copies, [quotedText]);
 });

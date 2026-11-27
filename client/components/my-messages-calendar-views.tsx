@@ -62,19 +62,21 @@ function flattenColor(color: string, under: string): string | null {
   return `rgb(${channel(top.r, base.r)}, ${channel(top.g, base.g)}, ${channel(top.b, base.b)})`;
 }
 
-function contrastOf(first: string, second: string): number | null {
-  const left = readColor(first);
-  const right = readColor(second);
-  if (!left || !right) return null;
+function luminanceOf(color: string): number | null {
+  const read = readColor(color);
+  if (!read) return null;
   const linear = (value: number) => {
     const channel = value / 255;
     return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
   };
-  const luminance = (color: { r: number; g: number; b: number }) =>
-    0.2126 * linear(color.r) + 0.7152 * linear(color.g) + 0.0722 * linear(color.b);
-  const lighter = Math.max(luminance(left), luminance(right));
-  const darker = Math.min(luminance(left), luminance(right));
-  return (lighter + 0.05) / (darker + 0.05);
+  return 0.2126 * linear(read.r) + 0.7152 * linear(read.g) + 0.0722 * linear(read.b);
+}
+
+function contrastOf(first: string, second: string): number | null {
+  const left = luminanceOf(first);
+  const right = luminanceOf(second);
+  if (left === null || right === null) return null;
+  return (Math.max(left, right) + 0.05) / (Math.min(left, right) + 0.05);
 }
 
 /** The darker or lighter ink, whichever reads better on `background`. */
@@ -87,25 +89,19 @@ function inkFor(background: string, dark: string, light: string, fallback: strin
 
 const EMPTY_LEVEL_GAP = 1.3;
 
-/** A neutral fill that does not sit on the first heat step. Steps away from the page until it does. */
-function neutralApart(page: string, neighbor: string): string {
-  const current = contrastOf(page, neighbor);
-  if (current !== null && current >= EMPTY_LEVEL_GAP) return page;
-  let best = page;
-  let bestRatio = current ?? 0;
-  for (let step = 1; step <= 10; step += 1) {
-    for (const toward of ["#000000", "#ffffff"]) {
-      const mixed = mix(page, toward, step / 10);
-      const ratio = contrastOf(mixed, neighbor);
-      if (ratio === null) continue;
-      if (ratio >= EMPTY_LEVEL_GAP) return mixed;
-      if (ratio > bestRatio) {
-        best = mixed;
-        bestRatio = ratio;
-      }
-    }
+/** Move toward the quiet end only. If the gap is unreachable, let the border mark the empty cell. */
+function neutralApart(page: string, neighbor: string, dark: boolean): string {
+  const neighborL = luminanceOf(neighbor);
+  if (luminanceOf(page) === null || neighborL === null) return page;
+  const toward = dark ? "#000000" : "#ffffff";
+  for (let step = 0; step <= 10; step += 1) {
+    const fill = step === 0 ? page : mix(page, toward, step / 10);
+    const fillL = luminanceOf(fill);
+    if (fillL === null) break;
+    const contrast = dark ? (neighborL + 0.05) / (fillL + 0.05) : (fillL + 0.05) / (neighborL + 0.05);
+    if (contrast >= EMPTY_LEVEL_GAP) return fill;
   }
-  return best;
+  return page;
 }
 
 /** Background for a selectable cell with no messages, measured against the first heat step. */
@@ -113,7 +109,7 @@ export function emptyCellFill(tokens: ExtendedThemeTokens, palette: LevelPalette
   const page = flattenColor(tokens.surface0, "#ffffff") ?? tokens.surface0;
   const levelFill = palette.backgrounds[1] ?? tokens.surface1;
   const neighbor = flattenColor(levelFill, page) ?? levelFill;
-  return neutralApart(page, neighbor);
+  return neutralApart(page, neighbor, tokens.isDark);
 }
 
 /**
