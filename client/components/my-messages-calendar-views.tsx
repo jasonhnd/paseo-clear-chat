@@ -29,11 +29,19 @@ const CELL_WIDTH = "14.2857%";
 const TOOLTIP_WIDTH = 170;
 /**
  * Ring plus the page-coloured seam, drawn inside the cell. Two pixels and a one pixel
- * seam keep the heat fill within six pixels of a neighbour. The focus outline already
- * occupies the four pixel gap between cells, so the ring cannot also sit outside.
+ * seam keep the heat fill within six pixels of a neighbour. The month focus outline
+ * is two pixels drawn one pixel outside the cell, leaving one pixel of the page
+ * before the next cell. Year cells already have a six pixel gap, so that outline
+ * stays two pixels out.
  */
 const SELECTION_RING = 2;
 const SELECTION_GAP = 1;
+const FOCUS_RING = 2;
+const MONTH_FOCUS_OFFSET = 1;
+const YEAR_FOCUS_OFFSET = 2;
+/** Quiet year cells pad 8 inside a 1px border. The open month matches that inset. */
+const YEAR_QUIET_PAD = 8;
+const YEAR_CHOSEN_INNER = YEAR_QUIET_PAD - (SELECTION_RING + SELECTION_GAP - 1);
 const GRID_ROLE = "grid" as unknown as ViewProps["accessibilityRole"];
 
 export interface LevelPalette {
@@ -317,23 +325,31 @@ function keyFromEvent(event: unknown): string | null {
 }
 
 /**
- * Keep the bubble over its cell, then clamp both sides to the row.
- * 100% is this cell: -column*100% is the row's left edge and
- * (columns-column)*100% is its right edge. A row narrower than the bubble
- * shrinks the bubble to the row.
+ * Keep the bubble over its cell and inside the row.
+ * Once the row has reported its width, left and width are pixels clamped to that row.
+ * Before then, the first column sticks to the left, the last column sticks to the right,
+ * and any column between them shifts by whole cells as a single percentage. The width
+ * is the whole row, so the bubble cannot hang past either edge. No min, max or calc.
  */
-function bubbleStyle(column: number, columns: number, tokens: ExtendedThemeTokens): ViewStyle {
+function bubbleStyle(column: number, columns: number, rowWidth: number | null, tokens: ExtendedThemeTokens): ViewStyle {
   const base: ViewStyle = {
     position: "absolute", bottom: "100%", marginBottom: 6,
     paddingVertical: 6, paddingHorizontal: 8, borderRadius: 8, zIndex: 20,
     backgroundColor: tokens.surface2, borderWidth: 1, borderColor: tokens.border,
   };
-  const half = TOOLTIP_WIDTH / 2;
-  return {
-    ...base,
-    width: `min(${TOOLTIP_WIDTH}px, ${columns * 100}%)` as unknown as ViewStyle["width"],
-    left: `max(${-column * 100}%, min(calc(50% - ${half}px), calc(${(columns - column) * 100}% - ${TOOLTIP_WIDTH}px)))` as unknown as ViewStyle["left"],
-  };
+  const index = column < 0 ? 0 : column > columns - 1 ? columns - 1 : column;
+  if (rowWidth !== null && rowWidth > 0) {
+    const width = rowWidth < TOOLTIP_WIDTH ? rowWidth : TOOLTIP_WIDTH;
+    const cell = rowWidth / columns;
+    const ideal = index * cell + cell / 2 - width / 2;
+    const room = rowWidth - width;
+    const rowLeft = ideal < 0 ? 0 : ideal > room ? room : ideal;
+    return { ...base, width, left: rowLeft - index * cell };
+  }
+  const span = `${columns * 100}%` as ViewStyle["width"];
+  if (index <= 0) return { ...base, left: 0, width: span };
+  if (index >= columns - 1) return { ...base, right: 0, width: span };
+  return { ...base, left: `${-index * 100}%` as ViewStyle["left"], width: span };
 }
 
 function LevelWash({ opacity, color, radius }: { opacity: number; color: string; radius: number }) {
@@ -415,6 +431,9 @@ export function CalendarMonthView({
   const [weekAnchor, setWeekAnchor] = React.useState<DayKey>(selectedDay);
   const [hoverDay, setHoverDay] = React.useState<DayKey | null>(null);
   const [focusInside, setFocusInside] = React.useState(false);
+  const [keysVisible, setKeysVisible] = React.useState(false);
+  const [rowWidth, setRowWidth] = React.useState<number | null>(null);
+  const pointerDown = React.useRef(false);
   const cellNodes = React.useRef(new Map<DayKey, FocusTarget>());
   const pendingFocus = React.useRef<DayKey | null>(null);
 
@@ -484,11 +503,13 @@ export function CalendarMonthView({
     const prevent = () => (event as { preventDefault?: () => void } | null)?.preventDefault?.();
     if (key === "t" || key === "T") {
       prevent?.();
+      setKeysVisible(true);
       onToday();
       return;
     }
     if (key === "Enter" || key === " ") {
       prevent?.();
+      setKeysVisible(true);
       onSelect(focusedDayRef.current);
       return;
     }
@@ -496,6 +517,7 @@ export function CalendarMonthView({
       : key === "ArrowUp" ? "up" : key === "ArrowDown" ? "down" : null;
     if (!direction) return;
     const next = moveDay(focusedDayRef.current, direction);
+    setKeysVisible(true);
     if (!selectableDay(next, firstDay, today)) return;
     prevent?.();
     setFocusInside(true);
@@ -512,8 +534,12 @@ export function CalendarMonthView({
       testID="my-messages-calendar-grid"
       accessibilityRole={GRID_ROLE}
       tabIndex={-1}
-      onFocus={() => setFocusInside(true)}
-      onBlur={() => setFocusInside(false)}
+      onFocus={() => {
+        setFocusInside(true);
+        if (pointerDown.current) pointerDown.current = false;
+        else setKeysVisible(true);
+      }}
+      onBlur={() => { setFocusInside(false); setKeysVisible(false); }}
       {...keyProps}
       style={{ borderWidth: 1, borderColor: tokens.border, borderRadius: 10, padding: 6, gap: 2 }}
     >
@@ -525,7 +551,10 @@ export function CalendarMonthView({
         ))}
       </View>
       {rows.map((row, week) => (
-        <View key={week} style={{ flexDirection: "row" }}>
+        <View key={week} testID="my-messages-calendar-row" onLayout={event => {
+          const width = event.nativeEvent.layout.width;
+          if (width > 0) setRowWidth(current => current === width ? current : width);
+        }} style={{ flexDirection: "row" }}>
           {row.map((day, index) => {
             if (!day) {
               return <View key={`blank-${week}-${index}`} style={{ width: CELL_WIDTH, padding: 2 }}>
@@ -538,6 +567,7 @@ export function CalendarMonthView({
             const isToday = day === today;
             const disabled = !selectableDay(day, firstDay, today);
             const focused = day === focusedDay;
+            const showFocus = focused && keysVisible;
             const column = weekdayIndexMondayFirst(Number(day.slice(0, 4)), Number(day.slice(5, 7)), Number(day.slice(8, 10)));
             const label = countsKnown
               ? count > 0
@@ -569,7 +599,8 @@ export function CalendarMonthView({
                   focusable
                   ref={node => registerCell(day, node as unknown as FocusTarget | null)}
                   tabIndex={focused ? 0 : -1}
-                  onPress={() => onSelect(day)}
+                  onPressIn={() => { pointerDown.current = true; setKeysVisible(false); }}
+                  onPress={() => { pointerDown.current = false; onSelect(day); }}
                   onFocus={() => { commitFocusDay(day); setFocusInside(true); }}
                   onHoverIn={() => setHoverDay(day)}
                   onHoverOut={() => setHoverDay(null)}
@@ -577,15 +608,15 @@ export function CalendarMonthView({
                     minHeight: compact ? 44 : 54, borderRadius: 6,
                     alignItems: "center", justifyContent: "center", gap: 1,
                     backgroundColor: selected ? page : heatFill, opacity: disabled ? 0.35 : 1,
-                    borderWidth: selected ? SELECTION_RING : focused && focus?.inner ? 2 : 0,
+                    borderWidth: selected ? SELECTION_RING : showFocus && focus?.inner ? 2 : 0,
                     borderStyle: selected ? "solid" : "dashed",
                     borderColor: selected ? tokens.foreground : focus?.inner ?? "transparent",
                     padding: selected ? SELECTION_GAP : 0,
                     paddingVertical: selected ? SELECTION_GAP : 3,
-                    outlineWidth: focused ? 2 : 0,
+                    outlineWidth: showFocus ? FOCUS_RING : 0,
                     outlineStyle: "dashed",
-                    outlineColor: focused ? focus?.outer ?? tokens.foreground : "transparent",
-                    outlineOffset: 2,
+                    outlineColor: showFocus ? focus?.outer ?? tokens.foreground : "transparent",
+                    outlineOffset: MONTH_FOCUS_OFFSET,
                   }}
                 >
                   {selected ? (
@@ -600,7 +631,7 @@ export function CalendarMonthView({
                   {dot ? <View testID="my-messages-calendar-today-dot" style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: dot }} /> : null}
                 </Pressable>
                 {showTooltip ? (
-                  <View testID="my-messages-calendar-tooltip" pointerEvents="none" style={bubbleStyle(column, 7, tokens)}>
+                  <View testID="my-messages-calendar-tooltip" pointerEvents="none" style={bubbleStyle(column, 7, rowWidth, tokens)}>
                     <Text style={{ color: tokens.foreground, fontFamily: tokens.fontUi, fontSize: tokens.fs(11) }}>{tooltip}</Text>
                   </View>
                 ) : null}
@@ -616,6 +647,8 @@ export function CalendarMonthView({
 interface YearViewProps {
   year: number;
   months: readonly YearMonthCell[];
+  /** The month the calendar is open on, `YYYY-MM`, not just a month index. */
+  visibleMonth: MonthKey;
   startMonth: number;
   thresholds: readonly [number, number, number];
   palette: LevelPalette;
@@ -630,13 +663,16 @@ interface YearViewProps {
 }
 
 export function CalendarYearView({
-  year, months, startMonth, thresholds, palette, tokens, locale, t, compact, platform, onEnterMonth, onToday, today,
+  year, months, visibleMonth, startMonth, thresholds, palette, tokens, locale, t, compact, platform, onEnterMonth, onToday, today,
 }: YearViewProps) {
   const columns = compact ? 2 : 4;
   const [focusedMonth, setFocusedMonth] = React.useState(() => nearestSelectableMonth(Math.min(11, Math.max(0, startMonth)), months));
   const focusedMonthRef = React.useRef(focusedMonth);
   const [hoverMonth, setHoverMonth] = React.useState<MonthKey | null>(null);
   const [focusInside, setFocusInside] = React.useState(false);
+  const [keysVisible, setKeysVisible] = React.useState(false);
+  const [rowWidth, setRowWidth] = React.useState<number | null>(null);
+  const pointerDown = React.useRef(false);
   const monthNodes = React.useRef(new Map<number, FocusTarget>());
   const pendingMonthFocus = React.useRef<number | null>(null);
 
@@ -692,11 +728,13 @@ export function CalendarYearView({
     const prevent = () => (event as { preventDefault?: () => void } | null)?.preventDefault?.();
     if (key === "t" || key === "T") {
       prevent?.();
+      setKeysVisible(true);
       onToday();
       return;
     }
     if (key === "Enter" || key === " ") {
       prevent?.();
+      setKeysVisible(true);
       const cell = months[focusedMonthRef.current];
       if (cell?.selectable) onEnterMonth(cell.month);
       return;
@@ -705,6 +743,7 @@ export function CalendarYearView({
       : key === "ArrowUp" ? "up" : key === "ArrowDown" ? "down" : null;
     if (!direction) return;
     prevent?.();
+    setKeysVisible(true);
     setFocusInside(true);
     const next = nextSelectableMonth(focusedMonthRef.current, direction, columns, months);
     commitFocusMonth(next);
@@ -719,14 +758,23 @@ export function CalendarYearView({
       testID="my-messages-calendar-year"
       accessibilityRole={GRID_ROLE}
       tabIndex={-1}
-      onFocus={() => setFocusInside(true)}
-      onBlur={() => setFocusInside(false)}
+      onFocus={() => {
+        setFocusInside(true);
+        if (pointerDown.current) pointerDown.current = false;
+        else setKeysVisible(true);
+      }}
+      onBlur={() => { setFocusInside(false); setKeysVisible(false); }}
+      onLayout={event => {
+        const width = event.nativeEvent.layout.width;
+        if (width > 0) setRowWidth(current => current === width ? current : width);
+      }}
       {...keyProps}
       style={{ flexDirection: "row", flexWrap: "wrap" }}
     >
       {months.map((cell, index) => {
         const level = countLevel(cell.total, thresholds);
         const focused = index === focusedMonth;
+        const showFocus = focused && keysVisible;
         const quiet = cell.selectable && cell.total === 0;
         const background = quiet ? emptyFill : palette.backgrounds[level] ?? tokens.surface1;
         const wash = quiet ? null : palette.washes[level] ?? null;
@@ -739,7 +787,7 @@ export function CalendarYearView({
           ? t("myMessages.calendar.yearMonthLabelOne", { month: monthTitle, count: cell.total })
           : t("myMessages.calendar.yearMonthLabel", { month: monthTitle, count: cell.total });
         const showTooltip = tooltipMonth === cell.month;
-        const chosen = index === Math.min(11, Math.max(0, startMonth));
+        const chosen = cell.month === visibleMonth;
         const current = monthKeyOfDay(today) === cell.month;
         const flatMonth = flattenColor(background, yearPage) ?? background;
         const yearDot = current ? todayMark(flatMonth, tokens) : null;
@@ -767,21 +815,22 @@ export function CalendarYearView({
               focusable
               ref={node => registerMonth(index, node as unknown as FocusTarget | null)}
               tabIndex={focused && cell.selectable ? 0 : -1}
-              onPress={() => onEnterMonth(cell.month)}
+              onPressIn={() => { pointerDown.current = true; setKeysVisible(false); }}
+              onPress={() => { pointerDown.current = false; onEnterMonth(cell.month); }}
               onFocus={() => { commitFocusMonth(index); setFocusInside(true); }}
               onHoverIn={() => setHoverMonth(cell.month)}
               onHoverOut={() => setHoverMonth(null)}
               style={{
                 minHeight: compact ? 56 : 64, borderRadius: 8, gap: 2,
                 backgroundColor: chosen ? yearPage : background, opacity: cell.selectable ? 1 : 0.35,
-                borderWidth: chosen ? SELECTION_RING : focused && yearFocus?.inner ? 2 : 1,
-                borderStyle: chosen || !(focused && yearFocus?.inner) ? "solid" : "dashed",
-                borderColor: chosen ? tokens.foreground : focused && yearFocus?.inner ? yearFocus.inner : tokens.border,
-                padding: chosen ? SELECTION_GAP : 8,
-                outlineWidth: focused ? 2 : 0,
+                borderWidth: chosen ? SELECTION_RING : showFocus && yearFocus?.inner ? 2 : 1,
+                borderStyle: chosen || !(showFocus && yearFocus?.inner) ? "solid" : "dashed",
+                borderColor: chosen ? tokens.foreground : showFocus && yearFocus?.inner ? yearFocus.inner : tokens.border,
+                padding: chosen ? SELECTION_GAP : YEAR_QUIET_PAD,
+                outlineWidth: showFocus ? FOCUS_RING : 0,
                 outlineStyle: "dashed",
-                outlineColor: focused ? yearFocus?.outer ?? tokens.foreground : "transparent",
-                outlineOffset: 2,
+                outlineColor: showFocus ? yearFocus?.outer ?? tokens.foreground : "transparent",
+                outlineOffset: YEAR_FOCUS_OFFSET,
               }}
             >
               {chosen ? (
@@ -789,10 +838,10 @@ export function CalendarYearView({
                   {wash !== null ? <LevelWash opacity={wash} color={tokens.accent} radius={5} /> : null}
                 </View>
               ) : wash !== null ? <LevelWash opacity={wash} color={tokens.accent} radius={6} /> : null}
-              <View style={{ gap: 2, padding: chosen ? 8 : 0 }}>{monthBody}</View>
+              <View testID="my-messages-calendar-month-body" style={{ gap: 2, padding: chosen ? YEAR_CHOSEN_INNER : 0 }}>{monthBody}</View>
             </Pressable>
             {showTooltip ? (
-              <View testID="my-messages-calendar-tooltip" pointerEvents="none" style={bubbleStyle(index % columns, columns, tokens)}>
+              <View testID="my-messages-calendar-tooltip" pointerEvents="none" style={bubbleStyle(index % columns, columns, rowWidth, tokens)}>
                 <Text style={{ color: tokens.foreground, fontFamily: tokens.fontUi, fontSize: tokens.fs(11) }}>{tooltip}</Text>
               </View>
             ) : null}

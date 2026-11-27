@@ -251,6 +251,7 @@ export function MyMessagesCalendarScreen({
               year={year}
               months={months}
               startMonth={monthNumberOfKey(visibleMonth) - 1}
+              visibleMonth={visibleMonth}
               thresholds={monthThresholds}
               palette={palette}
               tokens={tokens}
