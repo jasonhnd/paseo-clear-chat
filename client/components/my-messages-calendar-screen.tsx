@@ -260,6 +260,7 @@ export function MyMessagesCalendarScreen({
               platform={layout.platform}
               onEnterMonth={enterMonth}
               onToday={goToday}
+              today={today}
             />
           ) : layout.compact && !expanded ? (
             <View testID="my-messages-calendar-week" style={{ gap: 4 }}>

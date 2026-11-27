@@ -130,6 +130,30 @@ function fixture(t, options = {}) {
   return { h, draw, all, one, cell, monthCell, paseo };
 }
 
+/** Read the bubble's column clamp. 100% in the style is one cell. */
+function tooltipFrame(style, column, columns, gridWidth) {
+  const cell = gridWidth / columns;
+  const widthMatch = /^min\((\d+(?:\.\d+)?)px, (\d+(?:\.\d+)?)%\)$/.exec(String(style.width));
+  assert.ok(widthMatch, `tooltip width ${style.width}`);
+  const width = Math.min(Number(widthMatch[1]), Number(widthMatch[2]) / 100 * cell);
+  const leftMatch = /^max\((-?\d+(?:\.\d+)?)%, min\(calc\(50% - (\d+(?:\.\d+)?)px\), calc\((-?\d+(?:\.\d+)?)% - (\d+(?:\.\d+)?)px\)\)\)$/.exec(String(style.left));
+  assert.ok(leftMatch, `tooltip left ${style.left}`);
+  const percent = value => Number(value) / 100 * cell;
+  const cellLeft = Math.max(percent(leftMatch[1]), Math.min(percent(50) - Number(leftMatch[2]), percent(leftMatch[3]) - Number(leftMatch[4])));
+  return { rowLeft: cellLeft + column * cell, width };
+}
+
+function assertTooltipInside(style, column, columns, gridWidth) {
+  const { rowLeft, width } = tooltipFrame(style, column, columns, gridWidth);
+  assert.ok(rowLeft >= -0.51, `column ${column} starts at ${rowLeft} on a ${gridWidth} grid`);
+  assert.ok(rowLeft + width <= gridWidth + 0.51, `column ${column} ends at ${rowLeft + width} on a ${gridWidth} grid`);
+  const cell = gridWidth / columns;
+  const tip = Math.min(170, gridWidth);
+  const ideal = column * cell + cell / 2 - tip / 2;
+  const expected = Math.max(0, Math.min(ideal, Math.max(0, gridWidth - tip)));
+  assert.ok(Math.abs(rowLeft - expected) < 0.51, `column ${column} at ${rowLeft}, expected ${expected}`);
+}
+
 function pathTo(tree, target) {
   if (Array.isArray(tree)) {
     for (const child of tree) {
@@ -272,17 +296,16 @@ test("a hovered day shows a floating bubble pinned inside the grid edges", async
   assert.equal(h.text(tooltip), "Mar 9 Mon · 2 messages");
   assert.equal(tooltip.props.style.position, "absolute");
   assert.equal(tooltip.props.style.bottom, "100%");
-  assert.equal(tooltip.props.style.left, 0);
+  assertTooltipInside(tooltip.props.style, 0, 7, 320);
   assert.ok(pathTo(hovered, tooltip).some(node => node.props?.testID === "my-messages-calendar-cell-wrap"));
 
   cell(draw(), "Mar 12 Thu").props.onHoverIn();
   tooltip = h.nodes(draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0];
-  assert.equal(tooltip.props.style.left, "50%");
-  assert.equal(tooltip.props.style.marginLeft, -85);
+  assertTooltipInside(tooltip.props.style, 3, 7, 320);
 
   cell(draw(), "Mar 15 Sun").props.onHoverIn();
   tooltip = h.nodes(draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0];
-  assert.equal(tooltip.props.style.right, 0);
+  assertTooltipInside(tooltip.props.style, 6, 7, 320);
 });
 
 test("arrow keys move only the keyboard focus, show its bubble, and Enter selects once", async t => {
@@ -401,10 +424,10 @@ test("the year view aggregates months, greys the record edges, switches years an
   const tip = h.nodes(draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0];
   assert.equal(h.text(tip), "January 2026 · 2 messages");
   assert.equal(tip.props.style.position, "absolute");
-  assert.equal(tip.props.style.left, 0);
+  assertTooltipInside(tip.props.style, 0, 4, 320);
 
   monthCell(draw(), "April 2026").props.onHoverIn();
-  assert.equal(h.nodes(draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0].props.style.right, 0);
+  assertTooltipInside(h.nodes(draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0].props.style, 3, 4, 320);
 
   one(draw(), "my-messages-calendar-prev").props.onPress();
   assert.equal(h.text(one(draw(), "my-messages-calendar-title")), "2025");
@@ -945,7 +968,10 @@ test("the calendar follows the Clear Chat text scale and custom accent", async t
   const tokens = h.load("client/components/theme-tokens.ts").buildThemeTokens(DARK_THEME, preferences);
   assert.equal(one(draw(), "my-messages-screen-summary").props.style.fontSize, tokens.fs(14));
   assert.equal(tokens.fs(14), 21);
-  assert.equal(cell(draw(), "Mar 15 Sun").props.style.backgroundColor, tokens.accent);
+  const today = cell(draw(), "Mar 15 Sun");
+  const fill = h.nodes(today, node => node.props?.testID === "my-messages-calendar-cell-fill")[0];
+  assert.equal(fill.props.style.backgroundColor === tokens.accent, false);
+  assert.equal(today.props.style.minHeight, 54);
 });
 
 test("an unparseable theme accent keeps four levels through an opacity wash", async t => {
@@ -965,7 +991,9 @@ test("an unparseable theme accent keeps four levels through an opacity wash", as
   assert.ok(wash.props.style.opacity >= 0.4);
   const busier = h.nodes(cell(draw(), "Mar 13 Fri"), node => node.props.testID === "my-messages-calendar-level-wash")[0];
   assert.ok(busier.props.style.opacity > wash.props.style.opacity);
-  assert.equal(cell(draw(), "Mar 15 Sun").props.style.borderColor, tokens.foreground);
+  const today = cell(draw(), "Mar 15 Sun");
+  assert.equal(today.props.style.borderWidth, 0);
+  assert.ok(h.nodes(today, node => node.props?.testID === "my-messages-calendar-today-dot")[0]);
 });
 
 test("a directory failure marks the day incomplete and offers Retry", async t => {
@@ -1015,9 +1043,12 @@ test("today and the keyboard focus ring stay visible on the darkest level", asyn
     await flush();
     tree = draw();
     const today = cell(tree, "Mar 15 Sun");
-    assert.equal(today.props.style.borderWidth, 2);
-    assert.equal(today.props.style.borderColor, tokens.foreground);
-    assert.notEqual(today.props.style.borderColor, tokens.accent);
+    const dot = h.nodes(today, node => node.props?.testID === "my-messages-calendar-today-dot")[0];
+    assert.ok(dot);
+    assert.notEqual(today.props.style.borderWidth, 3);
+    const chosen = cell(tree, "Mar 14 Sat");
+    assert.equal(chosen.props.style.borderWidth, 2);
+    assert.equal(chosen.props.style.borderStyle, "solid");
 
     const dom = domFocus(all);
     dom.attach(tree);
@@ -1027,9 +1058,11 @@ test("today and the keyboard focus ring stay visible on the darkest level", asyn
     tree = draw();
     dom.attach(tree);
     const focused = cell(tree, "Mar 13 Fri");
-    assert.equal(focused.props.style.borderWidth, 2);
-    assert.equal(focused.props.style.borderColor, tokens.foreground);
-    assert.notEqual(focused.props.style.borderColor, tokens.accent);
+    assert.equal(focused.props.style.outlineWidth, 2);
+    assert.equal(focused.props.style.outlineStyle, "dashed");
+    assert.notEqual(focused.props.style.borderWidth, 3);
+    if (focused.props.style.borderWidth) assert.equal(focused.props.style.borderStyle, "dashed");
+    assert.equal(h.nodes(focused, node => node.props?.testID === "my-messages-calendar-today-dot").length, 0);
   }
 });
 
@@ -1106,6 +1139,18 @@ function contrastRatio(first, second) {
   const left = luminance(first);
   const right = luminance(second);
   return (Math.max(left, right) + 0.05) / (Math.min(left, right) + 0.05);
+}
+
+function hslSaturation(color) {
+  const channels = colorChannels(color);
+  if (!channels) throw new Error(`unreadable colour ${color}`);
+  const [r, g, b] = channels.map(value => value / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const light = (max + min) / 2;
+  if (max === min) return 0;
+  const delta = max - min;
+  return light > 0.5 ? delta / (2 - max - min) : delta / (max + min);
 }
 
 function chromaOf(color) {
@@ -1252,8 +1297,6 @@ test("empty cells sit between the page and the four heat levels", async t => {
           assert.ok(chromaOf(paints[1]) + 0.5 >= Math.min(48, accentSpread * 0.45),
             `${pane} first level chroma ${chromaOf(paints[1])} on ${themeColors.surface0}`);
         }
-        const selectedGap = contrastRatio(paints[4], paintedOn(tokens.accent, page));
-        assert.ok(selectedGap >= 1.15, `${pane} top versus selected ${selectedGap.toFixed(3)} on ${themeColors.surface0}`);
       }
       if (chromaOf(themeColors.accent) >= 40) {
         assert.ok(chromaOf(paint(busy[0])) > chromaOf(emptyPaint) + 8,
@@ -1339,6 +1382,69 @@ test("heat levels move toward busy when they would cover the empty cell", t => {
   }
 });
 
+test("selection, saturation and marker rings hold on the host themes", t => {
+  const h = createToolHarness("web", { themeTokens: true });
+  t.after(() => h.dispose());
+  const views = h.load("client/components/my-messages-calendar-views.tsx");
+  const { buildThemeTokens } = h.load("client/components/theme-tokens.ts");
+  const themes = [
+    { surface0: "#ffffff", foreground: "#1a1a1e", foregroundMuted: "#71717a", accent: "#20744A", accentForeground: "#ffffff", statusDanger: "#b04138" },
+    { surface0: "#181B1A", foreground: "#fafafa", foregroundMuted: "#A1A5A4", accent: "#20744A", accentForeground: "#ffffff", statusDanger: "#c64f43" },
+    { surface0: "#18181b", foreground: "#fafafa", foregroundMuted: "#a1a1aa", accent: "#e4e4e7", accentForeground: "#18181b", statusDanger: "#c44a4a" },
+    { surface0: "#161820", foreground: "#fafafa", foregroundMuted: "#9a9db0", accent: "#3b6fcf", accentForeground: "#ffffff", statusDanger: "#c44a52" },
+    { surface0: "#1f1f1e", foreground: "#fafafa", foregroundMuted: "#ada9a5", accent: "#d97757", accentForeground: "#ffffff", statusDanger: "#cf513e" },
+    { surface0: "#282c34", foreground: "#fafafa", foregroundMuted: "#c8ccd8", accent: "#3570e0", accentForeground: "#ffffff", statusDanger: "#c44a55" },
+    { surface0: "#000000", foreground: "#fafafa", foregroundMuted: "#a1a1aa", accent: "#20744A", accentForeground: "#ffffff", statusDanger: "#c44a4a" },
+  ];
+  const presets = [null, "#10b981", "#8b5cf6", "#f59e0b", "#f43f5e"];
+  const preferences = { ...BASE_PREFERENCES, accent: "host" };
+  for (const theme of themes) {
+    for (const preset of presets) {
+      const colors = { ...theme, accent: preset ?? theme.accent };
+      const tokens = buildThemeTokens(colors, preferences);
+      const palette = views.buildLevelPalette(tokens);
+      const page = paintedOn(tokens.surface0, tokens.surface0);
+      const empty = paintedOn(views.emptyCellFill(tokens, palette), page);
+      const levels = [1, 2, 3, 4].map(level => paintedOn(palette.backgrounds[level], page));
+      let previousSat = hslSaturation(levels[0]);
+      for (let index = 1; index < levels.length; index += 1) {
+        const saturation = hslSaturation(levels[index]);
+        assert.ok(saturation + 0.03 >= previousSat,
+          `saturation ${previousSat.toFixed(2)} to ${saturation.toFixed(2)} on ${colors.surface0} ${colors.accent}`);
+        previousSat = saturation;
+      }
+      for (const fill of [empty, ...levels]) {
+        const dot = views.todayMark(fill, tokens);
+        assert.ok(contrastRatio(dot, fill) >= 3, `today dot ${contrastRatio(dot, fill).toFixed(2)} on ${colors.surface0}`);
+        const ring = views.markerRing(fill, page, tokens);
+        if (ring.inner) {
+          assert.ok(contrastRatio(ring.inner, fill) >= 3, `inner ring on ${colors.surface0}`);
+          assert.ok(contrastRatio(ring.outer, page) >= 3, `outer ring on ${colors.surface0}`);
+        } else {
+          assert.ok(contrastRatio(ring.outer, fill) >= 3, `ring versus fill on ${colors.surface0} ${colors.accent}`);
+          assert.ok(contrastRatio(ring.outer, page) >= 3, `ring versus page on ${colors.surface0}`);
+        }
+      }
+    }
+  }
+});
+
+test("a selected day keeps its heat fill and the same cell box", async t => {
+  const history = historyFor(daysResult({ [dayKey(0)]: 2, [dayKey(-1)]: 2 }), { [dayKey(0)]: dayResult([]) });
+  const { draw, cell, h } = fixture(t, { historyRpc: history, realTheme: true, themeColors: DARK_THEME });
+  draw();
+  await flush();
+  const selected = cell(draw(), "Mar 15 Sun");
+  const twin = cell(draw(), "Mar 14 Sat");
+  const fill = h.nodes(selected, node => node.props?.testID === "my-messages-calendar-cell-fill")[0];
+  assert.ok(fill, "selected fill is missing");
+  assert.equal(fill.props.style.backgroundColor, twin.props.style.backgroundColor);
+  assert.equal(selected.props.style.minHeight, twin.props.style.minHeight);
+  assert.equal(selected.props.style.borderWidth, 2);
+  assert.equal(selected.props.style.padding, 1);
+  assert.equal(twin.props.style.borderWidth, 0);
+});
+
 test("the compact header arrows are at least a 44 pixel target", async t => {
   const history = historyFor(daysResult({ "2026-01-02": 1, [dayKey(0)]: 1 }, { firstDay: "2026-01-02" }),
     { [dayKey(0)]: dayResult([]) });
@@ -1377,4 +1483,104 @@ test("all three locales define the calendar text with matching interpolation", (
   assert.equal(chinese.calendar.todaySummary, "今天 · {{date}}");
   assert.equal(chinese.calendar.less, "少");
   assert.equal(chinese.calendar.readFailed, "日历暂时读不到，可能有日子缺失。");
+});
+
+test("a selected heat fill stays within six pixels of the neighbouring cell", async t => {
+  const history = historyFor(daysResult({ [dayKey(0)]: 2, [dayKey(-1)]: 2 }), { [dayKey(0)]: dayResult([]) });
+  const { draw, cell, monthCell, one, h } = fixture(t, { historyRpc: history, realTheme: true, themeColors: DARK_THEME });
+  draw();
+  await flush();
+  const tree = draw();
+  const selected = cell(tree, "Mar 15 Sun");
+  const twin = cell(tree, "Mar 14 Sat");
+  const fill = h.nodes(selected, node => node.props?.testID === "my-messages-calendar-cell-fill")[0];
+  assert.ok(fill, "selected fill is missing");
+  const gapX = selected.props.style.paddingHorizontal ?? selected.props.style.padding ?? 0;
+  const gapY = selected.props.style.paddingVertical ?? selected.props.style.padding ?? 0;
+  const shrink = side => ((selected.props.style.borderWidth || 0) + side) * 2 - (twin.props.style.borderWidth || 0) * 2;
+  assert.ok(shrink(gapX) <= 6, `selected fill is ${shrink(gapX)}px narrower than the neighbour`);
+  assert.ok(shrink(gapY) <= 6, `selected fill is ${shrink(gapY)}px shorter than the neighbour`);
+  assert.equal(fill.props.style.position, "absolute");
+  assert.equal(fill.props.style.left, gapX);
+  assert.equal(fill.props.style.right, gapX);
+  assert.equal(fill.props.style.top, gapY);
+  assert.equal(fill.props.style.bottom, gapY);
+  assert.notEqual(fill.props.style.backgroundColor, selected.props.style.backgroundColor);
+  assert.equal(fill.props.style.backgroundColor, twin.props.style.backgroundColor);
+  assert.equal(selected.props.style.minHeight, twin.props.style.minHeight);
+  assert.equal(selected.props.style.borderStyle, "solid");
+  assert.equal(selected.props.style.outlineWidth, 2);
+  assert.equal(selected.props.style.outlineStyle, "dashed");
+  assert.equal(selected.props.style.outlineOffset, 2);
+  const number = h.nodes(selected, node => node.type === "Text")[0];
+  const parent = pathTo(tree, number).at(-2);
+  assert.equal(parent.props.testID, "my-messages-calendar-cell");
+  const wrap = pathTo(tree, selected).find(node => node.props?.testID === "my-messages-calendar-cell-wrap");
+  const twinWrap = pathTo(tree, twin).find(node => node.props?.testID === "my-messages-calendar-cell-wrap");
+  assert.equal(wrap.props.style.width, twinWrap.props.style.width);
+  assert.equal(wrap.props.style.padding, twinWrap.props.style.padding);
+
+  one(tree, "my-messages-calendar-title").props.onPress();
+  const year = draw();
+  const march = monthCell(year, "March 2026");
+  const april = monthCell(year, "April 2026");
+  const monthFill = h.nodes(march, node => node.props?.testID === "my-messages-calendar-month-fill")[0];
+  assert.ok(monthFill, "month fill is missing");
+  const monthGap = march.props.style.padding ?? 0;
+  const monthShrink = ((march.props.style.borderWidth || 0) + monthGap) * 2 - (april.props.style.borderWidth || 0) * 2;
+  assert.ok(monthShrink <= 6, `the open month is ${monthShrink}px smaller than its neighbour`);
+  assert.equal(monthFill.props.style.position, "absolute");
+  assert.equal(monthFill.props.style.left, monthGap);
+  assert.equal(monthFill.props.style.top, monthGap);
+  assert.equal(monthFill.props.style.right, monthGap);
+  assert.equal(monthFill.props.style.bottom, monthGap);
+  assert.notEqual(monthFill.props.style.backgroundColor, march.props.style.backgroundColor);
+  assert.equal(march.props.style.minHeight, april.props.style.minHeight);
+  assert.equal(march.props.style.borderStyle, "solid");
+  assert.equal(march.props.style.outlineStyle, "dashed");
+  assert.equal(march.props.style.outlineWidth, 2);
+});
+
+test("hover tooltips stay inside the grid on every column", async t => {
+  const history = historyFor(daysResult({ [dayKey(0)]: 2, "2026-01-02": 1 }, { firstDay: "2026-01-02" }),
+    { [dayKey(0)]: dayResult([]) });
+  const days = ["Mar 9 Mon", "Mar 10 Tue", "Mar 11 Wed", "Mar 12 Thu", "Mar 13 Fri", "Mar 14 Sat", "Mar 15 Sun"];
+  const widths = [160, 220, 280, 360, 520];
+  const { draw, cell, h } = fixture(t, { historyRpc: history });
+  draw();
+  await flush();
+  for (const [column, label] of days.entries()) {
+    cell(draw(), label).props.onHoverIn();
+    const tip = h.nodes(draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0];
+    assert.equal(tip.props.style.position, "absolute");
+    for (const width of widths) assertTooltipInside(tip.props.style, column, 7, width);
+  }
+
+  const compact = fixture(t, { historyRpc: history, compact: true });
+  compact.draw();
+  await flush();
+  compact.cell(compact.draw(), "Mar 10 Tue").props.onHoverIn();
+  const weekTip = compact.h.nodes(compact.draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0];
+  for (const width of widths) assertTooltipInside(weekTip.props.style, 1, 7, width);
+
+  const { draw: drawYear, monthCell, one, h: yearH } = fixture(t, { historyRpc: history });
+  drawYear();
+  await flush();
+  one(drawYear(), "my-messages-calendar-title").props.onPress();
+  const months = ["January 2026", "February 2026", "March 2026", "April 2026"];
+  for (const [column, label] of months.entries()) {
+    monthCell(drawYear(), label).props.onHoverIn();
+    const tip = yearH.nodes(drawYear(), node => node.props.testID === "my-messages-calendar-tooltip")[0];
+    for (const width of widths) assertTooltipInside(tip.props.style, column, 4, width);
+  }
+
+  const narrow = fixture(t, { historyRpc: history, compact: true });
+  narrow.draw();
+  await flush();
+  narrow.one(narrow.draw(), "my-messages-calendar-title").props.onPress();
+  for (const [column, label] of ["January 2026", "February 2026"].entries()) {
+    narrow.monthCell(narrow.draw(), label).props.onHoverIn();
+    const tip = narrow.h.nodes(narrow.draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0];
+    for (const width of widths) assertTooltipInside(tip.props.style, column, 2, width);
+  }
 });

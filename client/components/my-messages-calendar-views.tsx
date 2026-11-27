@@ -27,6 +27,13 @@ import { mix, type ExtendedThemeTokens } from "./theme-tokens";
 
 const CELL_WIDTH = "14.2857%";
 const TOOLTIP_WIDTH = 170;
+/**
+ * Ring plus the page-coloured seam, drawn inside the cell. Two pixels and a one pixel
+ * seam keep the heat fill within six pixels of a neighbour. The focus outline already
+ * occupies the four pixel gap between cells, so the ring cannot also sit outside.
+ */
+const SELECTION_RING = 2;
+const SELECTION_GAP = 1;
 const GRID_ROLE = "grid" as unknown as ViewProps["accessibilityRole"];
 
 export interface LevelPalette {
@@ -143,45 +150,118 @@ function bestInk(fill: string, tokens: ExtendedThemeTokens, fallback: string): s
   return best;
 }
 
+function hslOf(color: string): { h: number; s: number; l: number } | null {
+  const read = readColor(color);
+  if (!read) return null;
+  const r = read.r / 255;
+  const g = read.g / 255;
+  const b = read.b / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return { h: 0, s: 0, l };
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h = 0;
+  if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+  else if (max === g) h = (b - r) / d + 2;
+  else h = (r - g) / d + 4;
+  return { h: h * 60, s, l };
+}
+
+function fromHsl(h: number, s: number, l: number): string {
+  const hue = ((h % 360) + 360) % 360;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const hp = hue / 60;
+  const x = c * (1 - Math.abs((hp % 2) - 1));
+  const row = hp < 1 ? [c, x, 0] : hp < 2 ? [x, c, 0] : hp < 3 ? [0, c, x] : hp < 4 ? [0, x, c] : hp < 5 ? [x, 0, c] : [c, 0, x];
+  const m = l - c / 2;
+  const channel = (value: number) => Math.max(0, Math.min(255, Math.round((value + m) * 255))).toString(16).padStart(2, "0");
+  return `#${channel(row[0] ?? 0)}${channel(row[1] ?? 0)}${channel(row[2] ?? 0)}`;
+}
+
 const HEAT_EMPTY_GAP = 1.35;
 const HEAT_STEP_GAP = 1.3;
-const HEAT_SELECTED_GAP = 1.15;
+const HEAT_STEP_GOAL = 1.4;
+const SATURATION_TOLERANCE = 0.03;
 const WASH_OPACITY = [0.42, 0.62, 0.8, 0.95];
 
-/**
- * One heat step past `previous`, toward the accent and then past it if the accent
- * is not far enough. The first step keeps the accent's saturation. The last step
- * stays off the selected accent so the two fills do not match.
- */
-function heatStep(
-  previous: string,
+/** Same hue and saturation as the accent, only the lightness moves, so the top step does not fade. */
+function heatStops(
+  empty: string,
   accent: string,
   dark: boolean,
   tokens: ExtendedThemeTokens,
   fallback: string,
-  minGap: number,
-  requireHue: boolean,
-  separateFrom: string | null,
-): string {
-  const pole = dark ? "#ffffff" : "#000000";
-  const hueFloor = channelSpread(accent) >= 30 ? Math.min(48, channelSpread(accent) * 0.45) : 0;
-  for (let nudge = 0; nudge <= 24; nudge += 1) {
-    const target = nudge === 0 ? accent : mix(accent, pole, nudge / 24);
-    for (let amount = 1; amount <= 48; amount += 1) {
-      const fill = mix(previous, target, amount / 48);
-      const gap = directedGap(fill, previous, dark);
-      if (gap === null || gap < minGap) continue;
-      if (requireHue && channelSpread(fill) < hueFloor) continue;
-      const ratio = contrastOf(bestInk(fill, tokens, fallback), fill);
-      if (ratio === null || ratio < 4.5) continue;
-      if (separateFrom) {
-        const apart = contrastOf(fill, separateFrom);
-        if (apart === null || apart < HEAT_SELECTED_GAP) continue;
+): string[] {
+  const tone = hslOf(accent);
+  if (!tone) return [];
+  const fills: string[] = [];
+  let previous = empty;
+  let previousS = 0;
+  for (let level = 1; level <= 4; level += 1) {
+    const floor = level === 1 ? HEAT_EMPTY_GAP : HEAT_STEP_GAP;
+    const goal = level === 1 ? HEAT_EMPTY_GAP : HEAT_STEP_GOAL;
+    const hueFloor = level === 1 && channelSpread(accent) >= 30 ? Math.min(48, channelSpread(accent) * 0.45) : 0;
+    let found: string | null = null;
+    for (const minGap of [goal, floor]) {
+      for (let step = 1; step <= 70; step += 1) {
+        const light = dark ? 0.03 + step * 0.01 : 0.86 - step * 0.01;
+        const fill = fromHsl(tone.h, tone.s, light);
+        const gap = directedGap(fill, previous, dark);
+        if (gap === null || gap < minGap) continue;
+        const next = hslOf(fill);
+        if (fills.length > 0 && next && next.s + SATURATION_TOLERANCE < previousS) continue;
+        if (hueFloor > 0 && channelSpread(fill) < hueFloor) continue;
+        const readable = contrastOf(bestInk(fill, tokens, fallback), fill);
+        if (readable === null || readable < 4.5) continue;
+        found = fill;
+        previousS = next?.s ?? previousS;
+        break;
       }
-      return fill;
+      if (found) break;
+    }
+    const paint = found ?? mix(previous, dark ? "#ffffff" : "#000000", 0.45);
+    fills.push(paint);
+    previous = paint;
+  }
+  return fills;
+}
+
+/** A dot on today that stays readable on every heat fill, including an empty cell. */
+export function todayMark(fill: string, tokens: ExtendedThemeTokens): string {
+  const candidates = [tokens.foreground, tokens.accentForeground, "#111111", "#fafafa"];
+  const unique = candidates.filter((color, index) => candidates.indexOf(color) === index);
+  let best = tokens.foreground;
+  let bestRatio = -1;
+  for (const color of unique) {
+    const ratio = contrastOf(color, fill);
+    if (ratio !== null && ratio > bestRatio) {
+      best = color;
+      bestRatio = ratio;
     }
   }
-  return mix(previous, pole, 0.85);
+  return best;
+}
+
+export interface MarkerRing {
+  outer: string;
+  inner: string | null;
+}
+
+/** A today or focus ring that clears both the cell fill and the page. Two bands when one colour cannot. */
+export function markerRing(fill: string, page: string, tokens: ExtendedThemeTokens): MarkerRing {
+  const candidates = [tokens.foreground, tokens.accentForeground, "#111111", "#fafafa"];
+  const unique = candidates.filter((color, index) => candidates.indexOf(color) === index);
+  const clears = (color: string, against: string) => {
+    const ratio = contrastOf(color, against);
+    return ratio !== null && ratio >= 3;
+  };
+  const single = unique.find(color => clears(color, fill) && clears(color, page));
+  if (single) return { outer: single, inner: null };
+  const outer = unique.find(color => clears(color, page)) ?? tokens.foreground;
+  const inner = unique.find(color => clears(color, fill)) ?? (tokens.isDark ? "#111111" : "#fafafa");
+  return { outer, inner };
 }
 
 /** Background for a selectable cell with no messages: a neutral step off the page. */
@@ -201,42 +281,32 @@ export function buildLevelPalette(tokens: ExtendedThemeTokens): LevelPalette {
   const backgrounds: Array<string | null> = [];
   const washes: Array<number | null> = [];
   const text: string[] = [];
-  let previous = neutralStep(page, tokens.isDark);
+  const empty = neutralStep(page, tokens.isDark);
+  const accentParses = mix(tokens.surface0, tokens.accent, 0.5) !== tokens.surface0;
+  const stops = accentParses ? heatStops(empty, tokens.accent, tokens.isDark, tokens, tokens.foreground) : [];
   for (let level = 0; level <= 4; level += 1) {
     const fallback = level >= 3 ? tokens.accentForeground : tokens.foreground;
     let fill = tokens.surface1;
     if (level === 0) {
       backgrounds.push(tokens.surface1);
       washes.push(null);
+    } else if (accentParses) {
+      fill = stops[level - 1] ?? empty;
+      backgrounds.push(fill);
+      washes.push(null);
     } else {
-      const parsed = mix(tokens.surface0, tokens.accent, 0.5);
-      if (parsed !== tokens.surface0) {
-        fill = heatStep(
-          previous,
-          tokens.accent,
-          tokens.isDark,
-          tokens,
-          fallback,
-          level === 1 ? HEAT_EMPTY_GAP : HEAT_STEP_GAP,
-          level === 1,
-          level === 4 ? tokens.accent : null,
-        );
-        backgrounds.push(fill);
-        washes.push(null);
-      } else {
-        backgrounds.push(tokens.surface0);
-        washes.push(WASH_OPACITY[level - 1] ?? 0.95);
-        const veiled = flattenColor(tokens.accent, page);
-        const veil = veiled === null ? null : readColor(veiled);
-        const base = readColor(page);
-        fill = veil && base
-          ? `rgb(${Math.round(base.r + (veil.r - base.r) * (WASH_OPACITY[level - 1] ?? 0))}, ${Math.round(base.g + (veil.g - base.g) * (WASH_OPACITY[level - 1] ?? 0))}, ${Math.round(base.b + (veil.b - base.b) * (WASH_OPACITY[level - 1] ?? 0))})`
-          : tokens.surface0;
-      }
+      backgrounds.push(tokens.surface0);
+      washes.push(WASH_OPACITY[level - 1] ?? 0.95);
+      const veiled = flattenColor(tokens.accent, page);
+      const veil = veiled === null ? null : readColor(veiled);
+      const base = readColor(page);
+      const alpha = WASH_OPACITY[level - 1] ?? 0;
+      fill = veil && base
+        ? `rgb(${Math.round(base.r + (veil.r - base.r) * alpha)}, ${Math.round(base.g + (veil.g - base.g) * alpha)}, ${Math.round(base.b + (veil.b - base.b) * alpha)})`
+        : tokens.surface0;
     }
     const painted = flattenColor(fill, page) ?? fill;
     text.push(bestInk(painted, tokens, fallback));
-    if (level > 0) previous = painted;
   }
   return { backgrounds, washes, text };
 }
@@ -246,15 +316,24 @@ function keyFromEvent(event: unknown): string | null {
   return value?.nativeEvent?.key ?? value?.key ?? null;
 }
 
+/**
+ * Keep the bubble over its cell, then clamp both sides to the row.
+ * 100% is this cell: -column*100% is the row's left edge and
+ * (columns-column)*100% is its right edge. A row narrower than the bubble
+ * shrinks the bubble to the row.
+ */
 function bubbleStyle(column: number, columns: number, tokens: ExtendedThemeTokens): ViewStyle {
   const base: ViewStyle = {
-    position: "absolute", bottom: "100%", marginBottom: 6, width: TOOLTIP_WIDTH,
+    position: "absolute", bottom: "100%", marginBottom: 6,
     paddingVertical: 6, paddingHorizontal: 8, borderRadius: 8, zIndex: 20,
     backgroundColor: tokens.surface2, borderWidth: 1, borderColor: tokens.border,
   };
-  if (column <= 0) return { ...base, left: 0 };
-  if (column >= columns - 1) return { ...base, right: 0 };
-  return { ...base, left: "50%", marginLeft: -TOOLTIP_WIDTH / 2 };
+  const half = TOOLTIP_WIDTH / 2;
+  return {
+    ...base,
+    width: `min(${TOOLTIP_WIDTH}px, ${columns * 100}%)` as unknown as ViewStyle["width"],
+    left: `max(${-column * 100}%, min(calc(50% - ${half}px), calc(${(columns - column) * 100}% - ${TOOLTIP_WIDTH}px)))` as unknown as ViewStyle["left"],
+  };
 }
 
 function LevelWash({ opacity, color, radius }: { opacity: number; color: string; radius: number }) {
@@ -397,6 +476,7 @@ export function CalendarMonthView({
     : Array.from({ length: 6 }, (_, week) => grid.slice(week * 7, week * 7 + 7));
   const tooltipDay = hoverDay ?? (focusInside ? focusedDay : null);
   const emptyFill = emptyCellFill(tokens, palette);
+  const page = flattenColor(tokens.surface0, "#ffffff") ?? tokens.surface0;
 
   function handleKeyDown(event: unknown) {
     const key = keyFromEvent(event);
@@ -466,10 +546,13 @@ export function CalendarMonthView({
                   : t("myMessages.calendar.dayCellLabel", { date: formatDayLabel(locale, day), count })
                 : t("myMessages.calendar.dayCellEmpty", { date: formatDayLabel(locale, day) })
               : formatDayLabel(locale, day);
-            const quietDay = countsKnown && count === 0 && !disabled && !selected;
-            const background = selected ? tokens.accent : quietDay ? emptyFill : palette.backgrounds[level] ?? tokens.surface1;
-            const wash = selected || quietDay ? null : palette.washes[level] ?? null;
-            const color = selected ? tokens.accentForeground : palette.text[level] ?? tokens.foreground;
+            const quietDay = countsKnown && count === 0 && !disabled;
+            const heatFill = quietDay ? emptyFill : palette.backgrounds[level] ?? tokens.surface1;
+            const wash = quietDay ? null : palette.washes[level] ?? null;
+            const color = palette.text[level] ?? tokens.foreground;
+            const flatHeat = flattenColor(heatFill, page) ?? heatFill;
+            const dot = isToday ? todayMark(flatHeat, tokens) : null;
+            const focus = focused ? markerRing(flatHeat, page, tokens) : null;
             const showTooltip = countsKnown && tooltipDay === day;
             const tooltip = count === 1
               ? t("myMessages.calendar.dayTooltipOne", { date: formatDayLabel(locale, day) })
@@ -491,18 +574,30 @@ export function CalendarMonthView({
                   onHoverIn={() => setHoverDay(day)}
                   onHoverOut={() => setHoverDay(null)}
                   style={{
-                    minHeight: compact ? 44 : 54, borderRadius: 6, paddingVertical: 3,
+                    minHeight: compact ? 44 : 54, borderRadius: 6,
                     alignItems: "center", justifyContent: "center", gap: 1,
-                    backgroundColor: background, opacity: disabled ? 0.35 : 1,
-                    borderWidth: selected || focused || isToday ? 2 : 0,
-                    borderColor: selected ? tokens.accentForeground : focused || isToday ? tokens.foreground : tokens.border,
+                    backgroundColor: selected ? page : heatFill, opacity: disabled ? 0.35 : 1,
+                    borderWidth: selected ? SELECTION_RING : focused && focus?.inner ? 2 : 0,
+                    borderStyle: selected ? "solid" : "dashed",
+                    borderColor: selected ? tokens.foreground : focus?.inner ?? "transparent",
+                    padding: selected ? SELECTION_GAP : 0,
+                    paddingVertical: selected ? SELECTION_GAP : 3,
+                    outlineWidth: focused ? 2 : 0,
+                    outlineStyle: "dashed",
+                    outlineColor: focused ? focus?.outer ?? tokens.foreground : "transparent",
+                    outlineOffset: 2,
                   }}
                 >
-                  {wash !== null ? <LevelWash opacity={wash} color={tokens.accent} radius={6} /> : null}
+                  {selected ? (
+                    <View testID="my-messages-calendar-cell-fill" pointerEvents="none" style={{ position: "absolute", top: SELECTION_GAP, right: SELECTION_GAP, bottom: SELECTION_GAP, left: SELECTION_GAP, borderRadius: 3, backgroundColor: heatFill }}>
+                      {wash !== null ? <LevelWash opacity={wash} color={tokens.accent} radius={3} /> : null}
+                    </View>
+                  ) : wash !== null ? <LevelWash opacity={wash} color={tokens.accent} radius={6} /> : null}
                   <Text style={{ color, fontFamily: tokens.fontUi, fontSize: tokens.fs(11), fontWeight: isToday ? "600" : "400" }}>
                     {Number(day.slice(8, 10))}
                   </Text>
                   {countsKnown && count > 0 ? <Text style={{ color, fontFamily: tokens.fontUi, fontSize: tokens.fs(11) }}>{count}</Text> : null}
+                  {dot ? <View testID="my-messages-calendar-today-dot" style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: dot }} /> : null}
                 </Pressable>
                 {showTooltip ? (
                   <View testID="my-messages-calendar-tooltip" pointerEvents="none" style={bubbleStyle(column, 7, tokens)}>
@@ -531,10 +626,11 @@ interface YearViewProps {
   platform: "ios" | "android" | "web";
   onEnterMonth(month: MonthKey): void;
   onToday(): void;
+  today: DayKey;
 }
 
 export function CalendarYearView({
-  year, months, startMonth, thresholds, palette, tokens, locale, t, compact, platform, onEnterMonth, onToday,
+  year, months, startMonth, thresholds, palette, tokens, locale, t, compact, platform, onEnterMonth, onToday, today,
 }: YearViewProps) {
   const columns = compact ? 2 : 4;
   const [focusedMonth, setFocusedMonth] = React.useState(() => nearestSelectableMonth(Math.min(11, Math.max(0, startMonth)), months));
@@ -588,6 +684,7 @@ export function CalendarYearView({
   }, [focusedMonth, months]);
   const tooltipMonth = hoverMonth ?? (focusInside ? months[focusedMonth]?.month ?? null : null);
   const emptyFill = emptyCellFill(tokens, palette);
+  const yearPage = flattenColor(tokens.surface0, "#ffffff") ?? tokens.surface0;
 
   function handleKeyDown(event: unknown) {
     const key = keyFromEvent(event);
@@ -642,6 +739,22 @@ export function CalendarYearView({
           ? t("myMessages.calendar.yearMonthLabelOne", { month: monthTitle, count: cell.total })
           : t("myMessages.calendar.yearMonthLabel", { month: monthTitle, count: cell.total });
         const showTooltip = tooltipMonth === cell.month;
+        const chosen = index === Math.min(11, Math.max(0, startMonth));
+        const current = monthKeyOfDay(today) === cell.month;
+        const flatMonth = flattenColor(background, yearPage) ?? background;
+        const yearDot = current ? todayMark(flatMonth, tokens) : null;
+        const yearFocus = focused ? markerRing(flatMonth, yearPage, tokens) : null;
+        const monthBody = (
+          <>
+            <Text style={{ color, fontFamily: tokens.fontUi, fontSize: tokens.fs(14), fontWeight: current ? "600" : "400" }}>{monthTitle}</Text>
+            <Text style={{ color, fontFamily: tokens.fontUi, fontSize: tokens.fs(11) }}>
+              {cell.total === 1
+                ? t("myMessages.calendar.monthTotalOne")
+                : t("myMessages.calendar.monthTotal", { count: cell.total })}
+            </Text>
+            {yearDot ? <View testID="my-messages-calendar-today-dot" style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: yearDot }} /> : null}
+          </>
+        );
         return (
           <View key={cell.month} testID="my-messages-calendar-year-wrap"
             style={{ width, padding: 3, position: "relative", zIndex: showTooltip ? 30 : 1 }}>
@@ -659,18 +772,24 @@ export function CalendarYearView({
               onHoverIn={() => setHoverMonth(cell.month)}
               onHoverOut={() => setHoverMonth(null)}
               style={{
-                minHeight: compact ? 56 : 64, borderRadius: 8, padding: 8, gap: 2,
-                backgroundColor: background, opacity: cell.selectable ? 1 : 0.35,
-                borderWidth: focused ? 2 : 1, borderColor: focused ? tokens.foreground : tokens.border,
+                minHeight: compact ? 56 : 64, borderRadius: 8, gap: 2,
+                backgroundColor: chosen ? yearPage : background, opacity: cell.selectable ? 1 : 0.35,
+                borderWidth: chosen ? SELECTION_RING : focused && yearFocus?.inner ? 2 : 1,
+                borderStyle: chosen || !(focused && yearFocus?.inner) ? "solid" : "dashed",
+                borderColor: chosen ? tokens.foreground : focused && yearFocus?.inner ? yearFocus.inner : tokens.border,
+                padding: chosen ? SELECTION_GAP : 8,
+                outlineWidth: focused ? 2 : 0,
+                outlineStyle: "dashed",
+                outlineColor: focused ? yearFocus?.outer ?? tokens.foreground : "transparent",
+                outlineOffset: 2,
               }}
             >
-              {wash !== null ? <LevelWash opacity={wash} color={tokens.accent} radius={8} /> : null}
-              <Text style={{ color, fontFamily: tokens.fontUi, fontSize: tokens.fs(14) }}>{monthTitle}</Text>
-              <Text style={{ color, fontFamily: tokens.fontUi, fontSize: tokens.fs(11) }}>
-                {cell.total === 1
-                  ? t("myMessages.calendar.monthTotalOne")
-                  : t("myMessages.calendar.monthTotal", { count: cell.total })}
-              </Text>
+              {chosen ? (
+                <View testID="my-messages-calendar-month-fill" pointerEvents="none" style={{ position: "absolute", top: SELECTION_GAP, right: SELECTION_GAP, bottom: SELECTION_GAP, left: SELECTION_GAP, borderRadius: 5, backgroundColor: background }}>
+                  {wash !== null ? <LevelWash opacity={wash} color={tokens.accent} radius={5} /> : null}
+                </View>
+              ) : wash !== null ? <LevelWash opacity={wash} color={tokens.accent} radius={6} /> : null}
+              <View style={{ gap: 2, padding: chosen ? 8 : 0 }}>{monthBody}</View>
             </Pressable>
             {showTooltip ? (
               <View testID="my-messages-calendar-tooltip" pointerEvents="none" style={bubbleStyle(index % columns, columns, tokens)}>
