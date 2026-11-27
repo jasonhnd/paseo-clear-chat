@@ -207,7 +207,7 @@ export class HistoryArchive {
    */
   merge(
     fast: readonly HistoryMessageRow[], readSessions: readonly string[],
-    presentSessions: readonly string[] = readSessions,
+    presentSessions: readonly string[],
   ): Promise<ArchiveMerge> {
     return this.enqueue(() => this.mergeNow(fast, readSessions, presentSessions));
   }
@@ -441,14 +441,25 @@ export class HistoryArchive {
           return "busy";
         }
         const body = parseLock(raw);
-        // An unreadable body has no token: its owner cannot release it safely, so it is
-        // treated as stale, as before.
-        if (body?.at !== undefined && Number.isFinite(body.at) && now() - body.at <= LOCK_STALE_MS) {
-          return "busy";
+        // A lock with a token carries its own timestamp. An empty, malformed or old-format
+        // lock has no token, so its file modification time decides freshness: a process
+        // that has just created the file but not written the body yet must not be stolen.
+        let fresh: boolean;
+        if (body?.token !== undefined && body.at !== undefined && Number.isFinite(body.at)) {
+          fresh = now() - body.at <= LOCK_STALE_MS;
+        } else {
+          try {
+            const info = await stat(lock);
+            fresh = now() - info.mtimeMs <= LOCK_STALE_MS;
+          } catch (statError) {
+            if ((statError as NodeJS.ErrnoException).code === "ENOENT") continue;
+            return "busy";
+          }
         }
-        // Rename is the atomic part: only one process can move this path. Re-read the
-        // moved file and refuse to delete it when the path was replaced between the read
-        // and the rename (then we moved a newer owner's lock, not the stale one).
+        if (fresh) return "busy";
+        // Rename is the atomic part: only one process can move this path. Compare the
+        // exact bytes read before the rename; if the path was replaced, we moved a newer
+        // owner's lock, so put it back and do not write this time.
         const moved = `${lock}.stale-${randomUUID()}`;
         try {
           await rename(lock, moved);
@@ -456,15 +467,14 @@ export class HistoryArchive {
           if ((renameError as NodeJS.ErrnoException).code === "ENOENT") continue;
           return "error";
         }
-        let movedBody: LockBody | null = null;
+        let movedRaw: string | null = null;
         try {
-          movedBody = parseLock(await this.readText(moved));
+          movedRaw = await this.readText(moved);
         } catch {
-          movedBody = null;
+          movedRaw = null;
         }
-        if (body?.token !== undefined && movedBody?.token !== body.token) {
-          // Put the newer owner's lock back without overwriting a third owner. `link`
-          // fails with EEXIST instead of replacing, unlike `rename`.
+        if (movedRaw !== raw) {
+          // `link` fails with EEXIST instead of replacing, unlike `rename`.
           let restored = false;
           try {
             await link(moved, lock);
@@ -502,7 +512,8 @@ export class HistoryArchive {
   }
 }
 
-function applySessions(
+/** The merge's in-memory core, exported so the performance test can time it without disk I/O. */
+export function applySessions(
   records: Map<string, ArchivedMessage>,
   fastRecords: readonly ArchivedMessage[],
   readSessions: readonly string[],
@@ -522,14 +533,23 @@ function applySessions(
     keys.add(key);
     cappable.set(month, keys);
   };
+  // Group once, so replacing N conversations is linear in the archive size instead of
+  // scanning every record once per session.
+  const bySession = new Map<string, ArchivedMessage[]>();
+  for (const record of records.values()) {
+    const list = bySession.get(record.sessionId) ?? [];
+    list.push(record);
+    bySession.set(record.sessionId, list);
+  }
   for (const sessionId of new Set(readSessions)) {
     const next = incoming.get(sessionId) ?? [];
-    const previous = [...records.values()].filter(record => record.sessionId === sessionId);
+    const previous = bySession.get(sessionId) ?? [];
     if (sameSession(previous, next)) continue;
     for (const record of previous) {
       records.delete(record.key);
       changed.add(utcMonthOf(record.at));
     }
+    bySession.delete(sessionId);
     for (const record of next) {
       records.set(record.key, record);
       const month = utcMonthOf(record.at);
@@ -542,12 +562,16 @@ function applySessions(
   }
   // A session the snapshot still lists but no conversation points at is not "Hermes
   // deleted": Hermes has it, so its archive copy goes away (fork, session switch). Only
-  // sessions absent from every complete database are kept.
+  // sessions absent from every complete database are kept. Build the drop set once, then
+  // make one pass over the records; the nested loop was sessions x records.
   const read = new Set(readSessions);
+  const drop = new Set<string>();
   for (const sessionId of new Set(presentSessions)) {
-    if (read.has(sessionId)) continue;
-    for (const record of [...records.values()]) {
-      if (record.sessionId !== sessionId) continue;
+    if (!read.has(sessionId)) drop.add(sessionId);
+  }
+  if (drop.size > 0) {
+    for (const record of records.values()) {
+      if (!drop.has(record.sessionId)) continue;
       records.delete(record.key);
       changed.add(utcMonthOf(record.at));
     }

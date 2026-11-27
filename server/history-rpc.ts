@@ -59,8 +59,11 @@ export function registerHistoryHandlers(
       requireCompleteRegistration(registration);
       const { conversations, directoryPartial } = await listHistoryConversations(context.paseo);
       const fast = readHistoryData({ conversations, root: options.root, timeZone: input.timeZone });
-      const merged = await archive.merge(fast.messages, fast.readSessions, fast.presentSessions);
-      const presentSessions = new Set(fast.presentSessions);
+      // A partial directory has not seen every conversation; the sessions it did not see
+      // are not proof that Hermes dropped them, so only the read set is authoritative.
+      const authoritative = directoryPartial ? fast.readSessions : fast.presentSessions;
+      const merged = await archive.merge(fast.messages, fast.readSessions, authoritative);
+      const presentSessions = new Set(authoritative);
       return {
         ...countByDay(merged.messages, input.timeZone),
         fastConversations: fast.fastConversations,
@@ -93,7 +96,9 @@ export function registerHistoryHandlers(
           cacheError: true,
         };
       }
-      const presentSessions = new Set(fast.presentSessions);
+      // Use the same authoritative set as history.days: a partial directory cannot prove
+      // that an unlisted session was dropped, so its archive rows stay visible.
+      const presentSessions = new Set(directoryPartial ? fast.readSessions : fast.presentSessions);
       // A session still in a complete database is Hermes's (whether or not a conversation
       // points at it), so only sessions missing from every readable database come from the
       // archive: Hermes deleted them, or their database is unreadable now.

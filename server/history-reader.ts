@@ -414,6 +414,8 @@ function openDatabase(entry: DatabaseEntry): OpenDatabase | null {
     // One read transaction covers the session index and every message query, so a prune
     // that commits between them cannot turn a live session into "read, zero messages".
     // Closing the handle ends the transaction; a read-only transaction has nothing to keep.
+    // In a DELETE-journal database this SHARED lock can make Hermes's writer wait about
+    // 0.2-0.3 s; Hermes retries inside its 1 s timeout, so the write is delayed, not lost.
     db.exec("BEGIN");
     if (!hasColumns(db, "sessions", SESSION_COLUMNS)) throw new Error("sessions columns");
     if (!hasColumns(db, "messages", MESSAGE_COLUMNS)) throw new Error("messages columns");
