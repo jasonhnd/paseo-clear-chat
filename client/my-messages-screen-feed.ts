@@ -12,7 +12,7 @@ const READ_RETRY_DELAY_MS = 250;
 const CACHE_LIMIT = 1_000;
 const PARENT_AGENT_ID_LABEL = "paseo.parent-agent-id";
 
-interface Conversation {
+export interface Conversation {
   id: string;
   title: string | null;
   lastUserMessageAt: string;
@@ -79,7 +79,12 @@ function compareIds(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
 
-async function listConversations(agents: Agents, from: number, isOpen: () => boolean) {
+/**
+ * Read the conversation directory, page by page. With `from` set, keep only conversations
+ * whose last user message is on or after that instant and stop once a page has no such
+ * candidate; without it, read every page so callers can look up titles and slow ids.
+ */
+async function listDirectory(agents: Agents, from: number | undefined, isOpen: () => boolean) {
   const byId = new Map<string, Conversation>();
   const seenCursors = new Set<string>();
   let cursor: string | undefined;
@@ -90,16 +95,16 @@ async function listConversations(agents: Agents, from: number, isOpen: () => boo
       sort: [{ key: "updated_at", direction: "desc" }],
       page: cursor === undefined ? { limit: DIRECTORY_PAGE_SIZE } : { limit: DIRECTORY_PAGE_SIZE, cursor },
     });
-    let hasTodayCandidate = false;
+    let hasCandidate = false;
     for (const { agent: { id, title, updatedAt, lastUserMessageAt, labels } } of result.entries) {
       const lastAt = Date.parse(lastUserMessageAt ?? "");
       // The host updates these timestamps separately, so either can reach midnight first.
-      if (!(Date.parse(updatedAt) < from && (!lastUserMessageAt || lastAt < from))) hasTodayCandidate = true;
-      if (!lastUserMessageAt || !(lastAt >= from) || labels?.[PARENT_AGENT_ID_LABEL]?.trim()) continue;
+      if (from === undefined || !(Date.parse(updatedAt) < from && (!lastUserMessageAt || lastAt < from))) hasCandidate = true;
+      if (!lastUserMessageAt || !(lastAt >= (from ?? Number.NEGATIVE_INFINITY)) || labels?.[PARENT_AGENT_ID_LABEL]?.trim()) continue;
       const previous = byId.get(id);
       if (!previous || lastAt >= previous.lastAt) byId.set(id, { id, title, lastUserMessageAt, lastAt });
     }
-    if (!result.pageInfo.hasMore || !hasTodayCandidate) break;
+    if (!result.pageInfo.hasMore || (from !== undefined && !hasCandidate)) break;
     if (page + 1 === DIRECTORY_PAGE_LIMIT) {
       directoryPartial = true;
       break;
@@ -113,7 +118,16 @@ async function listConversations(agents: Agents, from: number, isOpen: () => boo
   return { conversations, directoryPartial };
 }
 
-async function readConversation(
+export function listConversations(agents: Agents, from: number, isOpen: () => boolean) {
+  return listDirectory(agents, from, isOpen);
+}
+
+/** The whole directory: titles for any row and the metadata slow conversations need. */
+export function listAllConversations(agents: Agents, isOpen: () => boolean) {
+  return listDirectory(agents, undefined, isOpen);
+}
+
+export async function readConversation(
   agents: Agents, agent: Conversation, from: number, until: number, budget: number, isOpen: () => boolean,
 ): Promise<ConversationRead | null> {
   const { timeline } = agents.ref(agent.id);
@@ -149,7 +163,7 @@ async function readConversation(
   return null;
 }
 
-async function readWithRetries(
+export async function readWithRetries(
   read: () => ReturnType<typeof readConversation>, isOpen: () => boolean, waitToRetry: () => Promise<void>,
 ) {
   for (let attempt = 0; attempt <= READ_RETRIES && isOpen(); attempt += 1) {

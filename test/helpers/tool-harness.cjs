@@ -150,7 +150,7 @@ function createToolHarness(platform = "ios", options = {}) {
     "client/components/glow": { glowing: () => ({}), usePointerGlow: noop, installPointerGlow: cleanup },
     "client/components/host-notice": { installHostNoticeStyle: cleanup },
     "client/components/chat-find": { installChatFind: cleanup },
-    "client/components/theme-tokens": { buildThemeTokens: () => tokens, radius: {}, withAlpha: color => color },
+    "client/components/theme-tokens": { buildThemeTokens: () => tokens, radius: {}, withAlpha: color => color, mix: from => from },
     "client/components/selection-actions": { useSelectionActions: noop, selectionCodeText: {}, selectionSurface: {} },
     "client/components/selection": { selectableSurface: {}, unselectable: {} },
     "client/components/prompt-anchor": { promptRowAnchor: () => ({}) },
@@ -238,6 +238,13 @@ function createToolHarness(platform = "ios", options = {}) {
           saving: false, saveError: null, save: async () => true, reload: async () => {}, reset: async () => true,
         },
         useRpc: contract => {
+          if (contract.name === "history.days" || contract.name === "history.day") {
+            // No option models a host whose client has no history RPC at all.
+            const impl = contract.name === "history.days" ? options.historyRpc?.days : options.historyRpc?.day;
+            if (typeof impl !== "function") return undefined;
+            if (!rpcFunctions.has(contract.name)) rpcFunctions.set(contract.name, impl);
+            return rpcFunctions.get(contract.name);
+          }
           if (contract.name === "file.image") {
             if (!rpcFunctions.has(contract.name)) rpcFunctions.set(contract.name, async value => {
               imageReads.push(value);

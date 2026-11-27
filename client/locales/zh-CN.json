@@ -76,6 +76,33 @@
     "screenStale": "这些是前一天的消息。刷新后可查看今天的消息。",
     "screenRefresh": "刷新",
     "screenUntitled": "未命名对话",
-    "screenOpenHint": "打开对话"
+    "screenOpenHint": "打开对话",
+    "calendar": {
+      "today": "今天",
+      "previousMonth": "上个月",
+      "nextMonth": "下个月",
+      "previousYear": "上一年",
+      "nextYear": "下一年",
+      "showMonth": "展开整月",
+      "hideMonth": "收起整月",
+      "showYear": "显示年视图",
+      "showMonthView": "显示月视图",
+      "less": "少",
+      "more": "多",
+      "dayCellLabel": "{{date}}，{{count}} 条",
+      "dayCellEmpty": "{{date}}，没有消息",
+      "dayTooltip": "{{date}} · {{count}} 条",
+      "monthTotal": "{{count}} 条",
+      "yearMonthLabel": "{{month}} {{year}} · {{count}} 条",
+      "todaySummary": "今天 · {{date}}",
+      "daySummary": "{{date}} · {{messages}} 条 · {{conversations}} 个对话",
+      "daySummaryOne": "{{date}} · {{messages}} 条 · 1 个对话",
+      "daySummaryMessages": "{{date}} · {{messages}} 条",
+      "dayEmpty": "这天没有发过消息",
+      "dayLoading": "正在读取这一天…",
+      "dayFailed": "读不到这一天的消息。请稍后重试。",
+      "unavailable": "这天有 {{count}} 个对话读不到历史。",
+      "notice": "有对话没能读全，部分条数可能不准。"
+    }
   }
 }

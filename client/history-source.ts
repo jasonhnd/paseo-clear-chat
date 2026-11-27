@@ -38,6 +38,8 @@ export interface HistoryCalls {
 }
 
 export interface HistorySource {
+  /** Both calls exist on this client; false means the surface is unsupported without a call. */
+  readonly available: boolean;
   /** The zone sent with every call; the daemon falls back to its own clock if unknown. */
   readonly timeZone: string;
   days(): Promise<HistoryDaysState>;
@@ -54,6 +56,7 @@ export function createHistorySource(
   const invokeDays = both ? calls?.days : undefined;
   const invokeDay = both ? calls?.day : undefined;
   return {
+    available: both,
     timeZone: zone,
     days() {
       return request(invokeDays, historyDaysRpc.output, { timeZone: zone });

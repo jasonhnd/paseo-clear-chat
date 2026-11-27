@@ -76,6 +76,33 @@
     "screenStale": "前日以前のメッセージを表示しています。更新すると今日の発言を確認できます。",
     "screenRefresh": "更新",
     "screenUntitled": "無題の会話",
-    "screenOpenHint": "会話を開きます"
+    "screenOpenHint": "会話を開きます",
+    "calendar": {
+      "today": "今日",
+      "previousMonth": "前月",
+      "nextMonth": "翌月",
+      "previousYear": "前年",
+      "nextYear": "翌年",
+      "showMonth": "月を開く",
+      "hideMonth": "月を閉じる",
+      "showYear": "年表示を開く",
+      "showMonthView": "月表示に戻る",
+      "less": "少",
+      "more": "多",
+      "dayCellLabel": "{{date}}、{{count}} 件",
+      "dayCellEmpty": "{{date}}、メッセージなし",
+      "dayTooltip": "{{date}} · {{count}} 件",
+      "monthTotal": "{{count}} 件",
+      "yearMonthLabel": "{{month}} {{year}} · {{count}} 件",
+      "todaySummary": "今日 · {{date}}",
+      "daySummary": "{{date}} · {{messages}} 件 · {{conversations}} 会話",
+      "daySummaryOne": "{{date}} · {{messages}} 件 · 1 会話",
+      "daySummaryMessages": "{{date}} · {{messages}} 件",
+      "dayEmpty": "この日はメッセージがありません",
+      "dayLoading": "この日を読み込み中…",
+      "dayFailed": "この日のメッセージを読めませんでした。しばらくしてから再試行してください。",
+      "unavailable": "この日は {{count}} 件の会話の履歴を読めませんでした。",
+      "notice": "一部の会話を読み切れず、件数が正確でない場合があります。"
+    }
   }
 }
