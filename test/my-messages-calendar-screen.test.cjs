@@ -962,7 +962,9 @@ test("an unparseable theme accent keeps four levels through an opacity wash", as
   const low = cell(draw(), "Mar 10 Tue");
   assert.equal(low.props.style.backgroundColor, tokens.surface0);
   const wash = h.nodes(low, node => node.props.testID === "my-messages-calendar-level-wash")[0];
-  assert.equal(wash.props.style.opacity, 0.2);
+  assert.ok(wash.props.style.opacity >= 0.4);
+  const busier = h.nodes(cell(draw(), "Mar 13 Fri"), node => node.props.testID === "my-messages-calendar-level-wash")[0];
+  assert.ok(busier.props.style.opacity > wash.props.style.opacity);
   assert.equal(cell(draw(), "Mar 15 Sun").props.style.borderColor, tokens.foreground);
 });
 
@@ -1106,6 +1108,20 @@ function contrastRatio(first, second) {
   return (Math.max(left, right) + 0.05) / (Math.min(left, right) + 0.05);
 }
 
+function chromaOf(color) {
+  const channels = colorChannels(color);
+  if (!channels) throw new Error(`unreadable colour ${color}`);
+  return Math.max(...channels) - Math.min(...channels);
+}
+
+/** How far `from` moved from `to`, per channel. A neutral step moves them together. */
+function channelStep(from, to) {
+  const left = colorChannels(from);
+  const right = colorChannels(to);
+  if (!left || !right) throw new Error(`unreadable step ${from} -> ${to}`);
+  return left.map((value, index) => value - right[index]);
+}
+
 test("day numbers stay at least 4.5 to 1 on every heat level without losing the dark theme", async t => {
   const light = {
     surface0: "#ffffff", foreground: "#1f2328", foregroundMuted: "#59636e",
@@ -1172,15 +1188,28 @@ test("wide header arrows stay at the text size", async t => {
   }
 });
 
-test("empty dates stay at the quiet end of all four heat levels in both views", async t => {
+test("empty cells sit between the page and the four heat levels", async t => {
+  // Built-in host themes: the measured dark page, the light page, and the other dark pages.
   const themes = [
     {
-      surface0: "#181b1a", foreground: "#fafafa", foregroundMuted: "#8b949e",
-      accent: "#20744a", accentForeground: "#ffffff", statusDanger: "#f85149",
+      surface0: "#181B1A", foreground: "#fafafa", foregroundMuted: "#A1A5A4",
+      accent: "#20744A", accentForeground: "#ffffff", statusDanger: "#c64f43",
     },
     {
-      surface0: "#ffffff", foreground: "#18181b", foregroundMuted: "#59636e",
-      accent: "#20744a", accentForeground: "#ffffff", statusDanger: "#cf222e",
+      surface0: "#ffffff", foreground: "#1a1a1e", foregroundMuted: "#71717a",
+      accent: "#20744A", accentForeground: "#ffffff", statusDanger: "#b04138",
+    },
+    {
+      surface0: "#161820", foreground: "#fafafa", foregroundMuted: "#9a9db0",
+      accent: "#3b6fcf", accentForeground: "#ffffff", statusDanger: "#c44a52",
+    },
+    {
+      surface0: "#282c34", foreground: "#fafafa", foregroundMuted: "#c8ccd8",
+      accent: "#3570e0", accentForeground: "#ffffff", statusDanger: "#c44a55",
+    },
+    {
+      surface0: "#000000", foreground: "#fafafa", foregroundMuted: "#a1a1aa",
+      accent: "#20744A", accentForeground: "#ffffff", statusDanger: "#c44a4a",
     },
   ];
   const history = historyFor(daysResult({
@@ -1188,59 +1217,125 @@ test("empty dates stay at the quiet end of all four heat levels in both views", 
     [dayKey(-5)]: 1, [dayKey(-4)]: 4, [dayKey(-3)]: 7, [dayKey(-2)]: 30,
   }, { firstDay: "2025-07-02" }), { [dayKey(0)]: dayResult([]) });
   for (const themeColors of themes) {
+    const preferences = { ...BASE_PREFERENCES, accent: "host" };
     const { draw, one, cell, monthCell, h } = fixture(t, {
-      historyRpc: history, realTheme: true, themeColors,
-      preferences: { ...BASE_PREFERENCES, accent: "host" },
+      historyRpc: history, realTheme: true, themeColors, preferences,
     });
     draw();
     await flush();
-    const tokens = h.load("client/components/theme-tokens.ts").buildThemeTokens(
-      themeColors, { ...BASE_PREFERENCES, accent: "host" },
-    );
-    const paint = node => paintedOn(node.props.style.backgroundColor, tokens.surface0);
+    const tokens = h.load("client/components/theme-tokens.ts").buildThemeTokens(themeColors, preferences);
+    const page = paintedOn(tokens.surface0, tokens.surface0);
+    const paint = node => paintedOn(node.props.style.backgroundColor, page);
+    const direction = luminance(page) < 0.5 ? 1 : -1;
     const check = (empty, busy, pane) => {
       const emptyPaint = paint(empty);
-      assert.ok(contrastRatio(emptyPaint, paint(busy[0])) >= 1.3, `${pane} first level gap`);
-      const direction = themeColors.surface0 === "#181b1a" ? 1 : -1;
-      const levels = [empty, ...busy].map(node => luminance(paint(node)));
+      const levels = [page, emptyPaint, ...busy.map(paint)].map(luminance);
       for (let index = 1; index < levels.length; index += 1) {
         assert.ok(direction * (levels[index] - levels[index - 1]) > 0,
-          `${pane} heat order on ${themeColors.surface0}: ${levels.join(", ")}`);
+          `${pane} order on ${themeColors.surface0}: ${levels.join(", ")}`);
       }
-      for (const node of [empty, ...busy]) {
+      const gap = contrastRatio(emptyPaint, page);
+      assert.ok(gap >= 1.1 && gap <= 1.25, `${pane} page gap ${gap.toFixed(3)} on ${themeColors.surface0}`);
+      const step = channelStep(emptyPaint, page);
+      const spread = Math.max(...step) - Math.min(...step);
+      assert.ok(spread <= 8, `${pane} empty step ${step.join(",")} is not neutral`);
+      if (pane === "month") {
+        const paints = [emptyPaint, ...busy.map(paint)];
+        const firstGap = contrastRatio(paints[1], paints[0]);
+        assert.ok(firstGap >= 1.35, `${pane} empty-to-first ${firstGap.toFixed(3)} on ${themeColors.surface0}`);
+        for (let index = 2; index < paints.length; index += 1) {
+          const stepGap = contrastRatio(paints[index], paints[index - 1]);
+          assert.ok(stepGap >= 1.3, `${pane} step ${index - 1} gap ${stepGap.toFixed(3)} on ${themeColors.surface0}`);
+        }
+        const accentSpread = chromaOf(themeColors.accent);
+        if (accentSpread >= 30) {
+          assert.ok(chromaOf(paints[1]) + 0.5 >= Math.min(48, accentSpread * 0.45),
+            `${pane} first level chroma ${chromaOf(paints[1])} on ${themeColors.surface0}`);
+        }
+        const selectedGap = contrastRatio(paints[4], paintedOn(tokens.accent, page));
+        assert.ok(selectedGap >= 1.15, `${pane} top versus selected ${selectedGap.toFixed(3)} on ${themeColors.surface0}`);
+      }
+      if (chromaOf(themeColors.accent) >= 40) {
+        assert.ok(chromaOf(paint(busy[0])) > chromaOf(emptyPaint) + 8,
+          `${pane} first level is not more chromatic than the empty cell`);
+      }
+      for (const node of busy) {
         for (const text of h.nodes(node, child => child.type === "Text")) {
           assert.ok(contrastRatio(text.props.style.color, paint(node)) >= 4.5,
             `${pane} text contrast on ${themeColors.surface0}`);
         }
       }
-      assert.equal(empty.props.style.borderWidth, 1);
       assert.equal(empty.props.accessibilityState.disabled, false);
+      if (pane === "month") assert.equal(empty.props.style.borderWidth, 0);
     };
     const month = draw();
-    check(cell(month, "Mar 14 Sat"), ["Mar 10", "Mar 11", "Mar 12", "Mar 13"].map(label => cell(month, label)), "month");
+    const emptyDay = cell(month, "Mar 14 Sat");
+    check(emptyDay, ["Mar 10", "Mar 11", "Mar 12", "Mar 13"].map(label => cell(month, label)), "month");
+    const future = cell(month, "Mar 16 Mon");
+    assert.equal(future.props.accessibilityState.disabled, true);
+    assert.equal(future.props.style.opacity, 0.35);
+    assert.notEqual(paint(future), paint(emptyDay));
+    const swatches = h.nodes(one(month, "my-messages-calendar-legend"), node =>
+      node.props?.style?.width === 12 && node.props?.style?.height === 12);
+    assert.equal(swatches.length, 5);
+    assert.equal(paintedOn(swatches[0].props.style.backgroundColor, page), paint(emptyDay));
 
     one(draw(), "my-messages-calendar-title").props.onPress();
+    const thisYear = draw();
+    const february = monthCell(thisYear, "February 2026");
+    const december = monthCell(thisYear, "December 2026");
+    assert.equal(february.props.accessibilityState.disabled, false);
+    assert.equal(december.props.accessibilityState.disabled, true);
+    assert.equal(december.props.style.opacity, 0.35);
+    assert.notEqual(paint(february), paint(december));
     one(draw(), "my-messages-calendar-prev").props.onPress();
     const year = draw();
-    check(monthCell(year, "August 2025"), ["July 2025", "September 2025", "November 2025", "December 2025"].map(label => monthCell(year, label)), "year");
+    check(
+      monthCell(year, "August 2025"),
+      ["July 2025", "September 2025", "November 2025", "December 2025"].map(label => monthCell(year, label)),
+      "year",
+    );
   }
 });
 
-test("an empty cell keeps the page fill when the quiet end cannot reach the contrast gap", t => {
+test("heat levels move toward busy when they would cover the empty cell", t => {
   const h = createToolHarness("web", { themeTokens: true });
   t.after(() => h.dispose());
   const { buildLevelPalette, emptyCellFill } = h.load("client/components/my-messages-calendar-views.tsx");
   const { buildThemeTokens } = h.load("client/components/theme-tokens.ts");
   const preferences = { ...BASE_PREFERENCES, accent: "host" };
   for (const theme of [
-    { surface0: "#030303", foreground: "#fafafa", accent: "#111111" },
-    { surface0: "#fcfcfc", foreground: "#18181b", accent: "#dddddd" },
+    {
+      surface0: "#181B1A", foreground: "#fafafa", foregroundMuted: "#A1A5A4",
+      accent: "#1c221f", accentForeground: "#ffffff", statusDanger: "#c64f43",
+    },
+    {
+      surface0: "#ffffff", foreground: "#1a1a1e", foregroundMuted: "#71717a",
+      accent: "#f3f6f4", accentForeground: "#ffffff", statusDanger: "#b04138",
+    },
   ]) {
-    const tokens = buildThemeTokens({ ...DARK_THEME, ...theme }, preferences);
+    const tokens = buildThemeTokens(theme, preferences);
     const palette = buildLevelPalette(tokens);
-    const fill = paintedOn(emptyCellFill(tokens, palette), tokens.surface0);
-    assert.equal(fill, paintedOn(tokens.surface0, tokens.surface0));
-    assert.ok(contrastRatio(fill, palette.backgrounds[1]) < 1.3);
+    const page = paintedOn(tokens.surface0, tokens.surface0);
+    const empty = paintedOn(emptyCellFill(tokens, palette), page);
+    const levels = [1, 2, 3, 4].map(level => paintedOn(palette.backgrounds[level], page));
+    const direction = luminance(page) < 0.5 ? 1 : -1;
+    const values = [page, empty, ...levels].map(color => luminance(color));
+    for (let index = 1; index < values.length; index += 1) {
+      assert.ok(direction * (values[index] - values[index - 1]) > 0,
+        `order on ${theme.surface0}: ${values.join(", ")}`);
+    }
+    const gap = contrastRatio(empty, page);
+    assert.ok(gap >= 1.1 && gap <= 1.25, `page gap ${gap.toFixed(3)} on ${theme.surface0}`);
+    const firstGap = contrastRatio(levels[0], empty);
+    assert.ok(firstGap >= 1.35, `empty-to-first ${firstGap.toFixed(3)} on ${theme.surface0}`);
+    for (let index = 1; index < levels.length; index += 1) {
+      const stepGap = contrastRatio(levels[index], levels[index - 1]);
+      assert.ok(stepGap >= 1.3, `step ${index} gap ${stepGap.toFixed(3)} on ${theme.surface0}`);
+      assert.ok(contrastRatio(palette.text[index + 1], levels[index]) >= 4.5,
+        `level ${index + 1} text on ${theme.surface0}`);
+    }
+    assert.ok(contrastRatio(palette.text[1], levels[0]) >= 4.5, `level 1 text on ${theme.surface0}`);
   }
 });
 

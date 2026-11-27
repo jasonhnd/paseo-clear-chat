@@ -79,77 +79,164 @@ function contrastOf(first: string, second: string): number | null {
   return (Math.max(left, right) + 0.05) / (Math.min(left, right) + 0.05);
 }
 
-/** The darker or lighter ink, whichever reads better on `background`. */
-function inkFor(background: string, dark: string, light: string, fallback: string): string {
-  const darkRatio = contrastOf(dark, background);
-  const lightRatio = contrastOf(light, background);
-  if (darkRatio === null || lightRatio === null) return fallback;
-  return darkRatio >= lightRatio ? dark : light;
-}
+const EMPTY_PAGE_CONTRAST = 1.16;
 
-const EMPTY_LEVEL_GAP = 1.3;
-
-/** Move toward the quiet end only. If the gap is unreachable, let the border mark the empty cell. */
-function neutralApart(page: string, neighbor: string, dark: boolean): string {
-  const neighborL = luminanceOf(neighbor);
-  if (luminanceOf(page) === null || neighborL === null) return page;
-  const toward = dark ? "#000000" : "#ffffff";
-  for (let step = 0; step <= 10; step += 1) {
-    const fill = step === 0 ? page : mix(page, toward, step / 10);
-    const fillL = luminanceOf(fill);
-    if (fillL === null) break;
-    const contrast = dark ? (neighborL + 0.05) / (fillL + 0.05) : (fillL + 0.05) / (neighborL + 0.05);
-    if (contrast >= EMPTY_LEVEL_GAP) return fill;
-  }
-  return page;
-}
-
-/** Background for a selectable cell with no messages, measured against the first heat step. */
-export function emptyCellFill(tokens: ExtendedThemeTokens, palette: LevelPalette): string {
-  const page = flattenColor(tokens.surface0, "#ffffff") ?? tokens.surface0;
-  const levelFill = palette.backgrounds[1] ?? tokens.surface1;
-  const neighbor = flattenColor(levelFill, page) ?? levelFill;
-  return neutralApart(page, neighbor, tokens.isDark);
+function onBusySide(color: string, than: string, dark: boolean): boolean {
+  const left = luminanceOf(color);
+  const right = luminanceOf(than);
+  if (left === null || right === null) return false;
+  return dark ? left > right : left < right;
 }
 
 /**
- * Four tinted steps from the host accent. `mix` only parses hex and rgb(); a theme that
- * hands us hsl()/oklch() falls back to an accent overlay at the same opacity, so the four
- * steps stay visible and distinguishable instead of collapsing to the page background.
- * The number on a step uses whichever of the theme's two inks clears the fill.
+ * A neutral step from the page toward busier cells. Dark pages step toward white and
+ * light pages step toward black, staying about 1.16:1 from the page so the cell reads
+ * without leaving the gap between the page and the first heat level.
+ */
+function neutralStep(page: string, dark: boolean): string {
+  const pageL = luminanceOf(page);
+  if (pageL === null) return page;
+  const toward = dark ? "#ffffff" : "#000000";
+  let chosen = page;
+  let closest = Number.POSITIVE_INFINITY;
+  for (let step = 1; step <= 40; step += 1) {
+    const fill = mix(page, toward, step / 40);
+    const ratio = contrastOf(fill, page);
+    const fillL = luminanceOf(fill);
+    if (ratio === null || fillL === null) continue;
+    if (!onBusySide(fill, page, dark) || ratio < 1.1 || ratio > 1.25) continue;
+    const distance = Math.abs(ratio - EMPTY_PAGE_CONTRAST);
+    if (distance < closest) {
+      chosen = fill;
+      closest = distance;
+    }
+  }
+  return chosen;
+}
+
+function channelSpread(color: string): number {
+  const read = readColor(color);
+  if (!read) return 0;
+  return Math.max(read.r, read.g, read.b) - Math.min(read.r, read.g, read.b);
+}
+
+function directedGap(fill: string, previous: string, dark: boolean): number | null {
+  const fillL = luminanceOf(fill);
+  const previousL = luminanceOf(previous);
+  if (fillL === null || previousL === null) return null;
+  if (dark) return fillL > previousL ? (fillL + 0.05) / (previousL + 0.05) : 0;
+  return fillL < previousL ? (previousL + 0.05) / (fillL + 0.05) : 0;
+}
+
+/** Theme inks, or black / white when neither of those clears a bright or dark step. */
+function bestInk(fill: string, tokens: ExtendedThemeTokens, fallback: string): string {
+  const candidates = [tokens.foreground, tokens.accentForeground, "#111111", "#fafafa"];
+  let best = fallback;
+  let bestRatio = -1;
+  for (const ink of candidates) {
+    const ratio = contrastOf(ink, fill);
+    if (ratio !== null && ratio > bestRatio) {
+      best = ink;
+      bestRatio = ratio;
+    }
+  }
+  return best;
+}
+
+const HEAT_EMPTY_GAP = 1.35;
+const HEAT_STEP_GAP = 1.3;
+const HEAT_SELECTED_GAP = 1.15;
+const WASH_OPACITY = [0.42, 0.62, 0.8, 0.95];
+
+/**
+ * One heat step past `previous`, toward the accent and then past it if the accent
+ * is not far enough. The first step keeps the accent's saturation. The last step
+ * stays off the selected accent so the two fills do not match.
+ */
+function heatStep(
+  previous: string,
+  accent: string,
+  dark: boolean,
+  tokens: ExtendedThemeTokens,
+  fallback: string,
+  minGap: number,
+  requireHue: boolean,
+  separateFrom: string | null,
+): string {
+  const pole = dark ? "#ffffff" : "#000000";
+  const hueFloor = channelSpread(accent) >= 30 ? Math.min(48, channelSpread(accent) * 0.45) : 0;
+  for (let nudge = 0; nudge <= 24; nudge += 1) {
+    const target = nudge === 0 ? accent : mix(accent, pole, nudge / 24);
+    for (let amount = 1; amount <= 48; amount += 1) {
+      const fill = mix(previous, target, amount / 48);
+      const gap = directedGap(fill, previous, dark);
+      if (gap === null || gap < minGap) continue;
+      if (requireHue && channelSpread(fill) < hueFloor) continue;
+      const ratio = contrastOf(bestInk(fill, tokens, fallback), fill);
+      if (ratio === null || ratio < 4.5) continue;
+      if (separateFrom) {
+        const apart = contrastOf(fill, separateFrom);
+        if (apart === null || apart < HEAT_SELECTED_GAP) continue;
+      }
+      return fill;
+    }
+  }
+  return mix(previous, pole, 0.85);
+}
+
+/** Background for a selectable cell with no messages: a neutral step off the page. */
+export function emptyCellFill(tokens: ExtendedThemeTokens, _palette: LevelPalette): string {
+  const page = flattenColor(tokens.surface0, "#ffffff") ?? tokens.surface0;
+  return neutralStep(page, tokens.isDark);
+}
+
+/**
+ * Four steps from the host accent, each far enough from the previous one to read as its
+ * own shade. The first keeps the accent hue. A theme colour `mix` cannot parse falls
+ * back to a stronger accent overlay at each step. The number uses whichever ink clears
+ * the fill, including black or white when both theme inks are on the same side.
  */
 export function buildLevelPalette(tokens: ExtendedThemeTokens): LevelPalette {
-  const alphas = [0, 0.2, 0.38, 0.58, 0.78];
   const page = flattenColor(tokens.surface0, "#ffffff") ?? tokens.surface0;
   const backgrounds: Array<string | null> = [];
   const washes: Array<number | null> = [];
   const text: string[] = [];
+  let previous = neutralStep(page, tokens.isDark);
   for (let level = 0; level <= 4; level += 1) {
-    const alpha = alphas[level] ?? 0;
     const fallback = level >= 3 ? tokens.accentForeground : tokens.foreground;
     let fill = tokens.surface1;
     if (level === 0) {
       backgrounds.push(tokens.surface1);
       washes.push(null);
     } else {
-      const mixed = mix(tokens.surface0, tokens.accent, alpha);
-      if (mixed !== tokens.surface0) {
-        backgrounds.push(mixed);
+      const parsed = mix(tokens.surface0, tokens.accent, 0.5);
+      if (parsed !== tokens.surface0) {
+        fill = heatStep(
+          previous,
+          tokens.accent,
+          tokens.isDark,
+          tokens,
+          fallback,
+          level === 1 ? HEAT_EMPTY_GAP : HEAT_STEP_GAP,
+          level === 1,
+          level === 4 ? tokens.accent : null,
+        );
+        backgrounds.push(fill);
         washes.push(null);
-        fill = mixed;
       } else {
         backgrounds.push(tokens.surface0);
-        washes.push(alpha);
+        washes.push(WASH_OPACITY[level - 1] ?? 0.95);
         const veiled = flattenColor(tokens.accent, page);
         const veil = veiled === null ? null : readColor(veiled);
         const base = readColor(page);
         fill = veil && base
-          ? `rgb(${Math.round(base.r + (veil.r - base.r) * alpha)}, ${Math.round(base.g + (veil.g - base.g) * alpha)}, ${Math.round(base.b + (veil.b - base.b) * alpha)})`
+          ? `rgb(${Math.round(base.r + (veil.r - base.r) * (WASH_OPACITY[level - 1] ?? 0))}, ${Math.round(base.g + (veil.g - base.g) * (WASH_OPACITY[level - 1] ?? 0))}, ${Math.round(base.b + (veil.b - base.b) * (WASH_OPACITY[level - 1] ?? 0))})`
           : tokens.surface0;
       }
     }
     const painted = flattenColor(fill, page) ?? fill;
-    text.push(inkFor(painted, tokens.foreground, tokens.accentForeground, fallback));
+    text.push(bestInk(painted, tokens, fallback));
+    if (level > 0) previous = painted;
   }
   return { backgrounds, washes, text };
 }
@@ -407,7 +494,7 @@ export function CalendarMonthView({
                     minHeight: compact ? 44 : 54, borderRadius: 6, paddingVertical: 3,
                     alignItems: "center", justifyContent: "center", gap: 1,
                     backgroundColor: background, opacity: disabled ? 0.35 : 1,
-                    borderWidth: selected || focused || isToday ? 2 : quietDay ? 1 : 0,
+                    borderWidth: selected || focused || isToday ? 2 : 0,
                     borderColor: selected ? tokens.accentForeground : focused || isToday ? tokens.foreground : tokens.border,
                   }}
                 >

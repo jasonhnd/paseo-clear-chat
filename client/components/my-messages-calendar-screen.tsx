@@ -22,7 +22,7 @@ import { formatDayLabel, formatMonthTitle, formatWeekRange } from "../my-message
 import { nowMs } from "../my-messages-clock";
 import { useEnhancerPreferences } from "../preferences";
 import { isEmptyMessageText, messagePreview } from "../../shared/user-message-kind";
-import { CalendarMonthView, CalendarYearView, buildLevelPalette } from "./my-messages-calendar-views";
+import { CalendarMonthView, CalendarYearView, buildLevelPalette, emptyCellFill } from "./my-messages-calendar-views";
 import { MyMessagesRowActions } from "./my-messages-row-actions";
 import { buildThemeTokens } from "./theme-tokens";
 
@@ -50,6 +50,7 @@ export function MyMessagesCalendarScreen({
   const preferences = useEnhancerPreferences();
   const tokens = React.useMemo(() => buildThemeTokens(theme.colors, preferences), [theme, preferences]);
   const palette = React.useMemo(() => buildLevelPalette(tokens), [tokens]);
+  const emptyFill = React.useMemo(() => emptyCellFill(tokens, palette), [tokens, palette]);
 
   const today = localDateKey(nowMs());
   const selectedDay = snapshot.selectedDay;
@@ -317,7 +318,8 @@ export function MyMessagesCalendarScreen({
             {palette.backgrounds.map((background, level) => (
               <View key={level} style={{
                 width: LEGEND_SIZE, height: LEGEND_SIZE, borderRadius: 4, overflow: "hidden",
-                backgroundColor: background ?? tokens.surface0, borderWidth: 1, borderColor: tokens.borderSubtle,
+                backgroundColor: level === 0 ? emptyFill : background ?? tokens.surface0,
+                borderWidth: 1, borderColor: tokens.borderSubtle,
               }}>
                 {palette.washes[level] !== null ? (
                   <View style={{ flex: 1, backgroundColor: tokens.accent, opacity: palette.washes[level] ?? 0 }} />
