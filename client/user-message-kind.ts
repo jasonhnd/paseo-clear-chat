@@ -5,7 +5,7 @@ import { isSystemEnvelope } from "./envelope";
  *
  * A conversation's user side carries two kinds of row: what the person typed, and what
  * automation put there — bracketed envelopes, wrapped instruction tags, pasted context
- * headers. The "what I said" panel lists only the first kind, so this module decides the
+ * headers. The "What I said" screen lists only the first kind, so this module decides the
  * kind from the text alone. The table is data rather than a rule so a new envelope shape
  * is one line, and so a test can pin every entry.
  *

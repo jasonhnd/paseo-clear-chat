@@ -57,20 +57,17 @@
   },
   "myMessages": {
     "title": "我说的话",
-    "summary": "今天机器消息 {{machine}} 条 · 我说的话 {{human}} 条",
     "empty": "今天还没有你说的话",
-    "loading": "正在读取这个对话…",
-    "error": "读不到这个对话。点「重试」再试一次。",
     "copied": "已复制",
+    "copy": "复制",
+    "quote": "引用",
+    "quoteCopied": "无法将引用插入此对话，已复制引用",
+    "quoteNoText": "这条消息没有文字可引用",
     "copyFailed": "复制不了这条消息",
     "noText": "这条消息没有文字可复制",
     "imageOnly": "（图片）",
-    "partial": "这一天还没读完。点「重试」把剩下的读出来。",
-    "liveStopped": "新消息没能送进来，列表可能不是最新的。",
     "retry": "重试",
-    "pickConversation": "先在这个工作区打开一个对话，再点这个按钮。",
     "directory": "读不到对话列表，请稍后再试。",
-    "stale": "这些数字是前一天的。点「重试」重新统计。",
     "screenSummary": "今天你发了 {{messages}} 条消息 · 来自 {{conversations}} 个对话",
     "screenLoading": "正在读取对话列表…",
     "screenProgress": "正在读取对话（{{done}} / {{total}}）…",
@@ -78,6 +75,7 @@
     "screenUnavailable": "今天有 {{count}} 个对话读不到历史。",
     "screenStale": "这些是前一天的消息。刷新后可查看今天的消息。",
     "screenRefresh": "刷新",
-    "screenUntitled": "未命名对话"
+    "screenUntitled": "未命名对话",
+    "screenOpenHint": "打开对话"
   }
 }

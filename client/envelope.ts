@@ -4,7 +4,7 @@
  * Some rows in a conversation's timeline come from the host rather than from the person
  * typing: a bracketed notification, a wrapped system tag, or a supervised-process line.
  * They are not the model's words and not the reader's words, so both the answer feed and
- * the "what I said" panel skip them.
+ * the What I said screen skip them.
  */
 
 const ENVELOPE_TAGS = new Set([

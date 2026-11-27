@@ -1,3 +1,49 @@
+## [0.17.5.2] - 2026-11-27
+
+### Added
+
+- **A What I said row opens its conversation.** On the **What I said** screen, pressing a row opens the conversation the message was sent in, on the same host; the screen passes the row's agent and its host, so a row from a second connected host opens on that host. An archived conversation opens too, with the host's archived notice and no input. On a host without client navigation, pressing a row still copies the message, as before ([PR #535](https://github.com/jasonhnd/paseo-clear-chat/pull/535)).
+- **Copy and Quote on every row of the screen.** **Copy** copies the original message and shows `Copied` (the previous row behaviour). **Quote** focuses that conversation's input and inserts the message as a Markdown quote at the cursor: every line starts with `> `, a blank line becomes `>`, blank lines around the message are dropped, one empty line follows, and the cursor stays in the input. The buttons sit outside the row's press target, so a button press does not open or copy the row, and both are 44 px tall ([PR #535](https://github.com/jasonhnd/paseo-clear-chat/pull/535)).
+- **A conversation without an input keeps the quote.** When the conversation has no input (an archived conversation, or a host that does not expose composers), or focusing fails, the screen opens the conversation and copies the quote instead, with the toast `Can't insert into this conversation — quote copied` ([PR #535](https://github.com/jasonhnd/paseo-clear-chat/pull/535)).
+- **An empty message says what it cannot do.** A message with no text (shown as `(image)`) answers **Copy** with `This message has no text to copy` and **Quote** with `This message has no text to quote` ([PR #535](https://github.com/jasonhnd/paseo-clear-chat/pull/535)).
+
+### Changed
+
+- **The locales gain the row actions in the `myMessages` block.** `copy`, `quote`, `quoteCopied`, `quoteNoText` and `screenOpenHint` are translated in `en`, `zh-CN` and `ja` ([PR #535](https://github.com/jasonhnd/paseo-clear-chat/pull/535)).
+- **The answer card is unchanged, and the plugin adds no settings.** The minimum host version stays Paseo 0.16.0; apart from the version, `package.json` and its host dependencies are unchanged. This is another Clear Chat release for Paseo 0.17.5: the first three parts of the version are the Paseo version, and the fourth counts Clear Chat's releases for it ([PR #535](https://github.com/jasonhnd/paseo-clear-chat/pull/535)).
+- **The plugin's one-line description names the row action and the two buttons.** `paseo-plugin.json` opens with the version and now names opening the conversation from a row and copying or quoting from the sidebar screen ([PR #535](https://github.com/jasonhnd/paseo-clear-chat/pull/535)).
+
+### Removed
+
+- **The conversation header button and the panel beside the conversation are gone.** This release removes the **What I said** button from the conversation header and the panel it opened, including its top line of today's machine-message and own-message counts. Today's messages are on the **What I said** screen, opened from its row in the sidebar header. The panel's strings — `summary`, `loading`, `error`, `partial`, `liveStopped`, `pickConversation` and `stale` — are removed from `en`, `zh-CN` and `ja`; the screen's strings stay ([PR #535](https://github.com/jasonhnd/paseo-clear-chat/pull/535)).
+
+### Upgrade notes
+
+- Clear Chat 0.17.5.2 needs Paseo 0.16.0 or newer. The minimum host version is unchanged: row navigation is feature-detected, and on a host without client navigation a screen row press still copies. The browser checks ran on Paseo 0.17.5; it was not checked on Paseo 0.16.x, 0.17.1, 0.17.2, 0.17.3 or 0.17.4. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x ([PR #535](https://github.com/jasonhnd/paseo-clear-chat/pull/535)).
+- Update with `paseo plugin update clear-chat --ref v0.17.5.2 --yes`, or install with `paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.17.5.2` ([PR #535](https://github.com/jasonhnd/paseo-clear-chat/pull/535)).
+- The settings file is kept. The plugin has no settings of its own and writes none: the answer card switch, saved replies, dismissed false detections and unfinished drafts stay as they are. No stored setting belonged to the panel, and the settings parser ignores keys it does not know, so nothing in the file needs migrating. After the update the conversation header no longer has a **What I said** button and there is no panel beside the conversation; to read today's messages, open the **What I said** screen from its row in the sidebar header. A rollback to the previous release keeps the settings and brings the header button and the panel back, and the screen's rows return to copy-only, because that release has no **Copy** or **Quote** buttons. Removing the plugin still deletes its settings ([PR #535](https://github.com/jasonhnd/paseo-clear-chat/pull/535)).
+
+### What was checked
+
+- The browser checks ran in the interface of Paseo 0.17.5 (the web UI the `paseo` command starts), in a headless browser, at 1280×800 and 390×844, with a synthetic provider and a real provider (Codex), on commits f9f0da30 and 56087f61. On the screen: pressing a row opened the conversation, including an archived conversation and one on a second connected host; **Quote** inserted the quote into the conversation of that row and left another conversation's draft untouched; an archived row's **Quote** opened the conversation and copied the quote with its toast; **Copy** copied the message and did not open the row; at 390 wide the buttons were 51×44 and 56×44 and stayed inside the viewport; the Simplified Chinese labels and toasts read as translated; a row with no text (a whitespace-only message, shown as `(image)`) answered **Quote** with a no-text toast; and the console showed no plugin errors. The panel was checked at those commits before it was removed, and it is not part of this release. The first checked commit had 36 px buttons; the second checked commit (`56087f61`) raised them to 44 px, skipped an empty message on **Quote**, trimmed blank lines around the quote and asked for the input again after focusing. After the second checked commit, `6d1e37c` builds the quote line by line, trims blank edges and gives **Quote** its own empty-message toast (covered by unit tests), and `9c40a10` strengthens the test that guards against slow line-break handling. Then `80a0dba` removed the header button and the panel, and `9618fe4` narrowed the quote action's types without changing its behaviour. The browser checks were repeated on `80a0dbaa`, the commit that removed the panel: the conversation header had no **What I said** button and there was no panel, while the sidebar row stayed; a row press opened a conversation and an archived conversation; **Quote** inserted into the conversation of that row and left another conversation's draft untouched; **Copy** copied the message without opening the row; at 390 wide the buttons were 51×44 and 56×44 inside the viewport; the settings page showed version 0.17.5.2; and the console showed no plugin errors ([PR #535](https://github.com/jasonhnd/paseo-clear-chat/pull/535)).
+- Desktop app: Checked in the Paseo 0.17.5 desktop app for macOS (Apple silicon), run isolated with its own data folder and driven through its debugging port, on commits 80a0dbaa and 9618fe47: the conversation header had no **What I said** button and there was no panel; pressing a row opened the conversation, including an archived one; **Quote** inserted into the conversation of that row and left another conversation's draft untouched; an archived row's **Quote** opened the conversation and copied the quote with its toast; **Copy** copied the message without opening the row; a message with no text answered **Quote** with its no-text toast; the settings page showed version 0.17.5.2; and the console showed no plugin errors. No screenshots were taken in the desktop app ([PR #535](https://github.com/jasonhnd/paseo-clear-chat/pull/535)).
+- `npm test` passes 663 of 663 in `TZ=UTC` and in `TZ=Asia/Tokyo`, and `npx tsc --noEmit` exits 0 ([PR #535](https://github.com/jasonhnd/paseo-clear-chat/pull/535)).
+
+### Known limitations
+
+- The screen lists today's messages, the device's local calendar day; nothing from an earlier day is listed ([PR #535](https://github.com/jasonhnd/paseo-clear-chat/pull/535)).
+- Conversations created by another agent are not listed, and nothing typed into them directly is listed either ([PR #535](https://github.com/jasonhnd/paseo-clear-chat/pull/535)).
+- Conversations whose provider is unavailable are not listed by the host, so they are not read ([PR #535](https://github.com/jasonhnd/paseo-clear-chat/pull/535)).
+- Some providers cannot give back the history of a conversation restored from storage. Such conversations are counted as `Conversations without readable history today: N` instead of being listed; they are not cached, and **Refresh** and **Try again** read them again ([PR #535](https://github.com/jasonhnd/paseo-clear-chat/pull/535)).
+- A total loss of today's history is detected; a partial loss is not reported, and the screen lists what the provider gave back without a warning ([PR #535](https://github.com/jasonhnd/paseo-clear-chat/pull/535)).
+- Reading a conversation that is not loaded makes the daemon load it from storage, which takes time and memory until the daemon's idle cleanup ([PR #535](https://github.com/jasonhnd/paseo-clear-chat/pull/535)).
+- A screen row opens the conversation, not the message: the plugin API has no scroll-to-message surface ([PR #535](https://github.com/jasonhnd/paseo-clear-chat/pull/535)).
+- An archived conversation has no input, so **Quote** on the screen opens the conversation and copies the quote ([PR #535](https://github.com/jasonhnd/paseo-clear-chat/pull/535)).
+- **Quote** inserts at the cursor and does not replace an existing draft ([PR #535](https://github.com/jasonhnd/paseo-clear-chat/pull/535)).
+- On a host without client navigation, a screen row press copies the message instead of opening the conversation ([PR #535](https://github.com/jasonhnd/paseo-clear-chat/pull/535)).
+- Right after a daemon restart, opening the screen takes about a second per conversation restored from storage with Codex; a test agent took about 4 s per conversation, so another provider can be slower ([PR #535](https://github.com/jasonhnd/paseo-clear-chat/pull/535)).
+- Removing the plugin deletes its settings. Back them up first ([PR #535](https://github.com/jasonhnd/paseo-clear-chat/pull/535)).
+
 ## [0.17.5.1] - 2026-11-27
 
 ### Added
@@ -920,6 +966,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.17.5.2]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.17.5.1...v0.17.5.2
 [0.17.5.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.17.4.2...v0.17.5.1
 [0.17.4.2]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.17.4.1...v0.17.4.2
 [0.17.4.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.17.3.1...v0.17.4.1

@@ -29,11 +29,9 @@ function transpileFile(filename) {
 // Only the host runtime, animation, syntax painting and unrelated UI are shims.
 function createToolHarness(platform = "ios", options = {}) {
   const root = resolve(__dirname, "../..");
-  const cache = new Map(), frames = new Map(), transformers = options.timelineHost?.transformers ?? new Map(), renderers = options.timelineHost?.renderers ?? new Map(), panels = new Map();
-  const panelOpens = [], settingsScreens = new Map(), sidebarHeaderItems = new Map(), composerPills = [];
+  const cache = new Map(), frames = new Map(), transformers = options.timelineHost?.transformers ?? new Map(), renderers = options.timelineHost?.renderers ?? new Map();
+  const settingsScreens = new Map(), sidebarHeaderItems = new Map(), composerPills = [];
   const dimensions = { width: options.width ?? 1440, height: options.height ?? 900, scale: 1, fontScale: 1, ...options.dimensions };
-  let activePanel;
-  let panelMounted = true;
   const reveals = [], links = [], copies = [], toasts = [], imageReads = [];
   let frame;
   const pendingEffects = [];
@@ -314,12 +312,6 @@ function createToolHarness(platform = "ios", options = {}) {
         return record;
       },
     }),
-    addAgentPanel(value) { panels.set(value.id, value); return noop; },
-    openPanel(id, input) {
-      if (options.panelError) throw new Error("Panel unavailable");
-      panelOpens.push({ id, ...input });
-      activePanel = { id, ...input };
-    },
     addTimelineTransformer(value) {
       if (options.timelineHost) return options.timelineHost.addTimelineTransformer(value);
       transformers.set(value.query.itemType, value); return noop;
@@ -377,9 +369,8 @@ function createToolHarness(platform = "ios", options = {}) {
   }
   const unmount = () => unmountRoot();
   return {
-    settingsScreens, sidebarHeaderItems, composerPills, translations, setLocale: translations.setLocale, load, nodes, text, reveals, links, copies, toasts, imageReads, transformers, renderers, panels, panelOpens, dimensions, get preferences() { return getPreferences(); }, tokens, draw, expansionHost, unmount, dispose, flushEffects,
+    settingsScreens, sidebarHeaderItems, composerPills, translations, setLocale: translations.setLocale, load, nodes, text, reveals, links, copies, toasts, imageReads, transformers, renderers, dimensions, get preferences() { return getPreferences(); }, tokens, draw, expansionHost, unmount, dispose, flushEffects,
     notifyPreferences() { for (const listener of preferenceListeners) listener(); },
-    setPanelMounted(value) { panelMounted = value; },
     mount(item, expand = true, identity = {}) {
       unmount(); reveals.length = links.length = copies.length = imageReads.length = 0;
       if (!timestamps.has(item)) timestamps.set(item, new Date(nextTimestamp++));
@@ -389,10 +380,7 @@ function createToolHarness(platform = "ios", options = {}) {
       const data = renderer.schema.parse(pluginItem.data);
       const render = (nextData = data) => {
         const props = { agentId: "demo-agent", host: { id: "demo-host" }, item: { ...pluginItem, data: nextData }, theme: { colors: options.themeColors ?? {} }, timestamp: timestamps.get(item), ...identity };
-        const row = draw(jsx(renderer.Component, props));
-        const panel = panels.get(activePanel?.id);
-        if (!panelMounted) unmountRoot("panel");
-        return panel && panelMounted ? [row, draw(jsx(panel.Component, { ...props, ...activePanel, params: { agentId: activePanel.agentId } }), "panel")] : row;
+        return draw(jsx(renderer.Component, props));
       };
       let tree = render();
       if (expand) {
@@ -400,7 +388,7 @@ function createToolHarness(platform = "ios", options = {}) {
         button?.props.onPress();
         tree = render();
       }
-      return { tree, render, data, replaceRow() { unmountRoot("root"); if (!panelMounted) unmountRoot("panel"); return render(); } };
+      return { tree, render, data, replaceRow() { unmountRoot("root"); return render(); } };
     },
   };
 }

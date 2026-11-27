@@ -57,20 +57,17 @@
   },
   "myMessages": {
     "title": "What I said",
-    "summary": "Machine messages today: {{machine}} · From you: {{human}}",
     "empty": "Nothing from you today yet",
-    "loading": "Reading this conversation…",
-    "error": "Could not read this conversation. Select Try again.",
     "copied": "Copied",
+    "copy": "Copy",
+    "quote": "Quote",
+    "quoteCopied": "Can't insert into this conversation — quote copied",
+    "quoteNoText": "This message has no text to quote",
     "copyFailed": "Could not copy this message",
     "noText": "This message has no text to copy",
     "imageOnly": "(image)",
-    "partial": "Part of this day has not been read yet. Select Try again to load the rest.",
-    "liveStopped": "New messages are not coming through. The list may be out of date.",
     "retry": "Try again",
-    "pickConversation": "Open a conversation in this workspace first, then press this button.",
     "directory": "The conversation list could not be read. Try again in a moment.",
-    "stale": "These counts are from an earlier day. Select Try again.",
     "screenSummary": "From you today: {{messages}} · Conversations: {{conversations}}",
     "screenLoading": "Reading the conversation list…",
     "screenProgress": "Reading {{done}} of {{total}}…",
@@ -78,6 +75,7 @@
     "screenUnavailable": "Conversations without readable history today: {{count}}",
     "screenStale": "These messages are from an earlier day. Refresh to see today’s messages.",
     "screenRefresh": "Refresh",
-    "screenUntitled": "Untitled conversation"
+    "screenUntitled": "Untitled conversation",
+    "screenOpenHint": "Opens the conversation"
   }
 }
