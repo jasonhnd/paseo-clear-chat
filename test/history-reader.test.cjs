@@ -675,6 +675,38 @@ test("only a WAL store with no side files takes the immutable target", t => {
   assert.equal(typeof reader.openTargetForTests(wal.path), "object");
 });
 
+test("a session with no messages still counts as read", t => {
+  const f = createFixture(t);
+  const db = f.database().session("s1");
+  assert.equal(db.current, "s1");
+  f.close();
+  const data = reader.readHistoryData({
+    conversations: [conversation("agent-a", "s1")],
+    root: f.hermes,
+    timeZone: "Asia/Tokyo",
+  });
+  assert.deepEqual(data.messages, []);
+  assert.deepEqual(data.readSessions, ["s1"]);
+});
+
+test("a database that fails mid-read is not in the read session set", t => {
+  const f = createFixture(t);
+  const db = f.database(undefined, FAILING_VIEW_SCHEMA);
+  db.session("bad-500");
+  db.db.prepare(`
+    INSERT INTO raw_messages (id, session_id, role, content, timestamp, active, compacted)
+    VALUES (1, 'bad-500', 'user', 'boom', ?, 1, 0)
+  `).run(T / 1000);
+  f.close();
+  const data = reader.readHistoryData({
+    conversations: [conversation("agent-a", "bad-500")],
+    root: f.hermes,
+    timeZone: "Asia/Tokyo",
+  });
+  assert.deepEqual(data.messages, []);
+  assert.deepEqual(data.readSessions, []);
+});
+
 test("a database that fails mid-read drops all its rows and keeps the other databases", t => {
   const f = createFixture(t);
   const bad = f.database(undefined, FAILING_VIEW_SCHEMA);

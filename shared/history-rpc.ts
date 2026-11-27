@@ -34,7 +34,7 @@ export const historyDaysResultSchema = z.object({
   skippedDatabases: z.array(z.string()),
   /** True when the conversation directory hit its page limit before the last page. */
   directoryPartial: z.boolean(),
-  /** Rows in this answer that came only from the plugin's archive, not from this fast read. */
+  /** Rows from sessions this fast read did not complete (Hermes deleted or could not read them). */
   fromCache: z.number().int().nonnegative(),
   /** The archive could not be read or written; the answer is the fast read alone. */
   cacheError: z.boolean().optional(),
@@ -60,7 +60,7 @@ export const historyDayResultSchema = z.object({
   rows: z.array(historyDayRowSchema),
   /** True when the conversation directory hit its page limit before the last page. */
   directoryPartial: z.boolean(),
-  /** Rows in this answer that came only from the plugin's archive, not from this fast read. */
+  /** Rows from sessions this fast read did not complete (Hermes deleted or could not read them). */
   fromCache: z.number().int().nonnegative(),
   /** The archive could not be read or written; the answer is the fast read alone. */
   cacheError: z.boolean().optional(),

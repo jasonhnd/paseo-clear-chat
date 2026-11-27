@@ -2,13 +2,12 @@ import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { historyDayRpc, historyDaysRpc } from "../shared/history-rpc";
 import {
   HistoryArchive,
-  archiveKey,
   countByDay,
   rowsOnDay,
   type ArchiveMerge,
 } from "./history-archive";
 import { listHistoryConversations } from "./history-conversations";
-import { readHistoryData, zoneDayKey, type HistoryMessageRow } from "./history-reader";
+import { readHistoryData, zoneDayKey } from "./history-reader";
 
 /**
  * The two history RPCs, registered only when the host accepts them.
@@ -26,10 +25,11 @@ import { readHistoryData, zoneDayKey, type HistoryMessageRow } from "./history-r
  * daemon never serves half a surface. The client also asks for both calls or neither
  * (`createHistorySource` reports unsupported unless both exist).
  *
- * Each handler reads Hermes first, merges those rows into the plugin's archive, and answers
- * from the archive: a day Hermes has pruned still has its count and its text. If the archive
- * is unavailable (directory cannot be created, a write fails), the answer comes from the
- * fast rows alone and carries `cacheError: true`; the RPC itself still succeeds.
+ * The days RPC reads Hermes, aligns the archive with every session that read completed, and
+ * answers from the archive. The day RPC is read-only: it answers the fast rows for the
+ * sessions this read completed plus the archived rows of sessions Hermes no longer has, and
+ * writes nothing. If the archive is unavailable, the answer comes from the fast rows alone
+ * and carries `cacheError: true`; the RPC itself still succeeds.
  */
 
 export interface HistoryHandlerOptions {
@@ -59,24 +59,8 @@ export function registerHistoryHandlers(
       requireCompleteRegistration(registration);
       const { conversations, directoryPartial } = await listHistoryConversations(context.paseo);
       const fast = readHistoryData({ conversations, root: options.root, timeZone: input.timeZone });
-      const merged = await archive.merge(fast.messages);
-      const flags = archiveFlags(merged);
-      if (merged.cacheError) {
-        return {
-          ...countByDay(fast.messages, input.timeZone),
-          fastConversations: fast.fastConversations,
-          slowConversationIds: fast.slowConversationIds,
-          skippedDatabases: fast.skippedDatabases,
-          directoryPartial,
-          readMs: fast.readMs,
-          fromCache: 0,
-          ...flags,
-        };
-      }
-      const fastKeys = keysOf(fast.messages);
-      const fromCache = merged.messages.reduce(
-        (count, record) => count + (fastKeys.has(record.key) ? 0 : 1), 0,
-      );
+      const merged = await archive.merge(fast.messages, fast.readSessions);
+      const readSessions = new Set(fast.readSessions);
       return {
         ...countByDay(merged.messages, input.timeZone),
         fastConversations: fast.fastConversations,
@@ -84,8 +68,10 @@ export function registerHistoryHandlers(
         skippedDatabases: fast.skippedDatabases,
         directoryPartial,
         readMs: fast.readMs,
-        fromCache,
-        ...flags,
+        fromCache: merged.messages.reduce(
+          (count, record) => count + (readSessions.has(record.sessionId) ? 0 : 1), 0,
+        ),
+        ...archiveFlags(merged),
       };
     });
     server.handle(historyDayRpc, async (input, context) => {
@@ -96,28 +82,33 @@ export function registerHistoryHandlers(
         input.day,
       );
       // The reader's day window reaches into the neighbouring days on purpose; only rows on
-      // the requested local day belong in that day's month file and answer.
+      // the requested local day belong in that day's answer.
       const fastDay = fast.messages.filter(row => zoneDayKey(row.at, input.timeZone) === input.day);
-      const merged = await archive.merge(fastDay);
-      const flags = archiveFlags(merged);
-      if (merged.cacheError) {
-        return { rows: rowsOnDay(fastDay, input.day, input.timeZone), directoryPartial, fromCache: 0, ...flags };
+      const store = await archive.read();
+      if (store.cacheError) {
+        return {
+          rows: rowsOnDay(fastDay, input.day, input.timeZone),
+          directoryPartial,
+          fromCache: 0,
+          cacheError: true,
+        };
       }
-      const fastKeys = keysOf(fastDay);
-      const records = merged.messages
-        .filter(record => typeof record.text === "string" && record.text.length > 0
-          && zoneDayKey(record.at, input.timeZone) === input.day)
-        .sort((left, right) => right.at - left.at
-          || (left.agentId < right.agentId ? -1 : left.agentId > right.agentId ? 1 : 0)
-          || ((left.text ?? "") < (right.text ?? "") ? -1 : (left.text ?? "") > (right.text ?? "") ? 1 : 0));
-      const fromCache = records.reduce(
-        (count, record) => count + (fastKeys.has(record.key) ? 0 : 1), 0,
-      );
+      const readSessions = new Set(fast.readSessions);
+      // Sessions Hermes still has are already covered by this fast read; the archive only
+      // adds sessions this read did not complete (deleted by Hermes, or unreadable now).
+      const archived = store.messages.filter(record => !readSessions.has(record.sessionId)
+        && typeof record.text === "string" && record.text.length > 0
+        && zoneDayKey(record.at, input.timeZone) === input.day);
+      const rows = [
+        ...rowsOnDay(fastDay, input.day, input.timeZone),
+        ...rowsOnDay(archived, input.day, input.timeZone),
+      ].sort((left, right) => right.at - left.at
+        || (left.agentId < right.agentId ? -1 : left.agentId > right.agentId ? 1 : 0)
+        || (left.text < right.text ? -1 : left.text > right.text ? 1 : 0));
       return {
-        rows: records.map(record => ({ agentId: record.agentId, at: record.at, text: record.text! })),
+        rows,
         directoryPartial,
-        fromCache,
-        ...flags,
+        fromCache: archived.length,
       };
     });
     registration.complete = true;
@@ -128,10 +119,6 @@ export function registerHistoryHandlers(
     registration.complete = false;
     return false;
   }
-}
-
-function keysOf(messages: readonly HistoryMessageRow[]): Set<string> {
-  return new Set(messages.map(message => archiveKey(message.sessionId, message.at, message.text)));
 }
 
 function archiveFlags(merged: ArchiveMerge): { cacheError?: boolean; cacheFull?: string[] } {

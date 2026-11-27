@@ -67,8 +67,8 @@ const SESSION_COLUMNS = ["id"] as const;
 const SESSION_BATCH = 500;
 /**
  * Busy timeout for the read-only open. SQLite's busy handler overshoots the budget (250 ms
- * waits about a second on the measured hosts), so this stays small: a locked database costs
- * at most about a second, and the reader is synchronous.
+ * waits about a second or more on the measured hosts, per locked database), so this stays
+ * small: a locked database costs about that long, and the reader is synchronous.
  */
 const OPEN_TIMEOUT_MS = 250;
 const DAY_WINDOW_BEFORE_MS = 24 * 60 * 60 * 1000;
@@ -129,6 +129,8 @@ export type HistoryDaySnapshot = Omit<
 
 export interface HistoryDataSnapshot {
   messages: HistoryMessageRow[];
+  /** Sessions whose database was read completely, even when they had no messages. */
+  readSessions: string[];
   fastConversations: number;
   slowConversationIds: string[];
   skippedDatabases: string[];
@@ -137,6 +139,7 @@ export interface HistoryDataSnapshot {
 
 interface HistoryRead {
   messages: HistoryMessage[];
+  readSessions: string[];
   fastConversations: number;
   slowConversationIds: string[];
   skippedDatabases: string[];
@@ -174,6 +177,7 @@ export function readHistoryData(options: HistoryReaderOptions, day?: string): Hi
   const read = readHistory(options, day === undefined ? undefined : dayScope(day));
   return {
     messages: read.messages.map(({ sessionId, agentId, at, text }) => ({ sessionId, agentId, at, text })),
+    readSessions: read.readSessions,
     fastConversations: read.fastConversations,
     slowConversationIds: read.slowConversationIds,
     skippedDatabases: read.skippedDatabases,
@@ -328,6 +332,7 @@ function readHistory(options: HistoryReaderOptions, scope?: DayScope): HistoryRe
 
   return {
     messages,
+    readSessions: [...readSessions],
     fastConversations,
     slowConversationIds,
     skippedDatabases,
