@@ -65,6 +65,12 @@ const MESSAGE_COLUMNS = [
 ] as const;
 const SESSION_COLUMNS = ["id"] as const;
 const SESSION_BATCH = 500;
+/**
+ * Busy timeout for the read-only open. SQLite's busy handler overshoots the budget (250 ms
+ * waits about a second on the measured hosts), so this stays small: a locked database costs
+ * at most about a second, and the reader is synchronous.
+ */
+const OPEN_TIMEOUT_MS = 250;
 const DAY_WINDOW_BEFORE_MS = 24 * 60 * 60 * 1000;
 const DAY_WINDOW_AFTER_MS = 48 * 60 * 60 * 1000;
 
@@ -105,9 +111,29 @@ interface DayScope {
 
 type HistoryMessage = DedupedRow & { agentId: string };
 
-/** What the reader itself knows; the RPC handler adds the directory's completeness flag. */
-export type HistoryDaysSnapshot = Omit<HistoryDaysResult, "directoryPartial">;
-export type HistoryDaySnapshot = Omit<HistoryDayResult, "directoryPartial">;
+/** One message with the session identity the archive needs for its key. */
+export interface HistoryMessageRow {
+  sessionId: string;
+  agentId: string;
+  at: number;
+  text: string;
+}
+
+/** What the reader itself knows; the RPC handlers add the directory and archive flags. */
+export type HistoryDaysSnapshot = Omit<
+  HistoryDaysResult, "directoryPartial" | "fromCache" | "cacheError" | "cacheFull"
+>;
+export type HistoryDaySnapshot = Omit<
+  HistoryDayResult, "directoryPartial" | "fromCache" | "cacheError" | "cacheFull"
+>;
+
+export interface HistoryDataSnapshot {
+  messages: HistoryMessageRow[];
+  fastConversations: number;
+  slowConversationIds: string[];
+  skippedDatabases: string[];
+  readMs: number;
+}
 
 interface HistoryRead {
   messages: HistoryMessage[];
@@ -132,6 +158,22 @@ export function readHistoryDays(options: HistoryReaderOptions): HistoryDaysSnaps
     days,
     firstDay: days[0]?.day ?? null,
     lastDay: days.at(-1)?.day ?? null,
+    fastConversations: read.fastConversations,
+    slowConversationIds: read.slowConversationIds,
+    skippedDatabases: read.skippedDatabases,
+    readMs: read.readMs,
+  };
+}
+
+/**
+ * The raw fast-path rows, for the archive. Passing a day narrows the SQL window the same way
+ * the day RPC does; the caller still filters by the exact zone day before merging, because
+ * the window intentionally reaches into the neighbouring days.
+ */
+export function readHistoryData(options: HistoryReaderOptions, day?: string): HistoryDataSnapshot {
+  const read = readHistory(options, day === undefined ? undefined : dayScope(day));
+  return {
+    messages: read.messages.map(({ sessionId, agentId, at, text }) => ({ sessionId, agentId, at, text })),
     fastConversations: read.fastConversations,
     slowConversationIds: read.slowConversationIds,
     skippedDatabases: read.skippedDatabases,
@@ -429,10 +471,10 @@ function openReadOnlyDatabase(
   sqlite: SqliteModule, path: string, target: string | URL,
 ): DatabaseSync {
   try {
-    return new sqlite.DatabaseSync(target, { readOnly: true });
+    return new sqlite.DatabaseSync(target, { readOnly: true, timeout: OPEN_TIMEOUT_MS });
   } catch (error) {
     if (!(target instanceof URL) || !isUnsupportedUrlPath(error)) throw error;
-    return new sqlite.DatabaseSync(path, { readOnly: true });
+    return new sqlite.DatabaseSync(path, { readOnly: true, timeout: OPEN_TIMEOUT_MS });
   }
 }
 

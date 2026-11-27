@@ -123,8 +123,10 @@ function createFixture(t, { hermesName = "hermes" } = {}) {
  * It answers only what `openDatabase` asks: the column pragmas and the session index.
  */
 function fakeSqliteModule({ rejectUrl = false, error = null } = {}) {
+  const calls = [];
   class FakeDatabaseSync {
-    constructor(target) {
+    constructor(target, options) {
+      calls.push({ target, options });
       if (rejectUrl && target instanceof URL) throw error;
       this.target = target;
       this.isOpen = true;
@@ -144,7 +146,7 @@ function fakeSqliteModule({ rejectUrl = false, error = null } = {}) {
     }
     close() { this.isOpen = false; }
   }
-  return { DatabaseSync: FakeDatabaseSync };
+  return { DatabaseSync: FakeDatabaseSync, calls };
 }
 
 function withSqliteModule(t, module) {
@@ -729,6 +731,47 @@ test("the reader skips a database when a URL open fails for an unclassified reas
   assert.equal(days.fastConversations, 0);
   assert.deepEqual(days.slowConversationIds, ["agent-a"]);
   assert.deepEqual(days.skippedDatabases, ["state.db"]);
+});
+
+function openFileDescriptors() {
+  for (const directory of ["/dev/fd", "/proc/self/fd"]) {
+    try {
+      return fs.readdirSync(directory).length;
+    } catch {
+      // Try the other platform's descriptor directory.
+    }
+  }
+  return null;
+}
+
+test("isWalStore closes every descriptor it opens", t => {
+  const f = createFixture(t);
+  const db = f.database().session("s1");
+  db.db.exec("PRAGMA journal_mode=WAL");
+  db.add({ at: T, text: "descriptor check" });
+  f.close();
+  const before = openFileDescriptors();
+  assert.notEqual(before, null, "this platform exposes its open file descriptors");
+  for (let index = 0; index < 500; index += 1) {
+    reader.openTargetForTests(db.path);
+    reader.openTargetForTests(join(f.hermes, "missing.db"));
+    reader.openTargetForTests(f.hermes);
+  }
+  assert.equal(openFileDescriptors(), before);
+});
+
+test("every read-only open carries the busy timeout", t => {
+  const f = createFixture(t);
+  const db = f.database().session("s1");
+  db.add({ at: T, text: "timeout check" });
+  f.close();
+  const module = fakeSqliteModule();
+  withSqliteModule(t, module);
+  const days = readDays(f, [conversation("agent-a", "s1")]);
+  assert.equal(days.fastConversations, 1);
+  assert.equal(module.calls.length, 1);
+  assert.equal(module.calls[0].options.readOnly, true);
+  assert.equal(module.calls[0].options.timeout, 250);
 });
 
 test("no server module imports node:sqlite as a value, so loading the plugin never needs it", () => {
