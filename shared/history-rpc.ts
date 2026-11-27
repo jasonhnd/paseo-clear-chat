@@ -32,6 +32,8 @@ export const historyDaysResultSchema = z.object({
   slowConversationIds: z.array(z.string()),
   /** Hermes databases that were open but unreadable, named relative to the Hermes root. */
   skippedDatabases: z.array(z.string()),
+  /** True when the conversation directory hit its page limit before the last page. */
+  directoryPartial: z.boolean(),
   readMs: z.number().nonnegative(),
 });
 
@@ -50,6 +52,8 @@ export const historyDayRowSchema = z.object({
 export const historyDayResultSchema = z.object({
   /** Newest first. */
   rows: z.array(historyDayRowSchema),
+  /** True when the conversation directory hit its page limit before the last page. */
+  directoryPartial: z.boolean(),
 });
 
 export const historyDaysRpc = defineRpc({

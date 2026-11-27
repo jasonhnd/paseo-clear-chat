@@ -9,6 +9,11 @@ import type { HistoryConversation } from "./history-reader";
  * "older than today" — the calendar asks about all of history, so every page is walked.
  * Child agents are skipped: their work belongs to the parent conversation, and a sub-agent
  * reuses no Hermes session of its own to count.
+ *
+ * A page limit reached with more pages left returns `directoryPartial: true`, the same flag
+ * the screen sets. A missing or repeated cursor is a broken directory, and is thrown, exactly
+ * as the screen throws, so the RPC rejects and the client shows its error state rather than
+ * silently counting part of the history.
  */
 
 export const PARENT_AGENT_ID_LABEL = "paseo.parent-agent-id";
@@ -18,10 +23,17 @@ const PAGE_SIZE = 200;
 /** 50 pages is 10,000 conversations, well past any directory seen on a real host. */
 const PAGE_LIMIT = 50;
 
-export async function listHistoryConversations(paseo: PaseoApi): Promise<HistoryConversation[]> {
+export interface HistoryConversationList {
+  conversations: HistoryConversation[];
+  /** True when the walk stopped at the page limit with more pages still reported. */
+  directoryPartial: boolean;
+}
+
+export async function listHistoryConversations(paseo: PaseoApi): Promise<HistoryConversationList> {
   const found = new Map<string, HistoryConversation>();
   const seenCursors = new Set<string>();
   let cursor: string | undefined;
+  let directoryPartial = false;
   for (let page = 0; page < PAGE_LIMIT; page += 1) {
     const result = await paseo.agents.list({
       filter: { includeArchived: true },
@@ -38,13 +50,18 @@ export async function listHistoryConversations(paseo: PaseoApi): Promise<History
       });
     }
     if (!result.pageInfo?.hasMore) break;
+    if (page + 1 === PAGE_LIMIT) {
+      directoryPartial = true;
+      break;
+    }
     const next = result.pageInfo.nextCursor;
-    // A host that repeats a cursor would otherwise loop forever; stop with what was read.
-    if (!next || seenCursors.has(next)) break;
+    if (!next || seenCursors.has(next)) {
+      throw new Error("Conversation directory returned an invalid cursor");
+    }
     seenCursors.add(next);
     cursor = next;
   }
-  return [...found.values()];
+  return { conversations: [...found.values()], directoryPartial };
 }
 
 function lastActiveAt(agent: { lastUserMessageAt?: string | null; updatedAt?: string }): number {

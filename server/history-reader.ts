@@ -2,6 +2,7 @@ import { existsSync, readdirSync, type Dirent } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
+import { pathToFileURL } from "node:url";
 import { localDateKey } from "../client/local-day";
 import { classifyUserMessage, isEmptyMessageText } from "../client/user-message-kind";
 import type { HistoryDayResult, HistoryDaysResult } from "../shared/history-rpc";
@@ -19,13 +20,20 @@ import type { HistoryDayResult, HistoryDaysResult } from "../shared/history-rpc"
  * - a live row absorbs every compacted copy at the same timestamp, even when a compaction
  *   summary changed the live text;
  * - compacted copies with no live row are one message only when their text matches;
+ * - a row whose newest copy is removed (`active = 0 AND compacted = 0`: rewound or replaced)
+ *   is not shown. The approximation here is the same session, timestamp and flattened text
+ *   with a larger row id: a removed copy that matches a visible row that way hides it;
  * - rows marked `display_metadata.model_only` are not shown, and neither are blank rows;
  * - structured content is flattened the way Hermes flattens it: each segment's `text`, or a
  *   `type: "text"` segment's `content`, or the segment itself when it is a string.
  *
- * Nothing here writes: every handle is `readOnly`, every statement is a `SELECT` or a
+ * Nothing here writes: every handle is opened read-only, every statement is a `SELECT` or a
  * schema-reading pragma, and a database that cannot be opened or lacks an expected column is
- * skipped so its conversations fall back to the slow timeline path.
+ * skipped so its conversations fall back to the slow timeline path. A database whose `-wal`,
+ * `-shm` and `-journal` side files are all absent opens through `mode=ro&immutable=1`, so
+ * SQLite does not create those files next to someone else's data; when any exists, the
+ * ordinary read-only open is used because immutable would ignore live WAL content or a
+ * journal that needs recovery.
  */
 
 /** One Paseo conversation, reduced to what the fast path needs. */
@@ -72,14 +80,18 @@ interface OpenDatabase {
 }
 
 interface RawMessageRow {
+  id: number;
   sessionId: string;
   content: string | null;
   timestamp: number;
   active: boolean;
+  compacted: boolean;
 }
 
 interface DedupedRow {
+  id: number;
   sessionId: string;
+  timestamp: number;
   at: number;
   text: string;
 }
@@ -92,6 +104,10 @@ interface DayScope {
 
 type HistoryMessage = DedupedRow & { agentId: string };
 
+/** What the reader itself knows; the RPC handler adds the directory's completeness flag. */
+export type HistoryDaysSnapshot = Omit<HistoryDaysResult, "directoryPartial">;
+export type HistoryDaySnapshot = Omit<HistoryDayResult, "directoryPartial">;
+
 interface HistoryRead {
   messages: HistoryMessage[];
   fastConversations: number;
@@ -101,7 +117,7 @@ interface HistoryRead {
 }
 
 /** Every message the person typed on each day the history covers, counted on the reader's clock. */
-export function readHistoryDays(options: HistoryReaderOptions): HistoryDaysResult {
+export function readHistoryDays(options: HistoryReaderOptions): HistoryDaysSnapshot {
   const read = readHistory(options);
   const counts = new Map<string, number>();
   for (const message of read.messages) {
@@ -123,7 +139,7 @@ export function readHistoryDays(options: HistoryReaderOptions): HistoryDaysResul
 }
 
 /** The person's own messages on one day, newest first, each attributed to one conversation. */
-export function readHistoryDay(options: HistoryDayOptions): HistoryDayResult {
+export function readHistoryDay(options: HistoryDayOptions): HistoryDaySnapshot {
   const read = readHistory(options, dayScope(options.day));
   const rows = read.messages
     .filter(message => zoneDayKey(message.at, options.timeZone) === options.day)
@@ -248,9 +264,9 @@ function readHistory(options: HistoryReaderOptions, scope?: DayScope): HistoryRe
         }
         for (const sessionId of sessionIds) readSessions.add(sessionId);
       } catch {
-        // A schema check cannot see every failure (a malformed `display_metadata` value
-        // makes `json_extract` throw, for example). Drop this database's rows whole and
-        // let its conversations use the slow path, exactly as an unopenable file does.
+        // A schema check cannot see every failure (a corrupt page, or a statement that
+        // fails mid-iteration). Drop this database's rows whole and let its conversations
+        // use the slow path, exactly as an unopenable file does.
         messages.length = before;
         skippedDatabases.push(database.label);
       }
@@ -311,15 +327,23 @@ export function loadSqlite(): SqliteModule | null {
   }
 }
 
+let openHandles = 0;
+
+/** Test hook: handles this module opened and has not closed yet. */
+export function openDatabaseHandlesForTests(): number {
+  return openHandles;
+}
+
 function openDatabase(entry: DatabaseEntry): OpenDatabase | null {
   const sqlite = loadSqlite();
   if (!sqlite) return null;
   let db: DatabaseSync;
   try {
-    db = new sqlite.DatabaseSync(entry.path, { readOnly: true });
+    db = new sqlite.DatabaseSync(openTarget(entry.path), { readOnly: true });
   } catch {
     return null;
   }
+  openHandles += 1;
   try {
     if (!hasColumns(db, "sessions", SESSION_COLUMNS)) throw new Error("sessions columns");
     if (!hasColumns(db, "messages", MESSAGE_COLUMNS)) throw new Error("messages columns");
@@ -332,6 +356,26 @@ function openDatabase(entry: DatabaseEntry): OpenDatabase | null {
     closeQuietly(db);
     return null;
   }
+}
+
+/**
+ * Where to open a database read-only.
+ *
+ * When `-wal`, `-shm` and `-journal` are all absent, no writer is attached and every
+ * committed row is in the main file, so `immutable=1` is safe and SQLite does not create
+ * those side files next to someone else's data. When any exists, a writer may be live, the
+ * WAL may hold newer rows, or a journal may need recovery; immutable would ignore them, so
+ * the plain path is used and SQLite's ordinary read-only open handles them. `pathToFileURL`
+ * escapes spaces, `#` and `?`, so only the query string is read as URI parameters.
+ */
+function openTarget(path: string): string | URL {
+  // A rollback journal also means a writer stopped mid-transaction; immutable must not
+  // skip its recovery, so that case takes the ordinary read-only open too.
+  if (existsSync(`${path}-wal`) || existsSync(`${path}-shm`) || existsSync(`${path}-journal`)) return path;
+  const url = pathToFileURL(path);
+  url.searchParams.set("mode", "ro");
+  url.searchParams.set("immutable", "1");
+  return url;
 }
 
 function hasColumns(db: DatabaseSync, table: string, required: readonly string[]): boolean {
@@ -349,28 +393,85 @@ function* readUserRows(
   const window = scope ? " AND timestamp >= ? AND timestamp < ?" : "";
   for (let start = 0; start < sessionIds.length; start += SESSION_BATCH) {
     const chunk = sessionIds.slice(start, start + SESSION_BATCH);
-    const sql = `SELECT session_id, content, timestamp, active FROM messages
+    const sql = `SELECT id, session_id, content, timestamp, active, compacted FROM messages
       WHERE role = 'user' AND (active = 1 OR compacted = 1)
-        AND COALESCE(json_extract(display_metadata, '$.model_only'), 0) = 0${window}
+        AND COALESCE(json_extract(CASE WHEN json_valid(display_metadata) THEN display_metadata ELSE '{}' END, '$.model_only'), 0) = 0${window}
         AND session_id IN (${chunk.map(() => "?").join(",")})
       ORDER BY session_id, id`;
     const parameters: Array<string | number> = scope
       ? [scope.fromSeconds, scope.untilSeconds, ...chunk]
       : [...chunk];
     for (const row of db.prepare(sql).iterate(...parameters)) {
-      yield {
-        sessionId: String(row.session_id),
-        content: typeof row.content === "string" ? row.content : null,
-        timestamp: Number(row.timestamp),
-        active: Number(row.active) === 1,
-      };
+      const parsed = rawMessageRow(row);
+      if (parsed) yield parsed;
     }
   }
+}
+
+/**
+ * The rows Hermes treats as removed (`active = 0 AND compacted = 0`: rewound, or replaced by
+ * a newer copy). Only their identity is needed: a removed copy hides a visible message when
+ * the session, timestamp and flattened text match and its id is larger. This is the simple
+ * approximation of `_dedupe_display_generations(drop_removed=True)`: Hermes also folds copies
+ * by `message_uid` and stores a display identity, neither of which this reader uses.
+ *
+ * `display_metadata` is not filtered here on purpose: Hermes builds a removed row's identity
+ * from its content, not from the model-only flag.
+ */
+function* readRemovedRows(
+  db: DatabaseSync, sessionIds: readonly string[], scope: DayScope | undefined,
+): Generator<RawMessageRow> {
+  const window = scope ? " AND timestamp >= ? AND timestamp < ?" : "";
+  for (let start = 0; start < sessionIds.length; start += SESSION_BATCH) {
+    const chunk = sessionIds.slice(start, start + SESSION_BATCH);
+    const sql = `SELECT id, session_id, content, timestamp, active, compacted FROM messages
+      WHERE role = 'user' AND active = 0 AND compacted = 0${window}
+        AND session_id IN (${chunk.map(() => "?").join(",")})
+      ORDER BY session_id, id`;
+    const parameters: Array<string | number> = scope
+      ? [scope.fromSeconds, scope.untilSeconds, ...chunk]
+      : [...chunk];
+    for (const row of db.prepare(sql).iterate(...parameters)) {
+      const parsed = rawMessageRow(row);
+      if (parsed) yield parsed;
+    }
+  }
+}
+
+/** A row the reader can use; NULL or non-numeric ids and timestamps are skipped. */
+function rawMessageRow(row: Record<string, unknown>): RawMessageRow | null {
+  const id = Number(row.id);
+  if (!Number.isFinite(id)) return null;
+  if (row.timestamp === null || row.timestamp === undefined) return null;
+  const timestamp = Number(row.timestamp);
+  if (!Number.isFinite(timestamp)) return null;
+  return {
+    id,
+    sessionId: String(row.session_id),
+    content: typeof row.content === "string" ? row.content : null,
+    timestamp,
+    active: Number(row.active) === 1,
+    compacted: Number(row.compacted) === 1,
+  };
 }
 
 function readDatabase(
   db: DatabaseSync, sessionIds: readonly string[], timeZone: string | null, scope: DayScope | undefined,
 ): DedupedRow[] {
+  // The newest removed copy of each (session, timestamp, text) identity. Removed rows never
+  // add a message; they only hide a visible copy they are newer than.
+  const removed = new Map<string, number>();
+  for (const raw of readRemovedRows(db, sessionIds, scope)) {
+    const at = Math.round(raw.timestamp * 1000);
+    if (!Number.isFinite(at)) continue;
+    if (scope && zoneDayKey(at, timeZone) !== scope.day) continue;
+    const text = flattenContent(raw.content);
+    if (!text) continue;
+    const key = removedKey(raw.sessionId, raw.timestamp, text);
+    const previous = removed.get(key);
+    if (previous === undefined || raw.id > previous) removed.set(key, raw.id);
+  }
+
   const groups = new Map<string, { live: DedupedRow[]; compacted: Map<string, DedupedRow> }>();
   for (const raw of readUserRows(db, sessionIds, scope)) {
     const at = Math.round(raw.timestamp * 1000);
@@ -384,7 +485,7 @@ function readDatabase(
       group = { live: [], compacted: new Map() };
       groups.set(key, group);
     }
-    const row: DedupedRow = { sessionId: raw.sessionId, at, text };
+    const row: DedupedRow = { id: raw.id, sessionId: raw.sessionId, timestamp: raw.timestamp, at, text };
     if (raw.active) group.live.push(row);
     else if (!group.compacted.has(text)) group.compacted.set(text, row);
   }
@@ -393,7 +494,15 @@ function readDatabase(
     if (group.live.length) deduped.push(...group.live);
     else deduped.push(...group.compacted.values());
   }
-  return keepHumanMessages(deduped);
+  const visible = deduped.filter(row => {
+    const removedId = removed.get(removedKey(row.sessionId, row.timestamp, row.text));
+    return removedId === undefined || removedId <= row.id;
+  });
+  return keepHumanMessages(visible);
+}
+
+function removedKey(sessionId: string, timestamp: number, text: string): string {
+  return `${sessionId}\u0000${timestamp}\u0000${text}`;
 }
 
 function keepHumanMessages(rows: readonly DedupedRow[]): DedupedRow[] {
@@ -455,9 +564,11 @@ function compareText(left: string, right: string): number {
 }
 
 function closeQuietly(db: DatabaseSync): void {
+  if (!db.isOpen) return;
   try {
     db.close();
+    openHandles -= 1;
   } catch {
-    // Already closed, or closed by a failed statement; nothing left to release.
+    // A statement that is still active keeps the handle open; the count stays truthful.
   }
 }

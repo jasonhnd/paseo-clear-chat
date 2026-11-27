@@ -14,9 +14,13 @@ import {
  *     const day = useRpc(historyDayRpc);
  *     const source = createHistorySource({ days, day });
  *
- * `unsupported` means this host cannot answer at all (no RPC surface, or the daemon refused
- * the method). `error` means the call ran and failed, or the answer did not match the
+ * `unsupported` means this host cannot answer at all: there is no call to make (no RPC
+ * surface, or one of the two methods is missing) or the failure carries an explicit
+ * unknown-method code. `error` means the call ran and failed, or the answer did not match the
  * contract. Both let the calendar fall back to the timeline path without a broken screen.
+ *
+ * The source asks for both calls or neither: a host that offers only one method would
+ * otherwise show a calendar whose day view silently disagrees with its counts.
  */
 
 export type HistoryStatus<Snapshot> =
@@ -45,13 +49,17 @@ export function createHistorySource(
   timeZone: string = defaultTimeZone(),
 ): HistorySource {
   const zone = timeZone.trim() || defaultTimeZone();
+  // Both or neither: one missing method makes the whole surface unsupported.
+  const both = typeof calls?.days === "function" && typeof calls?.day === "function";
+  const invokeDays = both ? calls?.days : undefined;
+  const invokeDay = both ? calls?.day : undefined;
   return {
     timeZone: zone,
     days() {
-      return request(calls?.days, historyDaysRpc.output, { timeZone: zone });
+      return request(invokeDays, historyDaysRpc.output, { timeZone: zone });
     },
     day(day) {
-      return request(calls?.day, historyDayRpc.output, { day, timeZone: zone });
+      return request(invokeDay, historyDayRpc.output, { day, timeZone: zone });
     },
   };
 }
@@ -67,15 +75,23 @@ export function defaultTimeZone(): string {
 }
 
 /**
- * True when a failure means "this host has no such method" rather than "the read failed".
- * The host's wording is not part of the contract, so this matches the shapes a missing
- * plugin method has used; anything else stays a plain error.
+ * Codes that mean "this host has no such method". Paseo surfaces a failed RPC as a
+ * `DaemonRpcError` whose `code` comes from the `rpc_error` payload; the daemon also reports
+ * an unregistered plugin method as `handler_error`, which is a failed call, not a missing
+ * surface. Reading the code (never the message) keeps an ordinary read failure from being
+ * mistaken for an old host.
  */
+const UNKNOWN_METHOD_CODES = new Set([
+  "METHOD_NOT_FOUND",
+  "PLUGIN_RPC_METHOD_NOT_FOUND",
+  "UNKNOWN_METHOD",
+  "UNSUPPORTED_METHOD",
+]);
+
 export function isUnsupportedMethod(error: unknown): boolean {
-  const message = error instanceof Error ? error.message
-    : typeof error === "string" ? error : "";
-  return /not supported|unsupported|unknown (?:method|rpc)|method not found|no such (?:method|handler)|no handler/i
-    .test(message);
+  if (!error || typeof error !== "object") return false;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" && UNKNOWN_METHOD_CODES.has(code);
 }
 
 interface ParsedSchema<Snapshot> {

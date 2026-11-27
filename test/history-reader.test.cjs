@@ -34,7 +34,21 @@ const SCHEMA = `
   );
 `;
 
-function createFixture(t) {
+const NULLABLE_TIMESTAMP_SCHEMA = `
+  CREATE TABLE sessions (id TEXT PRIMARY KEY);
+  CREATE TABLE messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT,
+    timestamp REAL,
+    active INTEGER NOT NULL DEFAULT 1,
+    compacted INTEGER NOT NULL DEFAULT 0,
+    display_metadata TEXT
+  );
+`;
+
+function createFixture(t, { hermesName = "hermes" } = {}) {
   const root = fs.mkdtempSync(join(os.tmpdir(), "clear-chat-history-"));
   assert.equal(
     resolve(root).startsWith(`${repositoryRoot}${sep}`),
@@ -42,7 +56,7 @@ function createFixture(t) {
     "a temporary Hermes root must live outside the repository",
   );
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const hermes = join(root, "hermes");
+  const hermes = join(root, hermesName);
   const opened = [];
   function database(profile, schema = SCHEMA) {
     const path = profile
@@ -60,13 +74,15 @@ function createFixture(t) {
         entry.current = id;
         return entry;
       },
-      add({ session = entry.current ?? "s1", text = "hello", at, active = 1, compacted = 0, modelOnly = false, role = "user" }) {
+      add({ session = entry.current ?? "s1", text = "hello", at, active = 1, compacted = 0, modelOnly = false, role = "user", metadata }) {
         db.prepare(`
           INSERT INTO messages (session_id, role, content, timestamp, active, compacted, display_metadata)
           VALUES (?, ?, ?, ?, ?, ?, ?)
         `).run(
-          session, role, text, at / 1000, active, compacted,
-          modelOnly ? JSON.stringify({ model_only: modelOnly === true ? 1 : modelOnly }) : null,
+          session, role, text, at === null ? null : at / 1000, active, compacted,
+          metadata === undefined
+            ? (modelOnly ? JSON.stringify({ model_only: modelOnly === true ? 1 : modelOnly }) : null)
+            : metadata,
         );
         return entry;
       },
@@ -98,6 +114,10 @@ function readDay(fixture, conversations, day, timeZone = "Asia/Tokyo") {
 
 function total(snapshot) {
   return snapshot.days.reduce((sum, entry) => sum + entry.count, 0);
+}
+
+function sha256(path) {
+  return createHash("sha256").update(fs.readFileSync(path)).digest("hex");
 }
 
 const T = Date.UTC(2026, 10, 20, 3, 0, 0); // 2026-11-20 12:00 in Asia/Tokyo
@@ -421,6 +441,145 @@ test("a host without node:sqlite keeps the plugin running and sends every conver
   assert.equal(days.fastConversations, 0);
   assert.deepEqual(days.slowConversationIds, ["agent-1"]);
   assert.equal(days.skippedDatabases.length, 1);
+});
+
+test("one malformed display_metadata row neither drops its database nor hides other rows", t => {
+  const f = createFixture(t);
+  const db = f.database().session("s1");
+  db.add({ at: T, text: "good before" });
+  db.add({ at: T + 1000, text: "bad metadata row", metadata: "{not json" });
+  db.add({ at: T + 2000, text: "good after" });
+  const days = readDays(f, [conversation("agent-a", "s1")]);
+  assert.deepEqual(days.days, [{ day: "2026-11-20", count: 3 }]);
+  assert.deepEqual(days.skippedDatabases, []);
+  assert.equal(days.fastConversations, 1);
+  const detail = readDay(f, [conversation("agent-a", "s1")], "2026-11-20");
+  assert.deepEqual(detail.rows.map(row => row.text), ["good after", "bad metadata row", "good before"]);
+});
+
+test("a removed copy newer than a visible copy hides that message", t => {
+  const f = createFixture(t);
+  const db = f.database().session("s1");
+  db.add({ at: T, text: "withdrawn words", active: 0, compacted: 1 });
+  db.add({ at: T, text: "withdrawn words", active: 0, compacted: 0 });
+  const days = readDays(f, [conversation("agent-a", "s1")]);
+  assert.deepEqual(days.days, []);
+  assert.deepEqual(readDay(f, [conversation("agent-a", "s1")], "2026-11-20").rows, []);
+});
+
+test("a removed copy older than the visible copy does not hide it", t => {
+  const f = createFixture(t);
+  const db = f.database().session("s1");
+  db.add({ at: T, text: "kept words", active: 0, compacted: 0 });
+  db.add({ at: T, text: "kept words", active: 0, compacted: 1 });
+  assert.deepEqual(readDays(f, [conversation("agent-a", "s1")]).days, [{ day: "2026-11-20", count: 1 }]);
+});
+
+test("a removed copy hides only the same session, timestamp and text", t => {
+  const f = createFixture(t);
+  const db = f.database().session("s1");
+  db.add({ at: T, text: "kept words", active: 1, compacted: 0 });
+  db.add({ at: T, text: "different words", active: 0, compacted: 0 });
+  db.add({ at: T + 1000, text: "kept words", active: 0, compacted: 0 });
+  const days = readDays(f, [conversation("agent-a", "s1")]);
+  assert.deepEqual(days.days, [{ day: "2026-11-20", count: 1 }]);
+  assert.deepEqual(readDay(f, [conversation("agent-a", "s1")], "2026-11-20").rows.map(row => row.text), ["kept words"]);
+});
+
+test("a day's detail covers the first minute at UTC+14 and the last hour at UTC-12", t => {
+  const f = createFixture(t);
+  const db = f.database();
+  const kiritimati = Date.UTC(2026, 10, 19, 10, 30); // 2026-11-20 00:30 at UTC+14
+  const baker = Date.UTC(2026, 10, 21, 11, 30); // 2026-11-20 23:30 at UTC-12
+  const newYork = Date.UTC(2026, 10, 21, 4, 30); // 2026-11-20 23:30 at UTC-5
+  db.session("s-kiri").add({ at: kiritimati, text: "first minute at UTC+14" });
+  db.session("s-baker").add({ at: baker, text: "last hour at UTC-12" });
+  db.session("s-ny").add({ at: newYork, text: "late evening in New York" });
+  assert.deepEqual(
+    readDay(f, [conversation("agent-kiri", "s-kiri")], "2026-11-20", "Pacific/Kiritimati").rows.map(row => row.text),
+    ["first minute at UTC+14"],
+  );
+  assert.deepEqual(
+    readDay(f, [conversation("agent-baker", "s-baker")], "2026-11-20", "Etc/GMT+12").rows.map(row => row.text),
+    ["last hour at UTC-12"],
+  );
+  assert.deepEqual(
+    readDay(f, [conversation("agent-ny", "s-ny")], "2026-11-20", "America/New_York").rows.map(row => row.text),
+    ["late evening in New York"],
+  );
+});
+
+test("rows with a NULL or non-numeric timestamp are skipped by both RPC shapes", t => {
+  const f = createFixture(t);
+  const db = f.database(undefined, NULLABLE_TIMESTAMP_SCHEMA).session("s1");
+  db.add({ at: null, text: "null timestamp" });
+  db.add({ at: T, text: "real timestamp" });
+  db.db.prepare(`
+    INSERT INTO messages (session_id, role, content, timestamp, active, compacted)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run("s1", "user", "text timestamp", "not a number", 1, 0);
+  const days = readDays(f, [conversation("agent-a", "s1")]);
+  assert.deepEqual(days.days, [{ day: "2026-11-20", count: 1 }]);
+  assert.deepEqual(readDay(f, [conversation("agent-a", "s1")], "1970-01-01").rows, []);
+  assert.deepEqual(readDay(f, [conversation("agent-a", "s1")], "2026-11-20").rows.map(row => row.text), ["real timestamp"]);
+});
+
+test("a Hermes path with spaces, # and ? is escaped before it becomes a file URL", t => {
+  const f = createFixture(t, { hermesName: "hermes dir #1?" });
+  const db = f.database().session("s1");
+  db.db.exec("PRAGMA journal_mode=WAL");
+  db.add({ at: T, text: "escaped path message" });
+  f.close();
+  const before = fs.readdirSync(f.hermes).sort();
+  const days = readDays(f, [conversation("agent-a", "s1")]);
+  assert.deepEqual(days.days, [{ day: "2026-11-20", count: 1 }]);
+  assert.deepEqual(fs.readdirSync(f.hermes).sort(), before);
+});
+
+test("a WAL database with no side files is read without creating any", t => {
+  const f = createFixture(t);
+  const db = f.database().session("s1");
+  db.db.exec("PRAGMA journal_mode=WAL");
+  db.add({ at: T, text: "wal message" });
+  f.close();
+  const databasePath = join(f.hermes, "state.db");
+  const before = { files: fs.readdirSync(f.hermes).sort(), sha: sha256(databasePath) };
+  assert.deepEqual(before.files, ["state.db"], "closing the last connection leaves no -wal/-shm");
+  const days = readDays(f, [conversation("agent-a", "s1")]);
+  assert.deepEqual(days.days, [{ day: "2026-11-20", count: 1 }]);
+  assert.deepEqual(fs.readdirSync(f.hermes).sort(), before.files, "reading must not create side files");
+  assert.equal(sha256(databasePath), before.sha);
+  assert.equal(reader.openDatabaseHandlesForTests(), 0);
+});
+
+test("a live writer's uncheckpointed WAL rows are read without changing either file", t => {
+  const f = createFixture(t);
+  const db = f.database().session("s1");
+  db.db.exec("PRAGMA journal_mode=WAL");
+  db.add({ at: T, text: "checkpointed row" });
+  f.close();
+  const databasePath = join(f.hermes, "state.db");
+  const walPath = `${databasePath}-wal`;
+  const writer = new DatabaseSync(databasePath);
+  try {
+    writer.prepare(`
+      INSERT INTO messages (session_id, role, content, timestamp, active, compacted, display_metadata)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run("s1", "user", "still in the WAL", (T + 1000) / 1000, 1, 0, null);
+    assert.equal(fs.existsSync(walPath), true, "a live writer keeps the WAL file");
+    const before = { main: sha256(databasePath), wal: sha256(walPath) };
+    const days = readDays(f, [conversation("agent-a", "s1")]);
+    assert.deepEqual(days.days, [{ day: "2026-11-20", count: 2 }]);
+    assert.equal(sha256(databasePath), before.main, "the main file is untouched");
+    assert.equal(sha256(walPath), before.wal, "the WAL is untouched: no checkpoint from the reader");
+    assert.equal(reader.openDatabaseHandlesForTests(), 0, "every handle is closed");
+    const checkpoint = writer.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get();
+    assert.equal(checkpoint.busy, 0, "no reader still holds the WAL");
+    assert.equal(checkpoint.checkpointed, checkpoint.log);
+    assert.equal(fs.statSync(walPath).size, 0);
+  } finally {
+    if (writer.isOpen) writer.close();
+  }
 });
 
 test("no server module imports node:sqlite as a value, so loading the plugin never needs it", () => {

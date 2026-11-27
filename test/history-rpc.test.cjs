@@ -93,15 +93,22 @@ test("the history result contracts carry the fields the calendar needs", () => {
     fastConversations: 1,
     slowConversationIds: ["agent-b"],
     skippedDatabases: ["profiles/work/state.db"],
+    directoryPartial: false,
     readMs: 7,
   };
   assert.equal(contracts.historyDaysResultSchema.safeParse(snapshot).success, true);
   assert.equal(contracts.historyDaysResultSchema.safeParse({ ...snapshot, days: [{ day: "2026-11-20", count: -1 }] }).success, false);
   assert.equal(contracts.historyDaysResultSchema.safeParse({ ...snapshot, firstDay: "20 November" }).success, false);
+  assert.equal(contracts.historyDaysResultSchema.safeParse({ ...snapshot, directoryPartial: "no" }).success, false);
+  const { directoryPartial: _ignored, ...withoutPartial } = snapshot;
+  assert.equal(contracts.historyDaysResultSchema.safeParse(withoutPartial).success, false,
+    "directoryPartial is part of the contract, not an optional extra");
   assert.equal(contracts.historyDayResultSchema.safeParse({
     rows: [{ agentId: "agent-a", at: Date.UTC(2026, 10, 20, 3, 0, 0), text: "hello" }],
+    directoryPartial: true,
   }).success, true);
   assert.equal(contracts.historyDayResultSchema.safeParse({ rows: [{ agentId: "agent-a", at: 1 }] }).success, false);
+  assert.equal(contracts.historyDayResultSchema.safeParse({ rows: [], directoryPartial: null }).success, false);
 });
 
 test("the conversation list walks every page, keeps archived agents and skips child agents", async () => {
@@ -119,24 +126,57 @@ test("the conversation list walks every page, keeps archived agents and skips ch
     },
   ];
   const paseo = fakePaseo(pages);
-  const conversations = await conversationsModule.listHistoryConversations(paseo);
+  const { conversations, directoryPartial } = await conversationsModule.listHistoryConversations(paseo);
   assert.deepEqual(conversations.map(entry => entry.id), ["agent-a", "agent-archived"]);
   assert.deepEqual(conversations.map(entry => entry.sessionId), ["s1", null]);
+  assert.equal(directoryPartial, false);
   assert.equal(paseo.calls.length, 2);
   assert.deepEqual(paseo.calls[0].filter, { includeArchived: true });
   assert.equal(paseo.calls[0].page.limit, 200);
   assert.equal(paseo.calls[1].page.cursor, "c1");
 });
 
-test("a repeated agent id is listed once and a repeated cursor stops the walk", async () => {
+test("a page limit reached with more pages left marks the directory partial", async () => {
+  const calls = [];
+  const paseo = {
+    agents: {
+      async list(options) {
+        calls.push(options);
+        const cursor = options.page?.cursor;
+        const index = typeof cursor === "string" ? Number(cursor.replace(/^c/, "")) : 0;
+        return {
+          entries: [agentEntry({ id: `agent-${index}` })],
+          pageInfo: { hasMore: true, nextCursor: `c${index + 1}` },
+        };
+      },
+    },
+  };
+  const { conversations, directoryPartial } = await conversationsModule.listHistoryConversations(paseo);
+  assert.equal(directoryPartial, true);
+  assert.equal(conversations.length, 50);
+  assert.equal(calls.length, 50);
+});
+
+test("a repeated agent id is listed once", async () => {
   const pages = [
     { entries: [agentEntry(), agentEntry({ id: "agent-b" })], pageInfo: { hasMore: true, nextCursor: "c1" } },
-    { entries: [agentEntry(), agentEntry({ id: "agent-c" })], pageInfo: { hasMore: true, nextCursor: "c1" } },
+    { entries: [agentEntry(), agentEntry({ id: "agent-c" })], pageInfo: { hasMore: false, nextCursor: null } },
   ];
-  const paseo = fakePaseo(pages);
-  const conversations = await conversationsModule.listHistoryConversations(paseo);
+  const { conversations, directoryPartial } = await conversationsModule.listHistoryConversations(fakePaseo(pages));
   assert.deepEqual(conversations.map(entry => entry.id), ["agent-a", "agent-b", "agent-c"]);
-  assert.equal(paseo.calls.length, 2);
+  assert.equal(directoryPartial, false);
+});
+
+test("a repeated or missing cursor rejects instead of returning half a directory", async () => {
+  const repeated = [
+    { entries: [agentEntry()], pageInfo: { hasMore: true, nextCursor: "c1" } },
+    { entries: [agentEntry()], pageInfo: { hasMore: true, nextCursor: "c1" } },
+  ];
+  await assert.rejects(conversationsModule.listHistoryConversations(fakePaseo(repeated)),
+    /Conversation directory returned an invalid cursor/);
+  const missing = [{ entries: [agentEntry()], pageInfo: { hasMore: true, nextCursor: null } }];
+  await assert.rejects(conversationsModule.listHistoryConversations(fakePaseo(missing)),
+    /Conversation directory returned an invalid cursor/);
 });
 
 test("the most recent activity stamps a conversation, falling back to updatedAt", async () => {
@@ -148,7 +188,7 @@ test("the most recent activity stamps a conversation, falling back to updatedAt"
     ],
     pageInfo: { hasMore: false, nextCursor: null },
   }];
-  const conversations = await conversationsModule.listHistoryConversations(fakePaseo(pages));
+  const { conversations } = await conversationsModule.listHistoryConversations(fakePaseo(pages));
   assert.deepEqual(conversations.map(entry => [entry.id, entry.lastActiveAt]), [
     ["agent-last", Date.parse("2026-11-21T00:00:00.000Z")],
     ["agent-updated", Date.parse("2026-11-22T00:00:00.000Z")],
@@ -164,6 +204,28 @@ test("registering on a host without an RPC surface is a no-op, not a startup fai
   assert.equal(rpcModule.registerHistoryHandlers({
     handle() { throw new Error("removed RPC"); },
   }), false);
+});
+
+test("a host that refuses the second contract leaves no half-working client surface", async () => {
+  const handlers = new Map();
+  let calls = 0;
+  const server = {
+    handle(contract, handler) {
+      calls += 1;
+      if (calls === 2) throw new Error("removed RPC");
+      handlers.set(contract.name, handler);
+    },
+  };
+  assert.equal(rpcModule.registerHistoryHandlers(server), false);
+  assert.deepEqual([...handlers.keys()], ["history.days"]);
+  // The one contract the host accepted must not serve a half surface.
+  const paseo = { agents: { list: async () => ({ entries: [], pageInfo: { hasMore: false, nextCursor: null } }) } };
+  await assert.rejects(handlers.get("history.days")({ timeZone: "UTC" }, { paseo }),
+    /Clear Chat history reader is unavailable/);
+  // The client asks for both calls or neither; one function alone is unsupported.
+  const source = sourceModule.createHistorySource({ days: async () => ({}) });
+  assert.deepEqual(await source.days(), { status: "unsupported" });
+  assert.deepEqual(await source.day("2026-11-20"), { status: "unsupported" });
 });
 
 test("the handlers answer days and one day from the real reader against a temporary root", async t => {
@@ -186,9 +248,35 @@ test("the handlers answer days and one day from the real reader against a tempor
   assert.equal(days.fastConversations, 1);
   assert.deepEqual(days.slowConversationIds, []);
   assert.deepEqual(days.skippedDatabases, []);
+  assert.equal(days.directoryPartial, false);
 
   const detail = await handlers.get("history.day")({ day: "2026-11-20", timeZone: "Asia/Tokyo" }, { paseo });
   assert.deepEqual(detail.rows.map(row => [row.agentId, row.text]), [["agent-a", "a message from the person"]]);
+  assert.equal(detail.directoryPartial, false);
+});
+
+test("a partial directory reaches both RPC results", async t => {
+  const hermes = createRoot(t);
+  const handlers = new Map();
+  rpcModule.registerHistoryHandlers({ handle(contract, handler) { handlers.set(contract.name, handler); } }, { root: hermes });
+  const paseo = {
+    agents: {
+      async list(options) {
+        const cursor = options.page?.cursor;
+        const index = typeof cursor === "string" ? Number(cursor.replace(/^c/, "")) : 0;
+        return {
+          entries: index === 0 ? [agentEntry()] : [],
+          pageInfo: { hasMore: true, nextCursor: `c${index + 1}` },
+        };
+      },
+    },
+  };
+  const days = await handlers.get("history.days")({ timeZone: "Asia/Tokyo" }, { paseo });
+  assert.equal(days.directoryPartial, true);
+  assert.deepEqual(days.days, [{ day: "2026-11-20", count: 1 }]);
+  const detail = await handlers.get("history.day")({ day: "2026-11-20", timeZone: "Asia/Tokyo" }, { paseo });
+  assert.equal(detail.directoryPartial, true);
+  assert.equal(detail.rows.length, 1);
 });
 
 test("a failing conversation list rejects the call so the client can show an error", async t => {
@@ -204,16 +292,32 @@ test("the client reports unsupported when the host has no RPC surface", async ()
   assert.deepEqual(await source.days(), { status: "unsupported" });
   assert.deepEqual(await source.day("2026-11-20"), { status: "unsupported" });
   const partial = sourceModule.createHistorySource({ days: async () => ({}) }, "Asia/Tokyo");
-  assert.equal((await partial.day("2026-11-20")).status, "unsupported");
+  assert.deepEqual(await partial.days(), { status: "unsupported" });
+  assert.deepEqual(await partial.day("2026-11-20"), { status: "unsupported" });
 });
 
-test("the client turns a missing method and a failed call into distinct states", async () => {
+test("the client separates an explicit unknown-method code from a failed call", async () => {
+  const snapshot = {
+    days: [], firstDay: null, lastDay: null, fastConversations: 0,
+    slowConversationIds: [], skippedDatabases: [], directoryPartial: false, readMs: 1,
+  };
+  const unavailable = Object.assign(new Error("no such method"), { code: "METHOD_NOT_FOUND" });
   const missing = sourceModule.createHistorySource({
-    days: async () => { throw new Error("Plugin RPC method history.days is not supported"); },
+    days: async () => { throw unavailable; },
+    day: async () => snapshot,
   });
   assert.deepEqual(await missing.days(), { status: "unsupported" });
+
+  // Text that merely says "not supported" is a failed read, not a missing surface.
+  const textOnly = sourceModule.createHistorySource({
+    days: async () => { throw new Error("Plugin RPC method history.days is not supported"); },
+    day: async () => ({ rows: [], directoryPartial: false }),
+  });
+  assert.deepEqual(await textOnly.days(), { status: "error" });
+  const handlerError = Object.assign(new Error("Request failed: read error"), { code: "handler_error" });
   const failed = sourceModule.createHistorySource({
-    days: async () => { throw new Error("the daemon closed the connection"); },
+    days: async () => { throw handlerError; },
+    day: async () => ({ rows: [], directoryPartial: false }),
   });
   assert.deepEqual(await failed.days(), { status: "error" });
 });
@@ -236,14 +340,15 @@ test("the client returns the parsed snapshot and sends the source's zone with ev
     fastConversations: 1,
     slowConversationIds: [],
     skippedDatabases: [],
+    directoryPartial: false,
     readMs: 4,
   };
   const source = sourceModule.createHistorySource({
     days: async input => { seen.push(["days", input]); return snapshot; },
-    day: async input => { seen.push(["day", input]); return { rows: [] }; },
+    day: async input => { seen.push(["day", input]); return { rows: [], directoryPartial: false }; },
   }, "America/New_York");
   assert.deepEqual(await source.days(), { status: "ready", snapshot });
-  assert.deepEqual(await source.day("2026-11-20"), { status: "ready", snapshot: { rows: [] } });
+  assert.deepEqual(await source.day("2026-11-20"), { status: "ready", snapshot: { rows: [], directoryPartial: false } });
   assert.deepEqual(seen, [
     ["days", { timeZone: "America/New_York" }],
     ["day", { day: "2026-11-20", timeZone: "America/New_York" }],
@@ -251,10 +356,11 @@ test("the client returns the parsed snapshot and sends the source's zone with ev
   assert.equal(source.timeZone, "America/New_York");
 });
 
-test("the client falls back to a usable zone and recognises the unsupported wording", () => {
+test("the client falls back to a usable zone and reads only explicit unknown-method codes", () => {
   assert.match(sourceModule.createHistorySource(null).timeZone, /\S/);
-  assert.equal(sourceModule.isUnsupportedMethod(new Error("unknown method history.days")), true);
-  assert.equal(sourceModule.isUnsupportedMethod(new Error("method not found")), true);
-  assert.equal(sourceModule.isUnsupportedMethod(new Error("timeout")), false);
+  assert.equal(sourceModule.isUnsupportedMethod(Object.assign(new Error("x"), { code: "METHOD_NOT_FOUND" })), true);
+  assert.equal(sourceModule.isUnsupportedMethod(Object.assign(new Error("x"), { code: "PLUGIN_RPC_METHOD_NOT_FOUND" })), true);
+  assert.equal(sourceModule.isUnsupportedMethod(new Error("unknown method history.days")), false);
+  assert.equal(sourceModule.isUnsupportedMethod(Object.assign(new Error("x"), { code: "handler_error" })), false);
   assert.equal(sourceModule.isUnsupportedMethod(null), false);
 });
