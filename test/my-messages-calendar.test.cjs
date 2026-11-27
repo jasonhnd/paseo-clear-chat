@@ -106,3 +106,72 @@ test("the RPC and timeline rows merge by message identity, not by page sequence"
   assert.deepEqual(merged.map(row => row.text), ["same message", "only in the RPC", "only in the timeline"]);
   assert.equal(merged[0].title, null, "the first occurrence keeps its row data");
 });
+
+const feedModule = createTsModules().load(join(resolve(__dirname, ".."), "client/my-messages-calendar-feed.ts"));
+const settle = () => new Promise(resolve => setImmediate(resolve));
+
+function feedDays(days) {
+  const entries = Object.entries(days).map(([day, count]) => ({ day, count })).sort((a, b) => (a.day < b.day ? -1 : 1));
+  return {
+    days: entries, firstDay: entries[0]?.day ?? null, lastDay: entries.at(-1)?.day ?? null,
+    fastConversations: 1, slowConversationIds: [], skippedDatabases: [], directoryPartial: false,
+    fromCache: 0, readMs: 1,
+  };
+}
+
+test("displayed counts add the overwritten fallback delta once", () => {
+  assert.equal(feedModule.displayedDayCount({ day: 3 }, { day: 1 }, "day"), 4);
+  assert.equal(feedModule.displayedDayCount({ day: 3 }, { day: -1 }, "day"), 2);
+  assert.equal(feedModule.displayedDayCount({ day: 3 }, {}, "day"), 3);
+});
+
+test("a stopped calendar session never publishes a late days answer", async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const snapshots = [];
+  const feed = feedModule.createMyMessagesCalendarFeed(() => 1000);
+  const session = feed.mount({
+    hostId: "host",
+    agents: {},
+    history: { available: true, timeZone: "UTC", days: () => gate, day: async () => ({ status: "ready", snapshot: { rows: [], directoryPartial: false, fromCache: 0 } }) },
+    publish: state => snapshots.push(state),
+  });
+  await settle();
+  const before = snapshots.length;
+  session.stop();
+  release({ status: "ready", snapshot: feedDays({ "2026-03-15": 1 }) });
+  await settle();
+  assert.equal(snapshots.length, before, "no publication after stop");
+  feed.stop();
+});
+
+test("the detail cache keeps at most 120 days and re-reads the evicted day", async () => {
+  const days = {};
+  for (let index = 0; index < 121; index += 1) {
+    const date = new Date(2026, 0, 1 + index);
+    days[`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`] = 1;
+  }
+  let dayCalls = 0;
+  const feed = feedModule.createMyMessagesCalendarFeed(() => new Date(2026, 2, 15, 12).getTime());
+  const session = feed.mount({
+    hostId: "host",
+    agents: {},
+    history: {
+      available: true, timeZone: "UTC",
+      days: async () => ({ status: "ready", snapshot: feedDays(days) }),
+      day: async () => { dayCalls += 1; return { status: "ready", snapshot: { rows: [], directoryPartial: false, fromCache: 0 } }; },
+    },
+    publish: () => {},
+  });
+  await session.ready;
+  const keys = Object.keys(days).filter(day => day !== "2026-03-15").sort();
+  for (const day of keys) {
+    session.select(day);
+    await settle();
+  }
+  const afterAll = dayCalls;
+  session.select("2026-03-15");
+  await settle();
+  assert.equal(dayCalls, afterAll + 1, "the oldest day was evicted and read again");
+  feed.stop();
+});

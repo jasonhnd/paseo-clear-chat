@@ -93,7 +93,7 @@
       "dayCellEmpty": "{{date}}、メッセージなし",
       "dayTooltip": "{{date}} · {{count}} 件",
       "monthTotal": "{{count}} 件",
-      "yearMonthLabel": "{{month}} {{year}} · {{count}} 件",
+      "yearMonthLabel": "{{month}} · {{count}} 件",
       "todaySummary": "今日 · {{date}}",
       "daySummary": "{{date}} · {{messages}} 件 · {{conversations}} 会話",
       "daySummaryOne": "{{date}} · {{messages}} 件 · 1 会話",
@@ -102,7 +102,16 @@
       "dayLoading": "この日を読み込み中…",
       "dayFailed": "この日のメッセージを読めませんでした。しばらくしてから再試行してください。",
       "unavailable": "この日は {{count}} 件の会話の履歴を読めませんでした。",
-      "notice": "一部の会話を読み切れず、件数が正確でない場合があります。"
+      "notice": "一部の会話を読み切れず、件数が正確でない場合があります。",
+      "dayCellLabelOne": "{{date}}、1 件",
+      "dayTooltipOne": "{{date}} · 1 件",
+      "yearMonthLabelOne": "{{month}} · 1 件",
+      "monthTotalOne": "1 件",
+      "countOnly": "この日の {{count}} 件は件数のみ保存され、本文は残っていません",
+      "countOnlyOne": "この日の 1 件は件数のみ保存され、本文は残っていません",
+      "readFailed": "カレンダーを読み込めませんでした。表示されない日がある可能性があります。",
+      "noticeCacheFull": "古い日の一部は件数のみ保存されており、本文は残っていません。",
+      "daySummarySingle": "{{date}} · 1 件 · 1 会話"
     }
   }
 }

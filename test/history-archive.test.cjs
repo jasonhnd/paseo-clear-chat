@@ -1297,6 +1297,25 @@ test("release does not delete a lock owned by another process", async t => {
   assert.equal(body.token, "other-owner", "the release must leave another owner's lock");
 });
 
+test("the archive lock falls back to O_EXCL when hard links are unsupported", async t => {
+  const home = createHome(t);
+  const instance = archive(home, {
+    files: {
+      link: async () => { throw Object.assign(new Error("hard links are not supported"), { code: "EPERM" }); },
+    },
+  });
+  const first = await instance.merge([message("s1", "agent-a", T, "mine")], ["s1"], ["s1"]);
+  assert.equal(first.cacheError, false);
+  assert.deepEqual(allRecords(home).map(record => record.text), ["mine"]);
+  // The lock must also be released, so a second merge can take it again through the same path.
+  const second = await instance.merge([
+    message("s1", "agent-a", T, "mine"),
+    message("s2", "agent-b", T + 1000, "second"),
+  ], ["s1", "s2"], ["s1", "s2"]);
+  assert.equal(second.cacheError, false);
+  assert.deepEqual(allRecords(home).map(record => record.text).sort(), ["mine", "second"]);
+});
+
 test("the merge re-reads the archive after it takes the lock", async t => {
   const home = createHome(t);
   await merge(archive(home), [message("base", "agent-z", T - 1000, "base")], ["base"]);

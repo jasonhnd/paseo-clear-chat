@@ -93,7 +93,7 @@
       "dayCellEmpty": "{{date}}，没有消息",
       "dayTooltip": "{{date}} · {{count}} 条",
       "monthTotal": "{{count}} 条",
-      "yearMonthLabel": "{{month}} {{year}} · {{count}} 条",
+      "yearMonthLabel": "{{month}} · {{count}} 条",
       "todaySummary": "今天 · {{date}}",
       "daySummary": "{{date}} · {{messages}} 条 · {{conversations}} 个对话",
       "daySummaryOne": "{{date}} · {{messages}} 条 · 1 个对话",
@@ -102,7 +102,16 @@
       "dayLoading": "正在读取这一天…",
       "dayFailed": "读不到这一天的消息。请稍后重试。",
       "unavailable": "这天有 {{count}} 个对话读不到历史。",
-      "notice": "有对话没能读全，部分条数可能不准。"
+      "notice": "有对话没能读全，部分条数可能不准。",
+      "dayCellLabelOne": "{{date}}，1 条",
+      "dayTooltipOne": "{{date}} · 1 条",
+      "yearMonthLabelOne": "{{month}} · 1 条",
+      "monthTotalOne": "1 条",
+      "countOnly": "这天有 {{count}} 条只保留了数目，原文没有保留",
+      "countOnlyOne": "这天有 1 条只保留了数目，原文没有保留",
+      "readFailed": "日历暂时读不到，可能有日子缺失。",
+      "noticeCacheFull": "有些旧日子只保留了条数，原文已经不在了。",
+      "daySummarySingle": "{{date}} · 1 条 · 1 个对话"
     }
   }
 }

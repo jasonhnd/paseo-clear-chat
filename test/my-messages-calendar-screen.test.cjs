@@ -60,8 +60,9 @@ function fakePaseo(directory, histories) {
         return { timeline: {
           async refetch(options) {
             reads.push({ id, ...options });
-            const entries = histories.get(id) ?? [];
-            return { entries, hasOlder: false, error: null, gap: false, staleCursor: false, startCursor: null };
+            const history = histories.get(id) ?? [];
+            if (typeof history === "function") return history(options);
+            return { entries: history, hasOlder: false, error: null, gap: false, staleCursor: false, startCursor: null };
           },
         } };
       },
@@ -76,13 +77,34 @@ const screenProps = {
   params: {},
 };
 
+const DARK_THEME = {
+  surface0: "#101418", foreground: "#e6edf3", foregroundMuted: "#8b949e",
+  accent: "#3b82f6", accentForeground: "#ffffff", statusDanger: "#f85149",
+};
+
+const BASE_PREFERENCES = {
+  answerStyle: "none", savedReplies: [], autoFillAnswer: true, showJumpChips: false,
+  keepItemLineBreaks: false, dismissedOptionReplies: [], delegatedTools: "", delegatedCodeBlocks: "",
+  hiddenTools: "", foldMessagePrefixes: "", enhancedUserBubble: true, assistantMarkdown: true,
+  markdownVariant: "document", textScale: 1, foldFinishedSteps: true, foldLongOutputAfter: 15,
+  collapsedStepAction: "inline", accent: "blue", customAccentEnabled: false, frostedGlass: false,
+};
+
 function fixture(t, options = {}) {
-  const { historyRpc, locale = "en", compact = false, directory = [], histories = new Map() } = options;
+  const {
+    historyRpc, locale = "en", compact = false, directory = [], histories = new Map(),
+    realTheme = false, themeColors = {}, preferences, immediateTimers = false,
+  } = options;
   const paseo = fakePaseo(directory, histories);
-  const h = createToolHarness("web", { paseo, ui: { SidebarRow: "Host.SidebarRow" }, historyRpc, locale });
+  const harnessOptions = { paseo, ui: { SidebarRow: "Host.SidebarRow" }, historyRpc, locale };
+  if (realTheme) harnessOptions.themeTokens = true;
+  if (preferences) harnessOptions.preferences = preferences;
+  const h = createToolHarness("web", harnessOptions);
   const clock = h.load("client/my-messages-clock.ts");
   clock.setMyMessagesClock(() => FROZEN);
-  clock.setMyMessagesTimers({ set() { throw new Error("Calendar reads must not schedule timers"); }, clear() {} });
+  clock.setMyMessagesTimers(immediateTimers
+    ? { set(callback) { callback(); return 1; }, clear() {} }
+    : { set() { throw new Error("Calendar reads must not schedule timers"); }, clear() {} });
   t.after(() => { h.unmount(); h.dispose(); clock.setMyMessagesClock(null); clock.setMyMessagesTimers(null); });
   const screens = new Map();
   const stop = h.load("client/my-messages-screen-registration.tsx").registerMyMessagesScreen({
@@ -91,7 +113,10 @@ function fixture(t, options = {}) {
   });
   t.after(stop);
   const screen = [...screens.values()][0];
-  const draw = () => h.draw({ type: screen.Component, props: { ...screenProps, layout: { ...screenProps.layout, compact } } });
+  const draw = () => h.draw({
+    type: screen.Component,
+    props: { ...screenProps, theme: { colors: themeColors }, layout: { ...screenProps.layout, compact } },
+  });
   const all = (tree, id) => h.nodes(tree, node => node.props.testID === id);
   const one = (tree, id) => all(tree, id)[0];
   const cell = (tree, prefix) => all(tree, "my-messages-calendar-cell")
@@ -99,6 +124,20 @@ function fixture(t, options = {}) {
   const monthCell = (tree, prefix) => all(tree, "my-messages-calendar-year-month")
     .find(node => String(node.props.accessibilityLabel).startsWith(prefix));
   return { h, draw, all, one, cell, monthCell, paseo };
+}
+
+function pathTo(tree, target) {
+  if (Array.isArray(tree)) {
+    for (const child of tree) {
+      const path = pathTo(child, target);
+      if (path) return path;
+    }
+  } else if (tree && typeof tree === "object") {
+    if (tree === target) return [tree];
+    const children = pathTo(tree.props?.children, target);
+    if (children) return [tree, ...children];
+  }
+  return null;
 }
 
 function historyFor(days, rowsByDay) {
@@ -113,7 +152,7 @@ function historyFor(days, rowsByDay) {
   };
 }
 
-test("the calendar opens on today with its counts, summary and rows", async t => {
+test("the calendar opens on today with counts, summary, rows and the client time zone", async t => {
   const today = dayKey(0);
   const marchTenth = dayKey(-5);
   const directory = [agent("alpha", "Alpha conversation"), agent("beta", "Beta conversation")];
@@ -138,7 +177,6 @@ test("the calendar opens on today with its counts, summary and rows", async t =>
   assert.equal(history.calls[1][1].timeZone, Intl.DateTimeFormat().resolvedOptions().timeZone);
   assert.equal(cell(view, "Mar 15 Sun").props.accessibilityLabel, "Mar 15 Sun, 2 messages");
   assert.equal(cell(view, "Mar 14 Sat").props.accessibilityLabel, "Mar 14 Sat, no messages");
-  assert.match(h.text(one(view, "my-messages-screen-row")), /today first/);
   assert.equal(h.nodes(view, node => node.props.testID === "my-messages-screen-row").length, 2);
 
   cell(view, "Mar 10 Tue").props.onPress();
@@ -153,78 +191,128 @@ test("the calendar opens on today with its counts, summary and rows", async t =>
   assert.equal(h.text(one(draw(), "my-messages-screen-summary")), "Today · Mar 15 Sun");
 });
 
-test("hovering a day shows its date and count", async t => {
-  const today = dayKey(0);
-  const history = historyFor(daysResult({ [today]: 2, [dayKey(-5)]: 2 }), { [today]: dayResult([]) });
+test("a hovered day shows a floating bubble pinned inside the grid edges", async t => {
+  const history = historyFor(daysResult({ [dayKey(0)]: 2, [dayKey(-6)]: 2, [dayKey(-5)]: 2, [dayKey(-3)]: 2 }),
+    { [dayKey(0)]: dayResult([]) });
   const { draw, cell, h } = fixture(t, { historyRpc: history });
   draw();
   await flush();
-  cell(draw(), "Mar 10 Tue").props.onHoverIn();
-  const tooltip = h.nodes(draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0];
-  assert.equal(h.text(tooltip), "Mar 10 Tue · 2 messages");
+  assert.equal(h.nodes(draw(), node => node.props.testID === "my-messages-calendar-tooltip").length, 0);
+
+  cell(draw(), "Mar 9 Mon").props.onHoverIn();
+  let hovered = draw();
+  let tooltip = h.nodes(hovered, node => node.props.testID === "my-messages-calendar-tooltip")[0];
+  assert.equal(h.text(tooltip), "Mar 9 Mon · 2 messages");
+  assert.equal(tooltip.props.style.position, "absolute");
+  assert.equal(tooltip.props.style.left, 0);
+  assert.ok(pathTo(hovered, tooltip).some(node => node.props?.testID === "my-messages-calendar-cell-wrap"));
+
+  cell(draw(), "Mar 12 Thu").props.onHoverIn();
+  tooltip = h.nodes(draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0];
+  assert.equal(tooltip.props.style.left, "50%");
+  assert.equal(tooltip.props.style.marginLeft, -85);
+
+  cell(draw(), "Mar 15 Sun").props.onHoverIn();
+  tooltip = h.nodes(draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0];
+  assert.equal(tooltip.props.style.right, 0);
 });
 
-test("the year view aggregates months and disables months outside the record", async t => {
-  const history = historyFor(daysResult({
-    "2026-01-02": 2, [dayKey(-40)]: 3, [dayKey(0)]: 1,
-  }, { firstDay: "2026-01-02" }), { [dayKey(0)]: dayResult([]) });
-  const { draw, one, all, monthCell, h } = fixture(t, { historyRpc: history });
+test("arrow keys move only the keyboard focus, show its bubble, and Enter selects once", async t => {
+  const history = historyFor(daysResult({ [dayKey(0)]: 1, [dayKey(-1)]: 1 }), {
+    [dayKey(0)]: dayResult([]),
+    [dayKey(-1)]: dayResult([{ agentId: "alpha", at: at(-1, 9), text: "focused row" }]),
+  });
+  const directory = [agent("alpha", "Alpha conversation")];
+  const { draw, one, cell, h } = fixture(t, { historyRpc: history, directory });
   draw();
   await flush();
-  one(draw(), "my-messages-calendar-title").props.onPress();
-  const year = draw();
-  assert.equal(h.nodes(year, node => node.props.testID === "my-messages-calendar-year-month").length, 12);
-  assert.equal(monthCell(year, "January 2026").props.accessibilityState.disabled, false);
-  assert.equal(monthCell(year, "December 2026").props.accessibilityState.disabled, true);
-  assert.equal(h.text(monthCell(year, "January 2026")), "January\n2 messages");
-  monthCell(year, "January 2026").props.onHoverIn();
-  assert.equal(h.text(h.nodes(draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0]),
-    "January 2026 · 2 messages");
-  one(draw(), "my-messages-calendar-next").props.onPress();
-  const nextYear = draw();
-  assert.equal(h.text(one(nextYear, "my-messages-calendar-title")), "2027");
-  assert.equal(all(nextYear, "my-messages-calendar-year-month").every(node => node.props.accessibilityState.disabled), true);
-  one(nextYear, "my-messages-calendar-prev").props.onPress();
-  monthCell(draw(), "January 2026").props.onPress();
+  const before = history.calls.filter(([kind]) => kind === "day").length;
+  const grid = one(draw(), "my-messages-calendar-grid");
+  grid.props.onFocus();
+  grid.props.onKeyDown({ key: "ArrowLeft" });
   await flush();
-  const month = draw();
-  assert.equal(h.text(one(month, "my-messages-calendar-title")), "January 2026");
-  assert.equal(history.calls.at(-1)[1].day, "2026-01-02", "the first recorded day opens with the month");
+  assert.equal(history.calls.filter(([kind]) => kind === "day").length, before, "arrows must not read a day");
+  assert.equal(h.text(one(draw(), "my-messages-screen-summary")), "Today · Mar 15 Sun");
+  const tooltip = h.nodes(draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0];
+  assert.equal(h.text(tooltip), "Mar 14 Sat · 1 message");
+
+  const focusedCell = cell(draw(), "Mar 14 Sat");
+  one(draw(), "my-messages-calendar-grid").props.onKeyDown({ key: "Enter" });
+  // A real Pressable also turns Enter into onPress in the same tick.
+  focusedCell.props.onPress();
+  await flush();
+  assert.equal(h.text(one(draw(), "my-messages-screen-summary")), "Mar 14 Sat · 1 message · 1 conversation");
+  const selectedCalls = history.calls.filter(([kind, input]) => kind === "day" && input.day === dayKey(-1)).length;
+  assert.equal(selectedCalls, 1, "Enter and onPress must share one read");
 });
 
-test("arrow keys move the selection across months and the header follows", async t => {
+test("arrow focus may cross a month without reading until Enter", async t => {
   const history = historyFor(daysResult({ "2026-01-01": 1, [dayKey(0)]: 1 }, { firstDay: "2026-01-01" }),
-    { "2026-03-01": dayResult([]), "2026-02-28": dayResult([]), "2026-03-08": dayResult([]) });
+    { "2026-03-01": dayResult([]), "2026-02-28": dayResult([]) });
   const { draw, one, cell, h } = fixture(t, { historyRpc: history });
   draw();
   await flush();
   cell(draw(), "Mar 1 Sun").props.onPress();
   await flush();
-  const march = draw();
-  one(march, "my-messages-calendar-grid").props.onKeyDown({ key: "ArrowLeft" });
+  const before = history.calls.filter(([kind]) => kind === "day").length;
+  one(draw(), "my-messages-calendar-grid").props.onFocus();
+  one(draw(), "my-messages-calendar-grid").props.onKeyDown({ key: "ArrowLeft" });
   await flush();
-  const february = draw();
-  assert.equal(h.text(one(february, "my-messages-calendar-title")), "February 2026");
+  assert.equal(h.text(one(draw(), "my-messages-calendar-title")), "February 2026");
+  assert.equal(history.calls.filter(([kind]) => kind === "day").length, before, "focus across a month is not a read");
+  one(draw(), "my-messages-calendar-grid").props.onKeyDown({ key: "Enter" });
+  await flush();
   assert.equal(history.calls.at(-1)[1].day, "2026-02-28");
-
-  one(february, "my-messages-calendar-grid").props.onKeyDown({ key: "ArrowRight" });
-  await flush();
-  const back = draw();
-  one(back, "my-messages-calendar-grid").props.onKeyDown({ key: "ArrowDown" });
-  await flush();
-  assert.equal(history.calls.at(-1)[1].day, "2026-03-08");
 });
 
-test("year view arrows move the month focus and Enter opens that month", async t => {
+test("the year view aggregates months, greys the record edges, switches years and shows a month bubble", async t => {
+  const history = historyFor(daysResult({
+    "2025-06-01": 2, "2026-01-02": 2, [dayKey(-40)]: 3, [dayKey(0)]: 1,
+  }, { firstDay: "2025-06-01" }), { [dayKey(0)]: dayResult([]), "2026-01-01": dayResult([]) });
+  const { draw, one, all, monthCell, h } = fixture(t, { historyRpc: history });
+  draw();
+  await flush();
+  one(draw(), "my-messages-calendar-title").props.onPress();
+  const year = draw();
+  assert.equal(all(year, "my-messages-calendar-year-month").length, 12);
+  assert.equal(monthCell(year, "January 2026").props.accessibilityState.disabled, false);
+  assert.equal(monthCell(year, "December 2026").props.accessibilityState.disabled, true);
+  assert.equal(h.text(monthCell(year, "January 2026")), "January 2026\n2 messages");
+  assert.equal(one(year, "my-messages-calendar-next").props.accessibilityState.disabled, true);
+
+  monthCell(year, "January 2026").props.onHoverIn();
+  const tip = h.nodes(draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0];
+  assert.equal(h.text(tip), "January 2026 · 2 messages");
+  assert.equal(tip.props.style.position, "absolute");
+  assert.equal(tip.props.style.left, 0);
+
+  monthCell(draw(), "April 2026").props.onHoverIn();
+  assert.equal(h.nodes(draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0].props.style.right, 0);
+
+  one(draw(), "my-messages-calendar-prev").props.onPress();
+  assert.equal(h.text(one(draw(), "my-messages-calendar-title")), "2025");
+  assert.equal(one(draw(), "my-messages-calendar-prev").props.accessibilityState.disabled, true);
+  one(draw(), "my-messages-calendar-next").props.onPress();
+  monthCell(draw(), "January 2026").props.onPress();
+  await flush();
+  const month = draw();
+  assert.equal(h.text(one(month, "my-messages-calendar-title")), "January 2026");
+  assert.equal(history.calls.at(-1)[1].day, "2026-01-01");
+});
+
+test("year view arrows move focus with a bubble and Enter opens that month", async t => {
   const history = historyFor(daysResult({ "2026-01-02": 1, [dayKey(0)]: 1 }, { firstDay: "2026-01-02" }),
     { "2026-02-01": dayResult([]) });
   const { draw, one, h } = fixture(t, { historyRpc: history });
   draw();
   await flush();
   one(draw(), "my-messages-calendar-title").props.onPress();
-  const year = draw();
-  one(year, "my-messages-calendar-year").props.onKeyDown({ key: "ArrowLeft" });
-  one(draw(), "my-messages-calendar-year").props.onKeyDown({ key: "ArrowLeft" });
+  const grid = one(draw(), "my-messages-calendar-year");
+  grid.props.onFocus();
+  grid.props.onKeyDown({ key: "ArrowLeft" });
+  grid.props.onKeyDown({ key: "ArrowLeft" });
+  const tip = h.nodes(draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0];
+  assert.equal(h.text(tip), "January 2026 · 1 message");
   one(draw(), "my-messages-calendar-year").props.onKeyDown({ key: "ArrowRight" });
   one(draw(), "my-messages-calendar-year").props.onKeyDown({ key: "Enter" });
   await flush();
@@ -232,71 +320,99 @@ test("year view arrows move the month focus and Enter opens that month", async t
   assert.equal(history.calls.at(-1)[1].day, "2026-02-01");
 });
 
-test("month navigation carries December into January of the next year", async t => {
-  const history = historyFor(daysResult({ [dayKey(0)]: 1 }), { [dayKey(0)]: dayResult([]) });
+test("month header arrows stop at the first record month and at the current month", async t => {
+  const history = historyFor(daysResult({ "2026-01-02": 1, [dayKey(0)]: 1 }, { firstDay: "2026-01-02" }),
+    { [dayKey(0)]: dayResult([]), "2026-01-02": dayResult([]) });
   const { draw, one, h } = fixture(t, { historyRpc: history });
   draw();
   await flush();
-  for (let step = 0; step < 9; step += 1) one(draw(), "my-messages-calendar-next").props.onPress();
-  assert.equal(h.text(one(draw(), "my-messages-calendar-title")), "December 2026");
-  one(draw(), "my-messages-calendar-next").props.onPress();
-  assert.equal(h.text(one(draw(), "my-messages-calendar-title")), "January 2027");
+  assert.equal(one(draw(), "my-messages-calendar-next").props.accessibilityState.disabled, true);
+  assert.equal(one(draw(), "my-messages-calendar-next").props.style.opacity, 0.35);
+  one(draw(), "my-messages-calendar-prev").props.onPress();
+  assert.equal(h.text(one(draw(), "my-messages-calendar-title")), "February 2026");
+  one(draw(), "my-messages-calendar-prev").props.onPress();
+  assert.equal(h.text(one(draw(), "my-messages-calendar-title")), "January 2026");
+  assert.equal(one(draw(), "my-messages-calendar-prev").props.accessibilityState.disabled, true);
+  one(draw(), "my-messages-calendar-prev").props.onPress();
+  assert.equal(h.text(one(draw(), "my-messages-calendar-title")), "January 2026");
 });
 
-test("slow conversations add their day's rows and count without a duplicate", async t => {
+test("slow conversation counts stay stable when today is visited five times", async t => {
   const today = dayKey(0);
-  const directory = [
-    agent("fast", "Fast conversation", at(0, 9)),
-    agent("slow", "Slow conversation", at(0, 10)),
-  ];
+  const directory = [agent("fast", "Fast conversation", at(0, 9)), agent("slow", "Slow conversation", at(0, 10))];
   const histories = new Map([["slow", [timelineMessage("slow row", at(0, 10), 1)]]]);
-  const history = historyFor(daysResult({ [today]: 1 }, { slowConversationIds: ["slow"] }), {
+  const history = historyFor(daysResult({ [today]: 1, [dayKey(-5)]: 1 }, { slowConversationIds: ["slow"] }), {
     [today]: dayResult([{ agentId: "fast", at: at(0, 9), text: "fast row" }]),
+    [dayKey(-5)]: dayResult([]),
   });
-  const { draw, one, cell, paseo, h } = fixture(t, { historyRpc: history, directory, histories });
-  draw();
-  await flush();
-  const view = draw();
-  const rows = h.nodes(view, node => node.props.testID === "my-messages-screen-row");
-  assert.equal(rows.length, 2);
-  assert.deepEqual(rows.map(row => h.text(row).split("\n").at(-1)), ["slow row", "fast row"]);
-  assert.equal(h.text(one(view, "my-messages-screen-summary")), "Today · Mar 15 Sun");
-  assert.equal(cell(view, "Mar 15 Sun").props.accessibilityLabel, "Mar 15 Sun, 2 messages");
-  assert.deepEqual(paseo.reads.map(read => read.id), ["slow"], "only the slow conversation is re-read");
-});
-
-test("a failed day RPC falls back to the timeline for that selected day", async t => {
-  const today = dayKey(0);
-  const directory = [agent("alpha", "Alpha conversation", at(0, 9))];
-  const histories = new Map([["alpha", [timelineMessage("timeline fallback row", at(0, 9), 1)]]]);
-  const days = daysResult({ [today]: 1 });
-  const history = {
-    days: async () => days,
-    day: async () => { throw Object.assign(new Error("handler failed"), { code: "handler_error" }); },
-  };
   const { draw, one, cell, h } = fixture(t, { historyRpc: history, directory, histories });
   draw();
   await flush();
-  const view = draw();
-  assert.match(h.text(one(view, "my-messages-screen-row")), /timeline fallback row/);
-  assert.equal(cell(view, "Mar 15 Sun").props.accessibilityLabel, "Mar 15 Sun, 1 messages");
+  assert.equal(cell(draw(), "Mar 15 Sun").props.accessibilityLabel, "Mar 15 Sun, 2 messages");
+  cell(draw(), "Mar 10 Tue").props.onPress();
+  await flush();
+  const labels = [];
+  for (let step = 0; step < 5; step += 1) {
+    one(draw(), "my-messages-calendar-today").props.onPress();
+    await flush();
+    labels.push(cell(draw(), "Mar 15 Sun").props.accessibilityLabel);
+  }
+  assert.deepEqual(labels, Array(5).fill("Mar 15 Sun, 2 messages"));
+
+  one(draw(), "my-messages-calendar-title").props.onPress();
+  for (let step = 0; step < 5; step += 1) {
+    one(draw(), "my-messages-calendar-title").props.onPress();
+    one(draw(), "my-messages-calendar-title").props.onPress();
+  }
+  const march = h.nodes(draw(), node => node.props.testID === "my-messages-calendar-year-month")
+    .find(node => String(node.props.accessibilityLabel).startsWith("March 2026"));
+  assert.equal(h.text(march), "March 2026\n3 messages");
 });
 
-test("the notice line appears when the directory or cache is partial", async t => {
-  const history = historyFor(daysResult({ [dayKey(0)]: 1 }, { directoryPartial: true, cacheError: true }),
-    { [dayKey(0)]: dayResult([]) });
-  const { draw, one, h } = fixture(t, { historyRpc: history });
+test("an incomplete slow read offers Retry and is not cached as finished", async t => {
+  const today = dayKey(0);
+  const directory = [agent("fast", "Fast conversation", at(0, 9)), agent("slow", "Slow conversation", at(0, 10))];
+  const histories = new Map([["slow", () => { throw new Error("timeline unavailable"); }]]);
+  const history = historyFor(daysResult({ [today]: 1 }, { slowConversationIds: ["slow"] }), {
+    [today]: dayResult([{ agentId: "fast", at: at(0, 9), text: "fast row" }]),
+  });
+  const { draw, one, h } = fixture(t, { historyRpc: history, directory, histories, immediateTimers: true });
   draw();
   await flush();
-  const notice = one(draw(), "my-messages-calendar-notice");
-  assert.equal(notice.props.accessibilityRole, "alert");
-  assert.equal(h.text(notice), "Some conversations could not be read, so some counts may be incomplete.");
+  assert.equal(h.text(one(draw(), "my-messages-screen-incomplete")), "This list may be incomplete.");
+  assert.ok(one(draw(), "my-messages-screen-retry"), "the warning has a Retry button");
+
+  histories.set("slow", [timelineMessage("slow row", at(0, 10), 1)]);
+  one(draw(), "my-messages-screen-retry").props.onPress();
+  await flush();
+  const recovered = draw();
+  assert.equal(one(recovered, "my-messages-screen-incomplete"), undefined);
+  assert.match(h.text(one(recovered, "my-messages-screen-row")), /slow row/);
 });
 
-test("a host without the history RPC keeps the previous today-only page", async t => {
+test("a count-only day explains missing text and never claims zero conversations", async t => {
+  const history = historyFor(daysResult({ [dayKey(-1)]: 3 }, { cacheFull: ["2026-03"] }), {
+    [dayKey(-1)]: dayResult([], { cacheFull: ["2026-03"] }),
+  });
+  const { draw, one, cell, h } = fixture(t, { historyRpc: history });
+  draw();
+  await flush();
+  cell(draw(), "Mar 14 Sat").props.onPress();
+  await flush();
+  const view = draw();
+  assert.equal(h.text(one(view, "my-messages-screen-summary")), "Mar 14 Sat · 3 messages");
+  assert.equal(h.text(one(view, "my-messages-calendar-count-only")),
+    "3 messages from this day were counted but their text was not kept");
+  assert.doesNotMatch(h.text(view), /Nothing from you on this day/);
+  assert.ok(one(view, "my-messages-calendar-notice-full"));
+});
+
+test("a host with no history RPC falls back to the previous today-only page", async t => {
   const directory = [agent("alpha", "Alpha conversation")];
   const histories = new Map([["alpha", [timelineMessage("today through the timeline", at(0, 9), 1)]]]);
   const { draw, one, h } = fixture(t, { directory, histories });
+  draw();
+  await flush();
   draw();
   await flush();
   const view = draw();
@@ -305,47 +421,231 @@ test("a host without the history RPC keeps the previous today-only page", async 
   assert.match(h.text(one(view, "my-messages-screen-row")), /today through the timeline/);
 });
 
-test("the compact layout uses a week strip that expands, then collapses after a pick", async t => {
-  const history = historyFor(daysResult({ [dayKey(0)]: 1, [dayKey(-5)]: 2 }), {
-    [dayKey(0)]: dayResult([]),
-    [dayKey(-5)]: dayResult([]),
+test("a host that reports unknown-method keeps the previous today-only page", async t => {
+  const directory = [agent("alpha", "Alpha conversation")];
+  const histories = new Map([["alpha", [timelineMessage("via timeline", at(0, 9), 1)]]]);
+  const unavailable = async () => { throw Object.assign(new Error("no such method"), { code: "METHOD_NOT_FOUND" }); };
+  const { draw, one, h } = fixture(t, {
+    historyRpc: { days: unavailable, day: unavailable }, directory, histories,
   });
-  const { draw, one, all, h } = fixture(t, { historyRpc: history, compact: true });
   draw();
   await flush();
-  assert.equal(one(draw(), "my-messages-calendar-week") !== undefined, true);
-  assert.equal(one(draw(), "my-messages-calendar-grid"), undefined);
-  one(draw(), "my-messages-calendar-expand").props.onPress();
-  assert.equal(one(draw(), "my-messages-calendar-grid") !== undefined, true);
-  assert.equal(one(draw(), "my-messages-calendar-week"), undefined);
-  const target = all(draw(), "my-messages-calendar-cell").find(node => node.props.accessibilityLabel.startsWith("Mar 10 Tue"));
-  target.props.onPress();
+  draw();
   await flush();
-  assert.equal(one(draw(), "my-messages-calendar-week") !== undefined, true);
-  assert.equal(h.text(one(draw(), "my-messages-screen-summary")), "Mar 10 Tue · 2 messages · 0 conversations");
+  const view = draw();
+  assert.equal(one(view, "my-messages-calendar-grid"), undefined);
+  assert.match(h.text(one(view, "my-messages-screen-summary")), /From you today: 1/);
 });
 
-test("Chinese and Japanese labels follow the locale", async t => {
-  const history = historyFor(daysResult({ [dayKey(0)]: 1 }), { [dayKey(0)]: dayResult([]) });
-  const { draw, one, h } = fixture(t, { historyRpc: history, locale: "zh-CN" });
+test("a transient day-count failure keeps the calendar skeleton and reads the day from the timeline", async t => {
+  const today = dayKey(0);
+  const directory = [agent("alpha", "Alpha conversation", at(0, 9))];
+  const histories = new Map([["alpha", [timelineMessage("timeline fallback row", at(0, 9), 1)]]]);
+  let failDays = true;
+  const days = daysResult({ [today]: 1 });
+  const history = {
+    days: async () => { if (failDays) throw Object.assign(new Error("handler failed"), { code: "handler_error" }); return days; },
+    day: async () => { throw Object.assign(new Error("handler failed"), { code: "handler_error" }); },
+  };
+  const { draw, one, cell, h } = fixture(t, { historyRpc: history, directory, histories });
+  draw();
+  await flush();
+  const failed = draw();
+  assert.ok(one(failed, "my-messages-calendar-grid"), "the calendar shape stays visible");
+  assert.ok(one(failed, "my-messages-calendar-days-failed"));
+  assert.match(h.text(one(failed, "my-messages-screen-row")), /timeline fallback row/);
+
+  failDays = false;
+  one(failed, "my-messages-calendar-days-retry").props.onPress();
+  await flush();
+  const recovered = draw();
+  assert.equal(one(recovered, "my-messages-calendar-days-failed"), undefined);
+  assert.equal(cell(recovered, "Mar 15 Sun").props.accessibilityLabel, "Mar 15 Sun, 1 message");
+});
+
+test("the notice line covers partial, cache and skipped database fields", async t => {
+  const history = historyFor(daysResult({ [dayKey(0)]: 1 }, {
+    directoryPartial: true, cacheError: true, skippedDatabases: ["profiles/work/state.db"],
+  }), { [dayKey(0)]: dayResult([]) });
+  const { draw, one, h } = fixture(t, { historyRpc: history });
+  draw();
+  await flush();
+  const notice = one(draw(), "my-messages-calendar-notice");
+  assert.equal(notice.props.accessibilityRole, "alert");
+  assert.equal(h.text(notice), "Some conversations could not be read, so some counts may be incomplete.");
+});
+
+test("the compact strip expands by month, collapses by week and greys at the edges", async t => {
+  const history = historyFor(daysResult({ "2026-01-02": 1, [dayKey(0)]: 1 }), {
+    [dayKey(0)]: dayResult([]), "2026-03-08": dayResult([]),
+  });
+  const { draw, one, h } = fixture(t, { historyRpc: history, compact: true });
+  draw();
+  await flush();
+  assert.ok(one(draw(), "my-messages-calendar-week"));
+  one(draw(), "my-messages-calendar-expand").props.onPress();
+  assert.equal(one(draw(), "my-messages-calendar-week"), undefined);
+  assert.equal(one(draw(), "my-messages-calendar-next").props.accessibilityState.disabled, true);
+  one(draw(), "my-messages-calendar-prev").props.onPress();
+  assert.equal(h.text(one(draw(), "my-messages-calendar-title")), "February 2026");
+  one(draw(), "my-messages-calendar-next").props.onPress();
+
+  one(draw(), "my-messages-calendar-expand").props.onPress();
+  assert.ok(one(draw(), "my-messages-calendar-week"));
+  one(draw(), "my-messages-calendar-prev").props.onPress();
+  await flush();
+  assert.equal(history.calls.at(-1)[1].day, "2026-03-08");
+});
+
+test("the compact week arrow is disabled before the first record", async t => {
+  const history = historyFor(daysResult({ "2026-03-09": 1, [dayKey(0)]: 1 }), { [dayKey(0)]: dayResult([]) });
+  const { draw, one } = fixture(t, { historyRpc: history, compact: true });
+  draw();
+  await flush();
+  assert.equal(one(draw(), "my-messages-calendar-prev").props.accessibilityState.disabled, true);
+  assert.equal(one(draw(), "my-messages-calendar-next").props.accessibilityState.disabled, true);
+});
+
+test("a gated older day cannot overwrite the day selected after it", async t => {
+  const today = dayKey(0);
+  const older = dayKey(-2);
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const history = {
+    calls: [],
+    days: async () => daysResult({ [older]: 1, [dayKey(-3)]: 1, [today]: 1 }),
+    day: async input => {
+      history.calls.push(input.day);
+      if (input.day === older) { await gate; return dayResult([{ agentId: "old", at: at(-2, 9), text: "old row" }]); }
+      return dayResult([{ agentId: "new", at: at(-2, 10), text: "new row" }]);
+    },
+  };
+  const directory = [agent("old", "Old conversation"), agent("new", "New conversation")];
+  const { draw, one, cell, h } = fixture(t, { historyRpc: history, directory });
+  draw();
+  await flush();
+  cell(draw(), "Mar 13 Fri").props.onPress();
+  await settle();
+  cell(draw(), "Mar 12 Thu").props.onPress();
+  await flush();
+  release();
+  await flush();
+  const view = draw();
+  assert.equal(h.text(one(view, "my-messages-screen-summary")), "Mar 12 Thu · 1 message · 1 conversation");
+  assert.match(h.text(one(view, "my-messages-screen-row")), /new row/);
+  assert.doesNotMatch(h.text(view), /old row/);
+});
+
+test("arrow keys never focus a day before the first record", async t => {
+  const history = historyFor(daysResult({ [dayKey(-5)]: 1, [dayKey(0)]: 1 }, { firstDay: dayKey(-5) }),
+    { [dayKey(-5)]: dayResult([]) });
+  const { draw, one, cell, h } = fixture(t, { historyRpc: history });
+  draw();
+  await flush();
+  cell(draw(), "Mar 10 Tue").props.onPress();
+  await flush();
+  const before = history.calls.filter(([kind]) => kind === "day").length;
+  one(draw(), "my-messages-calendar-grid").props.onFocus();
+  one(draw(), "my-messages-calendar-grid").props.onKeyDown({ key: "ArrowLeft" });
+  const tooltip = h.nodes(draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0];
+  assert.equal(h.text(tooltip), "Mar 10 Tue · 1 message");
+  one(draw(), "my-messages-calendar-grid").props.onKeyDown({ key: "Enter" });
+  await flush();
+  assert.equal(history.calls.filter(([kind]) => kind === "day").length, before);
+});
+
+test("one message uses singular labels in the cell, bubble, summary and year view", async t => {
+  const history = historyFor(daysResult({ [dayKey(-1)]: 1, "2026-01-02": 1 }, { firstDay: "2026-01-02" }), {
+    [dayKey(-1)]: dayResult([{ agentId: "alpha", at: at(-1, 9), text: "one row" }]),
+  });
+  const directory = [agent("alpha", "Alpha conversation")];
+  const { draw, one, cell, h } = fixture(t, { historyRpc: history, directory });
+  draw();
+  await flush();
+  const view = draw();
+  assert.equal(cell(view, "Mar 14 Sat").props.accessibilityLabel, "Mar 14 Sat, 1 message");
+  cell(view, "Mar 14 Sat").props.onHoverIn();
+  assert.equal(h.text(h.nodes(draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0]),
+    "Mar 14 Sat · 1 message");
+  cell(draw(), "Mar 14 Sat").props.onPress();
+  await flush();
+  assert.equal(h.text(one(draw(), "my-messages-screen-summary")), "Mar 14 Sat · 1 message · 1 conversation");
+  one(draw(), "my-messages-calendar-title").props.onPress();
+  assert.equal(h.text(h.nodes(draw(), node => node.props.testID === "my-messages-calendar-year-month")
+    .find(node => String(node.props.accessibilityLabel).startsWith("January 2026"))), "January 2026\n1 message");
+});
+
+test("Chinese and Japanese month titles use the locale's own year-month order", async t => {
+  const history = historyFor(daysResult({ "2026-01-02": 1, [dayKey(0)]: 1 }, { firstDay: "2026-01-02" }),
+    { [dayKey(0)]: dayResult([]), "2026-01-02": dayResult([]) });
+  const { draw, one, monthCell, h } = fixture(t, { historyRpc: history, locale: "zh-CN" });
   draw();
   await flush();
   assert.equal(h.text(one(draw(), "my-messages-calendar-title")), "2026年3月");
-  assert.equal(h.text(one(draw(), "my-messages-screen-summary")), "今天 · 3月15日 周日");
-  assert.equal(h.text(one(draw(), "my-messages-calendar-legend")), "少\n多");
+  one(draw(), "my-messages-calendar-title").props.onPress();
+  assert.equal(h.text(monthCell(draw(), "2026年1月")), "2026年1月\n1 条");
+  monthCell(draw(), "2026年1月").props.onHoverIn();
+  assert.equal(h.text(h.nodes(draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0]),
+    "2026年1月 · 1 条");
   h.setLocale("ja");
-  assert.equal(h.text(one(draw(), "my-messages-calendar-title")), "2026年3月");
-  assert.equal(h.text(one(draw(), "my-messages-screen-summary")), "今日 · 3月15日 日");
+  assert.equal(h.text(one(draw(), "my-messages-calendar-title")), "2026");
+  assert.ok(monthCell(draw(), "2026年1月"));
+});
+
+test("the legend uses the same rounded square as the cells", async t => {
+  const history = historyFor(daysResult({ [dayKey(0)]: 1 }), { [dayKey(0)]: dayResult([]) });
+  const { draw, one, h } = fixture(t, { historyRpc: history });
+  draw();
+  await flush();
+  const squares = h.nodes(one(draw(), "my-messages-calendar-legend"),
+    node => node.type === "View" && node.props.style?.width === 12);
+  assert.equal(squares.length, 5);
+  assert.equal(squares.every(node => node.props.style.borderRadius === 4), true);
+});
+
+test("the calendar follows the Clear Chat text scale and custom accent", async t => {
+  const preferences = { ...BASE_PREFERENCES, textScale: 1.5, customAccentEnabled: true, customAccent: "#ff0000" };
+  const history = historyFor(daysResult({ [dayKey(0)]: 1 }), { [dayKey(0)]: dayResult([]) });
+  const { draw, one, cell, h } = fixture(t, {
+    historyRpc: history, realTheme: true, themeColors: DARK_THEME, preferences,
+  });
+  draw();
+  await flush();
+  const tokens = h.load("client/components/theme-tokens.ts").buildThemeTokens(DARK_THEME, preferences);
+  assert.equal(one(draw(), "my-messages-screen-summary").props.style.fontSize, tokens.fs(14));
+  assert.equal(tokens.fs(14), 21);
+  assert.equal(cell(draw(), "Mar 15 Sun").props.style.backgroundColor, tokens.accent);
+});
+
+test("an unparseable theme accent keeps four levels through an opacity wash", async t => {
+  const themeColors = { ...DARK_THEME, accent: "oklch(0.7 0.2 250)" };
+  const history = historyFor(daysResult({
+    [dayKey(-5)]: 1, [dayKey(-4)]: 3, [dayKey(-3)]: 5, [dayKey(-2)]: 7, [dayKey(0)]: 1,
+  }), { [dayKey(0)]: dayResult([]) });
+  const { draw, cell, h } = fixture(t, { historyRpc: history, realTheme: true, themeColors });
+  draw();
+  await flush();
+  const tokens = h.load("client/components/theme-tokens.ts").buildThemeTokens(themeColors, BASE_PREFERENCES);
+  cell(draw(), "Mar 14 Sat").props.onPress();
+  await flush();
+  const low = cell(draw(), "Mar 10 Tue");
+  assert.equal(low.props.style.backgroundColor, tokens.surface0);
+  const wash = h.nodes(low, node => node.props.testID === "my-messages-calendar-level-wash")[0];
+  assert.equal(wash.props.style.opacity, 0.2);
+  assert.equal(cell(draw(), "Mar 15 Sun").props.style.borderColor, tokens.accent);
 });
 
 test("all three locales define the calendar text with matching interpolation", () => {
   const keys = {
     today: [], previousMonth: [], nextMonth: [], previousYear: [], nextYear: [],
     showMonth: [], hideMonth: [], showYear: [], showMonthView: [], less: [], more: [],
-    dayCellLabel: ["date", "count"], dayCellEmpty: ["date"], dayTooltip: ["date", "count"],
-    monthTotal: ["count"], yearMonthLabel: ["month", "year", "count"], todaySummary: ["date"],
-    daySummary: ["date", "messages", "conversations"], daySummaryOne: ["date", "messages"],
-    daySummaryMessages: ["date", "messages"], dayEmpty: [], dayLoading: [], dayFailed: [],
+    dayCellLabel: ["date", "count"], dayCellLabelOne: ["date"], dayCellEmpty: ["date"],
+    dayTooltip: ["date", "count"], dayTooltipOne: ["date"],
+    monthTotal: ["count"], monthTotalOne: [], yearMonthLabel: ["month", "count"], yearMonthLabelOne: ["month"],
+    todaySummary: ["date"], daySummary: ["date", "messages", "conversations"],
+    daySummaryOne: ["date", "messages"], daySummarySingle: ["date"], daySummaryMessages: ["date", "messages"],
+    dayEmpty: [], dayLoading: [], dayFailed: [], readFailed: [], noticeCacheFull: [],
+    countOnly: ["count"], countOnlyOne: [],
     unavailable: ["count"], notice: [],
   };
   for (const locale of ["en", "zh-CN", "ja"]) {
@@ -359,27 +659,5 @@ test("all three locales define the calendar text with matching interpolation", (
   const { myMessages: chinese } = require("../client/locales/zh-CN.json");
   assert.equal(chinese.calendar.todaySummary, "今天 · {{date}}");
   assert.equal(chinese.calendar.less, "少");
-  assert.equal(chinese.calendar.more, "多");
-});
-
-test("a day picked while the counts are still loading keeps the calendar and its count", async t => {
-  const today = dayKey(0);
-  let open;
-  const gate = new Promise(resolve => { open = resolve; });
-  const history = {
-    days: async () => { await gate; return daysResult({ [today]: 2 }); },
-    day: async () => dayResult([{ agentId: "alpha", at: at(0, 9), text: "picked early" }]),
-  };
-  const directory = [agent("alpha", "Alpha conversation")];
-  const { draw, one, cell, h } = fixture(t, { historyRpc: history, directory });
-  draw();
-  await settle();
-  cell(draw(), "Mar 15 Sun").props.onPress();
-  await settle();
-  open();
-  await flush();
-  const view = draw();
-  assert.equal(cell(view, "Mar 15 Sun").props.accessibilityLabel, "Mar 15 Sun, 2 messages");
-  assert.match(h.text(one(view, "my-messages-screen-row")), /picked early/);
-  assert.equal(one(view, "my-messages-screen-summary").props.children, "Today · Mar 15 Sun");
+  assert.equal(chinese.calendar.readFailed, "日历暂时读不到，可能有日子缺失。");
 });

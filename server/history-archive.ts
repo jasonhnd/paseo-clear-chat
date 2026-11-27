@@ -47,6 +47,7 @@ const MONTH_FILE = /^messages-(\d{4}-\d{2})\.json$/;
 const META_FILE = "meta.json";
 const LOCK_FILE = ".lock";
 const LOCK_STALE_MS = 30_000;
+const LOCK_LINK_FALLBACK = new Set(["EPERM", "ENOTSUP", "EXDEV", "EMLINK", "ENOSYS"]);
 const MAX_BAD_FILES = 3;
 const BAD_SUFFIX = ".bad";
 const CORRUPT = Symbol("corrupt");
@@ -89,6 +90,8 @@ export interface ArchivedMessage {
 export interface ArchiveFileHooks {
   readdir?: (directory: string) => Promise<Array<{ name: string; isFile(): boolean; isDirectory(): boolean }>>;
   readFile?: (path: string) => Promise<string>;
+  /** Injected hard-link, for file systems that reject it. */
+  link?: (existingPath: string, newPath: string) => Promise<void>;
 }
 
 export interface HistoryArchiveOptions {
@@ -189,6 +192,7 @@ export class HistoryArchive {
   private readonly options: HistoryArchiveOptions;
   private readonly readDirectory: NonNullable<ArchiveFileHooks["readdir"]>;
   private readonly readText: NonNullable<ArchiveFileHooks["readFile"]>;
+  private readonly linkFile: NonNullable<ArchiveFileHooks["link"]>;
   private queue: Promise<unknown> = Promise.resolve();
 
   constructor(options: HistoryArchiveOptions = {}) {
@@ -196,6 +200,7 @@ export class HistoryArchive {
     this.readDirectory = options.files?.readdir
       ?? (directory => readdir(directory, { withFileTypes: true }));
     this.readText = options.files?.readFile ?? (path => readFile(path, "utf8"));
+    this.linkFile = options.files?.link ?? link;
   }
 
   /**
@@ -426,20 +431,44 @@ export class HistoryArchive {
       // hard link. The lock path therefore never exists with an empty body, even for the
       // instant between creation and the first write.
       const temporary = join(directory, `.lock.tmp-${randomUUID()}`);
+      const payload = JSON.stringify({ pid: process.pid, token, at: now() });
       let published = false;
       try {
         const handle = await open(temporary, "wx", 0o600);
         try {
-          await handle.writeFile(JSON.stringify({ pid: process.pid, token, at: now() }));
+          await handle.writeFile(payload);
           await handle.sync();
         } finally {
           await handle.close();
         }
         try {
-          await link(temporary, lock);
+          await this.linkFile(temporary, lock);
           published = true;
         } catch (linkError) {
-          if ((linkError as NodeJS.ErrnoException).code !== "EEXIST") return "error";
+          const code = (linkError as NodeJS.ErrnoException).code;
+          if (code === "EEXIST") {
+            // Another writer won the race; read its lock below.
+          } else if (LOCK_LINK_FALLBACK.has(code ?? "")) {
+            // Some file systems reject hard links. O_EXCL still guarantees one creator;
+            // write the body immediately so the lock is never observed empty.
+            try {
+              const fallback = await open(lock, "wx", 0o600);
+              try {
+                await fallback.writeFile(payload);
+                await fallback.sync();
+              } catch (writeError) {
+                await rm(lock, { force: true }).catch(() => undefined);
+                throw writeError;
+              } finally {
+                await fallback.close();
+              }
+              published = true;
+            } catch (exclusiveError) {
+              if ((exclusiveError as NodeJS.ErrnoException).code !== "EEXIST") return "error";
+            }
+          } else {
+            return "error";
+          }
         }
       } catch {
         return "error";
@@ -454,57 +483,57 @@ export class HistoryArchive {
         if ((readError as NodeJS.ErrnoException).code === "ENOENT") continue;
         return "busy";
       }
-        const body = parseLock(raw);
-        // A lock with a token carries its own timestamp. An empty, malformed or old-format
-        // lock has no token, so its file modification time decides freshness: a process
-        // that has just created the file but not written the body yet must not be stolen.
-        let fresh: boolean;
-        if (body?.token !== undefined && body.at !== undefined && Number.isFinite(body.at)) {
-          fresh = now() - body.at <= LOCK_STALE_MS;
-        } else {
-          try {
-            const info = await stat(lock);
-            fresh = now() - info.mtimeMs <= LOCK_STALE_MS;
-          } catch (statError) {
-            if ((statError as NodeJS.ErrnoException).code === "ENOENT") continue;
-            return "busy";
-          }
-        }
-        if (fresh) return "busy";
-        // Rename is the atomic part: only one process can move this path. Compare the
-        // exact bytes read before the rename; if the path was replaced, we moved a newer
-        // owner's lock, so put it back and do not write this time.
-        const moved = `${lock}.stale-${randomUUID()}`;
+      const body = parseLock(raw);
+      // A lock with a token carries its own timestamp. An empty, malformed or old-format
+      // lock has no token, so its file modification time decides freshness: a process
+      // that has just created the file but not written the body yet must not be stolen.
+      let fresh: boolean;
+      if (body?.token !== undefined && body.at !== undefined && Number.isFinite(body.at)) {
+        fresh = now() - body.at <= LOCK_STALE_MS;
+      } else {
         try {
-          await rename(lock, moved);
-        } catch (renameError) {
-          if ((renameError as NodeJS.ErrnoException).code === "ENOENT") continue;
-          return "error";
-        }
-        let movedRaw: string | null = null;
-        try {
-          movedRaw = await this.readText(moved);
-        } catch {
-          movedRaw = null;
-        }
-        if (movedRaw !== raw) {
-          // `link` fails with EEXIST instead of replacing, unlike `rename`.
-          let restored = false;
-          try {
-            await link(moved, lock);
-            restored = true;
-          } catch {
-            // Another owner already created the lock path; leave the moved file alone.
-          }
-          if (restored) await rm(moved, { force: true }).catch(() => undefined);
+          const info = await stat(lock);
+          fresh = now() - info.mtimeMs <= LOCK_STALE_MS;
+        } catch (statError) {
+          if ((statError as NodeJS.ErrnoException).code === "ENOENT") continue;
           return "busy";
         }
-        try {
-          await rm(moved, { force: true });
-        } catch {
-          return "error";
-        }
       }
+      if (fresh) return "busy";
+      // Rename is the atomic part: only one process can move this path. Compare the
+      // exact bytes read before the rename; if the path was replaced, we moved a newer
+      // owner's lock, so put it back and do not write this time.
+      const moved = `${lock}.stale-${randomUUID()}`;
+      try {
+        await rename(lock, moved);
+      } catch (renameError) {
+        if ((renameError as NodeJS.ErrnoException).code === "ENOENT") continue;
+        return "error";
+      }
+      let movedRaw: string | null = null;
+      try {
+        movedRaw = await this.readText(moved);
+      } catch {
+        movedRaw = null;
+      }
+      if (movedRaw !== raw) {
+        // `link` fails with EEXIST instead of replacing, unlike `rename`.
+        let restored = false;
+        try {
+          await this.linkFile(moved, lock);
+          restored = true;
+        } catch {
+          // Another owner already created the lock path; leave the moved file alone.
+        }
+        if (restored) await rm(moved, { force: true }).catch(() => undefined);
+        return "busy";
+      }
+      try {
+        await rm(moved, { force: true });
+      } catch {
+        return "error";
+      }
+    }
     return "busy";
   }
 
