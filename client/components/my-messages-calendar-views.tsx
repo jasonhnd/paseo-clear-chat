@@ -39,6 +39,11 @@ const SELECTION_GAP = 1;
 const FOCUS_RING = 2;
 /** Reserved on every cell so today's dot does not change the row height. */
 const MARK_SLOT = 4;
+/**
+ * Date line and the count line under it. Both are reserved on every day cell,
+ * so a day with no messages does not sit its number lower than a counted neighbour.
+ */
+const DAY_LINE = 14;
 const MONTH_FOCUS_OFFSET = 1;
 const YEAR_FOCUS_OFFSET = 2;
 /** Quiet year cells pad 8 inside a 1px border. The open month matches that inset. */
@@ -526,6 +531,7 @@ export function CalendarMonthView({
     node.focus?.();
   }, [focusedDay, month, weekAnchor]);
 
+  const dayLine = tokens.fs(DAY_LINE);
   const grid = buildMonthGrid(Number(month.slice(0, 4)), Number(month.slice(5, 7)));
   const rows: Array<Array<DayKey | null>> = weekMode
     ? [buildWeek(weekAnchor)]
@@ -647,7 +653,7 @@ export function CalendarMonthView({
                   onHoverOut={() => setHoverDay(null)}
                   style={{
                     minHeight: compact ? 44 : 54, borderRadius: 6,
-                    alignItems: "center", justifyContent: "center", gap: 1,
+                    alignItems: "center", justifyContent: "center",
                     backgroundColor: selected ? page : heatFill, opacity: disabled ? 0.35 : 1,
                     borderWidth: selected ? SELECTION_RING : showFocus && focus?.inner ? 2 : 0,
                     borderStyle: selected ? "solid" : "dashed",
@@ -665,11 +671,19 @@ export function CalendarMonthView({
                       {wash !== null ? <LevelWash opacity={wash} color={tokens.accent} radius={3} /> : null}
                     </View>
                   ) : wash !== null ? <LevelWash opacity={wash} color={tokens.accent} radius={6} /> : null}
-                  <Text style={{ color, fontFamily: tokens.fontUi, fontSize: tokens.fs(11), fontWeight: isToday ? "600" : "400" }}>
-                    {Number(day.slice(8, 10))}
-                  </Text>
-                  {countsKnown && count > 0 ? <Text style={{ color, fontFamily: tokens.fontUi, fontSize: tokens.fs(11) }}>{count}</Text> : null}
-                  <TodayMark color={dot} />
+                  <View testID="my-messages-calendar-day-body" style={{ alignItems: "center", gap: 1 }}>
+                    <View testID="my-messages-calendar-day-number" style={{ height: dayLine, justifyContent: "center" }}>
+                      <Text style={{ color, fontFamily: tokens.fontUi, fontSize: tokens.fs(11), lineHeight: dayLine, fontWeight: isToday ? "600" : "400", textAlign: "center", includeFontPadding: false }}>
+                        {Number(day.slice(8, 10))}
+                      </Text>
+                    </View>
+                    <View testID="my-messages-calendar-day-count" style={{ height: dayLine, justifyContent: "center" }}>
+                      {countsKnown && count > 0 ? (
+                        <Text style={{ color, fontFamily: tokens.fontUi, fontSize: tokens.fs(11), lineHeight: dayLine, textAlign: "center", includeFontPadding: false }}>{count}</Text>
+                      ) : null}
+                    </View>
+                    <TodayMark color={dot} />
+                  </View>
                 </Pressable>
                 {showTooltip ? (
                   <View testID="my-messages-calendar-tooltip" pointerEvents="none" style={bubbleStyle(column, 7, rowWidth, tokens)}>

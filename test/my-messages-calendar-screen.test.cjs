@@ -1920,3 +1920,112 @@ test("year cells show a short month, keep the full label, and reserve the today 
     assert.equal(tip.startsWith("2026年1月"), true);
   }
 });
+
+test("day numbers stay on one fixed line whether or not the cell shows a count", async t => {
+  const history = historyFor(daysResult({
+    "2026-03-09": 2,
+    [dayKey(0)]: 4,
+  }, { firstDay: "2026-03-09" }), { [dayKey(0)]: dayResult([]) });
+
+  function lineBox(h, node) {
+    const body = h.nodes(node, child => child.props?.testID === "my-messages-calendar-day-body")[0];
+    const number = h.nodes(node, child => child.props?.testID === "my-messages-calendar-day-number")[0];
+    const count = h.nodes(node, child => child.props?.testID === "my-messages-calendar-day-count")[0];
+    const mark = h.nodes(node, child => child.props?.testID === "my-messages-calendar-mark-slot")[0];
+    assert.ok(body, "every day keeps a body");
+    assert.ok(number, "every day keeps a date line");
+    assert.ok(count, "every day keeps a count line, including a day with no messages");
+    assert.ok(mark, "every day keeps the today mark slot");
+    const kids = [].concat(body.props.children).filter(child => child && typeof child === "object");
+    assert.deepEqual(kids.map(child => child.props.testID), [
+      "my-messages-calendar-day-number",
+      "my-messages-calendar-day-count",
+      "my-messages-calendar-mark-slot",
+    ]);
+    const numberText = h.nodes(number, child => child.type === "Text")[0];
+    assert.ok(number.props.style.height >= numberText.props.style.fontSize, "the date line is at least the font");
+    assert.equal(number.props.style.height, count.props.style.height);
+    assert.equal(numberText.props.style.lineHeight, number.props.style.height);
+    const countText = h.nodes(count, child => child.type === "Text")[0];
+    if (countText) assert.equal(countText.props.style.lineHeight, count.props.style.height);
+    const style = node.props.style;
+    const border = style.borderWidth || 0;
+    const pad = style.paddingVertical ?? style.padding ?? 0;
+    const room = style.minHeight - (border + pad) * 2;
+    const gap = body.props.style.gap ?? 0;
+    const stack = number.props.style.height + count.props.style.height + mark.props.style.height + gap * (kids.length - 1);
+    const spare = room - stack;
+    const origin = border + pad;
+    let offset = origin;
+    if (style.justifyContent === "center") offset = origin + spare / 2;
+    else if (style.justifyContent === "flex-end") offset = origin + spare;
+    assert.ok(stack <= room, `the date, count and mark (${stack}) must fit inside the cell (${room}) so the ring does not cover them`);
+    assert.ok(offset >= origin, "the date starts inside the selection ring and seam");
+    assert.ok(offset + stack <= origin + room + 1e-6, "the mark ends before the bottom seam");
+    return {
+      offset,
+      markOffset: offset + number.props.style.height + gap + count.props.style.height + gap,
+      minHeight: style.minHeight,
+      numberText: h.text(number),
+      countText: h.text(count),
+      weight: numberText.props.style.fontWeight,
+    };
+  }
+
+  function assertSameLine(h, cell, tree, labels, minHeight) {
+    const nodes = labels.map(label => cell(tree, label));
+    const boxes = nodes.map(node => lineBox(h, node));
+    for (const box of boxes) {
+      assert.equal(box.offset, boxes[0].offset, "date numbers share one offset inside the cell");
+      assert.equal(box.markOffset, boxes[0].markOffset, "the today mark slot shares one offset");
+      assert.equal(box.minHeight, minHeight);
+    }
+    return boxes;
+  }
+
+  const month = fixture(t, { historyRpc: history });
+  month.draw();
+  await flush();
+  let tree = month.draw();
+  const sameRow = ["Mar 9 Mon", "Mar 12 Thu", "Mar 15 Sun"];
+  const rowOf = label => pathTo(tree, month.cell(tree, label))
+    .find(node => node.props?.testID === "my-messages-calendar-row");
+  assert.equal(rowOf("Mar 9 Mon"), rowOf("Mar 12 Thu"));
+  assert.equal(rowOf("Mar 12 Thu"), rowOf("Mar 15 Sun"));
+  let boxes = assertSameLine(month.h, month.cell, tree, [
+    ...sameRow, "Mar 8 Sun", "Mar 16 Mon",
+  ], 54);
+  assert.deepEqual(boxes.map(box => box.numberText), ["9", "12", "15", "8", "16"]);
+  assert.deepEqual(boxes.map(box => box.countText), ["2", "", "4", "", ""]);
+  assert.deepEqual(boxes.map(box => box.weight), ["400", "400", "600", "400", "400"]);
+  assert.equal(month.cell(tree, "Mar 15 Sun").props.style.borderWidth, 2);
+  assert.equal(month.cell(tree, "Mar 12 Thu").props.style.borderWidth, 0);
+  assert.equal(month.cell(tree, "Mar 16 Mon").props.accessibilityState.disabled, true);
+  assert.equal(month.cell(tree, "Mar 8 Sun").props.accessibilityState.disabled, true);
+  assert.equal(month.h.nodes(month.cell(tree, "Mar 15 Sun"), node => node.props?.testID === "my-messages-calendar-today-dot").length, 1);
+  assert.equal(month.h.nodes(month.cell(tree, "Mar 12 Thu"), node => node.props?.testID === "my-messages-calendar-today-dot").length, 0);
+
+  month.cell(tree, "Mar 12 Thu").props.onPress();
+  await flush();
+  tree = month.draw();
+  boxes = assertSameLine(month.h, month.cell, tree, [
+    "Mar 9 Mon", "Mar 12 Thu", "Mar 15 Sun", "Mar 16 Mon",
+  ], 54);
+  assert.equal(month.cell(tree, "Mar 12 Thu").props.style.borderWidth, 2, "the quiet selected cell still reserves the count line");
+  assert.equal(boxes[1].countText, "");
+  assert.equal(boxes[2].weight, "600");
+  assert.equal(boxes[0].offset, boxes[1].offset);
+
+  const week = fixture(t, { historyRpc: history, compact: true });
+  week.draw();
+  await flush();
+  const weekTree = week.draw();
+  const weekBoxes = assertSameLine(week.h, week.cell, weekTree, sameRow, 44);
+  assert.deepEqual(weekBoxes.map(box => box.countText), ["2", "", "4"]);
+  assert.equal(week.cell(weekTree, "Mar 15 Sun").props.style.minHeight, 44);
+
+  month.one(tree, "my-messages-calendar-title").props.onPress();
+  const year = month.draw();
+  assert.equal(month.h.nodes(year, node => node.props?.testID === "my-messages-calendar-day-number").length, 0);
+  assert.equal(month.h.nodes(month.monthCell(year, "March 2026"), node => node.props?.testID === "my-messages-calendar-day-count").length, 0);
+});
