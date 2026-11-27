@@ -37,18 +37,70 @@ export interface LevelPalette {
   text: string[];
 }
 
+function readColor(color: string): { r: number; g: number; b: number; a: number } | null {
+  const value = color.trim();
+  if (value.startsWith("#")) {
+    let hex = value.slice(1);
+    if (hex.length === 3 || hex.length === 4) hex = [...hex].map(channel => channel + channel).join("");
+    if (!/^[0-9a-f]{6}([0-9a-f]{2})?$/i.test(hex)) return null;
+    const channel = (index: number) => Number.parseInt(hex.slice(index, index + 2), 16);
+    return { r: channel(0), g: channel(2), b: channel(4), a: hex.length === 8 ? channel(6) / 255 : 1 };
+  }
+  const body = /^rgba?\(([^)]+)\)$/i.exec(value)?.[1];
+  if (!body) return null;
+  const parts = body.split(/[\s,/]+/).filter(Boolean).map(Number);
+  if (parts.length < 3 || parts.slice(0, 3).some(part => Number.isNaN(part))) return null;
+  return { r: parts[0] ?? 0, g: parts[1] ?? 0, b: parts[2] ?? 0, a: parts[3] ?? 1 };
+}
+
+/** Paint `color` over an opaque `under`, so a translucent surface can be measured. */
+function flattenColor(color: string, under: string): string | null {
+  const top = readColor(color);
+  const base = readColor(under);
+  if (!top || !base) return null;
+  const channel = (value: number, below: number) => Math.round(value * top.a + below * (1 - top.a));
+  return `rgb(${channel(top.r, base.r)}, ${channel(top.g, base.g)}, ${channel(top.b, base.b)})`;
+}
+
+function contrastOf(first: string, second: string): number | null {
+  const left = readColor(first);
+  const right = readColor(second);
+  if (!left || !right) return null;
+  const linear = (value: number) => {
+    const channel = value / 255;
+    return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = (color: { r: number; g: number; b: number }) =>
+    0.2126 * linear(color.r) + 0.7152 * linear(color.g) + 0.0722 * linear(color.b);
+  const lighter = Math.max(luminance(left), luminance(right));
+  const darker = Math.min(luminance(left), luminance(right));
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/** The darker or lighter ink, whichever reads better on `background`. */
+function inkFor(background: string, dark: string, light: string, fallback: string): string {
+  const darkRatio = contrastOf(dark, background);
+  const lightRatio = contrastOf(light, background);
+  if (darkRatio === null || lightRatio === null) return fallback;
+  return darkRatio >= lightRatio ? dark : light;
+}
+
 /**
  * Four tinted steps from the host accent. `mix` only parses hex and rgb(); a theme that
  * hands us hsl()/oklch() falls back to an accent overlay at the same opacity, so the four
  * steps stay visible and distinguishable instead of collapsing to the page background.
+ * The number on a step uses whichever of the theme's two inks clears the fill.
  */
 export function buildLevelPalette(tokens: ExtendedThemeTokens): LevelPalette {
   const alphas = [0, 0.2, 0.38, 0.58, 0.78];
+  const page = flattenColor(tokens.surface0, "#ffffff") ?? tokens.surface0;
   const backgrounds: Array<string | null> = [];
   const washes: Array<number | null> = [];
   const text: string[] = [];
   for (let level = 0; level <= 4; level += 1) {
     const alpha = alphas[level] ?? 0;
+    const fallback = level >= 3 ? tokens.accentForeground : tokens.foreground;
+    let fill = tokens.surface1;
     if (level === 0) {
       backgrounds.push(tokens.surface1);
       washes.push(null);
@@ -57,12 +109,20 @@ export function buildLevelPalette(tokens: ExtendedThemeTokens): LevelPalette {
       if (mixed !== tokens.surface0) {
         backgrounds.push(mixed);
         washes.push(null);
+        fill = mixed;
       } else {
         backgrounds.push(tokens.surface0);
         washes.push(alpha);
+        const veiled = flattenColor(tokens.accent, page);
+        const veil = veiled === null ? null : readColor(veiled);
+        const base = readColor(page);
+        fill = veil && base
+          ? `rgb(${Math.round(base.r + (veil.r - base.r) * alpha)}, ${Math.round(base.g + (veil.g - base.g) * alpha)}, ${Math.round(base.b + (veil.b - base.b) * alpha)})`
+          : tokens.surface0;
       }
     }
-    text.push(level >= 3 ? tokens.accentForeground : tokens.foreground);
+    const painted = flattenColor(fill, page) ?? fill;
+    text.push(inkFor(painted, tokens.foreground, tokens.accentForeground, fallback));
   }
   return { backgrounds, washes, text };
 }
@@ -453,9 +513,10 @@ export function CalendarYearView({
       {months.map((cell, index) => {
         const level = countLevel(cell.total, thresholds);
         const focused = index === focusedMonth;
-        const background = palette.backgrounds[level] ?? tokens.surface1;
-        const wash = palette.washes[level] ?? null;
-        const color = palette.text[level] ?? tokens.foreground;
+        const quiet = cell.selectable && cell.total === 0;
+        const background = quiet ? tokens.surface2 : palette.backgrounds[level] ?? tokens.surface1;
+        const wash = quiet ? null : palette.washes[level] ?? null;
+        const color = quiet ? tokens.foreground : palette.text[level] ?? tokens.foreground;
         const monthTitle = formatMonthTitle(locale, cell.month);
         const label = cell.total === 1
           ? t("myMessages.calendar.yearMonthLabelOne", { month: monthTitle, count: cell.total })

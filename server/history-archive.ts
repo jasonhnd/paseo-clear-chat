@@ -530,9 +530,18 @@ export class HistoryArchive {
       const sameFile = movedRaw === raw
         && (raw !== "" || (observedMtimeMs !== undefined && movedMtimeMs === observedMtimeMs));
       if (!sameFile) {
-        // The moved file could not be read back; putting a guess in its place would hide a
-        // lock this process never saw, so leave it alone and report busy.
-        if (movedRaw === null) return "busy";
+        // The moved file could not be read back. A hard link still returns that inode,
+        // which is the live lock rather than a guess at its bytes. Writing a replacement
+        // is only possible once the bytes were actually read.
+        if (movedRaw === null) {
+          try {
+            await this.linkFile(moved, lock);
+            await rm(moved, { force: true }).catch(() => undefined);
+          } catch {
+            // Leave the moved file in place; there are no correct bytes to publish.
+          }
+          return "busy";
+        }
         // `link` fails with EEXIST instead of replacing, unlike `rename`. A file system
         // that rejects hard links needs the moved lock's own content written back with
         // O_EXCL; the bytes read before the rename belong to an older owner and would be

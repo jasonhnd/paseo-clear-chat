@@ -1055,6 +1055,121 @@ test("a failed day read never lowers the count shown on the cell", async t => {
   assert.match(h.text(one(view, "my-messages-screen-summary")), /3 messages/);
 });
 
+function parsedColor(color) {
+  const value = String(color).trim();
+  if (value.startsWith("#")) {
+    let hex = value.slice(1);
+    if (hex.length === 3) hex = [...hex].map(channel => channel + channel).join("");
+    if (!/^[0-9a-f]{6}/i.test(hex)) return null;
+    return {
+      r: Number.parseInt(hex.slice(0, 2), 16),
+      g: Number.parseInt(hex.slice(2, 4), 16),
+      b: Number.parseInt(hex.slice(4, 6), 16),
+      a: 1,
+    };
+  }
+  const body = /^rgba?\(([^)]+)\)$/i.exec(value)?.[1];
+  if (!body) return null;
+  const parts = body.split(/[\s,/]+/).filter(Boolean).map(Number);
+  if (parts.length < 3 || parts.slice(0, 3).some(Number.isNaN)) return null;
+  return { r: parts[0], g: parts[1], b: parts[2], a: parts[3] ?? 1 };
+}
+
+/** The colour a cell actually paints: a translucent fill over the page. */
+function paintedOn(color, under) {
+  const top = parsedColor(color);
+  const base = parsedColor(under);
+  if (!top || !base) return color;
+  const channel = (value, below) => Math.round(value * top.a + below * (1 - top.a));
+  return `rgb(${channel(top.r, base.r)}, ${channel(top.g, base.g)}, ${channel(top.b, base.b)})`;
+}
+
+function colorChannels(color) {
+  const parsed = parsedColor(color);
+  return parsed ? [parsed.r, parsed.g, parsed.b] : null;
+}
+
+/** WCAG contrast of two opaque colours, computed here rather than by the palette. */
+function contrastRatio(first, second) {
+  const linear = value => {
+    const channel = value / 255;
+    return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = color => {
+    const channels = colorChannels(color);
+    if (!channels) throw new Error(`unreadable colour ${color}`);
+    return 0.2126 * linear(channels[0]) + 0.7152 * linear(channels[1]) + 0.0722 * linear(channels[2]);
+  };
+  const left = luminance(first);
+  const right = luminance(second);
+  return (Math.max(left, right) + 0.05) / (Math.min(left, right) + 0.05);
+}
+
+test("day numbers stay at least 4.5 to 1 on every heat level without losing the dark theme", async t => {
+  const light = {
+    surface0: "#ffffff", foreground: "#1f2328", foregroundMuted: "#59636e",
+    accent: "#1f8a5b", accentForeground: "#ffffff", statusDanger: "#cf222e",
+  };
+  const history = historyFor(daysResult({
+    [dayKey(-5)]: 1, [dayKey(-4)]: 3, [dayKey(-3)]: 5, [dayKey(-2)]: 7, [dayKey(0)]: 1,
+  }), { [dayKey(0)]: dayResult([]) });
+  for (const themeColors of [light, DARK_THEME]) {
+    const { draw, cell, h } = fixture(t, { historyRpc: history, realTheme: true, themeColors });
+    draw();
+    await flush();
+    const tokens = h.load("client/components/theme-tokens.ts").buildThemeTokens(themeColors, BASE_PREFERENCES);
+    // Leave today so its cell keeps the heat colour instead of the selected fill.
+    cell(draw(), "Mar 10 Tue").props.onPress();
+    await flush();
+    const tree = draw();
+    const samples = [
+      ["Mar 14 Sat", 0], ["Mar 15 Sun", 1], ["Mar 11 Wed", 2], ["Mar 12 Thu", 3], ["Mar 13 Fri", 4],
+    ];
+    for (const [label, level] of samples) {
+      const node = cell(tree, label);
+      const ink = h.nodes(node, child => child.type === "Text")[0].props.style.color;
+      const background = paintedOn(node.props.style.backgroundColor, tokens.surface0);
+      const ratio = contrastRatio(ink, background);
+      const previousInk = level >= 3 ? tokens.accentForeground : tokens.foreground;
+      const previous = contrastRatio(previousInk, background);
+      assert.ok(ratio >= 4.5, `${label} contrast ${ratio.toFixed(2)} is below 4.5`);
+      assert.ok(ratio + 1e-9 >= previous, `${label} contrast ${ratio.toFixed(2)} is worse than ${previous.toFixed(2)}`);
+    }
+  }
+});
+
+test("a quiet month inside the record range is a dim cell, not a greyed-out month", async t => {
+  const history = historyFor(daysResult({ "2026-01-02": 1, [dayKey(0)]: 1 }, { firstDay: "2026-01-02" }),
+    { [dayKey(0)]: dayResult([]) });
+  const { draw, one, monthCell, h } = fixture(t, { historyRpc: history, realTheme: true, themeColors: DARK_THEME });
+  draw();
+  await flush();
+  one(draw(), "my-messages-calendar-title").props.onPress();
+  const tree = draw();
+  const tokens = h.load("client/components/theme-tokens.ts").buildThemeTokens(DARK_THEME, BASE_PREFERENCES);
+  const february = monthCell(tree, "February 2026");
+  const december = monthCell(tree, "December 2026");
+  assert.equal(february.props.accessibilityState.disabled, false);
+  assert.equal(december.props.accessibilityState.disabled, true);
+  assert.equal(february.props.style.opacity, 1);
+  assert.equal(december.props.style.opacity, 0.35);
+  assert.equal(february.props.style.backgroundColor, tokens.surface2);
+  assert.notEqual(february.props.style.backgroundColor, december.props.style.backgroundColor);
+});
+
+test("the compact header arrows are at least a 44 pixel target", async t => {
+  const history = historyFor(daysResult({ "2026-01-02": 1, [dayKey(0)]: 1 }, { firstDay: "2026-01-02" }),
+    { [dayKey(0)]: dayResult([]) });
+  const { draw, one } = fixture(t, { historyRpc: history, compact: true });
+  draw();
+  await flush();
+  for (const id of ["my-messages-calendar-prev", "my-messages-calendar-next"]) {
+    const style = one(draw(), id).props.style;
+    assert.ok(style.minWidth >= 44, `${id} minWidth ${style.minWidth}`);
+    assert.ok(style.minHeight >= 44, `${id} minHeight ${style.minHeight}`);
+  }
+});
+
 test("all three locales define the calendar text with matching interpolation", () => {
   const keys = {
     today: [], previousMonth: [], nextMonth: [], previousYear: [], nextYear: [],

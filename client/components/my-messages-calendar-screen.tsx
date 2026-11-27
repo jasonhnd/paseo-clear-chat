@@ -66,7 +66,10 @@ export function MyMessagesCalendarScreen({
   const small = { ...muted, fontSize: tokens.fs(11) };
   const warning = { ...muted, color: tokens.warning };
   const button = { paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: tokens.border };
-  const disabledButton = { ...button, opacity: 0.35 };
+  const arrowButton = layout.compact
+    ? { ...button, minWidth: 44, minHeight: 44, alignItems: "center" as const, justifyContent: "center" as const }
+    : button;
+  const arrowDisabled = { ...arrowButton, opacity: 0.35 };
   const openAgent = typeof navigation?.openAgent === "function" ? navigation.openAgent.bind(navigation) : undefined;
 
   const detail = snapshot.detail;
@@ -191,7 +194,7 @@ export function MyMessagesCalendarScreen({
       <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
         <Pressable testID="my-messages-calendar-prev" accessibilityRole="button"
           accessibilityState={{ disabled: prevDisabled }}
-          style={prevDisabled ? disabledButton : button}
+          style={prevDisabled ? arrowDisabled : arrowButton}
           accessibilityLabel={view === "year" ? t("myMessages.calendar.previousYear") : t("myMessages.calendar.previousMonth")}
           disabled={prevDisabled}
           onPress={() => stepCalendar(-1)}>
@@ -206,7 +209,7 @@ export function MyMessagesCalendarScreen({
         </Pressable>
         <Pressable testID="my-messages-calendar-next" accessibilityRole="button"
           accessibilityState={{ disabled: nextDisabled }}
-          style={nextDisabled ? disabledButton : button}
+          style={nextDisabled ? arrowDisabled : arrowButton}
           accessibilityLabel={view === "year" ? t("myMessages.calendar.nextYear") : t("myMessages.calendar.nextMonth")}
           disabled={nextDisabled}
           onPress={() => stepCalendar(1)}>
