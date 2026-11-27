@@ -123,25 +123,99 @@ function firstFocusDay(month: MonthKey, selectedDay: DayKey, firstDay: DayKey | 
   return selectedDay;
 }
 
+/** The node a web Pressable forwards its ref to; only `focus` is used here. */
+interface FocusTarget {
+  focus?: () => void;
+}
+
+/** The nearest selectable month, so a tab stop never sits on a grey cell. */
+function nearestSelectableMonth(index: number, months: readonly YearMonthCell[]): number {
+  if (months[index]?.selectable) return index;
+  let best = -1;
+  for (let candidate = 0; candidate < months.length; candidate += 1) {
+    if (!months[candidate]?.selectable) continue;
+    if (best < 0 || Math.abs(candidate - index) < Math.abs(best - index)) best = candidate;
+  }
+  return best >= 0 ? best : index;
+}
+
+/** Arrow movement that steps over greyer months instead of stopping on them. */
+function nextSelectableMonth(
+  index: number, direction: DayDirection, columns: number, months: readonly YearMonthCell[],
+): number {
+  let current = index;
+  for (let step = 0; step < months.length; step += 1) {
+    const next = moveMonthFocus(current, direction, columns);
+    if (next === current) return index;
+    current = next;
+    if (months[current]?.selectable) return current;
+  }
+  return index;
+}
+
 export function CalendarMonthView({
   month, selectedDay, today, firstDay, days, extraDays, countsKnown, thresholds, palette,
   tokens, locale, t, compact, platform, weekMode = false, onSelect, onMonthChange, onToday,
 }: MonthViewProps) {
   const [focusedDay, setFocusedDay] = React.useState<DayKey>(() => firstFocusDay(month, selectedDay, firstDay, today));
+  const focusedDayRef = React.useRef(focusedDay);
   const [weekAnchor, setWeekAnchor] = React.useState<DayKey>(selectedDay);
   const [hoverDay, setHoverDay] = React.useState<DayKey | null>(null);
   const [focusInside, setFocusInside] = React.useState(false);
+  const cellNodes = React.useRef(new Map<DayKey, FocusTarget>());
+  const pendingFocus = React.useRef<DayKey | null>(null);
+
+  /** State plus the ref the key handler reads, so held-down arrows do not use a stale day. */
+  function commitFocusDay(day: DayKey) {
+    focusedDayRef.current = day;
+    setFocusedDay(day);
+  }
+
+  /** Attach a cell; if a cross-month arrow asked for it, focus it as it mounts. */
+  function registerCell(day: DayKey, node: FocusTarget | null) {
+    if (!node) {
+      cellNodes.current.delete(day);
+      return;
+    }
+    cellNodes.current.set(day, node);
+    if (pendingFocus.current === day) {
+      pendingFocus.current = null;
+      node.focus?.();
+    }
+  }
+
+  function moveFocusTo(day: DayKey) {
+    const node = cellNodes.current.get(day);
+    if (!node) {
+      // The cell is in a month or week that has not rendered yet; its ref moves focus.
+      pendingFocus.current = day;
+      return;
+    }
+    pendingFocus.current = null;
+    node.focus?.();
+  }
 
   React.useEffect(() => {
-    setFocusedDay(selectedDay);
+    commitFocusDay(selectedDay);
     setWeekAnchor(selectedDay);
   }, [selectedDay]);
   React.useEffect(() => {
-    if (monthKeyOfDay(focusedDay) !== month) {
-      setFocusedDay(firstFocusDay(month, selectedDay, firstDay, today));
+    if (monthKeyOfDay(focusedDayRef.current) !== month) {
+      commitFocusDay(firstFocusDay(month, selectedDay, firstDay, today));
       setHoverDay(null);
     }
   }, [month, focusedDay, selectedDay, firstDay, today]);
+  // A cross-month or next-week arrow asks for a cell that did not exist in the previous
+  // render. Refs normally focus it as it mounts; this effect is the same hand-off after
+  // commit, so the keyboard never falls back to the document body.
+  React.useEffect(() => {
+    const day = pendingFocus.current;
+    if (day === null) return;
+    const node = cellNodes.current.get(day);
+    if (!node) return;
+    pendingFocus.current = null;
+    node.focus?.();
+  }, [focusedDay, month, weekAnchor]);
 
   const grid = buildMonthGrid(Number(month.slice(0, 4)), Number(month.slice(5, 7)));
   const rows: Array<Array<DayKey | null>> = weekMode
@@ -160,19 +234,20 @@ export function CalendarMonthView({
     }
     if (key === "Enter" || key === " ") {
       prevent?.();
-      onSelect(focusedDay);
+      onSelect(focusedDayRef.current);
       return;
     }
     const direction: DayDirection | null = key === "ArrowLeft" ? "left" : key === "ArrowRight" ? "right"
       : key === "ArrowUp" ? "up" : key === "ArrowDown" ? "down" : null;
     if (!direction) return;
-    const next = moveDay(focusedDay, direction);
+    const next = moveDay(focusedDayRef.current, direction);
     if (!selectableDay(next, firstDay, today)) return;
     prevent?.();
     setFocusInside(true);
-    setFocusedDay(next);
+    commitFocusDay(next);
     if (monthKeyOfDay(next) !== month) onMonthChange(monthKeyOfDay(next));
     if (weekMode && !buildWeek(weekAnchor).includes(next)) setWeekAnchor(next);
+    moveFocusTo(next);
   }
 
   const keyProps = platform === "web" ? ({ onKeyDown: handleKeyDown } as unknown as Partial<ViewProps>) : {};
@@ -181,8 +256,7 @@ export function CalendarMonthView({
     <View
       testID="my-messages-calendar-grid"
       accessibilityRole={GRID_ROLE}
-      focusable
-      tabIndex={0}
+      tabIndex={-1}
       onFocus={() => setFocusInside(true)}
       onBlur={() => setFocusInside(false)}
       {...keyProps}
@@ -234,16 +308,18 @@ export function CalendarMonthView({
                   accessibilityState={{ selected, disabled }}
                   disabled={disabled}
                   focusable
+                  ref={node => registerCell(day, node as unknown as FocusTarget | null)}
+                  tabIndex={focused ? 0 : -1}
                   onPress={() => onSelect(day)}
-                  onFocus={() => { setFocusedDay(day); setFocusInside(true); }}
+                  onFocus={() => { commitFocusDay(day); setFocusInside(true); }}
                   onHoverIn={() => setHoverDay(day)}
                   onHoverOut={() => setHoverDay(null)}
                   style={{
                     minHeight: compact ? 44 : 54, borderRadius: 6, paddingVertical: 3,
                     alignItems: "center", justifyContent: "center", gap: 1,
                     backgroundColor: background, opacity: disabled ? 0.35 : 1,
-                    borderWidth: selected || focused || isToday ? 1 : 0,
-                    borderColor: selected ? tokens.accentForeground : focused ? tokens.accent : isToday ? tokens.accent : tokens.border,
+                    borderWidth: selected || focused || isToday ? 2 : 0,
+                    borderColor: selected ? tokens.accentForeground : focused || isToday ? tokens.foreground : tokens.border,
                   }}
                 >
                   {wash !== null ? <LevelWash opacity={wash} color={tokens.accent} radius={6} /> : null}
@@ -285,14 +361,55 @@ export function CalendarYearView({
   year, months, startMonth, thresholds, palette, tokens, locale, t, compact, platform, onEnterMonth, onToday,
 }: YearViewProps) {
   const columns = compact ? 2 : 4;
-  const [focusedMonth, setFocusedMonth] = React.useState(() => Math.min(11, Math.max(0, startMonth)));
+  const [focusedMonth, setFocusedMonth] = React.useState(() => nearestSelectableMonth(Math.min(11, Math.max(0, startMonth)), months));
+  const focusedMonthRef = React.useRef(focusedMonth);
   const [hoverMonth, setHoverMonth] = React.useState<MonthKey | null>(null);
   const [focusInside, setFocusInside] = React.useState(false);
+  const monthNodes = React.useRef(new Map<number, FocusTarget>());
+  const pendingMonthFocus = React.useRef<number | null>(null);
+
+  /** State plus the ref the key handler reads, so held-down arrows do not use a stale month. */
+  function commitFocusMonth(index: number) {
+    focusedMonthRef.current = index;
+    setFocusedMonth(index);
+  }
+
+  function registerMonth(index: number, node: FocusTarget | null) {
+    if (!node) {
+      monthNodes.current.delete(index);
+      return;
+    }
+    monthNodes.current.set(index, node);
+    if (pendingMonthFocus.current === index) {
+      pendingMonthFocus.current = null;
+      node.focus?.();
+    }
+  }
+
+  function moveMonthFocusTo(index: number) {
+    const node = monthNodes.current.get(index);
+    if (!node) {
+      pendingMonthFocus.current = index;
+      return;
+    }
+    pendingMonthFocus.current = null;
+    node.focus?.();
+  }
 
   React.useEffect(() => {
     setHoverMonth(null);
-    setFocusedMonth(index => Math.min(11, Math.max(0, index)));
-  }, [year]);
+    const clamped = Math.min(11, Math.max(0, focusedMonthRef.current));
+    commitFocusMonth(months[clamped]?.selectable ? clamped : nearestSelectableMonth(clamped, months));
+  }, [year, months]);
+  // A year arrow moves DOM focus onto the month cell that holds the single tab stop.
+  React.useEffect(() => {
+    const index = pendingMonthFocus.current;
+    if (index === null) return;
+    const node = monthNodes.current.get(index);
+    if (!node) return;
+    pendingMonthFocus.current = null;
+    node.focus?.();
+  }, [focusedMonth, months]);
   const tooltipMonth = hoverMonth ?? (focusInside ? months[focusedMonth]?.month ?? null : null);
 
   function handleKeyDown(event: unknown) {
@@ -306,7 +423,7 @@ export function CalendarYearView({
     }
     if (key === "Enter" || key === " ") {
       prevent?.();
-      const cell = months[focusedMonth];
+      const cell = months[focusedMonthRef.current];
       if (cell?.selectable) onEnterMonth(cell.month);
       return;
     }
@@ -315,7 +432,9 @@ export function CalendarYearView({
     if (!direction) return;
     prevent?.();
     setFocusInside(true);
-    setFocusedMonth(index => moveMonthFocus(index, direction, columns));
+    const next = nextSelectableMonth(focusedMonthRef.current, direction, columns, months);
+    commitFocusMonth(next);
+    moveMonthFocusTo(next);
   }
 
   const keyProps = platform === "web" ? ({ onKeyDown: handleKeyDown } as unknown as Partial<ViewProps>) : {};
@@ -325,8 +444,7 @@ export function CalendarYearView({
     <View
       testID="my-messages-calendar-year"
       accessibilityRole={GRID_ROLE}
-      focusable
-      tabIndex={0}
+      tabIndex={-1}
       onFocus={() => setFocusInside(true)}
       onBlur={() => setFocusInside(false)}
       {...keyProps}
@@ -356,14 +474,16 @@ export function CalendarYearView({
               accessibilityLabel={label}
               disabled={!cell.selectable}
               focusable
+              ref={node => registerMonth(index, node as unknown as FocusTarget | null)}
+              tabIndex={focused && cell.selectable ? 0 : -1}
               onPress={() => onEnterMonth(cell.month)}
-              onFocus={() => { setFocusedMonth(index); setFocusInside(true); }}
+              onFocus={() => { commitFocusMonth(index); setFocusInside(true); }}
               onHoverIn={() => setHoverMonth(cell.month)}
               onHoverOut={() => setHoverMonth(null)}
               style={{
                 minHeight: compact ? 56 : 64, borderRadius: 8, padding: 8, gap: 2,
                 backgroundColor: background, opacity: cell.selectable ? 1 : 0.35,
-                borderWidth: focused ? 2 : 1, borderColor: focused ? tokens.accent : tokens.border,
+                borderWidth: focused ? 2 : 1, borderColor: focused ? tokens.foreground : tokens.border,
               }}
             >
               {wash !== null ? <LevelWash opacity={wash} color={tokens.accent} radius={8} /> : null}

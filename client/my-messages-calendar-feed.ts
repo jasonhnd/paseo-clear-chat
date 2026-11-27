@@ -43,6 +43,8 @@ export interface CalendarDetailSnapshot {
   fromRpc: boolean;
   /** How many of `rows` the RPC supplied, before the fallback merged in. */
   rpcRows: number;
+  /** The conversation directory could not be read, so titles and slow rows are missing. */
+  directoryFailed: boolean;
 }
 
 export interface CalendarNotices {
@@ -89,12 +91,17 @@ interface CalendarSession extends CalendarMount {
   detailToken: number;
   directory: Promise<{ conversations: Conversation[]; directoryPartial: boolean }> | null;
   stopped: boolean;
+  /** The day RPC answered at least once; a later total failure keeps the calendar. */
+  dayRpcSucceeded: boolean;
+  /** The first both-methods failure already spent its one automatic retry. */
+  errorAutoRetried: boolean;
 }
 
 function emptyDetail(day: DayKey): CalendarDetailSnapshot {
   return {
     day, status: "reading", rows: [], conversations: 0, progress: null,
     partial: [], failed: [], unavailable: [], fromTimeline: false, fromRpc: false, rpcRows: 0,
+    directoryFailed: false,
   };
 }
 
@@ -211,19 +218,19 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
     const base = session.snapshot.days[detail.day] ?? 0;
     const extra = detail.fromRpc
       ? Math.max(0, detail.rows.length - detail.rpcRows)
-      : detail.rows.length - base;
+      : Math.max(0, detail.rows.length - base);
     // A failed RPC plus an empty fallback is no evidence that the fast count was wrong.
     const value = !detail.fromRpc && detail.rows.length === 0 && base > 0 ? 0 : extra;
     return { ...session.snapshot.extraDays, [detail.day]: value };
   }
 
-  async function loadDetail(session: CalendarSession, day: DayKey, token: number): Promise<void> {
+  async function loadDetail(session: CalendarSession, day: DayKey, token: number): Promise<CalendarDetailSnapshot | null> {
     const isOpen = () => isDetailCurrent(session, token);
-    if (session.snapshot.mode !== "calendar") return;
+    if (session.snapshot.mode !== "calendar") return null;
     const cached = detailCache.get(day);
     if (cached) {
       publish(session, { selectedDay: day, detail: cached, extraDays: extraForDetail(session, cached) });
-      return;
+      return cached;
     }
     publish(session, { selectedDay: day, detail: emptyDetail(day) });
 
@@ -242,8 +249,9 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
     } catch {
       dayState = { status: "error" as const };
     }
-    if (!isOpen()) return;
+    if (!isOpen()) return null;
     if (dayState.status === "ready") {
+      session.dayRpcSucceeded = true;
       const result: HistoryDayResult = dayState.snapshot;
       notices = mergeNotices(notices, {
         directoryPartial: result.directoryPartial,
@@ -264,7 +272,7 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
         };
         cacheDetail(day, ready);
         publish(session, { detail: ready, extraDays: extraForDetail(session, ready) });
-        return;
+        return ready;
       }
       mode = "slow";
     }
@@ -273,15 +281,16 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
     try {
       listing = await directory(session, isOpen);
     } catch {
-      if (!isOpen()) return;
+      if (!isOpen()) return null;
       const failed: CalendarDetailSnapshot = {
         ...emptyDetail(day), status: rpcRows.length ? "ready" : "error", rows: rpcRows,
         conversations: countConversations(rpcRows), fromTimeline, fromRpc, rpcRows: rpcRows.length,
+        directoryFailed: true,
       };
       publish(session, { detail: failed, notices });
-      return;
+      return failed;
     }
-    if (!isOpen()) return;
+    if (!isOpen()) return null;
     notices = mergeNotices(notices, { directoryPartial: listing.directoryPartial });
     const titles = new Map(listing.conversations.map(conversation => [conversation.id, conversation.title]));
     rpcRows = rpcRows.map(row => ({ ...row, title: titles.get(row.agentId) ?? row.title }));
@@ -301,13 +310,13 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
     const failed: string[] = [];
     const unavailable: string[] = [];
     for (const [index, conversation] of candidates.entries()) {
-      if (!isOpen()) return;
+      if (!isOpen()) return null;
       const read = await readWithRetries(
         () => readConversation(session.agents, conversation, fromMs, until, TIMELINE_BUDGET, isOpen),
         isOpen,
         waitToRetry,
       );
-      if (!isOpen()) return;
+      if (!isOpen()) return null;
       if (!read) failed.push(conversation.id);
       else {
         if (read.partial) partial.push(conversation.id);
@@ -339,11 +348,14 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
     };
     cacheDetail(day, ready);
     publish(session, { notices, detail: ready, extraDays: extraForDetail(session, ready) });
+    return ready;
   }
 
   function cacheDetail(day: DayKey, detail: CalendarDetailSnapshot): void {
-    // A partial read is retried when the day is opened again, never replayed from cache.
-    if (detail.partial.length > 0 || detail.failed.length > 0 || detail.unavailable.length > 0) return;
+    // A partial read or a directory failure is retried when the day is opened again,
+    // never replayed from cache.
+    if (detail.partial.length > 0 || detail.failed.length > 0 || detail.unavailable.length > 0
+      || detail.directoryFailed) return;
     detailCache.delete(day);
     detailCache.set(day, detail);
     if (detailCache.size > DETAIL_CACHE_LIMIT) detailCache.delete(detailCache.keys().next().value!);
@@ -366,14 +378,30 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
       return;
     }
     if (state.status === "error") {
-      // A failed read is not an old host. Keep the calendar shape, say so, and let the
-      // selected day fall back to the timeline so the page still has content.
+      // A failed read is not an old host. Keep the calendar shape while the day still reads,
+      // and give both methods one automatic second try before deciding the host is unusable.
       publish(session, {
         mode: "calendar", daysStatus: "error", days: {}, extraDays: {}, firstDay: null, lastDay: null,
         slowConversationIds: [],
         notices: { directoryPartial: false, cacheError: false, skippedDatabases: [], cacheFull: [] },
       });
-      await loadDetail(session, session.snapshot.selectedDay, ++session.detailToken);
+      const detailToken = ++session.detailToken;
+      const detail = await loadDetail(session, session.snapshot.selectedDay, detailToken);
+      if (!isOpen() || session.stopped || session.detailToken !== detailToken) return;
+      if (detail?.fromRpc || session.dayRpcSucceeded) return;
+      if (!session.errorAutoRetried) {
+        session.errorAutoRetried = true;
+        session.directory = null;
+        detailCache.delete(session.snapshot.selectedDay);
+        await loadDays(session);
+        return;
+      }
+      // Neither method ever answered: the previous today-only page still reads the timeline.
+      publish(session, {
+        mode: "fallback", daysStatus: "error", days: {}, extraDays: {}, firstDay: null, lastDay: null,
+        slowConversationIds: [], detail: emptyDetail(session.snapshot.selectedDay),
+        notices: { directoryPartial: false, cacheError: false, skippedDatabases: [], cacheFull: [] },
+      });
       return;
     }
     const result = state.snapshot;
@@ -398,6 +426,7 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
       const selected = input.initialDay ?? localDateKey(now());
       const session: CalendarSession = {
         ...input, daysToken: 0, detailToken: 0, directory: null, stopped: false,
+        dayRpcSucceeded: false, errorAutoRetried: false,
         snapshot: emptyCalendarSnapshot(selected, input.history.timeZone),
       };
       active = session;

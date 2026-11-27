@@ -95,17 +95,16 @@ export function MyMessagesCalendarScreen({
   const maxMonth = monthKeyOfDay(today);
   const minYear = Number(minMonth.slice(0, 4));
   const maxYear = Number(maxMonth.slice(0, 4));
-  const weekBefore = addDays(selectedDay, -7);
-  const weekAfter = addDays(selectedDay, 7);
+  const weekFirst = snapshot.firstDay ?? today;
   const prevDisabled = view === "year"
     ? year <= minYear
     : layout.compact && !expanded
-      ? weekBefore < (snapshot.firstDay ?? today)
+      ? selectedDay <= weekFirst
       : visibleMonth <= minMonth;
   const nextDisabled = view === "year"
     ? year >= maxYear
     : layout.compact && !expanded
-      ? weekAfter > today
+      ? selectedDay >= today
       : visibleMonth >= maxMonth;
 
   function selectDay(day: DayKey) {
@@ -155,7 +154,10 @@ export function MyMessagesCalendarScreen({
     }
     if (layout.compact && !expanded) {
       if ((delta < 0 && prevDisabled) || (delta > 0 && nextDisabled)) return;
-      selectDay(addDays(selectedDay, delta * 7));
+      // Stop on the boundary week instead of disabling a week early: a day six days from
+      // today is still reachable with the arrow when the selected day is further back.
+      const step = addDays(selectedDay, delta * 7);
+      selectDay(delta < 0 ? (step < weekFirst ? weekFirst : step) : step > today ? today : step);
       return;
     }
     const next = addMonths(visibleMonth, delta);
@@ -181,7 +183,7 @@ export function MyMessagesCalendarScreen({
   const countedOnly = detail.status === "ready" ? Math.max(0, selectedCount - detail.rows.length) : 0;
   const notice = snapshot.notices.directoryPartial || snapshot.notices.cacheError || snapshot.notices.skippedDatabases.length > 0;
   const noticeFull = snapshot.notices.cacheFull.length > 0;
-  const incomplete = detail.partial.length > 0 || detail.failed.length > 0;
+  const incomplete = detail.partial.length > 0 || detail.failed.length > 0 || detail.directoryFailed;
   const daysFailed = snapshot.daysStatus === "error";
 
   return (

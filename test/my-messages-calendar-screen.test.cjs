@@ -50,10 +50,12 @@ function dayResult(rows, extras = {}) {
 
 function fakePaseo(directory, histories) {
   const reads = [];
-  return {
+  const paseo = {
     reads,
+    directoryFails: false,
     agents: {
       async list() {
+        if (paseo.directoryFails) throw new Error("the conversation directory is unavailable");
         return { entries: directory.map(entry => ({ agent: entry })), pageInfo: { hasMore: false, nextCursor: null } };
       },
       ref(id) {
@@ -68,6 +70,7 @@ function fakePaseo(directory, histories) {
       },
     },
   };
+  return paseo;
 }
 
 const screenProps = {
@@ -93,9 +96,10 @@ const BASE_PREFERENCES = {
 function fixture(t, options = {}) {
   const {
     historyRpc, locale = "en", compact = false, directory = [], histories = new Map(),
-    realTheme = false, themeColors = {}, preferences, immediateTimers = false,
+    realTheme = false, themeColors = {}, preferences, immediateTimers = false, directoryError = false,
   } = options;
   const paseo = fakePaseo(directory, histories);
+  paseo.directoryFails = directoryError;
   const harnessOptions = { paseo, ui: { SidebarRow: "Host.SidebarRow" }, historyRpc, locale };
   if (realTheme) harnessOptions.themeTokens = true;
   if (preferences) harnessOptions.preferences = preferences;
@@ -152,6 +156,40 @@ function historyFor(days, rowsByDay) {
   };
 }
 
+/**
+ * The web Pressable keeps its DOM node in a ref. Hand each cell a fake node so a test can
+ * see which one a key press focused, the way a browser would move focus.
+ */
+function domFocus(all, testID = "my-messages-calendar-cell") {
+  const nodes = new Map();
+  let focused = null;
+  return {
+    attach(tree) {
+      const seen = new Set();
+      for (const node of all(tree, testID)) {
+        const label = String(node.props.accessibilityLabel);
+        seen.add(label);
+        let fake = nodes.get(label);
+        if (!fake) {
+          fake = { focus() { focused = label; }, ref: null };
+          nodes.set(label, fake);
+        }
+        fake.ref = node.props.ref;
+        node.props.ref?.(fake);
+      }
+      for (const [label, fake] of [...nodes]) {
+        if (seen.has(label)) continue;
+        nodes.delete(label);
+        fake.ref?.(null);
+      }
+      return focused;
+    },
+    get focused() { return focused; },
+    blur() { focused = null; },
+  };
+}
+
+
 test("the calendar opens on today with counts, summary, rows and the client time zone", async t => {
   const today = dayKey(0);
   const marchTenth = dayKey(-5);
@@ -204,6 +242,7 @@ test("a hovered day shows a floating bubble pinned inside the grid edges", async
   let tooltip = h.nodes(hovered, node => node.props.testID === "my-messages-calendar-tooltip")[0];
   assert.equal(h.text(tooltip), "Mar 9 Mon · 2 messages");
   assert.equal(tooltip.props.style.position, "absolute");
+  assert.equal(tooltip.props.style.bottom, "100%");
   assert.equal(tooltip.props.style.left, 0);
   assert.ok(pathTo(hovered, tooltip).some(node => node.props?.testID === "my-messages-calendar-cell-wrap"));
 
@@ -223,27 +262,35 @@ test("arrow keys move only the keyboard focus, show its bubble, and Enter select
     [dayKey(-1)]: dayResult([{ agentId: "alpha", at: at(-1, 9), text: "focused row" }]),
   });
   const directory = [agent("alpha", "Alpha conversation")];
-  const { draw, one, cell, h } = fixture(t, { historyRpc: history, directory });
+  const { draw, one, cell, all, h } = fixture(t, { historyRpc: history, directory });
   draw();
   await flush();
+  let tree = draw();
+  // A roving tab stop: Tab enters the grid on one cell, not on the container or 42 cells.
+  assert.equal(cell(tree, "Mar 15 Sun").props.tabIndex, 0);
+  assert.equal(cell(tree, "Mar 14 Sat").props.tabIndex, -1);
+  const dom = domFocus(all);
+  dom.attach(tree);
+  cell(tree, "Mar 15 Sun").props.onFocus();
   const before = history.calls.filter(([kind]) => kind === "day").length;
-  const grid = one(draw(), "my-messages-calendar-grid");
-  grid.props.onFocus();
-  grid.props.onKeyDown({ key: "ArrowLeft" });
+  one(draw(), "my-messages-calendar-grid").props.onKeyDown({ key: "ArrowLeft" });
   await flush();
+  tree = draw();
+  dom.attach(tree);
+  assert.equal(dom.focused.startsWith("Mar 14 Sat"), true, "the arrow key moves DOM focus to the new cell");
+  assert.equal(cell(tree, "Mar 14 Sat").props.tabIndex, 0);
+  assert.equal(cell(tree, "Mar 15 Sun").props.tabIndex, -1);
   assert.equal(history.calls.filter(([kind]) => kind === "day").length, before, "arrows must not read a day");
-  assert.equal(h.text(one(draw(), "my-messages-screen-summary")), "Today · Mar 15 Sun");
-  const tooltip = h.nodes(draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0];
+  assert.equal(h.text(one(tree, "my-messages-screen-summary")), "Today · Mar 15 Sun");
+  const tooltip = h.nodes(tree, node => node.props.testID === "my-messages-calendar-tooltip")[0];
   assert.equal(h.text(tooltip), "Mar 14 Sat · 1 message");
 
-  const focusedCell = cell(draw(), "Mar 14 Sat");
-  one(draw(), "my-messages-calendar-grid").props.onKeyDown({ key: "Enter" });
-  // A real Pressable also turns Enter into onPress in the same tick.
-  focusedCell.props.onPress();
+  // A browser hands Enter to the Pressable that holds DOM focus; the grid never sees it.
+  cell(tree, "Mar 14 Sat").props.onPress();
   await flush();
   assert.equal(h.text(one(draw(), "my-messages-screen-summary")), "Mar 14 Sat · 1 message · 1 conversation");
   const selectedCalls = history.calls.filter(([kind, input]) => kind === "day" && input.day === dayKey(-1)).length;
-  assert.equal(selectedCalls, 1, "Enter and onPress must share one read");
+  assert.equal(selectedCalls, 1, "the focused cell's Enter press is one read");
 });
 
 test("arrow focus may cross a month without reading until Enter", async t => {
@@ -260,7 +307,7 @@ test("arrow focus may cross a month without reading until Enter", async t => {
   await flush();
   assert.equal(h.text(one(draw(), "my-messages-calendar-title")), "February 2026");
   assert.equal(history.calls.filter(([kind]) => kind === "day").length, before, "focus across a month is not a read");
-  one(draw(), "my-messages-calendar-grid").props.onKeyDown({ key: "Enter" });
+  cell(draw(), "Feb 28 Sat").props.onPress();
   await flush();
   assert.equal(history.calls.at(-1)[1].day, "2026-02-28");
 });
@@ -303,7 +350,7 @@ test("the year view aggregates months, greys the record edges, switches years an
 test("year view arrows move focus with a bubble and Enter opens that month", async t => {
   const history = historyFor(daysResult({ "2026-01-02": 1, [dayKey(0)]: 1 }, { firstDay: "2026-01-02" }),
     { "2026-02-01": dayResult([]) });
-  const { draw, one, h } = fixture(t, { historyRpc: history });
+  const { draw, one, monthCell, h } = fixture(t, { historyRpc: history });
   draw();
   await flush();
   one(draw(), "my-messages-calendar-title").props.onPress();
@@ -314,7 +361,8 @@ test("year view arrows move focus with a bubble and Enter opens that month", asy
   const tip = h.nodes(draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0];
   assert.equal(h.text(tip), "January 2026 · 1 message");
   one(draw(), "my-messages-calendar-year").props.onKeyDown({ key: "ArrowRight" });
-  one(draw(), "my-messages-calendar-year").props.onKeyDown({ key: "Enter" });
+  // Enter reaches the Pressable that holds DOM focus, not the grid.
+  monthCell(draw(), "February 2026").props.onPress();
   await flush();
   assert.equal(h.text(one(draw(), "my-messages-calendar-title")), "February 2026");
   assert.equal(history.calls.at(-1)[1].day, "2026-02-01");
@@ -335,6 +383,135 @@ test("month header arrows stop at the first record month and at the current mont
   assert.equal(one(draw(), "my-messages-calendar-prev").props.accessibilityState.disabled, true);
   one(draw(), "my-messages-calendar-prev").props.onPress();
   assert.equal(h.text(one(draw(), "my-messages-calendar-title")), "January 2026");
+});
+
+test("clicking a day then using the arrow keys selects the day under the keyboard focus", async t => {
+  const history = historyFor(daysResult({
+    [dayKey(-5)]: 1, [dayKey(-6)]: 1, [dayKey(-7)]: 1, [dayKey(0)]: 1,
+  }), { [dayKey(-7)]: dayResult([{ agentId: "alpha", at: at(-7, 9), text: "focused row" }]) });
+  const directory = [agent("alpha", "Alpha conversation")];
+  const { draw, one, cell, all, h } = fixture(t, { historyRpc: history, directory });
+  draw();
+  await flush();
+  let tree = draw();
+  const dom = domFocus(all);
+  dom.attach(tree);
+
+  // A mouse click selects and focuses Mar 10.
+  cell(tree, "Mar 10 Tue").props.onPress();
+  cell(tree, "Mar 10 Tue").props.onFocus();
+  await flush();
+  tree = draw();
+  dom.attach(tree);
+  assert.equal(dom.focused, null, "a mouse click does not move keyboard focus in this harness");
+
+  one(tree, "my-messages-calendar-grid").props.onKeyDown({ key: "ArrowLeft" });
+  await flush();
+  tree = draw();
+  dom.attach(tree);
+  one(tree, "my-messages-calendar-grid").props.onKeyDown({ key: "ArrowLeft" });
+  await flush();
+  tree = draw();
+  dom.attach(tree);
+  assert.equal(dom.focused.startsWith("Mar 8 Sun"), true, "two left presses focus Mar 8");
+  assert.equal(cell(tree, "Mar 8 Sun").props.tabIndex, 0);
+  assert.equal(cell(tree, "Mar 10 Tue").props.tabIndex, -1);
+
+  // The focused cell owns Enter in a browser; the grid's key handler never sees it.
+  cell(tree, "Mar 8 Sun").props.onPress();
+  await flush();
+  tree = draw();
+  assert.equal(history.calls.at(-1)[1].day, dayKey(-7));
+  assert.equal(h.text(one(tree, "my-messages-screen-summary")), "Mar 8 Sun · 1 message · 1 conversation");
+  const marTenthReads = history.calls.filter(([kind, input]) => kind === "day" && input.day === dayKey(-5)).length;
+  assert.equal(marTenthReads, 1, "Enter must not re-read the day the mouse picked");
+});
+
+test("arrow keys keep moving focus after crossing a month boundary", async t => {
+  const history = historyFor(daysResult({
+    "2026-01-01": 1, [dayKey(0)]: 1,
+  }, { firstDay: "2026-01-01" }), {
+    "2026-03-01": dayResult([]), "2026-02-28": dayResult([]), "2026-02-27": dayResult([]), "2026-02-20": dayResult([]),
+  });
+  const { draw, one, cell, all, h } = fixture(t, { historyRpc: history });
+  draw();
+  await flush();
+  let tree = draw();
+  const dom = domFocus(all);
+  dom.attach(tree);
+  cell(tree, "Mar 1 Sun").props.onPress();
+  cell(tree, "Mar 1 Sun").props.onFocus();
+  await flush();
+  tree = draw();
+  dom.attach(tree);
+
+  one(tree, "my-messages-calendar-grid").props.onKeyDown({ key: "ArrowLeft" });
+  await flush();
+  tree = draw();
+  dom.attach(tree);
+  assert.equal(h.text(one(tree, "my-messages-calendar-title")), "February 2026");
+  assert.equal(dom.focused.startsWith("Feb 28 Sat"), true, "the new month's cell takes DOM focus once it mounts");
+
+  one(tree, "my-messages-calendar-grid").props.onKeyDown({ key: "ArrowLeft" });
+  await flush();
+  tree = draw();
+  dom.attach(tree);
+  assert.equal(dom.focused.startsWith("Feb 27 Fri"), true, "arrows still work after the month changed");
+
+  one(tree, "my-messages-calendar-grid").props.onKeyDown({ key: "ArrowUp" });
+  await flush();
+  tree = draw();
+  dom.attach(tree);
+  assert.equal(dom.focused.startsWith("Feb 20 Fri"), true);
+  const tabStops = all(tree, "my-messages-calendar-cell").filter(node => node.props.tabIndex === 0);
+  assert.equal(tabStops.length, 1, "the month grid has one tab stop");
+  assert.equal(tabStops[0].props.accessibilityLabel.startsWith("Feb 20 Fri"), true);
+
+  cell(tree, "Feb 20 Fri").props.onPress();
+  await flush();
+  assert.equal(history.calls.at(-1)[1].day, "2026-02-20");
+});
+
+test("the year view keeps one tab stop and skips months with no records", async t => {
+  const history = historyFor(daysResult({ "2025-06-01": 1, "2026-01-02": 1, [dayKey(0)]: 1 }, { firstDay: "2025-06-01" }),
+    { "2025-07-01": dayResult([]), [dayKey(0)]: dayResult([]) });
+  const { draw, one, all, monthCell, h } = fixture(t, { historyRpc: history });
+  draw();
+  await flush();
+  one(draw(), "my-messages-calendar-title").props.onPress();
+  one(draw(), "my-messages-calendar-prev").props.onPress();
+  draw();
+  let tree = draw();
+  assert.equal(h.text(one(tree, "my-messages-calendar-title")), "2025");
+  const dom = domFocus(all, "my-messages-calendar-year-month");
+  dom.attach(tree);
+  // March is the visible month but before the first record; focus snaps to June.
+  assert.equal(monthCell(tree, "January 2025").props.tabIndex, -1);
+  assert.equal(monthCell(tree, "June 2025").props.tabIndex, 0);
+  const tabStops = all(tree, "my-messages-calendar-year-month").filter(node => node.props.tabIndex === 0);
+  assert.equal(tabStops.length, 1, "the year grid has one tab stop");
+  assert.equal(tabStops[0].props.accessibilityLabel.startsWith("June 2025"), true);
+
+  one(tree, "my-messages-calendar-year").props.onKeyDown({ key: "ArrowRight" });
+  await flush();
+  tree = draw();
+  dom.attach(tree);
+  assert.equal(dom.focused.startsWith("July 2025"), true);
+  assert.equal(monthCell(tree, "July 2025").props.tabIndex, 0);
+
+  one(tree, "my-messages-calendar-year").props.onKeyDown({ key: "ArrowLeft" });
+  await flush();
+  tree = draw();
+  dom.attach(tree);
+  one(tree, "my-messages-calendar-year").props.onKeyDown({ key: "ArrowLeft" });
+  await flush();
+  tree = draw();
+  dom.attach(tree);
+  assert.equal(dom.focused.startsWith("June 2025"), true, "grey months are skipped, not focused");
+
+  monthCell(tree, "July 2025").props.onPress();
+  await flush();
+  assert.equal(history.calls.at(-1)[1].day, "2025-07-01");
 });
 
 test("slow conversation counts stay stable when today is visited five times", async t => {
@@ -437,23 +614,24 @@ test("a host that reports unknown-method keeps the previous today-only page", as
   assert.match(h.text(one(view, "my-messages-screen-summary")), /From you today: 1/);
 });
 
-test("a transient day-count failure keeps the calendar skeleton and reads the day from the timeline", async t => {
+test("a transient day-count failure keeps the calendar skeleton when the day RPC answers", async t => {
   const today = dayKey(0);
   const directory = [agent("alpha", "Alpha conversation", at(0, 9))];
-  const histories = new Map([["alpha", [timelineMessage("timeline fallback row", at(0, 9), 1)]]]);
-  let failDays = true;
   const days = daysResult({ [today]: 1 });
+  let failDays = true;
   const history = {
-    days: async () => { if (failDays) throw Object.assign(new Error("handler failed"), { code: "handler_error" }); return days; },
-    day: async () => { throw Object.assign(new Error("handler failed"), { code: "handler_error" }); },
+    calls: [],
+    days: async () => { history.calls.push(["days"]); if (failDays) throw Object.assign(new Error("handler failed"), { code: "handler_error" }); return days; },
+    day: async input => { history.calls.push(["day", input]); return dayResult([{ agentId: "alpha", at: at(0, 9), text: "rpc row" }]); },
   };
-  const { draw, one, cell, h } = fixture(t, { historyRpc: history, directory, histories });
+  const { draw, one, cell, h } = fixture(t, { historyRpc: history, directory });
   draw();
   await flush();
   const failed = draw();
   assert.ok(one(failed, "my-messages-calendar-grid"), "the calendar shape stays visible");
   assert.ok(one(failed, "my-messages-calendar-days-failed"));
-  assert.match(h.text(one(failed, "my-messages-screen-row")), /timeline fallback row/);
+  assert.match(h.text(one(failed, "my-messages-screen-row")), /rpc row/);
+  assert.equal(history.calls.filter(([kind]) => kind === "days").length, 1, "a working day RPC needs no retry");
 
   failDays = false;
   one(failed, "my-messages-calendar-days-retry").props.onPress();
@@ -461,6 +639,49 @@ test("a transient day-count failure keeps the calendar skeleton and reads the da
   const recovered = draw();
   assert.equal(one(recovered, "my-messages-calendar-days-failed"), undefined);
   assert.equal(cell(recovered, "Mar 15 Sun").props.accessibilityLabel, "Mar 15 Sun, 1 message");
+});
+
+test("a host that rejects both history methods falls back to the today page after one retry", async t => {
+  const directory = [agent("alpha", "Alpha conversation", at(0, 9))];
+  const histories = new Map([["alpha", [timelineMessage("today through the timeline", at(0, 9), 1)]]]);
+  let daysCalls = 0;
+  let dayCalls = 0;
+  const unavailable = async () => { throw Object.assign(new Error("handler failed"), { code: "handler_error" }); };
+  const history = {
+    days: async () => { daysCalls += 1; return unavailable(); },
+    day: async () => { dayCalls += 1; return unavailable(); },
+  };
+  const { draw, one, h } = fixture(t, { historyRpc: history, directory, histories });
+  draw();
+  await flush();
+  draw();
+  await flush();
+  const view = draw();
+  assert.equal(one(view, "my-messages-calendar-grid"), undefined, "no dead calendar with an unusable Retry");
+  assert.match(h.text(one(view, "my-messages-screen-summary")), /From you today: 1/);
+  assert.equal(daysCalls, 2, "the days read is retried exactly once before falling back");
+  assert.equal(dayCalls, 2, "the day read is retried exactly once before falling back");
+});
+
+test("a day RPC that answered before keeps the skeleton when both reads fail later", async t => {
+  const today = dayKey(0);
+  const directory = [agent("alpha", "Alpha conversation", at(0, 9))];
+  const days = daysResult({ [today]: 1 });
+  const day = dayResult([{ agentId: "alpha", at: at(0, 9), text: "rpc row" }]);
+  let failing = false;
+  const history = {
+    days: async () => { if (failing) throw Object.assign(new Error("handler failed"), { code: "handler_error" }); return days; },
+    day: async () => { if (failing) throw Object.assign(new Error("handler failed"), { code: "handler_error" }); return day; },
+  };
+  const { draw, one } = fixture(t, { historyRpc: history, directory });
+  draw();
+  await flush();
+  failing = true;
+  one(draw(), "my-messages-screen-refresh").props.onPress();
+  await flush();
+  const failed = draw();
+  assert.ok(one(failed, "my-messages-calendar-grid"), "a host that worked before keeps the calendar");
+  assert.ok(one(failed, "my-messages-calendar-days-failed"));
 });
 
 test("the notice line covers partial, cache and skipped database fields", async t => {
@@ -497,13 +718,53 @@ test("the compact strip expands by month, collapses by week and greys at the edg
   assert.equal(history.calls.at(-1)[1].day, "2026-03-08");
 });
 
-test("the compact week arrow is disabled before the first record", async t => {
-  const history = historyFor(daysResult({ "2026-03-09": 1, [dayKey(0)]: 1 }), { [dayKey(0)]: dayResult([]) });
-  const { draw, one } = fixture(t, { historyRpc: history, compact: true });
+test("the compact week arrows clamp to the first record and to today", async t => {
+  const history = historyFor(daysResult({ "2026-03-09": 1, [dayKey(0)]: 1 }, { firstDay: "2026-03-09" }),
+    { [dayKey(0)]: dayResult([]), "2026-03-09": dayResult([]) });
+  const { draw, one, h } = fixture(t, { historyRpc: history, compact: true });
   draw();
   await flush();
-  assert.equal(one(draw(), "my-messages-calendar-prev").props.accessibilityState.disabled, true);
+  assert.equal(one(draw(), "my-messages-calendar-prev").props.accessibilityState.disabled, false);
   assert.equal(one(draw(), "my-messages-calendar-next").props.accessibilityState.disabled, true);
+  one(draw(), "my-messages-calendar-prev").props.onPress();
+  await flush();
+  assert.equal(history.calls.at(-1)[1].day, "2026-03-09");
+  assert.equal(one(draw(), "my-messages-calendar-prev").props.accessibilityState.disabled, true);
+  assert.equal(one(draw(), "my-messages-calendar-next").props.accessibilityState.disabled, false);
+  one(draw(), "my-messages-calendar-next").props.onPress();
+  await flush();
+  assert.equal(h.text(one(draw(), "my-messages-screen-summary")), "Today · Mar 15 Sun");
+  assert.equal(one(draw(), "my-messages-calendar-next").props.accessibilityState.disabled, true);
+});
+
+test("the compact week arrows move one week at a time instead of stopping six days early", async t => {
+  const first = dayKey(-11);
+  const history = historyFor(daysResult({ [first]: 1, [dayKey(-8)]: 1, [dayKey(0)]: 1 }, { firstDay: first }), {
+    [dayKey(0)]: dayResult([]), [dayKey(-8)]: dayResult([]), [dayKey(-1)]: dayResult([]), [first]: dayResult([]),
+  });
+  const { draw, one, cell, h } = fixture(t, { historyRpc: history, compact: true });
+  draw();
+  await flush();
+  one(draw(), "my-messages-calendar-expand").props.onPress();
+  cell(draw(), "Mar 7 Sat").props.onPress();
+  await flush();
+  assert.equal(one(draw(), "my-messages-calendar-next").props.accessibilityState.disabled, false,
+    "a selected day in the previous week can still reach today");
+  one(draw(), "my-messages-calendar-next").props.onPress();
+  await flush();
+  assert.equal(history.calls.at(-1)[1].day, "2026-03-14");
+  one(draw(), "my-messages-calendar-next").props.onPress();
+  await flush();
+  assert.equal(h.text(one(draw(), "my-messages-screen-summary")), "Today · Mar 15 Sun");
+  assert.equal(one(draw(), "my-messages-calendar-next").props.accessibilityState.disabled, true);
+
+  one(draw(), "my-messages-calendar-prev").props.onPress();
+  await flush();
+  assert.equal(history.calls.at(-1)[1].day, "2026-03-08");
+  one(draw(), "my-messages-calendar-prev").props.onPress();
+  await flush();
+  assert.equal(history.calls.at(-1)[1].day, first);
+  assert.equal(one(draw(), "my-messages-calendar-prev").props.accessibilityState.disabled, true);
 });
 
 test("a gated older day cannot overwrite the day selected after it", async t => {
@@ -549,7 +810,7 @@ test("arrow keys never focus a day before the first record", async t => {
   one(draw(), "my-messages-calendar-grid").props.onKeyDown({ key: "ArrowLeft" });
   const tooltip = h.nodes(draw(), node => node.props.testID === "my-messages-calendar-tooltip")[0];
   assert.equal(h.text(tooltip), "Mar 10 Tue · 1 message");
-  one(draw(), "my-messages-calendar-grid").props.onKeyDown({ key: "Enter" });
+  cell(draw(), "Mar 10 Tue").props.onPress();
   await flush();
   assert.equal(history.calls.filter(([kind]) => kind === "day").length, before);
 });
@@ -632,7 +893,96 @@ test("an unparseable theme accent keeps four levels through an opacity wash", as
   assert.equal(low.props.style.backgroundColor, tokens.surface0);
   const wash = h.nodes(low, node => node.props.testID === "my-messages-calendar-level-wash")[0];
   assert.equal(wash.props.style.opacity, 0.2);
-  assert.equal(cell(draw(), "Mar 15 Sun").props.style.borderColor, tokens.accent);
+  assert.equal(cell(draw(), "Mar 15 Sun").props.style.borderColor, tokens.foreground);
+});
+
+test("a directory failure marks the day incomplete and offers Retry", async t => {
+  const day = dayKey(-1);
+  const directory = [agent("fast", "Fast conversation", at(-1, 9)), agent("slow", "Slow conversation", at(-1, 10))];
+  const histories = new Map([["slow", [timelineMessage("slow row", at(-1, 10), 1)]]]);
+  const history = historyFor(daysResult({ [day]: 2 }, { slowConversationIds: ["slow"] }), {
+    [day]: dayResult([{ agentId: "fast", at: at(-1, 9), text: "fast row" }]),
+  });
+  const { draw, one, cell, h, paseo } = fixture(t, {
+    historyRpc: history, directory, histories, directoryError: true,
+  });
+  draw();
+  await flush();
+  cell(draw(), "Mar 14 Sat").props.onPress();
+  await flush();
+  const view = draw();
+  assert.ok(one(view, "my-messages-screen-incomplete"), "a missing directory is not silent");
+  assert.ok(one(view, "my-messages-screen-retry"));
+  assert.match(h.text(one(view, "my-messages-screen-row")), /Untitled conversation/);
+
+  paseo.directoryFails = false;
+  one(view, "my-messages-screen-retry").props.onPress();
+  await flush();
+  const recovered = draw();
+  assert.equal(one(recovered, "my-messages-screen-incomplete"), undefined);
+  assert.match(h.text(recovered), /Slow conversation/);
+  assert.match(h.text(recovered), /slow row/);
+});
+
+test("today and the keyboard focus ring stay visible on the darkest level", async t => {
+  const light = {
+    surface0: "#ffffff", foreground: "#1f2328", foregroundMuted: "#59636e",
+    accent: "#0969da", accentForeground: "#ffffff", statusDanger: "#cf222e",
+  };
+  for (const themeColors of [DARK_THEME, light]) {
+    const history = historyFor(daysResult({
+      [dayKey(-5)]: 1, [dayKey(-4)]: 3, [dayKey(-3)]: 5, [dayKey(-2)]: 7, [dayKey(0)]: 1,
+    }), { [dayKey(0)]: dayResult([]) });
+    const { draw, one, cell, all, h } = fixture(t, { historyRpc: history, realTheme: true, themeColors });
+    draw();
+    await flush();
+    const tokens = h.load("client/components/theme-tokens.ts").buildThemeTokens(themeColors, BASE_PREFERENCES);
+    let tree = draw();
+    // Leaving today selects another day, so today keeps only its own ring.
+    cell(tree, "Mar 14 Sat").props.onPress();
+    await flush();
+    tree = draw();
+    const today = cell(tree, "Mar 15 Sun");
+    assert.equal(today.props.style.borderWidth, 2);
+    assert.equal(today.props.style.borderColor, tokens.foreground);
+    assert.notEqual(today.props.style.borderColor, tokens.accent);
+
+    const dom = domFocus(all);
+    dom.attach(tree);
+    cell(tree, "Mar 14 Sat").props.onFocus();
+    one(tree, "my-messages-calendar-grid").props.onKeyDown({ key: "ArrowLeft" });
+    await flush();
+    tree = draw();
+    dom.attach(tree);
+    const focused = cell(tree, "Mar 13 Fri");
+    assert.equal(focused.props.style.borderWidth, 2);
+    assert.equal(focused.props.style.borderColor, tokens.foreground);
+    assert.notEqual(focused.props.style.borderColor, tokens.accent);
+  }
+});
+
+test("a failed day read never lowers the count shown on the cell", async t => {
+  const day = dayKey(-1);
+  const directory = [agent("alpha", "Alpha conversation", at(-1, 10))];
+  const histories = new Map([["alpha", [
+    timelineMessage("one", at(-1, 9), 1), timelineMessage("two", at(-1, 10), 2),
+  ]]]);
+  const history = {
+    days: async () => daysResult({ [day]: 3, [dayKey(0)]: 1 }),
+    day: async input => {
+      if (input.day === day) throw Object.assign(new Error("handler failed"), { code: "handler_error" });
+      return dayResult([]);
+    },
+  };
+  const { draw, one, cell, h } = fixture(t, { historyRpc: history, directory, histories });
+  draw();
+  await flush();
+  cell(draw(), "Mar 14 Sat").props.onPress();
+  await flush();
+  const view = draw();
+  assert.equal(cell(view, "Mar 14 Sat").props.accessibilityLabel, "Mar 14 Sat, 3 messages",
+    "a short timeline read must not subtract from the fast count");
+  assert.match(h.text(one(view, "my-messages-screen-summary")), /3 messages/);
 });
 
 test("all three locales define the calendar text with matching interpolation", () => {

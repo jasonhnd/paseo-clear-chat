@@ -488,12 +488,14 @@ export class HistoryArchive {
       // lock has no token, so its file modification time decides freshness: a process
       // that has just created the file but not written the body yet must not be stolen.
       let fresh: boolean;
+      let observedMtimeMs: number | undefined;
       if (body?.token !== undefined && body.at !== undefined && Number.isFinite(body.at)) {
         fresh = now() - body.at <= LOCK_STALE_MS;
       } else {
         try {
           const info = await stat(lock);
           fresh = now() - info.mtimeMs <= LOCK_STALE_MS;
+          observedMtimeMs = info.mtimeMs;
         } catch (statError) {
           if ((statError as NodeJS.ErrnoException).code === "ENOENT") continue;
           return "busy";
@@ -502,7 +504,10 @@ export class HistoryArchive {
       if (fresh) return "busy";
       // Rename is the atomic part: only one process can move this path. Compare the
       // exact bytes read before the rename; if the path was replaced, we moved a newer
-      // owner's lock, so put it back and do not write this time.
+      // owner's lock, so put it back and do not write this time. An empty body cannot be
+      // compared by content, so its modification time must also match: a fallback lock is
+      // published empty for a moment (open with O_EXCL, then write), and stealing it in
+      // that window would let two writers in.
       const moved = `${lock}.stale-${randomUUID()}`;
       try {
         await rename(lock, moved);
@@ -511,19 +516,44 @@ export class HistoryArchive {
         return "error";
       }
       let movedRaw: string | null = null;
+      let movedMtimeMs: number | undefined;
       try {
         movedRaw = await this.readText(moved);
       } catch {
         movedRaw = null;
       }
-      if (movedRaw !== raw) {
-        // `link` fails with EEXIST instead of replacing, unlike `rename`.
+      try {
+        movedMtimeMs = (await stat(moved)).mtimeMs;
+      } catch {
+        movedMtimeMs = undefined;
+      }
+      const sameFile = movedRaw === raw
+        && (raw !== "" || (observedMtimeMs !== undefined && movedMtimeMs === observedMtimeMs));
+      if (!sameFile) {
+        // `link` fails with EEXIST instead of replacing, unlike `rename`. A file system
+        // that rejects hard links needs the content written back with O_EXCL instead.
         let restored = false;
         try {
           await this.linkFile(moved, lock);
           restored = true;
-        } catch {
-          // Another owner already created the lock path; leave the moved file alone.
+        } catch (linkError) {
+          if (LOCK_LINK_FALLBACK.has((linkError as NodeJS.ErrnoException).code ?? "")) {
+            try {
+              const handle = await open(lock, "wx", 0o600);
+              try {
+                await handle.writeFile(raw);
+                await handle.sync();
+              } catch (writeError) {
+                await rm(lock, { force: true }).catch(() => undefined);
+                throw writeError;
+              } finally {
+                await handle.close();
+              }
+              restored = true;
+            } catch (exclusiveError) {
+              if ((exclusiveError as NodeJS.ErrnoException).code !== "EEXIST") return "error";
+            }
+          }
         }
         if (restored) await rm(moved, { force: true }).catch(() => undefined);
         return "busy";

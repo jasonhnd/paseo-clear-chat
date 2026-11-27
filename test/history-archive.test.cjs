@@ -914,9 +914,9 @@ test("an empty old lock is not taken while a new holder publishes its lock", asy
   const bMerge = second.merge([message("s2", "agent-b", T + 1000, "from B")], ["s2"], ["s2"]);
   await statReady.promise;
   const aMerge = first.merge([message("s1", "agent-a", T, "from A")], ["s1"], ["s1"]);
-  // New code publishes a full lock and reaches its locked read, where it pauses. Old code
-  // pauses in open(lock, "wx") before writing; the race resolves either way.
-  await Promise.race([aReady.promise, new Promise(resolve => setTimeout(resolve, 100))]);
+  // A publishes a full lock and pauses at its locked read. Wait for that exact point
+  // instead of a wall-clock race, so a busy machine cannot reorder the two writers.
+  await aReady.promise;
   statGate.resolve();
   const bResult = await bMerge;
   assert.equal(bResult.cacheError, true, "B must not enter while A publishes its lock");
@@ -932,6 +932,73 @@ test("an empty old lock is not taken while a new holder publishes its lock", asy
     false,
     "the private lock temporary must be removed",
   );
+});
+
+test("a stale empty lock is not taken while another writer publishes a fallback lock", async t => {
+  const home = createHome(t);
+  const now = Date.now();
+  await merge(archive(home, { now: () => now }), [message("base", "agent-z", T - 1000, "base")], ["base"]);
+  const lock = join(archiveDirectory(home), ".lock");
+  fs.writeFileSync(lock, "");
+  fs.utimesSync(lock, new Date(now - 60_000), new Date(now - 60_000));
+
+  const realStat = fsp.stat;
+  const realOpen = fsp.open;
+  const statReady = deferred();
+  const statGate = deferred();
+  const openReady = deferred();
+  const openGate = deferred();
+  let statPaused = false;
+  let openPaused = false;
+  fsp.stat = async (path, ...args) => {
+    const info = await realStat(path, ...args);
+    if (path === lock && !statPaused) {
+      statPaused = true;
+      statReady.resolve();
+      await statGate.promise;
+    }
+    return info;
+  };
+  fsp.open = async (path, flags, ...args) => {
+    const handle = await realOpen(path, flags, ...args);
+    if (path === lock && flags === "wx" && !openPaused) {
+      openPaused = true;
+      openReady.resolve();
+      await openGate.promise;
+    }
+    return handle;
+  };
+  t.after(() => {
+    fsp.stat = realStat;
+    fsp.open = realOpen;
+  });
+
+  const rejectLink = async () => {
+    throw Object.assign(new Error("hard links are not supported here"), { code: "EPERM" });
+  };
+  const second = archive(home, { now: () => now, files: { link: rejectLink } });
+  const first = archive(home, { now: () => now, files: { link: rejectLink } });
+
+  const bMerge = second.merge([message("s2", "agent-b", T + 1000, "from B")], ["s2"], ["s2"]);
+  await statReady.promise;
+  const aMerge = first.merge([message("s1", "agent-a", T, "from A")], ["s1"], ["s1"]);
+  // A's fallback publishes the lock with O_EXCL and pauses before writing the body.
+  await openReady.promise;
+  statGate.resolve();
+  const bResult = await bMerge;
+  assert.equal(bResult.cacheError, true, "B must not enter while A publishes its lock");
+  assert.equal(fs.existsSync(lock), true, "the moved lock is put back without a hard link");
+  assert.equal(fs.readFileSync(lock, "utf8"), "");
+  assert.equal(
+    fs.readdirSync(archiveDirectory(home)).some(name => name.startsWith(".lock.stale-")),
+    false,
+    "the moved lock copy is removed after it is put back",
+  );
+  openGate.resolve();
+  const aResult = await aMerge;
+  assert.equal(aResult.cacheError, false);
+  const texts = allRecords(home).map(record => record.text).sort();
+  assert.deepEqual(texts, ["base", "from A"], "A's record must survive the fallback publish");
 });
 
 test("a replaced lock is put back when its bytes differ", async t => {
