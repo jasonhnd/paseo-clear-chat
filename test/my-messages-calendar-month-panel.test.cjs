@@ -55,6 +55,10 @@ function dayResult(rows, extras = {}) {
   return { rows, directoryPartial: false, fromCache: 0, ...extras };
 }
 
+function timelineMessage(text, time, seq) {
+  return { timestamp: new Date(time).toISOString(), seqStart: seq, item: { type: "user_message", text } };
+}
+
 function fakePaseo(directory, histories) {
   return {
     agents: {
@@ -368,12 +372,16 @@ test("wide: the calendar stays above a scrolling left column, so it cannot scrol
 });
 
 test("compact: the panel sits between the week strip and the message list", async t => {
-  const history = historyFor(daysResult({ [dayKey(0)]: 1 }, {
-    conversationMonths: [monthCount("alpha", "Alpha conversation", 1, 0)],
-  }), { [dayKey(0)]: dayResult([{ agentId: "alpha", at: at(0, 9), text: "alpha today" }]) });
-  const { draw, one, all } = fixture(t, { historyRpc: history, compact: true });
+  const history = historyFor(daysResult({ [dayKey(0)]: 2 }, {
+    conversationMonths: [monthCount("alpha", "Alpha conversation", 2, 0)],
+  }), { [dayKey(0)]: dayResult([
+    { agentId: "alpha", at: at(0, 9), text: "alpha today" },
+    { agentId: "alpha", at: at(0, 8), text: "alpha earlier" },
+  ]) });
+  const { draw, one, all, h } = fixture(t, { historyRpc: history, compact: true });
   draw();
   await flush();
+  assert.ok(one(draw(), "my-messages-calendar-week"), "the narrow screen opens on the week");
   const view = draw();
   const order = testIds(view);
   assert.ok(order.indexOf("my-messages-calendar-week") < order.indexOf("my-messages-calendar-month-panel"));
@@ -381,7 +389,24 @@ test("compact: the panel sits between the week strip and the message list", asyn
   assert.ok(one(view, "my-messages-calendar-month-panel"));
   assert.equal(one(view, "my-messages-calendar-left-scroll"), undefined,
     "the compact panel scrolls sideways with the page, not inside a nested vertical scroll");
-  assert.ok(all(view, "my-messages-screen-row").length <= 1);
+  // Both of the day's rows are in the list: a zero-row layout would pass a `<= 1` check too.
+  assert.equal(all(view, "my-messages-screen-row").length, 2);
+  assert.match(h.text(all(view, "my-messages-screen-row")[0]), /alpha today/);
+
+  // The calendar column is bounded, and at 390x844 the list keeps more than two rows of it.
+  const screen = h.load("client/components/my-messages-calendar-screen.tsx");
+  one(view, "my-messages-calendar-expand").props.onPress();
+  const expanded = draw();
+  const scroll = one(expanded, "my-messages-calendar-compact-scroll");
+  assert.ok(scroll, "the expanded compact month scrolls inside its share of the page");
+  assert.equal(scroll.props.style.maxHeight, "58%");
+  assert.equal(one(expanded, "my-messages-screen-list").props.style.flex, 1);
+  assert.equal(all(expanded, "my-messages-screen-row").length, 2,
+    "expanding the month does not drop the day's rows");
+  assert.ok(screen.compactMessageListHeight(844) >= screen.COMPACT_LIST_ROW * 2,
+    `the list keeps ${screen.compactMessageListHeight(844)}px at 390x844`);
+  assert.ok(screen.compactMessageListHeight(667) >= screen.COMPACT_LIST_ROW,
+    `the list keeps ${screen.compactMessageListHeight(667)}px on a 667px-tall screen`);
 });
 
 test("the panel's labels follow the interface language", async t => {
@@ -397,6 +422,147 @@ test("the panel's labels follow the interface language", async t => {
   assert.equal(h.text(one(draw(), "my-messages-calendar-month-days")), "1");
   h.setLocale("ja");
   assert.equal(h.text(one(draw(), "my-messages-calendar-month-title")), "今月のまとめ");
+});
+
+test("a historical month names itself and does not borrow the current month's wording", async t => {
+  const history = historyFor(daysResult({ "2026-02-10": 2 }, {
+    firstDay: "2026-02-10",
+    conversationMonths: [monthCount("alpha", "Alpha conversation", 2, -33)],
+  }), { "2026-02-10": dayResult([]) });
+  const { draw, one, h } = fixture(t, { historyRpc: history, locale: "ja" });
+  draw();
+  await flush();
+  one(draw(), "my-messages-calendar-prev").props.onPress();
+  const view = draw();
+  assert.equal(h.text(one(view, "my-messages-calendar-month-title")), "2026年2月");
+  const top = h.nodes(view, node => node.props.testID === "my-messages-calendar-month-panel")
+    .map(node => h.text(node)).join("");
+  assert.match(top, /メッセージの多い会話/);
+  assert.doesNotMatch(top, /よく話した会話/);
+
+  // An empty historical month must not say "still nothing this month".
+  const empty = historyFor(daysResult({ "2026-01-05": 1, [dayKey(0)]: 1 }, { firstDay: "2026-01-05" }),
+    { [dayKey(0)]: dayResult([]), "2026-01-05": dayResult([]) });
+  const second = fixture(t, { historyRpc: empty, locale: "ja" });
+  second.draw();
+  await flush();
+  second.one(second.draw(), "my-messages-calendar-prev").props.onPress();
+  const february = second.draw();
+  assert.equal(second.h.text(second.one(february, "my-messages-calendar-month-empty")),
+    "この月にメッセージはありません");
+});
+
+test("a conversation read by opening a day is in the ranking, so the list adds up to the summary", async t => {
+  // Hermes has one message on the day; opening it reads three more from another
+  // conversation. The cell and the summary count four, so the ranking must count four too.
+  const directory = [agent("hermes", "Hermes chat"), agent("other", "Other chat")];
+  const history = historyFor(daysResult({ [dayKey(0)]: 1 }, {
+    conversationMonths: [monthCount("hermes", "Hermes chat", 1, 0)],
+    slowConversationIds: ["other"],
+  }), { [dayKey(0)]: dayResult([{ agentId: "hermes", at: at(0, 9), text: "hermes today" }]) });
+  const histories = new Map([["other", [
+    timelineMessage("other one", at(0, 8), 1),
+    timelineMessage("other two", at(0, 8, 30), 2),
+    timelineMessage("other three", at(0, 7), 3),
+  ]]]);
+  const { draw, all, one, h } = fixture(t, { historyRpc: history, directory, histories });
+  draw();
+  await flush();
+  const view = draw();
+
+  assert.equal(h.text(one(view, "my-messages-calendar-month-total")), "4");
+  assert.deepEqual(
+    all(view, "my-messages-calendar-top-conversation").map(node => node.props.accessibilityLabel),
+    ["Other chat, 3 messages", "Hermes chat, 1 message"],
+  );
+  const ranked = 3 + 1;
+  assert.equal(ranked, Number(h.text(one(view, "my-messages-calendar-month-total"))),
+    "the ranking's counts add up to the summary's total");
+  assert.equal(all(view, "my-messages-screen-row").length, 4, "the day lists what was read");
+
+  // Re-reading the same day replaces its contribution instead of adding it again.
+  const cells = all(view, "my-messages-calendar-cell");
+  const other = cells.find(node => String(node.props.accessibilityLabel).startsWith("Mar 14"));
+  assert.ok(other, "the grid offers another day to step to");
+  other.props.onPress();
+  await flush();
+  all(draw(), "my-messages-calendar-cell")
+    .find(node => String(node.props.accessibilityLabel).startsWith("Mar 15")).props.onPress();
+  await flush();
+  const again = draw();
+  assert.equal(h.text(one(again, "my-messages-calendar-month-total")), "4");
+  assert.deepEqual(
+    all(again, "my-messages-calendar-top-conversation").map(node => node.props.accessibilityLabel),
+    ["Other chat, 3 messages", "Hermes chat, 1 message"],
+  );
+});
+
+test("collapsing the compact month returns the panel to the week's month and drops its filter", async t => {
+  const directory = [agent("alpha", "Alpha conversation"), agent("beta", "Beta conversation")];
+  const history = historyFor(daysResult({ "2026-02-10": 2, [dayKey(0)]: 2 }, {
+    firstDay: "2026-02-10",
+    conversationMonths: [
+      { month: "2026-02", agentId: "alpha", title: "Alpha conversation", count: 2, lastAt: at(-33, 9) },
+      { month: "2026-03", agentId: "alpha", title: "Alpha conversation", count: 1, lastAt: at(0, 9) },
+      { month: "2026-03", agentId: "beta", title: "Beta conversation", count: 1, lastAt: at(0, 8) },
+    ],
+  }), {
+    [dayKey(0)]: dayResult([
+      { agentId: "alpha", at: at(0, 9), text: "alpha today" },
+      { agentId: "beta", at: at(0, 8), text: "beta today" },
+    ]),
+    "2026-02-10": dayResult([{ agentId: "alpha", at: at(-33, 9), text: "alpha in february" }]),
+  });
+  const { draw, all, one, h } = fixture(t, { historyRpc: history, compact: true, directory });
+  draw();
+  await flush();
+  one(draw(), "my-messages-calendar-expand").props.onPress();
+
+  // Browse February while the week strip stays on March's selected day, and filter there.
+  one(draw(), "my-messages-calendar-prev").props.onPress();
+  await flush();
+  assert.equal(h.text(one(draw(), "my-messages-calendar-month-title")), "February 2026");
+  all(draw(), "my-messages-calendar-top-conversation")[0].props.onPress();
+  assert.equal(all(draw(), "my-messages-calendar-filter").length, 1);
+
+  // Collapsing shows March again: the panel follows the week strip and the filter is gone.
+  one(draw(), "my-messages-calendar-expand").props.onPress();
+  const collapsed = draw();
+  assert.ok(one(collapsed, "my-messages-calendar-week"));
+  assert.equal(h.text(one(collapsed, "my-messages-calendar-month-title")), "This month");
+  assert.equal(h.text(one(collapsed, "my-messages-calendar-month-total")), "2");
+  assert.equal(all(collapsed, "my-messages-calendar-filter").length, 0);
+  assert.equal(all(collapsed, "my-messages-screen-row").length, 2, "the day's list is not filtered");
+});
+
+test("a host that answers totals without the ranking says so instead of calling the month empty", async t => {
+  const days = daysResult({ [dayKey(0)]: 1 });
+  // An older host simply omits the field; the fixture must not smuggle an empty array in.
+  delete days.conversationMonths;
+  assert.equal("conversationMonths" in days, false);
+  const history = historyFor(days, { [dayKey(0)]: dayResult([{ agentId: "alpha", at: at(0, 9), text: "alpha today" }]) });
+  const { draw, all, one, h } = fixture(t, { historyRpc: history });
+  draw();
+  await flush();
+  const view = draw();
+  assert.equal(h.text(one(view, "my-messages-calendar-month-total")), "1");
+  assert.equal(all(view, "my-messages-calendar-month-empty").length, 0,
+    "a month with a message is not called empty");
+  assert.equal(h.text(one(view, "my-messages-calendar-month-no-ranking")),
+    "The ranking for this month is not available from this host.");
+  assert.equal(all(view, "my-messages-calendar-month-partial").length, 1);
+
+  // A month that really has nothing still says so, with no ranking note beside it.
+  const blank = historyFor(daysResult({ "2026-01-05": 1, [dayKey(0)]: 1 }, { firstDay: "2026-01-05" }),
+    { [dayKey(0)]: dayResult([]), "2026-01-05": dayResult([]) });
+  const second = fixture(t, { historyRpc: blank });
+  second.draw();
+  await flush();
+  second.one(second.draw(), "my-messages-calendar-prev").props.onPress();
+  const february = second.draw();
+  assert.equal(second.h.text(second.one(february, "my-messages-calendar-month-empty")),
+    "No messages in this month");
+  assert.equal(second.all(february, "my-messages-calendar-month-no-ranking").length, 0);
 });
 
 test("monthSummary counts only its own month and divides by elapsed days", () => {

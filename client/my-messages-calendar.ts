@@ -180,6 +180,42 @@ export interface ConversationMonthCount {
   lastAt: number;
 }
 
+/** Rows a day's fallback read added, for one conversation, in one month. */
+export interface ConversationMonthExtra {
+  agentId: string;
+  title: string | null;
+  count: number;
+  lastAt: number;
+}
+
+/**
+ * The month's ranking plus the rows the reader filled in by opening a day.
+ *
+ * The days RPC only counts what the fast reader reached; opening a day can read another
+ * conversation's messages on it. Those rows already reach the cell and the summary, so they
+ * reach the ranking here too: counts add up and the newest message wins. A conversation the
+ * RPC never listed appears with the title its row carried. The caller replaces one day's
+ * contribution when it re-reads that day, so nothing is counted twice.
+ */
+export function mergeConversationMonths(
+  base: readonly ConversationMonthCount[],
+  extras: readonly ConversationMonthExtra[],
+): ConversationMonthCount[] {
+  const merged = new Map<string, ConversationMonthCount>();
+  for (const entry of base) merged.set(entry.agentId, { ...entry });
+  for (const extra of extras) {
+    const entry = merged.get(extra.agentId);
+    if (entry) {
+      entry.count += extra.count;
+      if (extra.lastAt > entry.lastAt) entry.lastAt = extra.lastAt;
+      entry.title ??= extra.title;
+    } else {
+      merged.set(extra.agentId, { ...extra });
+    }
+  }
+  return [...merged.values()];
+}
+
 /**
  * The four numbers the left panel shows for one month.
  *

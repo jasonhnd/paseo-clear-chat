@@ -9,6 +9,7 @@ import {
   addMonths,
   buildWeek,
   buildYear,
+  mergeConversationMonths,
   monthKeyOfDay,
   monthNumberOfKey,
   monthSummary,
@@ -16,6 +17,7 @@ import {
   quartileThresholds,
   selectableDay,
   topConversations,
+  type ConversationMonthExtra,
   type DayKey,
   type MonthKey,
 } from "../my-messages-calendar";
@@ -44,6 +46,31 @@ type CalendarProps = PluginScreenProps & {
 type CalendarView = "month" | "year";
 
 const LEGEND_SIZE = 12;
+
+/**
+ * Share of a compact page the calendar column may take. The six-row month, its legend and
+ * the panel are about 470 px tall at 390 wide; unbounded, they push the day's list off the
+ * first screen on a short window. The column scrolls inside this share instead, so the list
+ * below keeps the rest of the page.
+ */
+const COMPACT_CALENDAR_SHARE = 0.58;
+const COMPACT_CALENDAR_MAX_HEIGHT = `${Math.round(COMPACT_CALENDAR_SHARE * 100)}%` as const;
+/** Page padding above and below the column, outside its share. */
+const COMPACT_PAGE_PADDING = 12;
+/** The wrapped toolbar: the two 44 px arrow targets and the row with the month title. */
+const COMPACT_TOOLBAR_MAX = 104;
+/** One list row: a title line, three lines of text and its padding. */
+export const COMPACT_LIST_ROW = 64;
+
+/**
+ * Pixels the compact page leaves the message list under the bounded calendar column.
+ * At 390×844 this is more than two rows, so the selected day's first row is on the first
+ * screen even with the whole month open.
+ */
+export function compactMessageListHeight(viewportHeight: number): number {
+  const body = viewportHeight - COMPACT_PAGE_PADDING * 2;
+  return body * (1 - COMPACT_CALENDAR_SHARE) - COMPACT_TOOLBAR_MAX;
+}
 
 export function MyMessagesCalendarScreen({
   theme, layout, host, navigation, composerHost, snapshot, actions,
@@ -98,7 +125,26 @@ export function MyMessagesCalendarScreen({
     [year, totalsByMonth, snapshot.firstDay, today],
   );
   const monthThresholds = React.useMemo(() => quartileThresholds(Object.values(totalsByMonth)), [totalsByMonth]);
-  const monthEntries = snapshot.conversationMonths[visibleMonth] ?? [];
+  /** The rows the reader filled in by opening a day, for the month on screen. */
+  const monthExtras = React.useMemo(() => {
+    const extras: ConversationMonthExtra[] = [];
+    for (const [day, perConversation] of Object.entries(snapshot.extraConversations)) {
+      if (monthKeyOfDay(day) !== visibleMonth) continue;
+      for (const [agentId, extra] of Object.entries(perConversation)) {
+        extras.push({ agentId, title: extra.title, count: extra.count, lastAt: extra.lastAt });
+      }
+    }
+    return extras;
+  }, [snapshot.extraConversations, visibleMonth]);
+  // The ranking and the totals share the cells' records. The days RPC supplies the month's
+  // per-conversation counts; a day the reader opened can add rows from conversations the
+  // fast read never reached, and those rows are in the cell and the summary, so they are in
+  // the ranking too. A conversation's day is replaced when the day is re-read, never added
+  // twice.
+  const monthEntries = React.useMemo(
+    () => mergeConversationMonths(snapshot.conversationMonths[visibleMonth] ?? [], monthExtras),
+    [snapshot.conversationMonths, visibleMonth, monthExtras],
+  );
   const panelSummary = React.useMemo(
     () => monthSummary(displayedDays, visibleMonth, today),
     [displayedDays, visibleMonth, today],
@@ -108,16 +154,16 @@ export function MyMessagesCalendarScreen({
     ? undefined
     : monthEntries.find(entry => entry.agentId === filterAgentId);
   const filterTitle = filterEntry?.title?.trim() ? filterEntry.title : t("myMessages.screenUntitled");
-  // The ranking and the totals share the cells' records; a conversation the reader could not
-  // reach, a partial directory, or rows only the opened day's fallback found leave both
-  // short of the whole month, and the panel says so rather than presenting them as exact.
+  // Whatever the cells and the summary count but the ranking does not list makes the
+  // ranking short: a conversation the reader could not reach, a partial directory, or a
+  // day whose fast count arrived without its split. The panel says so rather than
+  // presenting the list as exact.
+  const monthRankedTotal = monthEntries.reduce((sum, entry) => sum + entry.count, 0);
   const monthIncomplete = snapshot.notices.directoryPartial
     || snapshot.notices.cacheError
     || snapshot.notices.skippedDatabases.length > 0
     || snapshot.slowConversationIds.length > 0
-    || Object.values(snapshot.extraDays).some(count => count > 0)
-    // Totals with no per-conversation rows means the host did not answer the ranking.
-    || (panelSummary.total > 0 && monthEntries.length === 0);
+    || panelSummary.total > monthRankedTotal;
   const showMonthPanel = view === "month" && snapshot.daysStatus === "ready";
   const panelTitle = visibleMonth === monthKeyOfDay(today)
     ? t("myMessages.calendar.monthPanelTitle")
@@ -232,6 +278,111 @@ export function MyMessagesCalendarScreen({
   const incomplete = detail.partial.length > 0 || detail.failed.length > 0 || detail.directoryFailed;
   const daysFailed = snapshot.daysStatus === "error";
 
+  // The calendar, its expansion control and the legend travel together; the panels below
+  // are per layout so the wide screen can keep only the panel scrolling.
+  const calendarBlock = (
+    <>
+      {daysFailed ? (
+        <View testID="my-messages-calendar-days-failed" accessibilityRole="alert" style={{ gap: 6 }}>
+          <Text style={warning}>{t("myMessages.calendar.readFailed")}</Text>
+          <Pressable testID="my-messages-calendar-days-retry" accessibilityRole="button" style={button}
+            onPress={actions.refresh}>
+            <Text style={body}>{t("myMessages.retry")}</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {view === "year" ? (
+        <CalendarYearView
+          year={year}
+          months={months}
+          startMonth={monthNumberOfKey(visibleMonth) - 1}
+          visibleMonth={visibleMonth}
+          thresholds={monthThresholds}
+          palette={palette}
+          tokens={tokens}
+          locale={locale}
+          t={t}
+          compact={layout.compact}
+          platform={layout.platform}
+          onEnterMonth={enterMonth}
+          onToday={goToday}
+          today={today}
+        />
+      ) : layout.compact && !expanded ? (
+        <View testID="my-messages-calendar-week" style={{ gap: 4 }}>
+          <Text style={small}>{formatWeekRange(locale, buildWeek(selectedDay))}</Text>
+          <CalendarMonthView
+            month={visibleMonth}
+            selectedDay={selectedDay}
+            today={today}
+            firstDay={snapshot.firstDay}
+            days={snapshot.days}
+            extraDays={snapshot.extraDays}
+            countsKnown={countsKnown}
+            thresholds={dayThresholds}
+            palette={palette}
+            tokens={tokens}
+            locale={locale}
+            t={t}
+            compact={layout.compact}
+            platform={layout.platform}
+            weekMode
+            onSelect={selectDay}
+            onMonthChange={showMonth}
+            onToday={goToday}
+          />
+        </View>
+      ) : (
+        <CalendarMonthView
+          month={visibleMonth}
+          selectedDay={selectedDay}
+          today={today}
+          firstDay={snapshot.firstDay}
+          days={snapshot.days}
+          extraDays={snapshot.extraDays}
+          countsKnown={countsKnown}
+          thresholds={dayThresholds}
+          palette={palette}
+          tokens={tokens}
+          locale={locale}
+          t={t}
+          compact={layout.compact}
+          platform={layout.platform}
+          onSelect={selectDay}
+          onMonthChange={showMonth}
+          onToday={goToday}
+        />
+      )}
+      {view === "month" && layout.compact ? (
+        <Pressable testID="my-messages-calendar-expand" accessibilityRole="button" style={button}
+          accessibilityLabel={expanded ? t("myMessages.calendar.hideMonth") : t("myMessages.calendar.showMonth")}
+          onPress={() => {
+            // Collapsing returns the panel to the month the week strip shows, and drops a
+            // filter chosen in a month the strip is no longer on.
+            if (expanded) showMonth(monthKeyOfDay(selectedDay));
+            setExpanded(value => !value);
+          }}>
+          <Text style={body}>{expanded ? "▴" : "▾"}</Text>
+        </Pressable>
+      ) : null}
+      <View testID="my-messages-calendar-legend" style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+        <Text style={small}>{t("myMessages.calendar.less")}</Text>
+        {palette.backgrounds.map((background, level) => (
+          <View key={level} style={{
+            width: LEGEND_SIZE, height: LEGEND_SIZE, borderRadius: 4, overflow: "hidden",
+            backgroundColor: level === 0 ? emptyFill : background ?? tokens.surface0,
+            borderWidth: 1, borderColor: tokens.borderSubtle,
+          }}>
+            {palette.washes[level] !== null ? (
+              <View style={{ flex: 1, backgroundColor: tokens.accent, opacity: palette.washes[level] ?? 0 }} />
+            ) : null}
+          </View>
+        ))}
+        <Text style={small}>{t("myMessages.calendar.more")}</Text>
+      </View>
+    </>
+  );
+
   return (
     <View style={{ flex: 1, backgroundColor: tokens.surface0, padding, gap: 8 }}>
       <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
@@ -278,122 +429,16 @@ export function MyMessagesCalendarScreen({
       ) : null}
 
       <View style={{ flex: 1, flexDirection: layout.compact ? "column" : "row", gap: 12, minHeight: 0 }}>
-        <View style={layout.compact
-          ? { gap: 6 }
-          : { width: 320, gap: 6, alignSelf: "stretch", minHeight: 0 }}>
-          {daysFailed ? (
-            <View testID="my-messages-calendar-days-failed" accessibilityRole="alert" style={{ gap: 6 }}>
-              <Text style={warning}>{t("myMessages.calendar.readFailed")}</Text>
-              <Pressable testID="my-messages-calendar-days-retry" accessibilityRole="button" style={button}
-                onPress={actions.refresh}>
-                <Text style={body}>{t("myMessages.retry")}</Text>
-              </Pressable>
-            </View>
-          ) : null}
-          {view === "year" ? (
-            <CalendarYearView
-              year={year}
-              months={months}
-              startMonth={monthNumberOfKey(visibleMonth) - 1}
-              visibleMonth={visibleMonth}
-              thresholds={monthThresholds}
-              palette={palette}
-              tokens={tokens}
-              locale={locale}
-              t={t}
-              compact={layout.compact}
-              platform={layout.platform}
-              onEnterMonth={enterMonth}
-              onToday={goToday}
-              today={today}
-            />
-          ) : layout.compact && !expanded ? (
-            <View testID="my-messages-calendar-week" style={{ gap: 4 }}>
-              <Text style={small}>{formatWeekRange(locale, buildWeek(selectedDay))}</Text>
-              <CalendarMonthView
-                month={visibleMonth}
-                selectedDay={selectedDay}
-                today={today}
-                firstDay={snapshot.firstDay}
-                days={snapshot.days}
-                extraDays={snapshot.extraDays}
-                countsKnown={countsKnown}
-                thresholds={dayThresholds}
-                palette={palette}
-                tokens={tokens}
-                locale={locale}
-                t={t}
-                compact={layout.compact}
-                platform={layout.platform}
-                weekMode
-                onSelect={selectDay}
-                onMonthChange={showMonth}
-                onToday={goToday}
-              />
-            </View>
-          ) : (
-            <CalendarMonthView
-              month={visibleMonth}
-              selectedDay={selectedDay}
-              today={today}
-              firstDay={snapshot.firstDay}
-              days={snapshot.days}
-              extraDays={snapshot.extraDays}
-              countsKnown={countsKnown}
-              thresholds={dayThresholds}
-              palette={palette}
-              tokens={tokens}
-              locale={locale}
-              t={t}
-              compact={layout.compact}
-              platform={layout.platform}
-              onSelect={selectDay}
-              onMonthChange={showMonth}
-              onToday={goToday}
-            />
-          )}
-          {view === "month" && layout.compact ? (
-            <Pressable testID="my-messages-calendar-expand" accessibilityRole="button" style={button}
-              accessibilityLabel={expanded ? t("myMessages.calendar.hideMonth") : t("myMessages.calendar.showMonth")}
-              onPress={() => setExpanded(value => !value)}>
-              <Text style={body}>{expanded ? "▴" : "▾"}</Text>
-            </Pressable>
-          ) : null}
-          <View testID="my-messages-calendar-legend" style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-            <Text style={small}>{t("myMessages.calendar.less")}</Text>
-            {palette.backgrounds.map((background, level) => (
-              <View key={level} style={{
-                width: LEGEND_SIZE, height: LEGEND_SIZE, borderRadius: 4, overflow: "hidden",
-                backgroundColor: level === 0 ? emptyFill : background ?? tokens.surface0,
-                borderWidth: 1, borderColor: tokens.borderSubtle,
-              }}>
-                {palette.washes[level] !== null ? (
-                  <View style={{ flex: 1, backgroundColor: tokens.accent, opacity: palette.washes[level] ?? 0 }} />
-                ) : null}
-              </View>
-            ))}
-            <Text style={small}>{t("myMessages.calendar.more")}</Text>
-          </View>
-          {showMonthPanel && layout.compact ? (
-            <MonthPanel
-              title={panelTitle}
-              summary={panelSummary}
-              conversations={topConversationsThisMonth}
-              filterAgentId={filterAgentId}
-              onToggleFilter={toggleFilter}
-              incomplete={monthIncomplete}
-              compact
-              locale={locale}
-              tokens={tokens}
-              t={t}
-            />
-          ) : null}
-          {showMonthPanel && !layout.compact ? (
-            <ScrollView
-              testID="my-messages-calendar-left-scroll"
-              style={{ flex: 1, minHeight: 0 }}
-              contentContainerStyle={{ gap: 8, paddingBottom: padding }}
-            >
+        {/* The month, its legend and the panel scroll inside a bounded share of the page;
+            the day's list keeps the rest, so its first row stays on the first screen. */}
+        {layout.compact ? (
+          <ScrollView
+            testID="my-messages-calendar-compact-scroll"
+            style={{ flexGrow: 0, flexShrink: 1, maxHeight: COMPACT_CALENDAR_MAX_HEIGHT }}
+            contentContainerStyle={{ gap: 6 }}
+          >
+            {calendarBlock}
+            {showMonthPanel && layout.compact ? (
               <MonthPanel
                 title={panelTitle}
                 summary={panelSummary}
@@ -401,14 +446,38 @@ export function MyMessagesCalendarScreen({
                 filterAgentId={filterAgentId}
                 onToggleFilter={toggleFilter}
                 incomplete={monthIncomplete}
-                compact={false}
+                compact
                 locale={locale}
                 tokens={tokens}
                 t={t}
               />
-            </ScrollView>
-          ) : null}
-        </View>
+            ) : null}
+          </ScrollView>
+        ) : (
+          <View style={{ width: 320, gap: 6, alignSelf: "stretch", minHeight: 0 }}>
+            {calendarBlock}
+            {showMonthPanel && !layout.compact ? (
+              <ScrollView
+                testID="my-messages-calendar-left-scroll"
+                style={{ flex: 1, minHeight: 0 }}
+                contentContainerStyle={{ gap: 8, paddingBottom: padding }}
+              >
+                <MonthPanel
+                  title={panelTitle}
+                  summary={panelSummary}
+                  conversations={topConversationsThisMonth}
+                  filterAgentId={filterAgentId}
+                  onToggleFilter={toggleFilter}
+                  incomplete={monthIncomplete}
+                  compact={false}
+                  locale={locale}
+                  tokens={tokens}
+                  t={t}
+                />
+              </ScrollView>
+            ) : null}
+          </View>
+        )}
 
         <View style={{ flex: 1, gap: 6, minHeight: 0 }}>
           {filterAgentId !== null ? (

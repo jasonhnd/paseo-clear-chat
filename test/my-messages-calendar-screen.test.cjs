@@ -1727,6 +1727,35 @@ test("hover tooltips stay inside the grid on every column", async t => {
   }
 });
 
+test("a measured narrow row shortens the bubble label instead of clipping it", async t => {
+  const history = historyFor(daysResult({ [dayKey(0)]: 30 }, { firstDay: "2026-03-09" }),
+    { [dayKey(0)]: dayResult([]) });
+  const { draw, cell, h } = fixture(t, { historyRpc: history, compact: true });
+  draw();
+  await flush();
+  const views = h.load("client/components/my-messages-calendar-views.tsx");
+  cell(draw(), "Mar 15 Sun").props.onHoverIn();
+  const bubbleAt = width => {
+    const placed = layoutBox(draw, h, "my-messages-calendar-row", width);
+    const tip = h.nodes(placed, node => node.props.testID === "my-messages-calendar-tooltip")[0];
+    assert.ok(tip, `no bubble on a ${width}px row`);
+    const text = h.nodes(tip, node => node.type === "Text")[0];
+    const label = h.text(tip);
+    const needed = views.bubbleTextWidth(label, text.props.style.fontSize) + 22;
+    assert.ok(needed <= tip.props.style.width + 0.5,
+      `"${label}" needs ${needed}px but the card on a ${width}px row is ${tip.props.style.width}px`);
+    return label;
+  };
+
+  // A card the width of the row cannot hold the weekday and the word; the label drops them
+  // rather than being cut off by numberOfLines={1}.
+  assert.equal(bubbleAt(160), "Mar 15 · 30");
+  assert.equal(bubbleAt(170), "Mar 15 · 30 messages");
+  assert.equal(bubbleAt(520), "Mar 15 Sun · 30 messages");
+  // The cell still reads the whole date and count aloud.
+  assert.match(String(cell(draw(), "Mar 15 Sun").props.accessibilityLabel), /Mar 15 Sun, 30 messages/);
+});
+
 test("rendered marks use the measured dot, outline, page seam and today weight", async t => {
   const zinc = {
     surface0: "#18181b", foreground: "#fafafa", foregroundMuted: "#a1a1aa",
@@ -2215,10 +2244,14 @@ test("the bubble is sized to its label so the date stays on one line", async t =
   assert.ok(bubbleTextWidth(label, tokens.fs(12)) >= 155,
     "the measured label is at least as wide as the browser paints this date");
 
-  // On a narrow row the grid is the cap, never the text: the card shrinks and stays inside.
+  // On a narrow row the label shortens to what fits instead of being clamped and clipped.
   const narrow = layoutBox(draw, h, "my-messages-calendar-row", 160);
   const small = tipOf(narrow);
-  assert.equal(small.props.style.width, 160);
+  const smallLabel = h.text(small);
+  assert.equal(smallLabel, "Mar 14 · 128");
+  assert.ok(bubbleTextWidth(smallLabel, tokens.fs(12)) + chrome <= small.props.style.width,
+    "the whole label fits the card");
+  assert.ok(small.props.style.width < 160, "the card is its label, not the whole row");
   assertTooltipInside(small.props.style, 5, 7, 160);
 
   // A larger text scale grows the card with the text instead of wrapping it.

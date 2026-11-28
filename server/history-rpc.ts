@@ -2,12 +2,11 @@ import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { historyDayRpc, historyDaysRpc } from "../shared/history-rpc";
 import {
   HistoryArchive,
-  countByDay,
   rowsOnDay,
   type ArchiveMerge,
 } from "./history-archive";
 import { listHistoryConversations } from "./history-conversations";
-import { countByConversationMonth } from "./history-conversation-months";
+import { countDaysAndConversationMonths } from "./history-conversation-months";
 import { readHistoryData, zoneDayKey } from "./history-reader";
 
 /**
@@ -65,13 +64,18 @@ export function registerHistoryHandlers(
       const authoritative = directoryPartial ? fast.readSessions : fast.presentSessions;
       const merged = await archive.merge(fast.messages, fast.readSessions, authoritative);
       const presentSessions = new Set(authoritative);
+      // One pass over the merged records answers both the day cells and the month ranking:
+      // each message's local day is converted once and its month comes from that day key.
+      const counts = countDaysAndConversationMonths(
+        merged.messages,
+        input.timeZone,
+        new Map(conversations.map(conversation => [conversation.id, conversation.title ?? null])),
+      );
       return {
-        ...countByDay(merged.messages, input.timeZone),
-        conversationMonths: countByConversationMonth(
-          merged.messages,
-          input.timeZone,
-          new Map(conversations.map(conversation => [conversation.id, conversation.title ?? null])),
-        ),
+        days: counts.days,
+        firstDay: counts.firstDay,
+        lastDay: counts.lastDay,
+        conversationMonths: counts.conversationMonths,
         fastConversations: fast.fastConversations,
         slowConversationIds: fast.slowConversationIds,
         skippedDatabases: fast.skippedDatabases,

@@ -14,7 +14,7 @@ import {
   type MonthKey,
   type YearMonthCell,
 } from "../my-messages-calendar";
-import { formatDayLabel, formatMonthShort, formatMonthTitle, formatWeekday } from "../my-messages-calendar-labels";
+import { formatDayLabel, formatMonthDay, formatMonthShort, formatMonthTitle, formatWeekday } from "../my-messages-calendar-labels";
 import { displayedDayCount } from "../my-messages-calendar-feed";
 import type { Translate } from "../translation";
 import { mix, type ExtendedThemeTokens } from "./theme-tokens";
@@ -383,6 +383,28 @@ function bubbleWidth(label: string, tokens: ExtendedThemeTokens, rowWidth: numbe
 }
 
 /**
+ * The first label whose one line fits the measured row.
+ *
+ * A narrow grid clamps the card to the row, and a card narrower than its text clips it:
+ * `numberOfLines={1}` stops the line from wrapping, not from being cut. The caller passes
+ * the label and its shorter forms, longest first — the same date and count without the
+ * weekday, then the date with the number alone — and the card uses the first one that
+ * fits. Before a row is measured the full label is kept; a row narrower than every form
+ * cannot show any of them whole, so the shortest is used.
+ */
+function fittingBubbleLabel(
+  candidates: readonly string[],
+  tokens: ExtendedThemeTokens,
+  rowWidth: number | null,
+): string {
+  const unique = candidates.filter((label, index) => candidates.indexOf(label) === index);
+  if (rowWidth === null || rowWidth <= 0) return unique[0] ?? "";
+  const chrome = (BUBBLE_PAD_X + BUBBLE_RULE) * 2;
+  return unique.find(label => bubbleTextWidth(label, tokens.fs(BUBBLE_FONT)) + chrome <= rowWidth)
+    ?? unique[unique.length - 1] ?? "";
+}
+
+/**
  * Keep the bubble over its cell and inside the row.
  * Once the row has reported its width, left and width are pixels clamped to that row.
  * Before then, the first column sticks to the left, the last column sticks to the right,
@@ -709,6 +731,14 @@ export function CalendarMonthView({
             const tooltip = count === 1
               ? t("myMessages.calendar.dayTooltipOne", { date: formatDayLabel(locale, day) })
               : t("myMessages.calendar.dayTooltip", { date: formatDayLabel(locale, day), count });
+            const shortDate = formatMonthDay(locale, day);
+            const bubbleLabel = fittingBubbleLabel([
+              tooltip,
+              count === 1
+                ? t("myMessages.calendar.dayTooltipOne", { date: shortDate })
+                : t("myMessages.calendar.dayTooltip", { date: shortDate, count }),
+              t("myMessages.calendar.dayTooltipShort", { date: shortDate, count }),
+            ], tokens, rowWidth);
             return (
               <View key={day} testID="my-messages-calendar-cell-wrap"
                 style={{ width: CELL_WIDTH, padding: 2, position: "relative", zIndex: showTooltip ? 30 : 1 }}>
@@ -765,8 +795,8 @@ export function CalendarMonthView({
                 </Pressable>
                 {showTooltip ? (
                   <>
-                    <View testID="my-messages-calendar-tooltip" pointerEvents="none" style={bubbleStyle(column, 7, rowWidth, tokens, tooltip)}>
-                      <Text numberOfLines={1} style={{ color: tokens.bubbleText, fontFamily: tokens.fontUi, fontSize: tokens.fs(BUBBLE_FONT), lineHeight: tokens.fs(BUBBLE_FONT) + 4 }}>{tooltip}</Text>
+                    <View testID="my-messages-calendar-tooltip" pointerEvents="none" style={bubbleStyle(column, 7, rowWidth, tokens, bubbleLabel)}>
+                      <Text numberOfLines={1} style={{ color: tokens.bubbleText, fontFamily: tokens.fontUi, fontSize: tokens.fs(BUBBLE_FONT), lineHeight: tokens.fs(BUBBLE_FONT) + 4 }}>{bubbleLabel}</Text>
                     </View>
                     <View testID="my-messages-calendar-tooltip-arrow" pointerEvents="none" style={bubbleArrowStyle(tokens)} />
                   </>

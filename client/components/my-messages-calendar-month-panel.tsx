@@ -148,7 +148,17 @@ export function MonthPanel({
         {t("myMessages.calendar.monthPanelTop")}
       </Text>
       {top.length === 0 ? (
-        <Text style={muted}>{t("myMessages.calendar.monthPanelEmpty")}</Text>
+        summary.total > 0 ? (
+          // Totals with no per-conversation rows is a host that did not answer the ranking,
+          // not a month with nothing in it: the two must not read the same.
+          <Text testID="my-messages-calendar-month-no-ranking" style={muted}>
+            {t("myMessages.calendar.monthPanelNoRanking")}
+          </Text>
+        ) : (
+          <Text testID="my-messages-calendar-month-empty" style={muted}>
+            {t("myMessages.calendar.monthPanelEmpty")}
+          </Text>
+        )
       ) : compact ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ maxHeight: 34 }}>
           <View style={{ flexDirection: "row", gap: 6 }}>{top.map(row)}</View>

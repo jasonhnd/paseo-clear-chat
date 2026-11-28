@@ -117,7 +117,7 @@ test("per-conversation months use the reader's calendar and add up to the day to
   assert.deepEqual(Object.fromEntries(byMonth), Object.fromEntries(cellByMonth));
 });
 
-test("counts group by conversation, keep the newest instant, and title-less ids stay null", () => {
+test("one pass counts the days and the months, converting each local day once", () => {
   const monthFor = (iso, agentId) => ({ agentId, at: Date.parse(iso) });
   const messages = [
     monthFor("2026-11-02T01:00:00Z", "a"),
@@ -125,8 +125,29 @@ test("counts group by conversation, keep the newest instant, and title-less ids 
     monthFor("2026-11-03T01:00:00Z", "b"),
     monthFor("2026-11-01T01:00:00Z", "gone"),
   ];
-  const counts = monthsModule.countByConversationMonth(messages, "UTC", new Map([["a", "A"]]));
-  assert.deepEqual(counts.map(entry => [entry.agentId, entry.title, entry.count, entry.lastAt]), [
+  const calls = [];
+  const counts = monthsModule.countDaysAndConversationMonths(
+    messages,
+    "UTC",
+    new Map([["a", "A"]]),
+    (at, zone) => {
+      assert.equal(zone, "UTC");
+      calls.push(at);
+      return new Date(at).toISOString().slice(0, 10);
+    },
+  );
+  // One conversion per record: the cells and the ranking share it instead of each running
+  // its own pass over the same messages.
+  assert.equal(calls.length, messages.length);
+  assert.deepEqual(counts.days, [
+    { day: "2026-11-01", count: 1 },
+    { day: "2026-11-02", count: 1 },
+    { day: "2026-11-03", count: 1 },
+    { day: "2026-11-05", count: 1 },
+  ]);
+  assert.equal(counts.firstDay, "2026-11-01");
+  assert.equal(counts.lastDay, "2026-11-05");
+  assert.deepEqual(counts.conversationMonths.map(entry => [entry.agentId, entry.title, entry.count, entry.lastAt]), [
     ["a", "A", 2, Date.parse("2026-11-05T01:00:00Z")],
     ["b", null, 1, Date.parse("2026-11-03T01:00:00Z")],
     ["gone", null, 1, Date.parse("2026-11-01T01:00:00Z")],
