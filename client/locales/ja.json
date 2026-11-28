@@ -120,7 +120,7 @@
       "monthPanelAverage": "1日平均",
       "monthPanelTop": "メッセージの多い会話",
       "monthPanelEmpty": "この月にメッセージはありません",
-      "monthPanelNoRanking": "このホストの古い版は、この月の会話別の内訳を返していません。",
+      "monthPanelNoRanking": "このホストは、この月の会話別の内訳を提供していません。",
       "monthPanelPartial": "一部の会話を読み取れていないため、この数字と一覧は不完全な可能性があります。",
       "monthPanelFilter": "{{title}} のみ表示 · 解除",
       "monthPanelFilterClear": "すべての会話を表示",

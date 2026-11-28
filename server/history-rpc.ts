@@ -101,6 +101,7 @@ export function registerHistoryHandlers(
       if (store.cacheError) {
         return {
           rows: rowsOnDay(fastDay, input.day, input.timeZone),
+          counted: [],
           directoryPartial,
           fromCache: 0,
           cacheError: true,
@@ -115,6 +116,12 @@ export function registerHistoryHandlers(
       const archived = store.messages.filter(record => !presentSessions.has(record.sessionId)
         && typeof record.text === "string" && record.text.length > 0
         && zoneDayKey(record.at, input.timeZone) === input.day);
+      // A count-only record has no row to show but its message is already in `history.days`.
+      // Naming it lets the client drop the same message when the timeline finds it again.
+      const counted = store.messages.filter(record => !presentSessions.has(record.sessionId)
+        && (typeof record.text !== "string" || record.text.length === 0)
+        && zoneDayKey(record.at, input.timeZone) === input.day)
+        .map(record => ({ agentId: record.agentId, at: record.at }));
       const rows = [
         ...rowsOnDay(fastDay, input.day, input.timeZone),
         ...rowsOnDay(archived, input.day, input.timeZone),
@@ -123,6 +130,7 @@ export function registerHistoryHandlers(
         || (left.text < right.text ? -1 : left.text > right.text ? 1 : 0));
       return {
         rows,
+        counted,
         directoryPartial,
         fromCache: archived.length,
       };

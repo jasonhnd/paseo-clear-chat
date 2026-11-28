@@ -54,6 +54,7 @@ const LEGEND_SIZE = 12;
  * below keeps the rest of the page.
  */
 const COMPACT_CALENDAR_SHARE = 0.58;
+/** Stands in for the cap until the page has measured its body. */
 const COMPACT_CALENDAR_MAX_HEIGHT = `${Math.round(COMPACT_CALENDAR_SHARE * 100)}%` as const;
 /** Page padding above and below the column, outside its share. */
 const COMPACT_PAGE_PADDING = 12;
@@ -61,15 +62,34 @@ const COMPACT_PAGE_PADDING = 12;
 const COMPACT_TOOLBAR_MAX = 104;
 /** One list row: a title line, three lines of text and its padding. */
 export const COMPACT_LIST_ROW = 64;
+/** The summary line, the filter bar and the gaps above the list. */
+const COMPACT_LIST_CHROME = 56;
+
+/**
+ * The room a page of `viewportHeight` leaves the calendar column and the list together.
+ * This is measured from the page, not assumed: a pane shorter than the window only has as
+ * much room as the pane itself gives.
+ */
+export function compactBodyHeight(viewportHeight: number): number {
+  return Math.max(0, viewportHeight - COMPACT_PAGE_PADDING * 2 - COMPACT_TOOLBAR_MAX);
+}
+
+/**
+ * Pixels the compact calendar column may take out of a body of `bodyHeight`.
+ * The page measures the body and caps the column here, so the list's room is fixed
+ * arithmetic rather than whatever the flex layout happens to leave.
+ */
+export function compactCalendarMaxHeight(bodyHeight: number): number {
+  return Math.round(bodyHeight * COMPACT_CALENDAR_SHARE * 100) / 100;
+}
 
 /**
  * Pixels the compact page leaves the message list under the bounded calendar column.
- * At 390×844 this is more than two rows, so the selected day's first row is on the first
+ * At 390×844 this is more than three rows, so the selected day's first row is on the first
  * screen even with the whole month open.
  */
-export function compactMessageListHeight(viewportHeight: number): number {
-  const body = viewportHeight - COMPACT_PAGE_PADDING * 2;
-  return body * (1 - COMPACT_CALENDAR_SHARE) - COMPACT_TOOLBAR_MAX;
+export function compactMessageListHeight(bodyHeight: number): number {
+  return bodyHeight * (1 - COMPACT_CALENDAR_SHARE) - COMPACT_LIST_CHROME;
 }
 
 export function MyMessagesCalendarScreen({
@@ -93,6 +113,10 @@ export function MyMessagesCalendarScreen({
   React.useEffect(() => { setVisibleMonth(monthKeyOfDay(selectedDay)); }, [selectedDay]);
 
   const padding = layout.compact ? 12 : 16;
+  // The narrow column is capped in pixels from the measured body, so the list's room is fixed
+  // arithmetic the tests can read back. Before the first measurement the share stands in.
+  const [compactBody, setCompactBody] = React.useState<number | null>(null);
+  const compactCalendarHeight = compactBody === null ? COMPACT_CALENDAR_MAX_HEIGHT : compactCalendarMaxHeight(compactBody);
   const body = { color: tokens.foreground, fontFamily: tokens.fontUi, fontSize: tokens.fs(14) };
   const muted = { color: tokens.foregroundMuted, fontFamily: tokens.fontUi, fontSize: tokens.fs(12) };
   const small = { ...muted, fontSize: tokens.fs(11) };
@@ -163,6 +187,9 @@ export function MyMessagesCalendarScreen({
     || snapshot.notices.cacheError
     || snapshot.notices.skippedDatabases.length > 0
     || snapshot.slowConversationIds.length > 0
+    // A host that sent no per-conversation field at all cannot have ranked the month; a list
+    // built from the days the reader opened is a partial ranking, not a complete one.
+    || !snapshot.conversationMonthsKnown
     || panelSummary.total > monthRankedTotal;
   const showMonthPanel = view === "month" && snapshot.daysStatus === "ready";
   const panelTitle = visibleMonth === monthKeyOfDay(today)
@@ -201,6 +228,16 @@ export function MyMessagesCalendarScreen({
   function showMonth(month: MonthKey) {
     setVisibleMonth(month);
     setFilterAgentId(null);
+  }
+
+  /**
+   * Collapsing returns the panel to the month the week strip shows. A filter chosen in that
+   * same month still applies, so it is dropped only when the month actually changes.
+   */
+  function collapseMonth() {
+    const month = monthKeyOfDay(selectedDay);
+    if (month !== visibleMonth) showMonth(month);
+    setExpanded(false);
   }
 
   function toggleFilter(agentId: string) {
@@ -357,10 +394,8 @@ export function MyMessagesCalendarScreen({
         <Pressable testID="my-messages-calendar-expand" accessibilityRole="button" style={button}
           accessibilityLabel={expanded ? t("myMessages.calendar.hideMonth") : t("myMessages.calendar.showMonth")}
           onPress={() => {
-            // Collapsing returns the panel to the month the week strip shows, and drops a
-            // filter chosen in a month the strip is no longer on.
-            if (expanded) showMonth(monthKeyOfDay(selectedDay));
-            setExpanded(value => !value);
+            if (expanded) collapseMonth();
+            else setExpanded(true);
           }}>
           <Text style={body}>{expanded ? "▴" : "▾"}</Text>
         </Pressable>
@@ -428,13 +463,20 @@ export function MyMessagesCalendarScreen({
         </Text>
       ) : null}
 
-      <View style={{ flex: 1, flexDirection: layout.compact ? "column" : "row", gap: 12, minHeight: 0 }}>
+      <View
+        testID="my-messages-calendar-body"
+        onLayout={event => {
+          const height = event.nativeEvent.layout.height;
+          if (height > 0) setCompactBody(current => current === height ? current : height);
+        }}
+        style={{ flex: 1, flexDirection: layout.compact ? "column" : "row", gap: 12, minHeight: 0 }}
+      >
         {/* The month, its legend and the panel scroll inside a bounded share of the page;
             the day's list keeps the rest, so its first row stays on the first screen. */}
         {layout.compact ? (
           <ScrollView
             testID="my-messages-calendar-compact-scroll"
-            style={{ flexGrow: 0, flexShrink: 1, maxHeight: COMPACT_CALENDAR_MAX_HEIGHT }}
+            style={{ flexGrow: 0, flexShrink: 1, maxHeight: compactCalendarHeight }}
             contentContainerStyle={{ gap: 6 }}
           >
             {calendarBlock}
@@ -446,6 +488,7 @@ export function MyMessagesCalendarScreen({
                 filterAgentId={filterAgentId}
                 onToggleFilter={toggleFilter}
                 incomplete={monthIncomplete}
+                rankingKnown={snapshot.conversationMonthsKnown}
                 compact
                 locale={locale}
                 tokens={tokens}
@@ -469,6 +512,7 @@ export function MyMessagesCalendarScreen({
                   filterAgentId={filterAgentId}
                   onToggleFilter={toggleFilter}
                   incomplete={monthIncomplete}
+                  rankingKnown={snapshot.conversationMonthsKnown}
                   compact={false}
                   locale={locale}
                   tokens={tokens}

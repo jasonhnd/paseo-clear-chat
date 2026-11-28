@@ -32,6 +32,12 @@ export interface CalendarDetailSnapshot {
   day: DayKey;
   status: CalendarDetailStatus;
   rows: readonly MyMessagesScreenRow[];
+  /**
+   * Messages the day's count already includes that this answer cannot list, because the
+   * archive kept only their count. A timeline row with the same conversation and instant is
+   * that message, not a new one.
+   */
+  countedRows: readonly { agentId: string; at: number }[];
   conversations: number;
   progress: { done: number; total: number } | null;
   partial: readonly string[];
@@ -81,6 +87,8 @@ export interface MyMessagesCalendarSnapshot {
    * the host answered without the field.
    */
   conversationMonths: Readonly<Record<MonthKey, readonly ConversationMonthCount[]>>;
+  /** The host's answer carried `conversationMonths` at all, even if the month is empty. */
+  conversationMonthsKnown: boolean;
   firstDay: DayKey | null;
   lastDay: DayKey | null;
   selectedDay: DayKey;
@@ -118,7 +126,7 @@ interface CalendarSession extends CalendarMount {
 
 function emptyDetail(day: DayKey): CalendarDetailSnapshot {
   return {
-    day, status: "reading", rows: [], conversations: 0, progress: null,
+    day, status: "reading", rows: [], countedRows: [], conversations: 0, progress: null,
     partial: [], failed: [], unavailable: [], fromTimeline: false, fromRpc: false, rpcRows: 0,
     directoryFailed: false,
   };
@@ -127,7 +135,7 @@ function emptyDetail(day: DayKey): CalendarDetailSnapshot {
 export function emptyCalendarSnapshot(day: DayKey, timeZone = "UTC"): MyMessagesCalendarSnapshot {
   return {
     mode: "calendar", daysStatus: "reading", days: {}, extraDays: {}, extraConversations: {},
-    conversationMonths: {},
+    conversationMonths: {}, conversationMonthsKnown: false,
     firstDay: null, lastDay: null,
     selectedDay: day, detail: emptyDetail(day), notices: { directoryPartial: false, cacheError: false, skippedDatabases: [], cacheFull: [] },
     slowConversationIds: [], timeZone,
@@ -236,8 +244,10 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
   /** The fallback's contribution to one day, per conversation and in total.
    *
    * The rows are overwritten on every read of the day, never added to themselves. A failed
-   * day RPC leaves the day's count unsplit, so its rows cannot be attributed: the ranking
-   * stays short of the cell and the panel reports the gap rather than double counting.
+   * day RPC leaves the day's count unsplit, so `fallbackExtras` spreads the day's extra rows
+   * over the conversations the timeline named, and the ranking gains exactly what the cell
+   * gained. Records the archive kept as a count only are in `countedRows`: a timeline row
+   * with the same conversation and instant is already counted and never becomes an extra.
    */
   function extraState(
     session: CalendarSession,
@@ -247,14 +257,9 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
     if (detail.status !== "ready") {
       return { extraDays: { ...session.snapshot.extraDays }, extraConversations: { ...session.snapshot.extraConversations } };
     }
-    const base = session.snapshot.days[detail.day] ?? 0;
     const attributed = Object.values(extras).reduce((sum, entry) => sum + entry.count, 0);
-    // A failed RPC plus an empty fallback is no evidence that the fast count was wrong.
-    const value = detail.fromRpc
-      ? attributed
-      : detail.rows.length === 0 && base > 0 ? 0 : Math.max(0, detail.rows.length - base);
     return {
-      extraDays: { ...session.snapshot.extraDays, [detail.day]: value },
+      extraDays: { ...session.snapshot.extraDays, [detail.day]: attributed },
       extraConversations: { ...session.snapshot.extraConversations, [detail.day]: extras },
     };
   }
@@ -266,9 +271,13 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
   ): CalendarConversationExtra {
     if (!detail.fromRpc) return {};
     const counted = new Set(rpcRows.map(rowKey));
+    const countedOnly = new Set(detail.countedRows.map(row => `${row.agentId}\u0000${row.at}`));
     const extras: Record<string, { count: number; lastAt: number; title: string | null }> = {};
     for (const row of detail.rows) {
       if (counted.has(rowKey(row))) continue;
+      // The archive counted this message without keeping its text; the timeline row is the
+      // same message, not a second one.
+      if (countedOnly.has(`${row.agentId}\u0000${row.at}`)) continue;
       const entry = extras[row.agentId];
       if (entry) {
         entry.count += 1;
@@ -276,6 +285,53 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
       } else {
         extras[row.agentId] = { count: 1, lastAt: row.at, title: row.title };
       }
+    }
+    return extras;
+  }
+
+  /**
+   * The same split when the day RPC failed.
+   *
+   * The cells already count `base` messages for the day, but not which conversation wrote
+   * them. The timeline read the day itself, so `rows.length - base` rows are beyond that
+   * count. Conversations the fast read never reached cannot be part of `base`, so their rows
+   * are spent first; whatever is left goes to the other conversations, newest row first. The
+   * ranking then gains exactly the number the cell and the summary gained, and no more.
+   */
+  function fallbackExtras(
+    detail: CalendarDetailSnapshot,
+    base: number,
+    slowConversationIds: readonly string[],
+  ): CalendarConversationExtra {
+    let budget = Math.max(0, detail.rows.length - base);
+    if (budget === 0) return {};
+    const slow = new Set(slowConversationIds);
+    const perConversation = new Map<string, { count: number; lastAt: number; title: string | null }>();
+    for (const row of detail.rows) {
+      const countedOnly = detail.countedRows.some(record => record.agentId === row.agentId
+        && record.at === row.at);
+      if (countedOnly) continue;
+      const entry = perConversation.get(row.agentId);
+      if (entry) {
+        entry.count += 1;
+        if (row.at > entry.lastAt) entry.lastAt = row.at;
+      } else {
+        perConversation.set(row.agentId, { count: 1, lastAt: row.at, title: row.title });
+      }
+    }
+    const order = [...perConversation.entries()].sort(([leftId, left], [rightId, right]) => {
+      const leftSlow = slow.has(leftId) ? 0 : 1;
+      const rightSlow = slow.has(rightId) ? 0 : 1;
+      if (leftSlow !== rightSlow) return leftSlow - rightSlow;
+      if (left.lastAt !== right.lastAt) return right.lastAt - left.lastAt;
+      return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
+    });
+    const extras: Record<string, { count: number; lastAt: number; title: string | null }> = {};
+    for (const [agentId, entry] of order) {
+      if (budget === 0) break;
+      const count = Math.min(entry.count, budget);
+      extras[agentId] = { count, lastAt: entry.lastAt, title: entry.title };
+      budget -= count;
     }
     return extras;
   }
@@ -295,6 +351,7 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
     const until = startOfNextLocalDay(fromMs);
 
     let rpcRows: MyMessagesScreenRow[] = [];
+    let countedRows: { agentId: string; at: number }[] = [];
     let fromRpc = false;
     let fromTimeline = false;
     let notices = session.snapshot.notices;
@@ -315,12 +372,16 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
         cacheFull: result.cacheFull ?? [],
       });
       fromRpc = true;
+      countedRows = [...(result.counted ?? [])];
       rpcRows = result.rows
         .map(row => ({ agentId: row.agentId, at: row.at, seq: 0, text: row.text, title: null }))
         .sort(compareRows);
       publish(session, {
         notices,
-        detail: { ...emptyDetail(day), rows: rpcRows, conversations: countConversations(rpcRows), fromRpc, rpcRows: rpcRows.length },
+        detail: {
+          ...emptyDetail(day), rows: rpcRows, countedRows: result.counted ?? [],
+          conversations: countConversations(rpcRows), fromRpc, rpcRows: rpcRows.length,
+        },
       });
       if (!rpcRows.length && !session.snapshot.slowConversationIds.length) {
         const ready: CalendarDetailSnapshot = {
@@ -355,7 +416,7 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
     const candidates = listing.conversations.filter(conversation => conversation.lastAt >= fromMs
       && (mode === "all" || slowIds.has(conversation.id)));
     const detail: CalendarDetailSnapshot = {
-      ...emptyDetail(day), rows: rpcRows, conversations: countConversations(rpcRows),
+      ...emptyDetail(day), rows: rpcRows, countedRows, conversations: countConversations(rpcRows),
       progress: candidates.length ? { done: 0, total: candidates.length } : null,
       fromTimeline, fromRpc, rpcRows: rpcRows.length,
     };
@@ -402,7 +463,9 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
       progress: null,
       partial, failed, unavailable, fromTimeline,
     };
-    const extras = conversationExtras(ready, rpcRows);
+    const extras = detail.fromRpc
+      ? conversationExtras(ready, rpcRows)
+      : fallbackExtras(ready, session.snapshot.days[day] ?? 0, session.snapshot.slowConversationIds);
     cacheDetail(day, ready, extras);
     publish(session, { notices, detail: ready, ...extraState(session, ready, extras) });
     return ready;
@@ -432,7 +495,7 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
     if (state.status === "unsupported") {
       // The host has no history RPC at all: keep the previous today-only page.
       publish(session, {
-        mode: "fallback", daysStatus: "unsupported", conversationMonths: {},
+        mode: "fallback", daysStatus: "unsupported", conversationMonths: {}, conversationMonthsKnown: false,
         detail: emptyDetail(session.snapshot.selectedDay),
       });
       return;
@@ -442,7 +505,7 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
       // and give both methods one automatic second try before deciding the host is unusable.
       publish(session, {
         mode: "calendar", daysStatus: "error", days: {}, extraDays: {}, extraConversations: {},
-        conversationMonths: {},
+        conversationMonths: {}, conversationMonthsKnown: false,
         firstDay: null, lastDay: null,
         slowConversationIds: [],
         notices: { directoryPartial: false, cacheError: false, skippedDatabases: [], cacheFull: [] },
@@ -461,7 +524,7 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
       // Neither method ever answered: the previous today-only page still reads the timeline.
       publish(session, {
         mode: "fallback", daysStatus: "error", days: {}, extraDays: {}, extraConversations: {},
-        conversationMonths: {},
+        conversationMonths: {}, conversationMonthsKnown: false,
         firstDay: null, lastDay: null,
         slowConversationIds: [], detail: emptyDetail(session.snapshot.selectedDay),
         notices: { directoryPartial: false, cacheError: false, skippedDatabases: [], cacheFull: [] },
@@ -483,7 +546,7 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
     }
     publish(session, {
       mode: "calendar", daysStatus: "ready", days, extraDays: {}, extraConversations: {},
-      conversationMonths,
+      conversationMonths, conversationMonthsKnown: result.conversationMonths !== undefined,
       firstDay: result.firstDay, lastDay: result.lastDay,
       slowConversationIds: result.slowConversationIds, notices: noticesFromDays(result),
       timeZone: session.history.timeZone,

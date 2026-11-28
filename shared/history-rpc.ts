@@ -75,9 +75,23 @@ export const historyDayRowSchema = z.object({
   text: z.string(),
 });
 
+/** One message this answer counted but cannot list: the archive kept only its count. */
+const historyDayCountedSchema = z.object({
+  agentId: z.string(),
+  /** Milliseconds since the epoch. */
+  at: z.number().finite(),
+});
+
 export const historyDayResultSchema = z.object({
   /** Newest first. */
   rows: z.array(historyDayRowSchema),
+  /**
+   * Records whose count is already in `history.days` but that have no text to list: after a
+   * month file reaches its size cap the archive writes `{ agentId, at }` alone. A timeline
+   * row that matches one of these is the same message, so the client must not add it again
+   * to the cell, the summary or the ranking. Optional so a host that predates it still answers.
+   */
+  counted: z.array(historyDayCountedSchema).optional(),
   /** True when the conversation directory hit its page limit before the last page. */
   directoryPartial: z.boolean(),
   /** Rows from sessions this fast read did not complete (Hermes deleted or could not read them). */

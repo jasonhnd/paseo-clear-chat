@@ -413,12 +413,14 @@ function fittingBubbleLabel(
  */
 function bubbleStyle(
   column: number, columns: number, rowWidth: number | null, tokens: ExtendedThemeTokens, label: string,
+  below = false,
 ): ViewStyle {
   const base: ViewStyle = {
-    position: "absolute", bottom: "100%", marginBottom: BUBBLE_LIFT,
-    paddingVertical: 6, paddingHorizontal: BUBBLE_PAD_X, borderRadius: 8, zIndex: 20,
+    position: "absolute", zIndex: 20,
+    paddingVertical: 6, paddingHorizontal: BUBBLE_PAD_X, borderRadius: 8,
     backgroundColor: tokens.bubbleSurface, borderWidth: BUBBLE_RULE, borderColor: tokens.bubbleBorder,
     ...tokens.bubbleShadow,
+    ...(below ? { top: "100%" as ViewStyle["top"], marginTop: BUBBLE_LIFT } : { bottom: "100%", marginBottom: BUBBLE_LIFT }),
   };
   const index = column < 0 ? 0 : column > columns - 1 ? columns - 1 : column;
   if (rowWidth !== null && rowWidth > 0) {
@@ -444,13 +446,22 @@ function bubbleStyle(
  * two edges that face the reader below the card, so the point closes on both
  * sides instead of leaving one edge open.
  */
-function bubbleArrowStyle(tokens: ExtendedThemeTokens): ViewStyle {
+function bubbleArrowStyle(tokens: ExtendedThemeTokens, below = false): ViewStyle {
   return {
-    position: "absolute", bottom: "100%", left: "50%",
-    marginLeft: -BUBBLE_ARROW / 2, marginBottom: BUBBLE_LIFT - BUBBLE_ARROW / 2,
+    position: "absolute", left: "50%",
+    marginLeft: -BUBBLE_ARROW / 2,
+    ...(below
+      ? { top: "100%" as ViewStyle["top"], marginTop: BUBBLE_LIFT - BUBBLE_ARROW / 2 }
+      : { bottom: "100%", marginBottom: BUBBLE_LIFT - BUBBLE_ARROW / 2 }),
     width: BUBBLE_ARROW, height: BUBBLE_ARROW,
     backgroundColor: tokens.bubbleSurface,
-    borderRightWidth: BUBBLE_RULE, borderBottomWidth: BUBBLE_RULE, borderColor: tokens.bubbleBorder,
+    // Only the two edges that face the reader after the rotation are drawn: below a card that
+    // sits above the cell those are the right and bottom ones, above a card that sits below
+    // the cell they are the left and top ones.
+    ...(below
+      ? { borderLeftWidth: BUBBLE_RULE, borderTopWidth: BUBBLE_RULE }
+      : { borderRightWidth: BUBBLE_RULE, borderBottomWidth: BUBBLE_RULE }),
+    borderColor: tokens.bubbleBorder,
     transform: [{ rotate: "45deg" }], zIndex: 21,
   };
 }
@@ -739,6 +750,10 @@ export function CalendarMonthView({
                 : t("myMessages.calendar.dayTooltip", { date: shortDate, count }),
               t("myMessages.calendar.dayTooltipShort", { date: shortDate, count }),
             ], tokens, rowWidth);
+            // The first row's card would reach above the top of the bounded column, where the
+            // column clips it; it opens downward instead. Only the narrow layout has that
+            // bound, so the wide grid keeps the card above the cell.
+            const below = compact && week === 0;
             return (
               <View key={day} testID="my-messages-calendar-cell-wrap"
                 style={{ width: CELL_WIDTH, padding: 2, position: "relative", zIndex: showTooltip ? 30 : 1 }}>
@@ -795,10 +810,10 @@ export function CalendarMonthView({
                 </Pressable>
                 {showTooltip ? (
                   <>
-                    <View testID="my-messages-calendar-tooltip" pointerEvents="none" style={bubbleStyle(column, 7, rowWidth, tokens, bubbleLabel)}>
+                    <View testID="my-messages-calendar-tooltip" pointerEvents="none" style={bubbleStyle(column, 7, rowWidth, tokens, bubbleLabel, below)}>
                       <Text numberOfLines={1} style={{ color: tokens.bubbleText, fontFamily: tokens.fontUi, fontSize: tokens.fs(BUBBLE_FONT), lineHeight: tokens.fs(BUBBLE_FONT) + 4 }}>{bubbleLabel}</Text>
                     </View>
-                    <View testID="my-messages-calendar-tooltip-arrow" pointerEvents="none" style={bubbleArrowStyle(tokens)} />
+                    <View testID="my-messages-calendar-tooltip-arrow" pointerEvents="none" style={bubbleArrowStyle(tokens, below)} />
                   </>
                 ) : null}
               </View>
@@ -954,6 +969,17 @@ export function CalendarYearView({
         const tooltip = cell.total === 1
           ? t("myMessages.calendar.yearMonthLabelOne", { month: monthTitle, count: cell.total })
           : t("myMessages.calendar.yearMonthLabel", { month: monthTitle, count: cell.total });
+        // The card is capped by the row, so a two-column year view on a narrow page cannot
+        // hold the whole month name and the word for messages. The same fallback the day
+        // grid uses applies here: the short month name first, then the number alone.
+        const yearLabel = fittingBubbleLabel([
+          tooltip,
+          cell.total === 1
+            ? t("myMessages.calendar.yearMonthLabelOne", { month: monthShort, count: cell.total })
+            : t("myMessages.calendar.yearMonthLabel", { month: monthShort, count: cell.total }),
+          `${monthShort} · ${cell.total}`,
+        ], tokens, rowWidth);
+        const below = compact && Math.floor(index / columns) === 0;
         const showTooltip = tooltipMonth === cell.month;
         const chosen = cell.month === visibleMonth;
         const current = monthKeyOfDay(today) === cell.month;
@@ -1013,10 +1039,10 @@ export function CalendarYearView({
             </Pressable>
             {showTooltip ? (
               <>
-                <View testID="my-messages-calendar-tooltip" pointerEvents="none" style={bubbleStyle(index % columns, columns, rowWidth, tokens, tooltip)}>
-                  <Text numberOfLines={1} style={{ color: tokens.bubbleText, fontFamily: tokens.fontUi, fontSize: tokens.fs(BUBBLE_FONT), lineHeight: tokens.fs(BUBBLE_FONT) + 4 }}>{tooltip}</Text>
+                <View testID="my-messages-calendar-tooltip" pointerEvents="none" style={bubbleStyle(index % columns, columns, rowWidth, tokens, yearLabel, below)}>
+                  <Text numberOfLines={1} style={{ color: tokens.bubbleText, fontFamily: tokens.fontUi, fontSize: tokens.fs(BUBBLE_FONT), lineHeight: tokens.fs(BUBBLE_FONT) + 4 }}>{yearLabel}</Text>
                 </View>
-                <View testID="my-messages-calendar-tooltip-arrow" pointerEvents="none" style={bubbleArrowStyle(tokens)} />
+                <View testID="my-messages-calendar-tooltip-arrow" pointerEvents="none" style={bubbleArrowStyle(tokens, below)} />
               </>
             ) : null}
           </View>
