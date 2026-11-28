@@ -60,12 +60,17 @@ const COMPACT_CALENDAR_MAX_HEIGHT = `${Math.round(COMPACT_CALENDAR_SHARE * 100)}
 const COMPACT_PAGE_PADDING = 12;
 /** The wrapped toolbar: the two 44 px arrow targets and the row with the month title. */
 const COMPACT_TOOLBAR_MAX = 104;
-/** One list row: a title line, three lines of text and its padding. */
-export const COMPACT_LIST_ROW = 64;
+/**
+ * One list row, from the parts the row itself draws: 8 px of padding above and below, the
+ * 12 px title line, a 3 px gap, three 14 px lines of message text, another 3 px gap and the
+ * 44 px copy/quote buttons. A row is never shorter than this, so a floor in rows has to use
+ * the whole height rather than the text alone.
+ */
+export const COMPACT_LIST_ROW = 144;
 /** The summary line, the filter bar and the gaps above the list. */
 const COMPACT_LIST_CHROME = 56;
 /** Rows the narrow page keeps on screen before it shrinks the calendar column instead. */
-const COMPACT_LIST_MIN_ROWS = 2;
+const COMPACT_LIST_MIN_ROWS = 1;
 
 /**
  * The room a page of `viewportHeight` leaves the calendar column and the list together.
@@ -87,8 +92,9 @@ export function compactCalendarMaxHeight(bodyHeight: number): number {
 
 /**
  * Pixels the compact page keeps for the list column: its summary line, its filter bar, its
- * gaps and two rows. The column carries this as a `minHeight`, so the calendar column above
- * it shrinks rather than the list's first row leaving the screen.
+ * gaps and one whole row. The column carries this as a `minHeight`, so the calendar column
+ * above it shrinks rather than the list's first row leaving the screen. This is the
+ * arithmetic the styles ask for, not a measurement of a laid-out page.
  */
 export function compactListFloor(): number {
   return COMPACT_LIST_ROW * COMPACT_LIST_MIN_ROWS + COMPACT_LIST_CHROME;
@@ -313,17 +319,23 @@ export function MyMessagesCalendarScreen({
       : t("myMessages.calendar.daySummaryMessages", {
           date: formatDayLabel(locale, selectedDay), messages: selectedCount,
         });
-  // Messages the day counted but cannot list. The whole day's number and the filtered
-  // conversation's number are different questions: another conversation's count-only
-  // records must not stand in for "this conversation has nothing on this day".
-  const dayCountOnly = detail.status === "ready" ? Math.max(0, selectedCount - detail.rows.length) : 0;
-  const filterCountOnly = detail.status === "ready" && filterAgentId !== null
-    ? detail.countedRows.filter(row => row.agentId === filterAgentId).length
-    : 0;
-  // A day whose read failed cannot say which conversation a count-only record belongs to,
-  // so it shows neither that number nor an empty-day line.
-  const countOnly = detail.unreconciled ? 0
-    : filterAgentId === null ? dayCountOnly : filterCountOnly;
+  // Messages the day counted but cannot list. A record whose conversation and instant has a
+  // row on screen is not missing text any more, and a record at an instant that also holds a
+  // timeline row is ambiguous — the day says so instead. The whole day's number and the
+  // filtered conversation's number are different questions: another conversation's records
+  // must not stand in for "this conversation has nothing on this day".
+  const rowInstants = new Set(detail.rows.map(row => `${row.agentId}\u0000${row.at}`));
+  const unmatchedCountOnly = detail.status === "ready"
+    ? detail.countedRows.filter(row => !rowInstants.has(`${row.agentId}\u0000${row.at}`))
+    : [];
+  // The day's own difference still counts when a host named no records at all; an unmatched
+  // day claims nothing, because its difference may be rows it could not attribute.
+  const dayCountOnly = detail.unreconciled ? 0
+    : Math.max(unmatchedCountOnly.length, Math.max(0, selectedCount - detail.rows.length));
+  const countOnly = filterAgentId === null || detail.unreconciled ? dayCountOnly
+    : detail.countedRows.length > 0
+      ? unmatchedCountOnly.filter(row => row.agentId === filterAgentId).length
+      : dayCountOnly;
   const listRows = filterAgentId === null
     ? detail.rows
     : detail.rows.filter(row => row.agentId === filterAgentId);
@@ -603,7 +615,8 @@ export function MyMessagesCalendarScreen({
                 : t("myMessages.calendar.countOnly", { count: countOnly })}
             </Text>
           ) : null}
-          {detail.status === "ready" && !detail.unreconciled && listRows.length === 0 && countOnly === 0 ? (
+          {detail.status === "ready" && detail.fromRpc && !detail.unreconciled
+            && listRows.length === 0 && countOnly === 0 ? (
             <Text style={muted}>
               {filterAgentId === null
                 ? t("myMessages.calendar.dayEmpty")

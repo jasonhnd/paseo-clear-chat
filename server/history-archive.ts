@@ -217,11 +217,19 @@ export class HistoryArchive {
     return this.enqueue(() => this.mergeNow(fast, readSessions, presentSessions));
   }
 
-  /** Read every stored record without writing anything (the day RPC is read-only). */
-  read(): Promise<ArchiveRead> {
+  /**
+   * Read stored records without writing anything (the day RPC is read-only).
+   *
+   * `months` limits the read to those UTC shards, which is what a day answer needs: a local
+   * day can only touch the shard of its first and last UTC instants. Without it every shard
+   * in the archive is parsed, which a long history makes expensive.
+   */
+  read(months?: readonly string[]): Promise<ArchiveRead> {
     return this.enqueue(async () => {
       const directory = historyArchiveDirectory(this.options.home);
-      const store = await this.readStore(directory, { repair: false, corruptIsError: true });
+      const store = await this.readStore(
+        directory, { repair: false, corruptIsError: true }, months ? new Set(months) : undefined,
+      );
       return { messages: [...store.records.values()], cacheError: store.cacheError };
     });
   }
@@ -335,7 +343,7 @@ export class HistoryArchive {
   }
 
   private async readStore(
-    directory: string, mode: { repair: boolean; corruptIsError: boolean },
+    directory: string, mode: { repair: boolean; corruptIsError: boolean }, months?: ReadonlySet<string>,
   ): Promise<StoreRead> {
     let entries;
     try {
@@ -352,7 +360,11 @@ export class HistoryArchive {
     for (const entry of entries) {
       if (!entry.isFile() && !entry.isDirectory()) continue;
       const isMeta = entry.name === META_FILE;
-      if (!isMeta && !MONTH_FILE.test(entry.name)) continue;
+      if (!isMeta) {
+        const month = MONTH_FILE.exec(entry.name)?.[1];
+        if (!month) continue;
+        if (months && !months.has(month)) continue;
+      }
       // A read that does not write does not need meta; a corrupt meta must not make the
       // day RPC drop the month files. The merge repairs it under the lock.
       if (isMeta && !mode.repair) continue;

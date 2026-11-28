@@ -59,7 +59,7 @@ Settings are saved on the host and shared by every client connected to it.
 - **Quote** does not replace an existing draft.
 - On a host without client navigation, a screen row press copies the message instead of opening the conversation.
 - A machine message is recognised by its leading text, so a message that opens with one of those shapes for another reason is counted as machine and is not listed.
-- A day has a page budget. A read that stops short says it is partial and offers **Try again**, and the counts are then a lower bound, at least the number of rows listed.
+- A day has a page budget. A read that stops short says it is partial and offers **Try again**. The counts are what the history read counted; when a day could not be matched with its rows, the screen says so and the list can be shorter than the count.
 - Clear Chat does not draw the conversation. Use Better Paseo for that view.
 - `Plan 2B` can still be read as an answer.
 - In the desktop panel a long written answer previews in at most two lines: the whole answer index, then the start of the first written answer. The message that is sent keeps the full answer, and the narrow panel shows the full preview.

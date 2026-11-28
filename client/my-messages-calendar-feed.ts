@@ -313,24 +313,34 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
     detail: CalendarDetailSnapshot,
     rpcRows: readonly MyMessagesScreenRow[],
     timelineRows: readonly MyMessagesScreenRow[],
-  ): CalendarConversationExtra {
-    if (!detail.fromRpc) return {};
-    // Both lists are multisets. The RPC's rows are the messages `history.days` counted, and
-    // its count-only records are the messages it counted without keeping their text. A
-    // timeline row is already counted when it matches one of the former on conversation,
-    // instant and text, or when it can spend one of the latter on its conversation and
-    // instant — a different message in the same millisecond is left over, so it is new.
+  ): { extras: CalendarConversationExtra; unreconciled: boolean } {
+    const extras: Record<string, { count: number; lastAt: number; title: string | null }> = {};
+    if (!detail.fromRpc) return { extras, unreconciled: false };
+    // Both lists are multisets. A timeline row is already counted when it matches an RPC row
+    // on conversation, instant and text. A count-only record has no text, so it can only be
+    // matched by conversation and instant: with g rows and m records at one instant, at
+    // least g - m rows are provably new, but which of them the archive counted cannot be
+    // told. Those rows stay in the count as a lower bound and the day is called unreconciled
+    // rather than silently dropping a different message written in the same millisecond.
     const counted = new Map<string, number>();
     for (const row of rpcRows) bump(counted, rowKey(row));
     const countOnly = new Map<string, number>();
     for (const row of detail.countedRows) bump(countOnly, countedKey(row));
-    const extras: Record<string, { count: number; lastAt: number; title: string | null }> = {};
+    const groups = new Map<string, MyMessagesScreenRow[]>();
     for (const row of timelineRows) {
       if (take(counted, rowKey(row))) continue;
-      if (take(countOnly, countedKey(row))) continue;
-      addExtra(extras, row);
+      const key = countedKey(row);
+      const group = groups.get(key);
+      if (group) group.push(row);
+      else groups.set(key, [row]);
     }
-    return extras;
+    let unreconciled = false;
+    for (const [key, rows] of groups) {
+      const records = countOnly.get(key) ?? 0;
+      if (records > 0) unreconciled = true;
+      for (const row of rows.slice(records)) addExtra(extras, row);
+    }
+    return { extras, unreconciled };
   }
 
   /**
@@ -340,7 +350,8 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
    * by row. Only two things are still provable: a day that counted nothing has no message to
    * match, and a conversation the month ranking places at zero for this month cannot have
    * contributed to the day's count. Every other row stays outside the ranking and marks the
-   * day `unreconciled`; the order of the rows is never used to guess.
+   * day `unreconciled`; a day that counted messages but listed none is unmatched for the same
+   * reason. The order of the rows is never used to guess.
    */
   function fallbackExtras(
     detail: CalendarDetailSnapshot,
@@ -349,11 +360,13 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
     monthCounts: ReadonlyMap<string, number> | null,
   ): { extras: CalendarConversationExtra; unreconciled: boolean } {
     const extras: Record<string, { count: number; lastAt: number; title: string | null }> = {};
-    if (timelineRows.length === 0) return { extras, unreconciled: false };
     if (base === 0) {
       for (const row of timelineRows) addExtra(extras, row);
       return { extras, unreconciled: false };
     }
+    // The count holds messages this answer cannot pair with anything it read: there is no
+    // archive evidence about which ones they are.
+    if (timelineRows.length === 0) return { extras, unreconciled: true };
     let unreconciled = false;
     for (const row of timelineRows) {
       // `monthCounts` is null unless the host ranked the whole month: only then does a
@@ -432,8 +445,8 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
       if (!isOpen()) return null;
       const failed: CalendarDetailSnapshot = {
         ...emptyDetail(day), status: rpcRows.length ? "ready" : "error", rows: rpcRows,
-        conversations: countConversations(rpcRows), fromTimeline, fromRpc, rpcRows: rpcRows.length,
-        directoryFailed: true,
+        countedRows, conversations: countConversations(rpcRows), fromTimeline, fromRpc,
+        rpcRows: rpcRows.length, directoryFailed: true,
       };
       publish(session, { detail: failed, notices, ...extraState(session, failed, {}) });
       return failed;
@@ -493,7 +506,7 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
       ? new Map((session.snapshot.conversationMonths[monthKeyOfDay(day)] ?? []).map(entry => [entry.agentId, entry.count]))
       : null;
     const settled = detail.fromRpc
-      ? { extras: conversationExtras(detail, rpcRows, timelineRows), unreconciled: false }
+      ? conversationExtras(detail, rpcRows, timelineRows)
       : fallbackExtras(detail, timelineRows, session.snapshot.days[day] ?? 0, monthCounts);
     const ready: CalendarDetailSnapshot = {
       ...detail,
@@ -510,10 +523,10 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
   }
 
   function cacheDetail(day: DayKey, detail: CalendarDetailSnapshot, extras: CalendarConversationExtra): void {
-    // A partial read or a directory failure is retried when the day is opened again,
-    // never replayed from cache.
+    // A partial read, a directory failure or an unmatched day is retried when the day is
+    // opened again, never replayed from cache: the day RPC may answer the next time.
     if (detail.partial.length > 0 || detail.failed.length > 0 || detail.unavailable.length > 0
-      || detail.directoryFailed) return;
+      || detail.directoryFailed || detail.unreconciled) return;
     detailCache.delete(day);
     detailCache.set(day, { detail, extras });
     if (detailCache.size > DETAIL_CACHE_LIMIT) detailCache.delete(detailCache.keys().next().value!);

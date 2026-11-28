@@ -298,6 +298,36 @@ test("a count-only archive record is named so the client can drop the timeline's
     "the day names the message it counted without listing");
 });
 
+test("a day answer reads only the UTC shards its own day can touch", async t => {
+  const hermes = createRoot(t);
+  const home = createHome(t);
+  const directory = join(home, "plugin-data", "clear-chat", "history");
+  fs.mkdirSync(directory, { recursive: true });
+  const countedAt = Date.UTC(2026, 10, 19, 16, 0, 0); // 2026-11-20 01:00 in Tokyo
+  fs.writeFileSync(join(directory, "messages-2026-11.json"), JSON.stringify({
+    version: 2,
+    messages: [{ key: "c0ffee0000000000", sessionId: "session-gone", agentId: "agent-a", at: countedAt }],
+  }));
+  // A shard no local day in November can reach. It is unreadable, and reading it would make
+  // the whole day answer report a cache error; a scoped read never opens it.
+  fs.writeFileSync(join(directory, "messages-2025-01.json"), "{ this is not json");
+  const handlers = new Map();
+  rpcModule.registerHistoryHandlers(
+    { handle(contract, handler) { handlers.set(contract.name, handler); } },
+    { root: hermes, home },
+  );
+  const paseo = fakePaseo([{ entries: [agentEntry()], pageInfo: { hasMore: false, nextCursor: null } }]);
+  const detail = await handlers.get("history.day")({ day: "2026-11-20", timeZone: "Asia/Tokyo" }, { paseo });
+  assert.equal(detail.cacheError, undefined, "the day did not read the unreachable shard");
+  assert.deepEqual(detail.counted, [{ agentId: "agent-a", at: countedAt }]);
+  assert.deepEqual(detail.rows.map(row => row.text), ["a message from the person"]);
+
+  // A day whose local midnight falls in the previous UTC month reads both shards it can touch.
+  const tokyo = await handlers.get("history.day")({ day: "2026-12-01", timeZone: "Asia/Tokyo" }, { paseo });
+  assert.equal(tokyo.cacheError, undefined);
+  assert.deepEqual(tokyo.rows, [], "the December day has nothing on it");
+});
+
 test("a partial directory reaches both RPC results", async t => {
   const hermes = createRoot(t);
   const handlers = new Map();

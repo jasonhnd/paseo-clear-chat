@@ -429,11 +429,12 @@ test("compact: an expanded month leaves the day's list a visible first screen", 
     "the may-be-incomplete note is on screen with the month open");
 
   // The list column carries its floor in production: the summary, the filter bar, the gaps
-  // and two rows. The calendar column shrinks to meet it instead of the first row leaving
-  // the screen once notices take their lines.
+  // and one whole row, using the row's real height rather than its text alone.
   const column = one(measured, "my-messages-calendar-list-column");
   assert.equal(column.props.style.minHeight, screen.compactListFloor());
-  assert.equal(screen.compactListFloor(), screen.COMPACT_LIST_ROW * 2 + 56);
+  assert.equal(screen.compactListFloor(), screen.COMPACT_LIST_ROW + 56);
+  assert.ok(screen.COMPACT_LIST_ROW >= 144,
+    "one row holds 16 px padding, a title line, three text lines and the 44 px actions");
   for (const viewport of [844, 667]) {
     const room = screen.compactBodyHeight(viewport);
     const used = screen.compactCalendarMaxHeight(room) + screen.compactListFloor();
@@ -904,6 +905,85 @@ test("two identical messages in the same millisecond stay two rows", async t => 
   assert.equal(h.text(one(view, "my-messages-calendar-month-total")), "2",
     "the archive's one copy matches one of the two identical rows");
   assert.equal(all(view, "my-messages-screen-row").length, 2, "both messages are listed");
+});
+
+test("a count-only record does not swallow a different message in the same millisecond", async t => {
+  const shared = at(0, 9);
+  const directory = [agent("gone", "Gone chat")];
+  const history = historyFor(daysResult({ [dayKey(0)]: 1 }, {
+    conversationMonths: [monthCount("gone", "Gone chat", 1, 0)],
+    slowConversationIds: ["gone"],
+  }), {
+    [dayKey(0)]: dayResult([], { counted: [{ agentId: "gone", at: shared }] }),
+  });
+  // Only the other message comes back: it may be the one the archive counted, or a second
+  // message the count never saw. With nothing to tell them apart the count stays, the row
+  // is listed, and the day says it could not match them instead of claiming one.
+  const histories = new Map([["gone", [timelineMessage("different words", shared, 1)]]]);
+  const { draw, all, one, h } = fixture(t, { historyRpc: history, directory, histories });
+  draw();
+  await flush();
+  const view = draw();
+  assert.equal(h.text(one(view, "my-messages-calendar-month-total")), "1",
+    "the count is not padded with a row that may already be in it");
+  assert.equal(all(view, "my-messages-screen-row").length, 1, "the row is still listed");
+  assert.ok(one(view, "my-messages-calendar-unreconciled"),
+    "the day says its count and its rows were not matched");
+  assert.equal(all(view, "my-messages-calendar-count-only").length, 0,
+    "it does not also claim the text was lost");
+});
+
+test("a failed day read with nothing to list is marked unmatched and read again on reopen", async t => {
+  // No conversation is listed, so the fallback reads nothing at all and the day has no
+  // failure of its own: without the unmatched flag it would look settled and be cached.
+  const directory = [];
+  let dayCalls = 0;
+  const history = {
+    days: async () => daysResult({ "2026-02-10": 1, [dayKey(0)]: 3 }, {
+      firstDay: "2026-02-10",
+      conversationMonths: [
+        { month: "2026-02", agentId: "alpha", title: "Alpha chat", count: 1, lastAt: at(-33, 9) },
+        monthCount("alpha", "Alpha chat", 3, 0),
+      ],
+      slowConversationIds: ["alpha"],
+    }),
+    day: async input => {
+      dayCalls += 1;
+      if (input.day !== dayKey(0) || dayCalls === 1) throw new Error("the day read failed");
+      return dayResult([
+        { agentId: "alpha", at: at(0, 9), text: "alpha today" },
+        { agentId: "alpha", at: at(0, 8), text: "alpha earlier" },
+        { agentId: "alpha", at: at(0, 7), text: "alpha earliest" },
+      ]);
+    },
+  };
+  const { draw, all, one, h } = fixture(t, { historyRpc: history, directory });
+  draw();
+  await flush();
+  const failed = draw();
+  assert.equal(h.text(one(failed, "my-messages-calendar-month-total")), "3",
+    "the day keeps the count the host reported");
+  assert.equal(all(failed, "my-messages-screen-row").length, 0);
+  assert.ok(one(failed, "my-messages-calendar-unreconciled"),
+    "a count with nothing listed is not presented as settled");
+  assert.equal(all(failed, "my-messages-calendar-count-only").length, 0,
+    "no archive evidence, so no claim about missing text");
+  assert.doesNotMatch(h.text(failed), /Nothing from you on this day/);
+
+  // Step away and back: the unmatched day was not cached, so the day RPC is asked again.
+  one(failed, "my-messages-calendar-prev").props.onPress();
+  await flush();
+  all(draw(), "my-messages-calendar-cell")
+    .find(node => String(node.props.accessibilityLabel).startsWith("Feb 10")).props.onPress();
+  await flush();
+  one(draw(), "my-messages-calendar-next").props.onPress();
+  await flush();
+  all(draw(), "my-messages-calendar-cell")
+    .find(node => String(node.props.accessibilityLabel).startsWith("Mar 15")).props.onPress();
+  await flush();
+  const recovered = draw();
+  assert.equal(all(recovered, "my-messages-screen-row").length, 3, "the reopened day lists its rows");
+  assert.equal(all(recovered, "my-messages-calendar-unreconciled").length, 0);
 });
 
 test("a month with nothing read yet is not called empty while a conversation is unread", async t => {

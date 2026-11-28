@@ -3,6 +3,7 @@ import { historyDayRpc, historyDaysRpc } from "../shared/history-rpc";
 import {
   HistoryArchive,
   rowsOnDay,
+  utcMonthOf,
   type ArchiveMerge,
 } from "./history-archive";
 import { listHistoryConversations } from "./history-conversations";
@@ -97,7 +98,14 @@ export function registerHistoryHandlers(
       // The reader's day window reaches into the neighbouring days on purpose; only rows on
       // the requested local day belong in that day's answer.
       const fastDay = fast.messages.filter(row => zoneDayKey(row.at, input.timeZone) === input.day);
-      const store = await archive.read();
+      // A local day can only fall in the UTC shards of its first and last instants: an offset
+      // between -12 and +14 hours keeps both inside a 52-hour window around UTC midnight.
+      const utcDayStart = Date.parse(`${input.day}T00:00:00Z`);
+      const months = [...new Set([
+        utcMonthOf(utcDayStart - 14 * 60 * 60 * 1000),
+        utcMonthOf(utcDayStart + 38 * 60 * 60 * 1000),
+      ])];
+      const store = await archive.read(months);
       if (store.cacheError) {
         return {
           rows: rowsOnDay(fastDay, input.day, input.timeZone),
@@ -112,19 +120,24 @@ export function registerHistoryHandlers(
       const presentSessions = new Set(directoryPartial ? fast.readSessions : fast.presentSessions);
       // A session still in a complete database is Hermes's (whether or not a conversation
       // points at it), so only sessions missing from every readable database come from the
-      // archive: Hermes deleted them, or their database is unreadable now.
-      const archived = store.messages.filter(record => !presentSessions.has(record.sessionId)
-        && typeof record.text === "string" && record.text.length > 0
-        && zoneDayKey(record.at, input.timeZone) === input.day);
-      // A count-only record has no row to show but its message is already in `history.days`.
-      // Naming it lets the client drop the same message when the timeline finds it again.
-      const counted = store.messages.filter(record => !presentSessions.has(record.sessionId)
-        && (typeof record.text !== "string" || record.text.length === 0)
-        && zoneDayKey(record.at, input.timeZone) === input.day)
-        .map(record => ({ agentId: record.agentId, at: record.at }));
+      // archive: Hermes deleted them, or their database is unreadable now. One pass over the
+      // scoped shards classifies each record and converts its timestamp once.
+      const archivedRows: Array<{ agentId: string; at: number; text: string }> = [];
+      const counted: Array<{ agentId: string; at: number }> = [];
+      for (const record of store.messages) {
+        if (presentSessions.has(record.sessionId)) continue;
+        if (zoneDayKey(record.at, input.timeZone) !== input.day) continue;
+        // A count-only record has no row to show but its message is already in `history.days`.
+        // Naming it lets the client see that the count holds it.
+        if (typeof record.text === "string" && record.text.length > 0) {
+          archivedRows.push({ agentId: record.agentId, at: record.at, text: record.text });
+        } else {
+          counted.push({ agentId: record.agentId, at: record.at });
+        }
+      }
       const rows = [
         ...rowsOnDay(fastDay, input.day, input.timeZone),
-        ...rowsOnDay(archived, input.day, input.timeZone),
+        ...archivedRows,
       ].sort((left, right) => right.at - left.at
         || (left.agentId < right.agentId ? -1 : left.agentId > right.agentId ? 1 : 0)
         || (left.text < right.text ? -1 : left.text > right.text ? 1 : 0));
@@ -132,7 +145,7 @@ export function registerHistoryHandlers(
         rows,
         counted,
         directoryPartial,
-        fromCache: archived.length,
+        fromCache: archivedRows.length,
       };
     });
     registration.complete = true;
