@@ -2,7 +2,7 @@ import type { PaseoApi } from "@getpaseo/client";
 import type { HistoryDayResult, HistoryDaysResult } from "../shared/history-rpc";
 import type { HistorySource } from "./history-source";
 import { startOfNextLocalDay, localDateKey } from "../shared/local-day";
-import { DayKey, monthKeyOfDay, parseDayKey, type ConversationMonthCount, type MonthKey } from "./my-messages-calendar";
+import { DayKey, parseDayKey, type ConversationMonthCount, type MonthKey } from "./my-messages-calendar";
 import { currentTimers, nowMs } from "./my-messages-clock";
 import {
   listAllConversations,
@@ -39,6 +39,12 @@ export interface CalendarDetailSnapshot {
    * many rows as there are records may be matched.
    */
   countedRows: readonly { agentId: string; at: number }[];
+  /**
+   * The host sent the count-only identity list at all, and the archive it read was complete.
+   * A host that omits the field may still count messages without text, so a missing list is
+   * not proof that the day holds none; the day then stays on the server's count.
+   */
+  countedKnown: boolean;
   conversations: number;
   progress: { done: number; total: number } | null;
   partial: readonly string[];
@@ -50,8 +56,8 @@ export interface CalendarDetailSnapshot {
   fromRpc: boolean;
   /**
    * The day counted messages this answer could not pair with the rows it read. The cell and
-   * the summary keep the count; the list shows what the timeline returned; nothing claims the
-   * two add up.
+   * the summary keep the server's count without adding or subtracting; the list shows what
+   * the timeline returned; nothing claims the two add up, and the day is not cached.
    */
   unreconciled: boolean;
   /** How many of `rows` the RPC supplied, before the fallback merged in. */
@@ -133,7 +139,8 @@ interface CalendarSession extends CalendarMount {
 
 function emptyDetail(day: DayKey): CalendarDetailSnapshot {
   return {
-    day, status: "reading", rows: [], countedRows: [], conversations: 0, progress: null,
+    day, status: "reading", rows: [], countedRows: [], countedKnown: false,
+    conversations: 0, progress: null,
     partial: [], failed: [], unavailable: [], fromTimeline: false, fromRpc: false,
     unreconciled: false, rpcRows: 0,
     directoryFailed: false,
@@ -287,11 +294,11 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
 
   /** The fallback's contribution to one day, per conversation and in total.
    *
-   * The rows are overwritten on every read of the day, never added to themselves. A failed
-   * day RPC leaves the day's count unsplit, so `fallbackExtras` spreads the day's extra rows
-   * over the conversations the timeline named, and the ranking gains exactly what the cell
-   * gained. Records the archive kept as a count only are in `countedRows`: a timeline row
-   * with the same conversation and instant is already counted and never becomes an extra.
+   * The rows are overwritten on every read of the day, never added to themselves. Only a day
+   * whose answer named the count-only records and left no same-instant ambiguity contributes
+   * anything: `conversationExtras` returns no rows otherwise, so the cells, the summary and
+   * the ranking keep the server's counts. Records the archive kept as a count only are in
+   * `countedRows`; a day that could not be matched adds nothing at all.
    */
   function extraState(
     session: CalendarSession,
@@ -308,20 +315,27 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
     };
   }
 
-  /** Rows in a settled day that the fast path did not count, split by conversation. */
+  /**
+   * Rows in a settled day that the fast path did not count, split by conversation.
+   *
+   * A merge needs all three: the day RPC answered, its answer named the count-only records,
+   * and no instant holds both a record and an unmatched row. Anything less leaves the day on
+   * the server's count and says the two could not be matched.
+   */
   function conversationExtras(
     detail: CalendarDetailSnapshot,
     rpcRows: readonly MyMessagesScreenRow[],
     timelineRows: readonly MyMessagesScreenRow[],
   ): { extras: CalendarConversationExtra; unreconciled: boolean } {
     const extras: Record<string, { count: number; lastAt: number; title: string | null }> = {};
-    if (!detail.fromRpc) return { extras, unreconciled: false };
+    // Without the count-only identity list an earlier host's answer may still count messages
+    // it cannot list, so a row the day RPC did not return cannot be proven new.
+    if (!detail.fromRpc || !detail.countedKnown) return { extras, unreconciled: true };
     // Both lists are multisets. A timeline row is already counted when it matches an RPC row
     // on conversation, instant and text. A count-only record has no text, so it can only be
-    // matched by conversation and instant: with g rows and m records at one instant, at
-    // least g - m rows are provably new, but which of them the archive counted cannot be
-    // told. Those rows stay in the count as a lower bound and the day is called unreconciled
-    // rather than silently dropping a different message written in the same millisecond.
+    // matched by conversation and instant: an instant that holds one record and an unmatched
+    // row cannot be split, because the row may be that record or a different message written
+    // in the same millisecond. Such a day stays on the server's count rather than guessing.
     const counted = new Map<string, number>();
     for (const row of rpcRows) bump(counted, rowKey(row));
     const countOnly = new Map<string, number>();
@@ -334,47 +348,11 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
       if (group) group.push(row);
       else groups.set(key, [row]);
     }
-    let unreconciled = false;
-    for (const [key, rows] of groups) {
-      const records = countOnly.get(key) ?? 0;
-      if (records > 0) unreconciled = true;
-      for (const row of rows.slice(records)) addExtra(extras, row);
+    for (const key of groups.keys()) {
+      if ((countOnly.get(key) ?? 0) > 0) return { extras, unreconciled: true };
     }
-    return { extras, unreconciled };
-  }
-
-  /**
-   * The same split when the day RPC failed.
-   *
-   * The day's count is known but not which messages it counted, so nothing can be paired row
-   * by row. Only two things are still provable: a day that counted nothing has no message to
-   * match, and a conversation the month ranking places at zero for this month cannot have
-   * contributed to the day's count. Every other row stays outside the ranking and marks the
-   * day `unreconciled`; a day that counted messages but listed none is unmatched for the same
-   * reason. The order of the rows is never used to guess.
-   */
-  function fallbackExtras(
-    detail: CalendarDetailSnapshot,
-    timelineRows: readonly MyMessagesScreenRow[],
-    base: number,
-    monthCounts: ReadonlyMap<string, number> | null,
-  ): { extras: CalendarConversationExtra; unreconciled: boolean } {
-    const extras: Record<string, { count: number; lastAt: number; title: string | null }> = {};
-    if (base === 0) {
-      for (const row of timelineRows) addExtra(extras, row);
-      return { extras, unreconciled: false };
-    }
-    // The count holds messages this answer cannot pair with anything it read: there is no
-    // archive evidence about which ones they are.
-    if (timelineRows.length === 0) return { extras, unreconciled: true };
-    let unreconciled = false;
-    for (const row of timelineRows) {
-      // `monthCounts` is null unless the host ranked the whole month: only then does a
-      // conversation missing from it provably have no message this month.
-      if (monthCounts !== null && (monthCounts.get(row.agentId) ?? 0) === 0) addExtra(extras, row);
-      else unreconciled = true;
-    }
-    return { extras, unreconciled };
+    for (const rows of groups.values()) for (const row of rows) addExtra(extras, row);
+    return { extras, unreconciled: false };
   }
 
   async function loadDetail(session: CalendarSession, day: DayKey, token: number): Promise<CalendarDetailSnapshot | null> {
@@ -393,6 +371,7 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
 
     let rpcRows: MyMessagesScreenRow[] = [];
     let countedRows: { agentId: string; at: number }[] = [];
+    let countedKnown = false;
     let fromRpc = false;
     let fromTimeline = false;
     let notices = session.snapshot.notices;
@@ -414,19 +393,22 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
       });
       fromRpc = true;
       countedRows = [...(result.counted ?? [])];
+      // A failed archive shard leaves the identity list short, so it is not a complete answer
+      // about which messages the day counted without text.
+      countedKnown = result.counted !== undefined && result.cacheError !== true;
       rpcRows = result.rows
         .map(row => ({ agentId: row.agentId, at: row.at, seq: 0, text: row.text, title: null }))
         .sort(compareRows);
       publish(session, {
         notices,
         detail: {
-          ...emptyDetail(day), rows: rpcRows, countedRows: result.counted ?? [],
+          ...emptyDetail(day), rows: rpcRows, countedRows, countedKnown,
           conversations: countConversations(rpcRows), fromRpc, rpcRows: rpcRows.length,
         },
       });
-      if (!rpcRows.length && !session.snapshot.slowConversationIds.length) {
+      if (!rpcRows.length && !session.snapshot.slowConversationIds.length && countedKnown) {
         const ready: CalendarDetailSnapshot = {
-          ...emptyDetail(day), status: "ready", fromRpc, rpcRows: 0,
+          ...emptyDetail(day), status: "ready", fromRpc, countedKnown, rpcRows: 0,
           // A day with no rows can still hold count-only records; the filter and the
           // empty answer both need to know which conversation they belong to.
           countedRows,
@@ -445,8 +427,9 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
       if (!isOpen()) return null;
       const failed: CalendarDetailSnapshot = {
         ...emptyDetail(day), status: rpcRows.length ? "ready" : "error", rows: rpcRows,
-        countedRows, conversations: countConversations(rpcRows), fromTimeline, fromRpc,
+        countedRows, countedKnown, conversations: countConversations(rpcRows), fromTimeline, fromRpc,
         rpcRows: rpcRows.length, directoryFailed: true,
+        unreconciled: fromRpc && !countedKnown,
       };
       publish(session, { detail: failed, notices, ...extraState(session, failed, {}) });
       return failed;
@@ -460,7 +443,8 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
     const candidates = listing.conversations.filter(conversation => conversation.lastAt >= fromMs
       && (mode === "all" || slowIds.has(conversation.id)));
     const detail: CalendarDetailSnapshot = {
-      ...emptyDetail(day), rows: rpcRows, countedRows, conversations: countConversations(rpcRows),
+      ...emptyDetail(day), rows: rpcRows, countedRows, countedKnown,
+      conversations: countConversations(rpcRows),
       progress: candidates.length ? { done: 0, total: candidates.length } : null,
       fromTimeline, fromRpc, rpcRows: rpcRows.length,
     };
@@ -499,15 +483,12 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
     }
 
     const merged = mergeCalendarRows(rpcRows, timelineRows);
-    // Only a complete month ranking can prove that a conversation absent from it wrote
-    // nothing this month; a partial one leaves every unlisted conversation unknown.
-    const monthCounts = session.snapshot.conversationMonthsKnown
-      && !notices.directoryPartial && !notices.cacheError && notices.skippedDatabases.length === 0
-      ? new Map((session.snapshot.conversationMonths[monthKeyOfDay(day)] ?? []).map(entry => [entry.agentId, entry.count]))
-      : null;
+    // Only a day RPC answer that named its count-only records can be merged into the cell,
+    // the summary and the ranking; a failed read keeps the server's count untouched, says the
+    // two could not be matched, and is not cached so that reopening the day re-reads it.
     const settled = detail.fromRpc
       ? conversationExtras(detail, rpcRows, timelineRows)
-      : fallbackExtras(detail, timelineRows, session.snapshot.days[day] ?? 0, monthCounts);
+      : { extras: {} as CalendarConversationExtra, unreconciled: true };
     const ready: CalendarDetailSnapshot = {
       ...detail,
       status: "ready",
@@ -523,10 +504,12 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
   }
 
   function cacheDetail(day: DayKey, detail: CalendarDetailSnapshot, extras: CalendarConversationExtra): void {
-    // A partial read, a directory failure or an unmatched day is retried when the day is
-    // opened again, never replayed from cache: the day RPC may answer the next time.
+    // A partial read, a directory failure, a failed day RPC, a day whose count-only records
+    // are unknown, or an unmatched day is retried when the day is opened again, never
+    // replayed from cache: the day RPC may answer the next time.
     if (detail.partial.length > 0 || detail.failed.length > 0 || detail.unavailable.length > 0
-      || detail.directoryFailed || detail.unreconciled) return;
+      || detail.directoryFailed || detail.unreconciled
+      || !detail.fromRpc || !detail.countedKnown) return;
     detailCache.delete(day);
     detailCache.set(day, { detail, extras });
     if (detailCache.size > DETAIL_CACHE_LIMIT) detailCache.delete(detailCache.keys().next().value!);

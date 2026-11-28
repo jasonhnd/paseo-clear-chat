@@ -45,7 +45,9 @@ function daysResult(entries, extras = {}) {
 }
 
 function dayResult(rows, extras = {}) {
-  return { rows, directoryPartial: false, fromCache: 0, ...extras };
+  // The current host names the count-only records even when there are none; a test that wants
+  // an earlier host deletes the field.
+  return { rows, counted: [], directoryPartial: false, fromCache: 0, ...extras };
 }
 
 function fakePaseo(directory, histories) {
@@ -688,8 +690,16 @@ test("an incomplete slow read offers Retry and is not cached as finished", async
 });
 
 test("a count-only day explains missing text and never claims zero conversations", async t => {
-  const history = historyFor(daysResult({ [dayKey(-1)]: 3 }, { cacheFull: ["2026-03"] }), {
-    [dayKey(-1)]: dayResult([], { cacheFull: ["2026-03"] }),
+  const day = dayKey(-1);
+  // The archive kept three messages as counts only and this answer names them; without the
+  // names the day would make no claim about their text.
+  const counted = [
+    { agentId: "gone", at: at(-1, 8) },
+    { agentId: "gone", at: at(-1, 9) },
+    { agentId: "gone", at: at(-1, 10) },
+  ];
+  const history = historyFor(daysResult({ [day]: 3 }, { cacheFull: ["2026-03"] }), {
+    [day]: dayResult([], { cacheFull: ["2026-03"], counted }),
   });
   const { draw, one, cell, h } = fixture(t, { historyRpc: history });
   draw();

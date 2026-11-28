@@ -113,6 +113,8 @@ export interface ArchiveMerge {
 export interface ArchiveRead {
   messages: ArchivedMessage[];
   cacheError: boolean;
+  /** UTC months whose file could not be read; the rest of the answer is still usable. */
+  failedMonths: string[];
 }
 
 /** `<Paseo home>/plugin-data/clear-chat/history`, resolved when called. */
@@ -179,6 +181,8 @@ interface StoreRead {
   records: Map<string, ArchivedMessage>;
   meta: { version: number; months: Record<string, number> } | null;
   cacheError: boolean;
+  /** UTC months (or the meta file) that could not be read; the other files still answered. */
+  failedFiles: string[];
 }
 
 interface AppliedSessions {
@@ -230,7 +234,15 @@ export class HistoryArchive {
       const store = await this.readStore(
         directory, { repair: false, corruptIsError: true }, months ? new Set(months) : undefined,
       );
-      return { messages: [...store.records.values()], cacheError: store.cacheError };
+      const messages = [...store.records.values()];
+      // A failed shard must not take the readable shards' text with it: the caller keeps these
+      // records and only reports that the answer may be incomplete.
+      return {
+        messages,
+        cacheError: store.cacheError,
+        failedMonths: store.failedFiles.filter(name => MONTH_FILE.test(name))
+          .map(name => MONTH_FILE.exec(name)![1]!),
+      };
     });
   }
 
@@ -304,7 +316,9 @@ export class HistoryArchive {
       if (Buffer.byteLength(json, "utf8") > limit) {
         // Stop adding text to this month for rows new to the archive and for rows whose
         // stored copy was count-only (a previous cap). Text already stored stays, even
-        // when the file is already over the limit.
+        // when the file is already over the limit. Only `text` is dropped: the record keeps
+        // its `key`, `sessionId`, `agentId` and `at`, so this on-disk shape is not the RPC's
+        // `{ agentId, at }` pair and a matching RPC answer still names less, not the same.
         for (const key of applied.cappable.get(month) ?? []) {
           const record = applied.records.get(key);
           if (record?.text !== undefined) {
@@ -350,13 +364,14 @@ export class HistoryArchive {
       entries = await this.readDirectory(directory);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        return { records: new Map(), meta: null, cacheError: false };
+        return { records: new Map(), meta: null, cacheError: false, failedFiles: [] };
       }
-      return { records: new Map(), meta: null, cacheError: true };
+      return { records: new Map(), meta: null, cacheError: true, failedFiles: [] };
     }
     const records = new Map<string, ArchivedMessage>();
     let meta: StoreRead["meta"] = null;
     let cacheError = false;
+    const failedFiles: string[] = [];
     for (const entry of entries) {
       if (!entry.isFile() && !entry.isDirectory()) continue;
       const isMeta = entry.name === META_FILE;
@@ -372,15 +387,20 @@ export class HistoryArchive {
       if (parsed === READ_ERROR) {
         // A file that cannot be read is not corrupt; keep it and write nothing this call.
         cacheError = true;
+        failedFiles.push(entry.name);
         continue;
       }
       if (parsed === null) continue;
       const corrupt = parsed === CORRUPT || (isMeta ? !isMetaFile(parsed) : !isMonthFile(parsed));
       if (corrupt) {
         if (mode.repair) {
-          if (!(await renameBad(directory, entry.name))) cacheError = true;
+          if (!(await renameBad(directory, entry.name))) {
+            cacheError = true;
+            failedFiles.push(entry.name);
+          }
         } else if (mode.corruptIsError) {
           cacheError = true;
+          failedFiles.push(entry.name);
         }
         continue;
       }
@@ -393,7 +413,7 @@ export class HistoryArchive {
         if (!records.has(record.key)) records.set(record.key, record);
       }
     }
-    return { records, meta, cacheError };
+    return { records, meta, cacheError, failedFiles };
   }
 
   private async readJsonFile(

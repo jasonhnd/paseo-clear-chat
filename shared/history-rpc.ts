@@ -86,10 +86,12 @@ export const historyDayResultSchema = z.object({
   /** Newest first. */
   rows: z.array(historyDayRowSchema),
   /**
-   * Records whose count is already in `history.days` but that have no text to list: after a
-   * month file reaches its size cap the archive writes `{ agentId, at }` alone. A timeline
-   * row that matches one of these is the same message, so the client must not add it again
-   * to the cell, the summary or the ranking. Optional so a host that predates it still answers.
+   * Records whose count is already in `history.days` but that have no text to list. On disk
+   * the archive keeps the whole record, `{ key, sessionId, agentId, at }`, and drops only its
+   * text; this answer names the conversation and the instant alone. A timeline row at the
+   * same conversation and instant may be that record or a different message written in the
+   * same millisecond, so a match is ambiguous rather than proof of the same message. Optional
+   * so a host that predates it still answers.
    */
   counted: z.array(historyDayCountedSchema).optional(),
   /** True when the conversation directory hit its page limit before the last page. */

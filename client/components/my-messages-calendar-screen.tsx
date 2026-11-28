@@ -198,7 +198,10 @@ export function MyMessagesCalendarScreen({
     // A host that sent no per-conversation field at all cannot have ranked the month; a list
     // built from the days the reader opened is a partial ranking, not a complete one.
     || !snapshot.conversationMonthsKnown
-    || panelSummary.total > monthRankedTotal;
+    || panelSummary.total > monthRankedTotal
+    // A day in this month whose count could not be matched makes the month's numbers
+    // possibly incomplete too.
+    || (detail.unreconciled && monthKeyOfDay(detail.day) === visibleMonth);
   const showMonthPanel = view === "month" && snapshot.daysStatus === "ready";
   // Three states, not two: the host never ranked the month, the month is ranked from a
   // partial read, or the ranking is complete. An empty list reads differently in each.
@@ -319,30 +322,44 @@ export function MyMessagesCalendarScreen({
       : t("myMessages.calendar.daySummaryMessages", {
           date: formatDayLabel(locale, selectedDay), messages: selectedCount,
         });
-  // Messages the day counted but cannot list. A record whose conversation and instant has a
-  // row on screen is not missing text any more, and a record at an instant that also holds a
-  // timeline row is ambiguous — the day says so instead. The whole day's number and the
-  // filtered conversation's number are different questions: another conversation's records
-  // must not stand in for "this conversation has nothing on this day".
-  const rowInstants = new Set(detail.rows.map(row => `${row.agentId}\u0000${row.at}`));
-  const unmatchedCountOnly = detail.status === "ready"
-    ? detail.countedRows.filter(row => !rowInstants.has(`${row.agentId}\u0000${row.at}`))
-    : [];
-  // The day's own difference still counts when a host named no records at all; an unmatched
-  // day claims nothing, because its difference may be rows it could not attribute.
-  const dayCountOnly = detail.unreconciled ? 0
-    : Math.max(unmatchedCountOnly.length, Math.max(0, selectedCount - detail.rows.length));
-  const countOnly = filterAgentId === null || detail.unreconciled ? dayCountOnly
-    : detail.countedRows.length > 0
-      ? unmatchedCountOnly.filter(row => row.agentId === filterAgentId).length
-      : dayCountOnly;
+  // Records whose text is not on screen at all. They are a multiset: one row consumes one
+  // record at the same conversation and instant, so a second message in that millisecond is
+  // not swallowed. Only a record the RPC named is counted here; the day's own difference is
+  // never turned into "the text was not kept". With a conversation filtered, only that
+  // conversation's own records are consulted, so another conversation's record cannot cover
+  // its empty answer.
+  const unmatchedCountOnly = (() => {
+    if (detail.status !== "ready" || !detail.countedKnown) return [];
+    const left = new Map<string, number>();
+    for (const row of detail.rows) {
+      const key = `${row.agentId}\u0000${row.at}`;
+      left.set(key, (left.get(key) ?? 0) + 1);
+    }
+    const out: { agentId: string; at: number }[] = [];
+    for (const record of detail.countedRows) {
+      const key = `${record.agentId}\u0000${record.at}`;
+      const count = left.get(key) ?? 0;
+      if (count > 1) left.set(key, count - 1);
+      else if (count === 1) left.delete(key);
+      else out.push(record);
+    }
+    return out;
+  })();
+  const countOnlyRecords = filterAgentId === null
+    ? (detail.unreconciled ? [] : unmatchedCountOnly)
+    : unmatchedCountOnly.filter(row => row.agentId === filterAgentId);
+  const countOnly = countOnlyRecords.length;
   const listRows = filterAgentId === null
     ? detail.rows
     : detail.rows.filter(row => row.agentId === filterAgentId);
   const notice = snapshot.notices.directoryPartial || snapshot.notices.cacheError || snapshot.notices.skippedDatabases.length > 0;
   const noticeFull = snapshot.notices.cacheFull.length > 0;
-  const incomplete = detail.partial.length > 0 || detail.failed.length > 0 || detail.directoryFailed;
+  const incomplete = detail.partial.length > 0 || detail.failed.length > 0 || detail.directoryFailed
+    || (detail.status === "ready" && !detail.countedKnown);
   const daysFailed = snapshot.daysStatus === "error";
+  const emptyAnswer = detail.status === "ready" && detail.fromRpc && detail.countedKnown
+    && listRows.length === 0 && countOnly === 0
+    && (filterAgentId !== null || !detail.unreconciled);
 
   // The calendar, its expansion control and the legend travel together; the panels below
   // are per layout so the wide screen can keep only the panel scrolling.
@@ -603,7 +620,7 @@ export function MyMessagesCalendarScreen({
               <Text style={body}>{t("myMessages.retry")}</Text>
             </Pressable>
           ) : null}
-          {detail.unreconciled ? (
+          {detail.unreconciled && filterAgentId === null ? (
             <Text testID="my-messages-calendar-unreconciled" accessibilityRole="alert" style={warning}>
               {t("myMessages.calendar.dayUnreconciled")}
             </Text>
@@ -615,8 +632,7 @@ export function MyMessagesCalendarScreen({
                 : t("myMessages.calendar.countOnly", { count: countOnly })}
             </Text>
           ) : null}
-          {detail.status === "ready" && detail.fromRpc && !detail.unreconciled
-            && listRows.length === 0 && countOnly === 0 ? (
+          {emptyAnswer ? (
             <Text style={muted}>
               {filterAgentId === null
                 ? t("myMessages.calendar.dayEmpty")

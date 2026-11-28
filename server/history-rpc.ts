@@ -8,7 +8,7 @@ import {
 } from "./history-archive";
 import { listHistoryConversations } from "./history-conversations";
 import { countDaysAndConversationMonths } from "./history-conversation-months";
-import { readHistoryData, zoneDayKey } from "./history-reader";
+import { readHistoryData, zoneDayBounds, zoneDayKey } from "./history-reader";
 
 /**
  * The two history RPCs, registered only when the host accepts them.
@@ -98,30 +98,16 @@ export function registerHistoryHandlers(
       // The reader's day window reaches into the neighbouring days on purpose; only rows on
       // the requested local day belong in that day's answer.
       const fastDay = fast.messages.filter(row => zoneDayKey(row.at, input.timeZone) === input.day);
-      // A local day can only fall in the UTC shards of its first and last instants: an offset
-      // between -12 and +14 hours keeps both inside a 52-hour window around UTC midnight.
-      const utcDayStart = Date.parse(`${input.day}T00:00:00Z`);
-      const months = [...new Set([
-        utcMonthOf(utcDayStart - 14 * 60 * 60 * 1000),
-        utcMonthOf(utcDayStart + 38 * 60 * 60 * 1000),
-      ])];
+      // Only the UTC shards that truly overlap the local day are opened: its own first and last
+      // instants give the two months, so a day wholly inside March never opens the April shard.
+      const bounds = zoneDayBounds(input.day, input.timeZone);
+      const months = [...new Set([utcMonthOf(bounds.from), utcMonthOf(bounds.until - 1)])];
       const store = await archive.read(months);
-      if (store.cacheError) {
-        return {
-          rows: rowsOnDay(fastDay, input.day, input.timeZone),
-          counted: [],
-          directoryPartial,
-          fromCache: 0,
-          cacheError: true,
-        };
-      }
       // Use the same authoritative set as history.days: a partial directory cannot prove
       // that an unlisted session was dropped, so its archive rows stay visible.
       const presentSessions = new Set(directoryPartial ? fast.readSessions : fast.presentSessions);
-      // A session still in a complete database is Hermes's (whether or not a conversation
-      // points at it), so only sessions missing from every readable database come from the
-      // archive: Hermes deleted them, or their database is unreadable now. One pass over the
-      // scoped shards classifies each record and converts its timestamp once.
+      // A shard that failed to read leaves the others' text usable; the answer then carries
+      // `cacheError` and the day is treated as possibly incomplete, not emptied.
       const archivedRows: Array<{ agentId: string; at: number; text: string }> = [];
       const counted: Array<{ agentId: string; at: number }> = [];
       for (const record of store.messages) {
@@ -146,6 +132,7 @@ export function registerHistoryHandlers(
         counted,
         directoryPartial,
         fromCache: archivedRows.length,
+        ...(store.cacheError ? { cacheError: true as const } : {}),
       };
     });
     registration.complete = true;

@@ -228,6 +228,36 @@ export function zoneDayKey(at: number, timeZone: string | null | undefined): str
 
 const zoneFormatters = new Map<string, Intl.DateTimeFormat | null>();
 
+/**
+ * The UTC instants where a local day in `timeZone` starts and ends, found by bisection on the
+ * zone day itself. Every offset lies between -12 and +14 hours, so local midnight is within
+ * 15 hours of UTC midnight and a day is at most 25 hours long; the bisection needs no table
+ * of offsets and handles a daylight-saving day, whose length is 23 or 25 hours.
+ */
+export function zoneDayBounds(
+  day: string, timeZone: string | null | undefined,
+): { from: number; until: number } {
+  const wallMidnight = Date.parse(`${day}T00:00:00Z`);
+  if (!Number.isFinite(wallMidnight)) return { from: 0, until: 0 };
+  const hour = 60 * 60 * 1000;
+  let low = wallMidnight - 15 * hour;
+  let high = wallMidnight + 15 * hour;
+  while (low < high) {
+    const mid = low + Math.floor((high - low) / 2);
+    if (zoneDayKey(mid, timeZone) < day) low = mid + 1;
+    else high = mid;
+  }
+  const from = low;
+  low = from;
+  high = from + 27 * hour;
+  while (low < high) {
+    const mid = low + Math.floor((high - low) / 2);
+    if (zoneDayKey(mid, timeZone) <= day) low = mid + 1;
+    else high = mid;
+  }
+  return { from, until: low };
+}
+
 function zoneFormatter(timeZone: string): Intl.DateTimeFormat | null {
   const cached = zoneFormatters.get(timeZone);
   if (cached !== undefined) return cached;

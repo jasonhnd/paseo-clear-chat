@@ -52,7 +52,9 @@ function daysResult(entries, extras = {}) {
 }
 
 function dayResult(rows, extras = {}) {
-  return { rows, directoryPartial: false, fromCache: 0, ...extras };
+  // The current host names the count-only records even when there are none; a test that wants
+  // an earlier host deletes the field.
+  return { rows, counted: [], directoryPartial: false, fromCache: 0, ...extras };
 }
 
 function timelineMessage(text, time, seq) {
@@ -666,7 +668,7 @@ test("collapsing the month keeps a filter chosen in the month the week strip sho
   assert.equal(all(draw(), "my-messages-screen-row").length, 2);
 });
 
-test("a failed day RPC still splits its fallback rows into the month's ranking", async t => {
+test("a failed day RPC keeps the host's count instead of ranking the rows it read", async t => {
   const directory = [agent("hermes", "Hermes chat"), agent("other", "Other chat")];
   const history = {
     days: async () => daysResult({ [dayKey(0)]: 1 }, {
@@ -687,13 +689,18 @@ test("a failed day RPC still splits its fallback rows into the month's ranking",
   draw();
   await flush();
   const view = draw();
-  assert.equal(h.text(one(view, "my-messages-calendar-month-total")), "4");
+  assert.equal(h.text(one(view, "my-messages-calendar-month-total")), "1",
+    "the month keeps the host's count, not the rows the failed day read");
   assert.deepEqual(
     all(view, "my-messages-calendar-top-conversation").map(node => node.props.accessibilityLabel),
-    ["Other chat, 3 messages", "Hermes chat, 1 message"],
-    "the ranking gains what the cell and the summary gained",
+    ["Hermes chat, 1 message"],
+    "a failed day adds nothing to the ranking",
   );
-  assert.equal(all(view, "my-messages-screen-row").length, 4, "the day lists every row it read");
+  assert.equal(all(view, "my-messages-screen-row").length, 4, "the day still lists every row it read");
+  assert.ok(one(view, "my-messages-calendar-unreconciled"),
+    "the day says its count and its rows were not matched");
+  assert.equal(all(view, "my-messages-calendar-count-only").length, 0,
+    "no archive evidence, so no claim about missing text");
 });
 
 test("a count-only archive message is not counted twice when the timeline finds it", async t => {
@@ -792,17 +799,19 @@ test("a host without per-conversation counts still says the ranking is unavailab
   assert.equal(all(view, "my-messages-calendar-month-empty").length, 0);
 });
 
-test("a failed day read adds the rows of a conversation the ranking places at zero", async t => {
-  // The day's five messages live in the archive for a session the timeline cannot read.
-  // Another conversation the ranking never mentions is read here for the first time: it
-  // cannot be part of those five, so its two rows are new without guessing by order.
+test("a failed day read keeps its five counted messages and adds none of the two rows", async t => {
+  // The day's five messages live in the archive for a session the timeline cannot read. The
+  // other conversation's two rows are real, but with no day answer there is no record to pair
+  // them with, so the day keeps the host's five and says the two lists were not matched.
   const directory = [agent("gone", "Gone chat"), agent("fresh", "Fresh chat")];
+  let dayCalls = 0;
   const history = {
-    days: async () => daysResult({ [dayKey(0)]: 5 }, {
+    days: async () => daysResult({ "2026-02-10": 1, [dayKey(0)]: 5 }, {
+      firstDay: "2026-02-10",
       conversationMonths: [monthCount("gone", "Gone chat", 5, 0)],
       slowConversationIds: ["gone"],
     }),
-    day: async () => { throw new Error("the day read failed"); },
+    day: async () => { dayCalls += 1; throw new Error("the day read failed"); },
   };
   const histories = new Map([["fresh", [
     timelineMessage("fresh one", at(0, 8), 7),
@@ -812,14 +821,31 @@ test("a failed day read adds the rows of a conversation the ranking places at ze
   draw();
   await flush();
   const view = draw();
-  assert.equal(h.text(one(view, "my-messages-calendar-month-total")), "7",
-    "the cell and the summary keep the five counted messages and add the two new rows");
+  assert.equal(h.text(one(view, "my-messages-calendar-month-total")), "5",
+    "the cell and the summary keep the five counted messages without adding the two rows");
   assert.deepEqual(
     all(view, "my-messages-calendar-top-conversation").map(node => node.props.accessibilityLabel),
-    ["Gone chat, 5 messages", "Fresh chat, 2 messages"],
+    ["Gone chat, 5 messages"],
   );
-  assert.equal(all(view, "my-messages-calendar-unreconciled").length, 0,
-    "nothing was left unmatched");
+  assert.equal(all(view, "my-messages-screen-row").length, 2, "the day still lists what it read");
+  assert.ok(one(view, "my-messages-calendar-unreconciled"),
+    "the day says its count and its rows were not matched");
+  assert.equal(all(view, "my-messages-calendar-count-only").length, 0,
+    "the unexplained five are not described as missing text");
+
+  // The failed day is not cached: opening it again asks the day RPC again.
+  const before = dayCalls;
+  one(view, "my-messages-calendar-prev").props.onPress();
+  await flush();
+  all(draw(), "my-messages-calendar-cell")
+    .find(node => String(node.props.accessibilityLabel).startsWith("Feb 10")).props.onPress();
+  await flush();
+  one(draw(), "my-messages-calendar-next").props.onPress();
+  await flush();
+  all(draw(), "my-messages-calendar-cell")
+    .find(node => String(node.props.accessibilityLabel).startsWith("Mar 15")).props.onPress();
+  await flush();
+  assert.ok(dayCalls > before, `the failed day was read again (${dayCalls} calls)`);
 });
 
 test("a failed day read that cannot attribute its rows says so instead of guessing", async t => {
@@ -857,7 +883,7 @@ test("a failed day read that cannot attribute its rows says so instead of guessi
     "an unmatched day does not claim a count-only number it cannot place");
 });
 
-test("a second message in the same millisecond is not swallowed by a count-only record", async t => {
+test("a count-only record at an instant with two rows leaves the day unmatched", async t => {
   const shared = at(0, 9);
   const directory = [agent("gone", "Gone chat")];
   const history = historyFor(daysResult({ [dayKey(0)]: 1 }, {
@@ -867,7 +893,8 @@ test("a second message in the same millisecond is not swallowed by a count-only 
     [dayKey(0)]: dayResult([], { counted: [{ agentId: "gone", at: shared }] }),
   });
   // One archived copy the count already holds, plus a different message written in the same
-  // millisecond: the identity includes the text, so the second row is new.
+  // millisecond. Which row is the archived one cannot be told, so neither is added: the count
+  // stays at the host's one and the day says the two lists were not matched.
   const histories = new Map([["gone", [
     timelineMessage("archived copy", shared, 1),
     timelineMessage("new message", shared, 2),
@@ -876,13 +903,17 @@ test("a second message in the same millisecond is not swallowed by a count-only 
   draw();
   await flush();
   const view = draw();
-  assert.equal(h.text(one(view, "my-messages-calendar-month-total")), "2",
-    "the count-only copy is matched once, not every row at that instant");
+  assert.equal(h.text(one(view, "my-messages-calendar-month-total")), "1",
+    "a same-millisecond pair is not split by guessing which row is the record");
   assert.deepEqual(
     all(view, "my-messages-calendar-top-conversation").map(node => node.props.accessibilityLabel),
-    ["Gone chat, 2 messages"],
+    ["Gone chat, 1 message"],
   );
   assert.equal(all(view, "my-messages-screen-row").length, 2);
+  assert.ok(one(view, "my-messages-calendar-unreconciled"),
+    "the day says its count and its rows were not matched");
+  assert.equal(all(view, "my-messages-calendar-count-only").length, 0,
+    "the ambiguity is not also read as lost text");
 });
 
 test("two identical messages in the same millisecond stay two rows", async t => {
@@ -1067,6 +1098,79 @@ test("another conversation's count-only record does not hide the filter's empty 
     "1 message from this day was counted but its text was not kept",
     "the settled-empty path still knows whose record it is");
   assert.doesNotMatch(third.h.text(emptyFiltered), /No messages from this conversation on this day/);
+});
+
+test("a host that omits the count-only list keeps the day's count and does not cache it", async t => {
+  // An earlier host answers the day RPC without `counted`. It may still count messages whose
+  // text it no longer keeps, so the two rows the timeline found cannot be proven new.
+  const days = daysResult({ "2026-02-10": 1, [dayKey(0)]: 1 }, {
+    firstDay: "2026-02-10",
+    conversationMonths: [monthCount("gone", "Gone chat", 1, 0)],
+    slowConversationIds: ["gone"],
+  });
+  const day = dayResult([]);
+  delete day.counted;
+  let dayCalls = 0;
+  const history = {
+    days: async () => days,
+    day: async () => { dayCalls += 1; return day; },
+  };
+  const directory = [agent("gone", "Gone chat")];
+  const histories = new Map([["gone", [timelineMessage("gone one", at(0, 9), 1)]]]);
+  const { draw, all, one, h } = fixture(t, { historyRpc: history, directory, histories });
+  draw();
+  await flush();
+  const view = draw();
+  assert.equal(h.text(one(view, "my-messages-calendar-month-total")), "1",
+    "a missing count-only list is not read as an empty one");
+  assert.equal(all(view, "my-messages-calendar-count-only").length, 0,
+    "the day does not claim the text was lost without a named record");
+  assert.ok(one(view, "my-messages-calendar-unreconciled"));
+  assert.ok(one(view, "my-messages-screen-incomplete"),
+    "the day says its list may be incomplete");
+
+  const before = dayCalls;
+  one(view, "my-messages-calendar-prev").props.onPress();
+  await flush();
+  all(draw(), "my-messages-calendar-cell")
+    .find(node => String(node.props.accessibilityLabel).startsWith("Feb 10")).props.onPress();
+  await flush();
+  one(draw(), "my-messages-calendar-next").props.onPress();
+  await flush();
+  all(draw(), "my-messages-calendar-cell")
+    .find(node => String(node.props.accessibilityLabel).startsWith("Mar 15")).props.onPress();
+  await flush();
+  assert.ok(dayCalls > before, "a day with no count-only list is read again, not cached");
+});
+
+test("another conversation's day-wide number does not appear on a filtered conversation", async t => {
+  // The day counted two messages; only alpha's row came back, and this host does not name its
+  // count-only records. Filtering to beta must not hand it alpha's difference as its own.
+  const days = daysResult({ [dayKey(0)]: 2 }, {
+    conversationMonths: [
+      monthCount("alpha", "Alpha chat", 1, 0),
+      monthCount("beta", "Beta chat", 1, 0),
+    ],
+  });
+  const day = dayResult([{ agentId: "alpha", at: at(0, 9), text: "alpha today" }]);
+  delete day.counted;
+  const history = { days: async () => days, day: async () => day };
+  const directory = [agent("alpha", "Alpha chat"), agent("beta", "Beta chat")];
+  const { draw, all, one, h } = fixture(t, { historyRpc: history, directory });
+  draw();
+  await flush();
+  all(draw(), "my-messages-calendar-top-conversation")
+    .find(node => String(node.props.accessibilityLabel).startsWith("Beta")).props.onPress();
+  const filtered = draw();
+  assert.equal(all(filtered, "my-messages-screen-row").length, 0);
+  assert.equal(all(filtered, "my-messages-calendar-count-only").length, 0,
+    "alpha's record is not shown as beta's");
+  assert.equal(all(filtered, "my-messages-calendar-unreconciled").length, 0,
+    "the day-wide unmatched line is not part of beta's empty state");
+  assert.ok(one(filtered, "my-messages-screen-incomplete"),
+    "the list still says it may be incomplete");
+  assert.doesNotMatch(h.text(filtered), /No messages from this conversation on this day/,
+    "a host that cannot name its records does not prove the conversation empty");
 });
 
 test("monthSummary counts only its own month and divides by elapsed days", () => {

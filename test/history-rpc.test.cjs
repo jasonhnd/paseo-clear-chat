@@ -328,6 +328,68 @@ test("a day answer reads only the UTC shards its own day can touch", async t => 
   assert.deepEqual(tokyo.rows, [], "the December day has nothing on it");
 });
 
+test("a day wholly inside one UTC month does not open its neighbour's shard", async t => {
+  const hermes = createRoot(t);
+  const home = createHome(t);
+  const directory = join(home, "plugin-data", "clear-chat", "history");
+  fs.mkdirSync(directory, { recursive: true });
+  const marchAt = Date.UTC(2026, 2, 31, 12, 0, 0); // 2026-03-31 noon UTC
+  fs.writeFileSync(join(directory, "messages-2026-03.json"), JSON.stringify({
+    version: 2,
+    messages: [{ key: "c0ffee0000000000", sessionId: "session-gone", agentId: "agent-a", at: marchAt, text: "march text" }],
+  }));
+  // The April shard is damaged. A 31 March day in UTC never reaches it, so its text must come
+  // back; the old fixed window opened it and dropped the March row with it.
+  fs.writeFileSync(join(directory, "messages-2026-04.json"), "{ this is not json");
+  const handlers = new Map();
+  rpcModule.registerHistoryHandlers(
+    { handle(contract, handler) { handlers.set(contract.name, handler); } },
+    { root: hermes, home },
+  );
+  const paseo = fakePaseo([{ entries: [agentEntry()], pageInfo: { hasMore: false, nextCursor: null } }]);
+  const detail = await handlers.get("history.day")({ day: "2026-03-31", timeZone: "UTC" }, { paseo });
+  assert.deepEqual(detail.rows.map(row => row.text), ["march text"]);
+  assert.equal(detail.cacheError, undefined, "the April shard was not opened for a March day");
+});
+
+test("a failed neighbouring shard keeps the readable shard's text and marks the day", async t => {
+  const hermes = createRoot(t);
+  const home = createHome(t);
+  const directory = join(home, "plugin-data", "clear-chat", "history");
+  fs.mkdirSync(directory, { recursive: true });
+  // 2026-04-01 in Tokyo runs from 31 March 15:00Z to 1 April 15:00Z, so the local day really
+  // does touch both shards. March is readable and April is damaged.
+  const marchAt = Date.UTC(2026, 2, 31, 16, 0, 0); // 2026-04-01 01:00 in Tokyo
+  fs.writeFileSync(join(directory, "messages-2026-03.json"), JSON.stringify({
+    version: 2,
+    messages: [{ key: "c0ffee0000000000", sessionId: "session-gone", agentId: "agent-a", at: marchAt, text: "march text" }],
+  }));
+  fs.writeFileSync(join(directory, "messages-2026-04.json"), "{ this is not json");
+  const handlers = new Map();
+  rpcModule.registerHistoryHandlers(
+    { handle(contract, handler) { handlers.set(contract.name, handler); } },
+    { root: hermes, home },
+  );
+  const paseo = fakePaseo([{ entries: [agentEntry()], pageInfo: { hasMore: false, nextCursor: null } }]);
+  const detail = await handlers.get("history.day")({ day: "2026-04-01", timeZone: "Asia/Tokyo" }, { paseo });
+  assert.deepEqual(detail.rows.map(row => row.text), ["march text"],
+    "a damaged neighbouring shard does not take the readable shard's text with it");
+  assert.equal(detail.cacheError, true, "the day is still marked as possibly incomplete");
+});
+
+test("the local day bounds follow the zone, including a daylight-saving day", () => {
+  const reader = tsModules.load(join(repositoryRoot, "server/history-reader.ts"));
+  const tokyo = reader.zoneDayBounds("2026-12-01", "Asia/Tokyo");
+  assert.equal(tokyo.from, Date.UTC(2026, 10, 30, 15, 0, 0));
+  assert.equal(tokyo.until, Date.UTC(2026, 11, 1, 15, 0, 0));
+  const spring = reader.zoneDayBounds("2026-03-08", "America/New_York");
+  assert.equal(spring.from, Date.UTC(2026, 2, 8, 5, 0, 0));
+  assert.equal(spring.until - spring.from, 23 * 60 * 60 * 1000, "the spring day is 23 hours long");
+  const autumn = reader.zoneDayBounds("2026-11-01", "America/New_York");
+  assert.equal(autumn.from, Date.UTC(2026, 10, 1, 4, 0, 0));
+  assert.equal(autumn.until - autumn.from, 25 * 60 * 60 * 1000, "the autumn day is 25 hours long");
+});
+
 test("a partial directory reaches both RPC results", async t => {
   const hermes = createRoot(t);
   const handlers = new Map();
