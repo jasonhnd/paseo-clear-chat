@@ -50,7 +50,7 @@ function createToolHarness(platform = "ios", options = {}) {
   const timestamps = new WeakMap();
   let nextTimestamp = Date.parse("2026-01-01T12:00:00Z");
   const paseo = options.paseo ?? { agents: { ref: () => ({ refresh: async () => null }) } };
-  const tokens = new Proxy({ fs: n => Math.round(n * getPreferences().textScale * 2) / 2, get textScale() { return getPreferences().textScale; }, boxShadow: {}, syntax: {}, isDark: true }, { get: (obj, key) => obj[key] ?? "#888888" });
+  const tokens = new Proxy({ fs: n => Math.round(n * getPreferences().textScale * 2) / 2, get textScale() { return getPreferences().textScale; }, boxShadow: {}, bubbleSurface: "#26262a", bubbleBorder: "rgba(250, 250, 250, 0.2)", bubbleText: "#fafafa", bubbleShadow: {}, syntax: {}, isDark: true }, { get: (obj, key) => obj[key] ?? "#888888" });
   function next(initial) {
     const index = frame.cursor++;
     if (!(index in frame.values)) frame.values[index] = typeof initial === "function" ? initial() : initial;

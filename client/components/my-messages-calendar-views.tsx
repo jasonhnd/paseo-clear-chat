@@ -26,7 +26,24 @@ import { mix, type ExtendedThemeTokens } from "./theme-tokens";
  */
 
 const CELL_WIDTH = "14.2857%";
-const TOOLTIP_WIDTH = 170;
+/**
+ * The bubble is one line of text on an opaque card. Its width comes from the
+ * label, not from a single constant: the card has to fit "Nov 28 Sat · 43
+ * messages" without wrapping, while a short label must not open a wide card.
+ * `BUBBLE_MAX_WIDTH` caps long month labels; the measured row always caps it
+ * further so the card cannot leave the grid.
+ */
+const BUBBLE_FONT = 12;
+const BUBBLE_PAD_X = 10;
+const BUBBLE_RULE = 1;
+const BUBBLE_MIN_WIDTH = 96;
+/** A guard for very large text scales only; the measured row is the real cap. */
+const BUBBLE_MAX_WIDTH = 420;
+/** Rotated square: only its lower half shows, so it reads as a wide, short point. */
+const BUBBLE_ARROW = 8;
+/** Space between the bubble and the cell it points at; the arrow hangs inside it. */
+const BUBBLE_LIFT = 6;
+
 /**
  * Ring plus the page-coloured seam, drawn inside the cell. Two pixels and a one pixel
  * seam keep the heat fill within six pixels of a neighbour. The month focus outline
@@ -332,21 +349,58 @@ function keyFromEvent(event: unknown): string | null {
 }
 
 /**
+ * A conservative advance width for one character of the UI face, in em. The
+ * bubble must not wrap, and a wrong estimate cannot be corrected by the layout
+ * engine, so every class is rounded up: Latin lower case 0.62, upper case 0.70,
+ * digits 0.62, punctuation 0.55, and full-width scripts a full em. A 4% margin
+ * covers the gaps between measured glyphs.
+ */
+function glyphEm(char: string): number {
+  const code = char.codePointAt(0) ?? 0;
+  if (code >= 0x1100 && (code <= 0x115f || (code >= 0x2e80 && code <= 0xa4cf) || (code >= 0xac00 && code <= 0xd7a3) || (code >= 0xf900 && code <= 0xfaff) || (code >= 0xfe30 && code <= 0xfe4f) || (code >= 0xff00 && code <= 0xff60) || (code >= 0xffe0 && code <= 0xffe6))) return 1;
+  // Emoji are drawn one em wide and arrive here as surrogate pairs.
+  if (code >= 0x1f000) return 1;
+  if (char === " ") return 0.34;
+  if (code >= 48 && code <= 57) return 0.62;
+  if (code >= 65 && code <= 90) return 0.7;
+  if (code >= 97 && code <= 122) return 0.62;
+  return 0.55;
+}
+
+/** Width the label needs on one line, at the bubble's font size. */
+export function bubbleTextWidth(label: string, fontSize: number): number {
+  let em = 0;
+  for (const char of label) em += glyphEm(char);
+  return Math.ceil(em * fontSize * 1.04);
+}
+
+/** Card width: the label plus padding and border, then capped by the row. */
+function bubbleWidth(label: string, tokens: ExtendedThemeTokens, rowWidth: number | null): number {
+  const chrome = (BUBBLE_PAD_X + BUBBLE_RULE) * 2;
+  const wanted = Math.max(BUBBLE_MIN_WIDTH, bubbleTextWidth(label, tokens.fs(BUBBLE_FONT)) + chrome);
+  const capped = Math.min(BUBBLE_MAX_WIDTH, wanted);
+  return rowWidth !== null && rowWidth > 0 && rowWidth < capped ? rowWidth : capped;
+}
+
+/**
  * Keep the bubble over its cell and inside the row.
  * Once the row has reported its width, left and width are pixels clamped to that row.
  * Before then, the first column sticks to the left, the last column sticks to the right,
  * and any column between them shifts by whole cells as a single percentage. The width
  * is the whole row, so the bubble cannot hang past either edge. No min, max or calc.
  */
-function bubbleStyle(column: number, columns: number, rowWidth: number | null, tokens: ExtendedThemeTokens): ViewStyle {
+function bubbleStyle(
+  column: number, columns: number, rowWidth: number | null, tokens: ExtendedThemeTokens, label: string,
+): ViewStyle {
   const base: ViewStyle = {
-    position: "absolute", bottom: "100%", marginBottom: 6,
-    paddingVertical: 6, paddingHorizontal: 8, borderRadius: 8, zIndex: 20,
-    backgroundColor: tokens.surface2, borderWidth: 1, borderColor: tokens.border,
+    position: "absolute", bottom: "100%", marginBottom: BUBBLE_LIFT,
+    paddingVertical: 6, paddingHorizontal: BUBBLE_PAD_X, borderRadius: 8, zIndex: 20,
+    backgroundColor: tokens.bubbleSurface, borderWidth: BUBBLE_RULE, borderColor: tokens.bubbleBorder,
+    ...tokens.bubbleShadow,
   };
   const index = column < 0 ? 0 : column > columns - 1 ? columns - 1 : column;
   if (rowWidth !== null && rowWidth > 0) {
-    const width = rowWidth < TOOLTIP_WIDTH ? rowWidth : TOOLTIP_WIDTH;
+    const width = bubbleWidth(label, tokens, rowWidth);
     const cell = rowWidth / columns;
     const ideal = index * cell + cell / 2 - width / 2;
     const room = rowWidth - width;
@@ -357,6 +411,26 @@ function bubbleStyle(column: number, columns: number, rowWidth: number | null, t
   if (index <= 0) return { ...base, left: 0, width: span };
   if (index >= columns - 1) return { ...base, right: 0, width: span };
   return { ...base, left: `${-index * 100}%` as ViewStyle["left"], width: span };
+}
+
+/**
+ * The point under the card. It lives in the cell wrapper rather than in the
+ * card, so its centre is always the centre of the cell the pointer is on —
+ * even when the card itself had to slide inward at the grid edge. The square is
+ * rotated 45 degrees; the card covers its upper half, leaving a short triangle.
+ * Only the right and bottom borders are drawn: after the rotation those are the
+ * two edges that face the reader below the card, so the point closes on both
+ * sides instead of leaving one edge open.
+ */
+function bubbleArrowStyle(tokens: ExtendedThemeTokens): ViewStyle {
+  return {
+    position: "absolute", bottom: "100%", left: "50%",
+    marginLeft: -BUBBLE_ARROW / 2, marginBottom: BUBBLE_LIFT - BUBBLE_ARROW / 2,
+    width: BUBBLE_ARROW, height: BUBBLE_ARROW,
+    backgroundColor: tokens.bubbleSurface,
+    borderRightWidth: BUBBLE_RULE, borderBottomWidth: BUBBLE_RULE, borderColor: tokens.bubbleBorder,
+    transform: [{ rotate: "45deg" }], zIndex: 21,
+  };
 }
 
 function LevelWash({ opacity, color, radius }: { opacity: number; color: string; radius: number }) {
@@ -690,9 +764,12 @@ export function CalendarMonthView({
                   </View>
                 </Pressable>
                 {showTooltip ? (
-                  <View testID="my-messages-calendar-tooltip" pointerEvents="none" style={bubbleStyle(column, 7, rowWidth, tokens)}>
-                    <Text style={{ color: tokens.foreground, fontFamily: tokens.fontUi, fontSize: tokens.fs(11) }}>{tooltip}</Text>
-                  </View>
+                  <>
+                    <View testID="my-messages-calendar-tooltip" pointerEvents="none" style={bubbleStyle(column, 7, rowWidth, tokens, tooltip)}>
+                      <Text numberOfLines={1} style={{ color: tokens.bubbleText, fontFamily: tokens.fontUi, fontSize: tokens.fs(BUBBLE_FONT), lineHeight: tokens.fs(BUBBLE_FONT) + 4 }}>{tooltip}</Text>
+                    </View>
+                    <View testID="my-messages-calendar-tooltip-arrow" pointerEvents="none" style={bubbleArrowStyle(tokens)} />
+                  </>
                 ) : null}
               </View>
             );
@@ -905,9 +982,12 @@ export function CalendarYearView({
               <View testID="my-messages-calendar-month-body" style={{ gap: 2, padding: chosen ? YEAR_CHOSEN_INNER : 0 }}>{monthBody}</View>
             </Pressable>
             {showTooltip ? (
-              <View testID="my-messages-calendar-tooltip" pointerEvents="none" style={bubbleStyle(index % columns, columns, rowWidth, tokens)}>
-                <Text style={{ color: tokens.foreground, fontFamily: tokens.fontUi, fontSize: tokens.fs(11) }}>{tooltip}</Text>
-              </View>
+              <>
+                <View testID="my-messages-calendar-tooltip" pointerEvents="none" style={bubbleStyle(index % columns, columns, rowWidth, tokens, tooltip)}>
+                  <Text numberOfLines={1} style={{ color: tokens.bubbleText, fontFamily: tokens.fontUi, fontSize: tokens.fs(BUBBLE_FONT), lineHeight: tokens.fs(BUBBLE_FONT) + 4 }}>{tooltip}</Text>
+                </View>
+                <View testID="my-messages-calendar-tooltip-arrow" pointerEvents="none" style={bubbleArrowStyle(tokens)} />
+              </>
             ) : null}
           </View>
         );

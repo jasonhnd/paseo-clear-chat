@@ -150,10 +150,11 @@ function assertTooltipInside(style, column, columns, gridWidth) {
   const { rowLeft, width } = tooltipFrame(style, column, columns, gridWidth);
   assert.ok(rowLeft >= -0.51, `column ${column} starts at ${rowLeft} on a ${gridWidth} grid`);
   assert.ok(rowLeft + width <= gridWidth + 0.51, `column ${column} ends at ${rowLeft + width} on a ${gridWidth} grid`);
+  // The card is sized to its label, so read that width back: a centred card is
+  // only allowed to slide where the row would otherwise be crossed.
   const cell = gridWidth / columns;
-  const tip = Math.min(170, gridWidth);
-  const ideal = column * cell + cell / 2 - tip / 2;
-  const expected = Math.max(0, Math.min(ideal, Math.max(0, gridWidth - tip)));
+  const ideal = column * cell + cell / 2 - width / 2;
+  const expected = Math.max(0, Math.min(ideal, Math.max(0, gridWidth - width)));
   assert.ok(Math.abs(rowLeft - expected) < 0.51, `column ${column} at ${rowLeft}, expected ${expected}`);
 }
 
@@ -2109,4 +2110,190 @@ test("the date line grows with the text scale", async t => {
     assert.equal(text.props.style.fontSize, tokens.fs(11));
     assert.equal(text.props.style.lineHeight, tokens.fs(14));
   }
+});
+
+const LIGHT_THEME = {
+  surface0: "#ffffff", foreground: "#101418", foregroundMuted: "#57606a",
+  accent: "#2563eb", accentForeground: "#ffffff", statusDanger: "#b42318",
+};
+
+/** Read a colour the themes write: hex, rgb() or rgba(). */
+function readCssColor(color) {
+  const text = String(color ?? "").trim();
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(text);
+  if (hex) {
+    const body = hex[1].length === 3 ? [...hex[1]].map(char => char + char).join("") : hex[1];
+    return {
+      r: parseInt(body.slice(0, 2), 16), g: parseInt(body.slice(2, 4), 16), b: parseInt(body.slice(4, 6), 16), a: 1,
+    };
+  }
+  const parts = /^rgba?\(([^)]+)\)$/i.exec(text);
+  if (!parts) return null;
+  const channels = parts[1].split(/[\s,/]+/).filter(Boolean).map(Number);
+  if (channels.length < 3 || channels.slice(0, 3).some(Number.isNaN)) return null;
+  return { r: channels[0], g: channels[1], b: channels[2], a: channels[3] ?? 1 };
+}
+
+function relativeLuminance(color) {
+  const rgba = readCssColor(color);
+  assert.ok(rgba, `unreadable colour ${color}`);
+  const linear = value => {
+    const channel = value / 255;
+    return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * linear(rgba.r) + 0.7152 * linear(rgba.g) + 0.0722 * linear(rgba.b);
+}
+
+function contrastRatio(first, second) {
+  const a = relativeLuminance(first), b = relativeLuminance(second);
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
+/** A translucent fill would show the grid through the card, so alpha must be one. */
+function alphaOf(color) {
+  const rgba = readCssColor(color);
+  assert.ok(rgba, `unreadable colour ${color}`);
+  return rgba.a;
+}
+
+test("the bubble is an opaque card a full step darker than the page, in both themes", t => {
+  const web = createToolHarness("web", { themeTokens: true });
+  t.after(() => web.dispose());
+  const { buildThemeTokens } = web.load("client/components/theme-tokens.ts");
+  const dark = buildThemeTokens(DARK_THEME, BASE_PREFERENCES);
+  const light = buildThemeTokens(LIGHT_THEME, BASE_PREFERENCES);
+  const midtone = buildThemeTokens({ ...DARK_THEME, surface0: "#6f6f6f" }, BASE_PREFERENCES);
+
+  for (const [name, tokens] of [["dark", dark], ["light", light], ["midtone", midtone]]) {
+    assert.equal(alphaOf(tokens.bubbleSurface), 1, `${name} bubble fill is opaque`);
+    assert.ok(contrastRatio(tokens.bubbleText, tokens.bubbleSurface) >= 4.5,
+      `${name} ink on the bubble reads at ${contrastRatio(tokens.bubbleText, tokens.bubbleSurface).toFixed(2)} to 1`);
+    const border = readCssColor(tokens.bubbleBorder);
+    assert.ok(border && border.a > 0 && border.a < 1, `${name} bubble border is a hairline, not a block`);
+    assert.ok(contrastRatio(tokens.bubbleBorder, tokens.bubbleSurface) > 1.1,
+      `${name} bubble border is visible on the card`);
+  }
+  // Dark: the card sits below the page it covers. Light: plain white with dark ink.
+  assert.ok(relativeLuminance(dark.bubbleSurface) < relativeLuminance(dark.surface0),
+    "dark bubble is darker than the page");
+  assert.ok(relativeLuminance(dark.surface0) - relativeLuminance(dark.bubbleSurface) > 0.002,
+    "dark bubble is a visible step, not a rounding difference");
+  assert.equal(light.bubbleSurface, "#ffffff");
+  assert.ok(relativeLuminance(light.bubbleText) < 0.1, "light bubble uses dark ink");
+  // Web gets the single box-shadow property; native keeps the four-part form.
+  assert.match(String(dark.bubbleShadow.boxShadow), /^0 6px 16px rgba\(0, 0, 0, 0\.\d+\)$/);
+  const native = createToolHarness("ios", { themeTokens: true });
+  t.after(() => native.dispose());
+  const nativeDark = native.load("client/components/theme-tokens.ts").buildThemeTokens(DARK_THEME, BASE_PREFERENCES);
+  assert.equal(nativeDark.bubbleShadow.boxShadow, undefined);
+  assert.ok(nativeDark.bubbleShadow.shadowOpacity > 0 && nativeDark.bubbleShadow.shadowRadius > 0);
+  assert.ok(nativeDark.bubbleShadow.elevation > 0);
+});
+
+test("the bubble is sized to its label so the date stays on one line", async t => {
+  const history = historyFor(daysResult({ [dayKey(-1)]: 128, [dayKey(0)]: 1 }), { [dayKey(0)]: dayResult([]) });
+  const { draw, cell, h } = fixture(t, { historyRpc: history, realTheme: true, themeColors: DARK_THEME });
+  draw();
+  await flush();
+  const { bubbleTextWidth } = h.load("client/components/my-messages-calendar-views.tsx");
+  const tokens = h.load("client/components/theme-tokens.ts").buildThemeTokens(DARK_THEME, BASE_PREFERENCES);
+  const chrome = 2 * (10 + 1);
+  const tipOf = tree => h.nodes(tree, node => node.props?.testID === "my-messages-calendar-tooltip")[0];
+
+  cell(draw(), "Mar 14 Sat").props.onHoverIn();
+  const wide = layoutBox(draw, h, "my-messages-calendar-row", 900);
+  const tip = tipOf(wide);
+  const label = h.text(tip);
+  assert.equal(label, "Mar 14 Sat · 128 messages");
+  const text = h.nodes(tip, node => node.type === "Text")[0];
+  const wanted = Math.max(96, bubbleTextWidth(label, tokens.fs(12)) + chrome);
+  assert.equal(tip.props.style.width, wanted, "the card is exactly its label plus its padding");
+  assert.ok(tip.props.style.width > 170, "the old fixed 170 would have wrapped this date");
+  assert.ok(tip.props.style.width <= 420, "the card stays under the guard width");
+  assert.equal(text.props.style.fontSize, tokens.fs(12), "the bubble is one size larger than before");
+  assert.equal(text.props.numberOfLines, 1, "the bubble never wraps");
+  assert.ok(bubbleTextWidth(label, tokens.fs(12)) >= 155,
+    "the measured label is at least as wide as the browser paints this date");
+
+  // On a narrow row the grid is the cap, never the text: the card shrinks and stays inside.
+  const narrow = layoutBox(draw, h, "my-messages-calendar-row", 160);
+  const small = tipOf(narrow);
+  assert.equal(small.props.style.width, 160);
+  assertTooltipInside(small.props.style, 5, 7, 160);
+
+  // A larger text scale grows the card with the text instead of wrapping it.
+  const scaled = { ...BASE_PREFERENCES, textScale: 1.35 };
+  const zoom = fixture(t, {
+    historyRpc: history, realTheme: true, themeColors: DARK_THEME, preferences: scaled,
+  });
+  zoom.draw();
+  await flush();
+  const zoomTokens = zoom.h.load("client/components/theme-tokens.ts").buildThemeTokens(DARK_THEME, scaled);
+  zoom.cell(zoom.draw(), "Mar 14 Sat").props.onHoverIn();
+  const zoomTip = zoom.h.nodes(layoutBox(zoom.draw, zoom.h, "my-messages-calendar-row", 900),
+    node => node.props?.testID === "my-messages-calendar-tooltip")[0];
+  assert.equal(zoom.h.text(zoomTip), label);
+  assert.equal(zoomTip.props.style.width, Math.max(96, bubbleTextWidth(label, zoomTokens.fs(12)) + chrome));
+  assert.ok(zoomTip.props.style.width > tip.props.style.width, "the card follows the text scale");
+});
+
+test("the bubble's point stays on its own cell after the card is clamped at an edge", async t => {
+  const history = historyFor(daysResult({ [dayKey(-6)]: 128, [dayKey(0)]: 1 }), { [dayKey(0)]: dayResult([]) });
+  const { draw, cell, h } = fixture(t, { historyRpc: history, realTheme: true, themeColors: DARK_THEME });
+  draw();
+  await flush();
+  const tipOf = tree => h.nodes(tree, node => node.props?.testID === "my-messages-calendar-tooltip")[0];
+  const arrowOf = tree => h.nodes(tree, node => node.props?.testID === "my-messages-calendar-tooltip-arrow")[0];
+  const cellWidth = 320 / 7;
+
+  for (const [label, column] of [["Mar 9 Mon", 0], ["Mar 15 Sun", 6]]) {
+    cell(draw(), label).props.onHoverIn();
+    const placed = layoutBox(draw, h, "my-messages-calendar-row", 320);
+    const tip = tipOf(placed);
+    const arrow = arrowOf(placed);
+    assert.ok(arrow, `${label} draws a point under the card`);
+    const style = arrow.props.style;
+    assert.equal(style.position, "absolute");
+    assert.equal(style.bottom, "100%");
+    assert.equal(style.left, "50%", "the point is centred on the cell, not on the card");
+    assert.equal(style.marginLeft, -4);
+    assert.equal(style.marginBottom, 2, "the point hangs in the gap under the card");
+    assert.equal(style.width, 8);
+    assert.equal(style.height, 8);
+    assert.deepEqual(style.transform, [{ rotate: "45deg" }]);
+    assert.equal(style.borderRightWidth, 1, "the point closes on the side that faces the reader");
+    assert.equal(style.borderBottomWidth, 1);
+    assert.equal(style.borderLeftWidth, undefined);
+    assert.equal(style.borderTopWidth, undefined);
+    assert.equal(style.backgroundColor, tip.props.style.backgroundColor);
+    assert.equal(style.borderColor, tip.props.style.borderColor);
+    // Sibling of the card, in the same cell wrapper: the point follows the cell, not the card.
+    const wrapper = pathTo(placed, arrow).find(node => node.props?.testID === "my-messages-calendar-cell-wrap");
+    assert.ok(wrapper);
+    assert.ok(pathTo(placed, tip).includes(wrapper), `${label} card and point share the cell wrapper`);
+
+    // The card is clamped inward at the edge; its own span still covers the cell centre,
+    // which is where the point sits, so the point stays attached to the card.
+    const { rowLeft, width } = tooltipFrame(tip.props.style, column, 7, 320);
+    const centre = (column + 0.5) * cellWidth;
+    assert.ok(Math.abs(rowLeft - 0) < 0.51 || Math.abs(rowLeft + width - 320) < 0.51,
+      `${label} card is clamped at the edge`);
+    assert.ok(rowLeft <= centre + 0.51 && centre <= rowLeft + width + 0.51,
+      `${label} point at ${centre} touches the card from ${rowLeft} to ${rowLeft + width}`);
+  }
+
+  // The year view draws the same card and point over a month cell.
+  const year = fixture(t, { historyRpc: history, realTheme: true, themeColors: DARK_THEME });
+  year.draw();
+  await flush();
+  year.one(year.draw(), "my-messages-calendar-title").props.onPress();
+  year.monthCell(year.draw(), "March 2026").props.onHoverIn();
+  const yearPlaced = layoutBox(year.draw, year.h, "my-messages-calendar-year", 320);
+  const yearTip = year.h.nodes(yearPlaced, node => node.props?.testID === "my-messages-calendar-tooltip")[0];
+  const yearArrow = year.h.nodes(yearPlaced, node => node.props?.testID === "my-messages-calendar-tooltip-arrow")[0];
+  assert.ok(yearArrow, "the year bubble has a point too");
+  assert.equal(yearArrow.props.style.left, "50%");
+  const yearFrame = tooltipFrame(yearTip.props.style, 2, 4, 320);
+  const yearCentre = 2.5 * (320 / 4);
+  assert.ok(yearFrame.rowLeft <= yearCentre + 0.51 && yearCentre <= yearFrame.rowLeft + yearFrame.width + 0.51);
 });

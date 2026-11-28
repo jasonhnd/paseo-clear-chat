@@ -94,6 +94,23 @@ export interface ExtendedThemeTokens {
   // Borders
   border: string;
   borderSubtle: string;
+  /**
+   * Floating cards (calendar bubbles). Opaque by contract: a bubble covers the
+   * cells behind it, so it cannot be a translucent wash. Dark themes step below
+   * the page; light themes use plain white with dark ink.
+   */
+  bubbleSurface: string;
+  bubbleBorder: string;
+  bubbleText: string;
+  bubbleShadow: {
+    shadowColor?: string;
+    shadowOffset?: { width: number; height: number };
+    shadowOpacity?: number;
+    shadowRadius?: number;
+    elevation?: number;
+    /** Web has one property for all of it; native keeps the four-part form. */
+    boxShadow?: string;
+  };
   boxShadow: {
     shadowColor: string;
     shadowOffset: { width: number; height: number };
@@ -283,6 +300,18 @@ export function buildThemeTokens(
   const tint = isDark ? 0.1 : 0.08;
   const edge = isDark ? 0.22 : 0.18;
   const textScale = preferences.textScale;
+  // A bubble sits over the calendar, so its fill must be opaque: a step below the
+  // page in dark themes (the card reads as cut into the grid), plain white in
+  // light ones. The page is the theme surface flattened over white, which is what
+  // the calendar itself paints, so the step is measured from the same colour the
+  // reader sees behind the card. The border and shadow do the separating when the
+  // page is already at the darkest end of the scale. Ink falls back to black or
+  // white only when the theme foreground cannot reach 4.5:1 on that fill.
+  const bubblePage = opaqueColor(colors.surface0, "#ffffff", isDark);
+  const bubbleSurface = isDark ? mix(bubblePage, "#000000", 0.32) : "#ffffff";
+  const bubbleInk = contrast(colors.foreground, bubbleSurface) >= 4.5
+    ? colors.foreground
+    : contrast("#000000", bubbleSurface) >= contrast("#ffffff", bubbleSurface) ? "#000000" : "#ffffff";
 
   const tokens: ExtendedThemeTokens = {
     isDark,
@@ -338,6 +367,19 @@ export function buildThemeTokens(
 
     border: withAlpha(fg, isDark ? 0.09 : 0.1),
     borderSubtle: withAlpha(fg, 0.06),
+    bubbleSurface,
+    bubbleBorder: withAlpha(fg, isDark ? 0.2 : 0.14),
+    bubbleText: bubbleInk,
+    bubbleShadow: Platform.OS === "web"
+      // React Native Web reads `boxShadow`; the four shadow props are the native form.
+      ? { boxShadow: isDark ? "0 6px 16px rgba(0, 0, 0, 0.55)" : "0 6px 16px rgba(0, 0, 0, 0.16)" }
+      : {
+        shadowColor: "#000000",
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: isDark ? 0.55 : 0.16,
+        shadowRadius: 14,
+        elevation: 8,
+      },
     boxShadow: {
       shadowColor: "#000000",
       shadowOffset: { width: 0, height: 2 },
