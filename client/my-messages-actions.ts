@@ -1,10 +1,12 @@
 import { useRef } from "react";
 import { copyText, useToast } from "@getpaseo/plugin/client/ui";
-import { isEmptyMessageText } from "./user-message-kind";
+import { isEmptyMessageText } from "../shared/user-message-kind";
 
 interface QuoteComposer {
   focus(): Promise<void>;
   insertText(text: string): void;
+  setPrompt?(text: string): void;
+  readonly prompt?: string;
 }
 
 export interface MyMessagesComposerHost {
@@ -25,6 +27,41 @@ function quoteLines(text: string): string {
   while (start < end && (lines[start] ?? "").trim() === "") start++;
   while (end > start && (lines[end - 1] ?? "").trim() === "") end--;
   return lines.slice(start, end).map(line => line.trim() === "" ? ">" : `> ${line}`).join("\n") + "\n\n";
+}
+
+/** How many line breaks sit at the end of `text`, counting `\r\n` as one. */
+function trailingBreaks(text: string): number {
+  let count = 0;
+  let index = text.length;
+  while (index > 0) {
+    if (index >= 2 && text[index - 2] === "\r" && text[index - 1] === "\n") {
+      count += 1;
+      index -= 2;
+    } else if (text[index - 1] === "\n" || text[index - 1] === "\r") {
+      count += 1;
+      index -= 1;
+    } else {
+      break;
+    }
+  }
+  return count;
+}
+
+/**
+ * Newlines to put in front of a quote so it does not stick to the draft.
+ * Nothing before the cursor stays as it is. One break gets one more. Two or more
+ * already leave a blank line.
+ */
+function gapBeforeQuote(before: string): string {
+  if (before.length === 0) return "";
+  const breaks = trailingBreaks(before);
+  if (breaks >= 2) return "";
+  if (breaks === 1) return "\n";
+  return "\n\n";
+}
+
+function quoteOnto(prompt: string, quoted: string): string {
+  return prompt + gapBeforeQuote(prompt) + quoted;
 }
 
 export function useMyMessageActions(t: (key: Feedback) => string, host?: MyMessagesComposerHost) {
@@ -57,12 +94,20 @@ export function useMyMessageActions(t: (key: Feedback) => string, host?: MyMessa
     const quoted = quoteLines(text);
     try {
       const composer = typeof host?.composers === "function" ? host.composers({ agentId })[0] : undefined;
-      if (typeof composer?.focus === "function" && typeof composer.insertText === "function") {
+      if (typeof composer?.focus === "function") {
         await composer.focus();
-        // Focusing may open another tab; ask again so the text goes to the live composer.
+        // Resolve the same agent again after navigation. Never write a stale draft snapshot.
         const live = host?.composers?.({ agentId })[0];
-        (typeof live?.insertText === "function" ? live : composer).insertText(quoted);
-        return;
+        if (typeof live?.prompt === "string" && typeof live.setPrompt === "function") {
+          // Replace the draft with its exact current text plus the quote. Inserting at the
+          // cursor would split the draft or put the quote before it after navigation.
+          live.setPrompt(quoteOnto(live.prompt, quoted));
+          return;
+        }
+        if (typeof live?.insertText === "function" && !live.prompt) {
+          live.insertText(quoted);
+          return;
+        }
       }
     } catch {
       // An unavailable composer still leaves a quote the reader can paste.

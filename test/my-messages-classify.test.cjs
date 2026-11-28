@@ -21,7 +21,7 @@ const EXPECTED_PREFIXES = [
 
 function load() {
   const h = createToolHarness("web");
-  return { h, kind: h.load("client/user-message-kind.ts"), day: h.load("client/local-day.ts") };
+  return { h, kind: h.load("shared/user-message-kind.ts"), day: h.load("shared/local-day.ts") };
 }
 
 test("the envelope table holds exactly the shapes the panel expects", () => {
