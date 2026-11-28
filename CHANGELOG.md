@@ -1,3 +1,50 @@
+## [0.18.1.2] - 2026-11-29
+
+### Added
+
+- **The hover bubble is a solid card.** Pointing at a day, or moving the keyboard highlight onto it, now shows an opaque card instead of a tinted one: one step darker than the page on a dark theme, white with dark text on a light theme, with a thin border and a soft shadow. A small point under the card stays on the cell you are pointing at, including a cell in the first or the last column, where the card is pulled back inside the grid. The label is 12 px where the cell's text is 11 px, and it stays on one line: the card is as wide as its text instead of wrapping at a fixed width. The month, the week strip and the year view use the same card. In the browser the point sat within 0.01 px of the middle of its cell, the card's bottom edge was 8–9 px above the cell, and the card stayed inside the grid on the first and the last column.
+- **A summary of the month under the calendar.** `This month` counts the month's messages, the days with messages, the busiest day with its count, and the average per day. The average divides by the days that have passed in the current month, and by the whole month for a past month. A tie for the busiest day goes to the earlier date. Another month shows its own name in place of `This month` and its own numbers.
+- **The five conversations you typed in most.** The list is ordered by messages, then by the most recent message, then by the conversation id. Choosing one filters the selected day's list to that conversation, and the row keeps an outline and a background. A bar above the list reads `Showing only <title> · Clear`; choosing the row again, or the bar, clears the filter. Changing the month clears it too. When that conversation has nothing on the day, the list says `No messages from this conversation on this day`.
+- **On a wide screen the calendar stays at the top of the left column.** The column keeps its 320 px width. The calendar and its legend sit outside the scrolling area, and the summary and the ranking scroll under them. At 1280×800 the calendar's top stayed at 91 px while the column scrolled 32 px, and the panel moved up by the same 32 px.
+- **On a narrow screen the panel sits between the calendar and the list.** The four numbers wrap into two rows of two, and the five conversations are one row of chips that scrolls sideways. At 390 wide the week strip ended at 222 px, the panel ran from 284 to 444 px, and the list started at 500 px with 332 px of height.
+- **One rule for `may be incomplete`.** The summary and the ranking say `Some conversations could not be read, so these totals and this list may be incomplete.` when the history read did not return some conversations, when the conversation list itself was short, when a day was filled in from the timeline with rows the read did not have, or when the host did not answer the per-conversation counts. On a real machine most conversations are not in the Hermes databases, so the line can stay on.
+- **The new sentences are in English, Simplified Chinese, and Japanese.** Twelve keys were added to the existing `myMessages.calendar` block, and the three language files hold the same keys.
+
+### Changed
+
+- **The version is 0.18.1.2.** It is the second Clear Chat release for Paseo 0.18.1; the minimum host stays Paseo 0.16.0. The `description` in `paseo-plugin.json` now starts `v0.18.1.2 · `. The answer card is unchanged, and this release adds no settings.
+
+### Upgrade notes
+
+- Clear Chat 0.18.1.2 needs Paseo 0.16.0 or newer. The minimum host is unchanged. The browser and desktop checks ran on Paseo 0.18.1. It was not checked on Paseo 0.16.x, 0.17.1, 0.17.2, 0.17.3, or 0.17.4. On Paseo 0.15.x this version cannot be installed or run normally; stay on Clear Chat 0.15.4.x.
+- Update with `paseo plugin update clear-chat --ref v0.18.1.2 --yes`, or install with `paseo plugin install git:jasonhnd/paseo-clear-chat --ref v0.18.1.2`. The install still runs `npm ci --include=dev --ignore-scripts` on the daemon host.
+- The settings file is kept and nothing in it changes for this release. A rollback to the previous release keeps it too, and **Copy** and **Quote** stay. Removing the plugin still deletes its settings.
+
+### What was checked
+
+- The browser checks ran in the interface of Paseo 0.18.1 (the web UI the `paseo` command starts), in a headless browser, on an isolated data folder, at 1280×800 and 390×844, with the plugin running. Six hovers were read: the middle of the month, the first column, the last column, the year view, the light theme, and the week strip at 390 wide. All six showed an opaque card (alpha 1) with a shadow, 12 px text on one line with no truncation, the point on the middle of its cell (0.00–0.01 px), the card inside the grid, and the card above the cell (bottom edge 8–9 px above it, the point 2.3–3.3 px above it).
+- The left column was read against the cells. November 2026 on the day of the check: 16 messages, 4 days with messages, busiest Nov 27 · 7, average 0.6, against a cell total of 16. January 2026: 81, 16, Jan 5 · 41, 2.6, against 81. December 2025, reached with the month arrow: 60, 14, Dec 31 · 32, 1.9, against 60. The ranking, the filter and the cancel were checked on 5 January: 41 rows, then 21 rows all from **Project log** after that row was chosen, the bar `Showing only Project log · Clear`, and 41 rows again after the same row was chosen once more. Moving to another month cleared the filter and swapped the panel to that month. On a wide screen the left column's scroll area was 281 px tall with 313 to scroll; at scrollTop 32 the calendar's top was 91 px before and after, the legend's top 484 before and after, and the panel's top moved from 503 to 471. At 390 wide the week strip ended at 222 px, the panel ran from 284 to 444 px, and the list started at 500 px with 332 px of height and remained visible. `Some conversations could not be read, so these totals and this list may be incomplete.` was on the page at both widths.
+- The earlier calendar regression suite (19 items) ran on this build and matched its baseline item for item: 10 passed, 5 failed, one needed a person and four were not run. The same five failed in the baseline. The console showed no plugin errors and no page errors. **Quote** on the slow path ran ten times and kept the draft each time; the archived-conversation case opened the conversation and copied the quote.
+- The Paseo 0.18.1 desktop app was checked on an isolated instance: the settings page listed Clear Chat, the sidebar row opened the screen, and the left panel, a bubble and the console were read. The build it ran on was the candidate for this release before the version number and these documents changed.
+- <img width="520" alt="What I said in the dark theme: November 2026, with a solid card under the pointer that reads Nov 27 Fri · 7 messages" src="docs/images/what-i-said-bubble-dark.png">
+- <img width="520" alt="What I said in the light theme: November 2026, with a white card under the pointer that reads Nov 10 Tue · 0 messages" src="docs/images/what-i-said-bubble-light.png">
+- <img width="520" alt="What I said in the dark theme: the month summary under the calendar, reading 16 messages, 4 days with messages, busiest Nov 27 · 7, 0.6 a day, and the four conversations typed in most, with the may-be-incomplete note" src="docs/images/what-i-said-month-panel.png">
+- <img width="520" alt="What I said in the dark theme: January 2026 filtered to Project log, with the row outlined in the panel and Showing only Project log · Clear above the list" src="docs/images/what-i-said-filter.png">
+- <img width="520" alt="What I said at 390 wide: the week strip, the month summary in two rows of two, one row of conversation chips, and the day's list below" src="docs/images/what-i-said-narrow-panel.png">
+
+### Known limitations
+
+- On a real machine most conversations are not in the Hermes databases, so `Some conversations could not be read, so these totals and this list may be incomplete.` can stay on. The rule is the same one the cells use.
+- This version reads Hermes directly. A conversation from another provider is filled in when you open that day; until then the summary and the ranking can leave it out.
+- The shadow on the card was seen in the Paseo 0.18.1 browser and in the Paseo 0.18.1 desktop app. On another host, or outside the web interface, it may not be drawn; the card still has its border and its solid fill.
+- On a narrow screen the four numbers take two rows of two. The five conversations are one row of chips that scrolls sideways, so the last one can be cut at the right edge until you scroll.
+- The bubble on the first week can cover the weekday names.
+- On a narrow screen the header arrows were 44×44 in the browser check. **Today** and **Refresh** were shorter than 44 px in an earlier check and were not measured again.
+- When the view changes, the keyboard highlight does not follow. That includes pressing **T**, opening a month from the year view, and choosing a day on the narrow screen.
+- It was not checked on a physical iOS or Android device, on Paseo 0.16.x or 0.17.1–0.17.4, on a second connected host, or with a history of several thousand days.
+- An accent written as hsl or oklch was not entered in the browser UI. Leaving the calendar open across local midnight was not checked.
+- A month file that would pass 20 MB keeps later messages as counts only. A row opens the conversation, not the message. Removing the plugin deletes its settings.
+
 ## [0.18.1.1] - 2026-11-28
 
 ### Added
@@ -1033,6 +1080,7 @@ First release under the name Clear Chat.
 
 Based on Beautiful Chat by ABorakati.
 
+[0.18.1.2]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.18.1.1...v0.18.1.2
 [0.18.1.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.17.5.2...v0.18.1.1
 [0.17.5.2]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.17.5.1...v0.17.5.2
 [0.17.5.1]: https://github.com/jasonhnd/paseo-clear-chat/compare/v0.17.4.2...v0.17.5.1
