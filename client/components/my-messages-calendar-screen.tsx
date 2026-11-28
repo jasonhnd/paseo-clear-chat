@@ -1,5 +1,5 @@
 import React from "react";
-import { FlatList, Pressable, Text, View } from "react-native";
+import { FlatList, Pressable, ScrollView, Text, View } from "react-native";
 import { useTranslation, type PluginScreenProps } from "@getpaseo/plugin/client";
 import { formatClock, localDateKey } from "../../shared/local-day";
 import { messages } from "../messages";
@@ -11,9 +11,11 @@ import {
   buildYear,
   monthKeyOfDay,
   monthNumberOfKey,
+  monthSummary,
   monthTotals,
   quartileThresholds,
   selectableDay,
+  topConversations,
   type DayKey,
   type MonthKey,
 } from "../my-messages-calendar";
@@ -23,6 +25,7 @@ import { nowMs } from "../my-messages-clock";
 import { useEnhancerPreferences } from "../preferences";
 import { isEmptyMessageText, messagePreview } from "../../shared/user-message-kind";
 import { CalendarMonthView, CalendarYearView, buildLevelPalette, emptyCellFill } from "./my-messages-calendar-views";
+import { MonthPanel } from "./my-messages-calendar-month-panel";
 import { MyMessagesRowActions } from "./my-messages-row-actions";
 import { buildThemeTokens } from "./theme-tokens";
 
@@ -58,6 +61,7 @@ export function MyMessagesCalendarScreen({
   const [year, setYear] = React.useState(() => Number(monthKeyOfDay(selectedDay).slice(0, 4)));
   const [view, setView] = React.useState<CalendarView>("month");
   const [expanded, setExpanded] = React.useState(!layout.compact);
+  const [filterAgentId, setFilterAgentId] = React.useState<string | null>(null);
 
   React.useEffect(() => { setVisibleMonth(monthKeyOfDay(selectedDay)); }, [selectedDay]);
 
@@ -94,6 +98,30 @@ export function MyMessagesCalendarScreen({
     [year, totalsByMonth, snapshot.firstDay, today],
   );
   const monthThresholds = React.useMemo(() => quartileThresholds(Object.values(totalsByMonth)), [totalsByMonth]);
+  const monthEntries = snapshot.conversationMonths[visibleMonth] ?? [];
+  const panelSummary = React.useMemo(
+    () => monthSummary(displayedDays, visibleMonth, today),
+    [displayedDays, visibleMonth, today],
+  );
+  const topConversationsThisMonth = React.useMemo(() => topConversations(monthEntries), [monthEntries]);
+  const filterEntry = filterAgentId === null
+    ? undefined
+    : monthEntries.find(entry => entry.agentId === filterAgentId);
+  const filterTitle = filterEntry?.title?.trim() ? filterEntry.title : t("myMessages.screenUntitled");
+  // The ranking and the totals share the cells' records; a conversation the reader could not
+  // reach, a partial directory, or rows only the opened day's fallback found leave both
+  // short of the whole month, and the panel says so rather than presenting them as exact.
+  const monthIncomplete = snapshot.notices.directoryPartial
+    || snapshot.notices.cacheError
+    || snapshot.notices.skippedDatabases.length > 0
+    || snapshot.slowConversationIds.length > 0
+    || Object.values(snapshot.extraDays).some(count => count > 0)
+    // Totals with no per-conversation rows means the host did not answer the ranking.
+    || (panelSummary.total > 0 && monthEntries.length === 0);
+  const showMonthPanel = view === "month" && snapshot.daysStatus === "ready";
+  const panelTitle = visibleMonth === monthKeyOfDay(today)
+    ? t("myMessages.calendar.monthPanelTitle")
+    : formatMonthTitle(locale, visibleMonth);
 
   const minMonth = monthKeyOfDay(snapshot.firstDay ?? today);
   const maxMonth = monthKeyOfDay(today);
@@ -117,13 +145,24 @@ export function MyMessagesCalendarScreen({
       if (layout.compact) setExpanded(false);
       return;
     }
+    if (monthKeyOfDay(day) !== visibleMonth) setFilterAgentId(null);
     actions.select(day);
     setVisibleMonth(monthKeyOfDay(day));
     if (layout.compact) setExpanded(false);
   }
 
+  /** The left panel belongs to one month, so every month change drops the filter with it. */
+  function showMonth(month: MonthKey) {
+    setVisibleMonth(month);
+    setFilterAgentId(null);
+  }
+
+  function toggleFilter(agentId: string) {
+    setFilterAgentId(current => (current === agentId ? null : agentId));
+  }
+
   function goToday() {
-    setVisibleMonth(monthKeyOfDay(today));
+    showMonth(monthKeyOfDay(today));
     setView("month");
     if (layout.compact) setExpanded(false);
     actions.select(today);
@@ -131,7 +170,7 @@ export function MyMessagesCalendarScreen({
 
   function enterMonth(month: MonthKey) {
     setView("month");
-    setVisibleMonth(month);
+    showMonth(month);
     if (layout.compact) setExpanded(true);
     const firstOfMonth = `${month}-01`;
     const firstCandidate = snapshot.firstDay && monthKeyOfDay(snapshot.firstDay) === month
@@ -166,7 +205,7 @@ export function MyMessagesCalendarScreen({
     }
     const next = addMonths(visibleMonth, delta);
     if (next < minMonth || next > maxMonth) return;
-    setVisibleMonth(next);
+    showMonth(next);
   }
 
   const summary = selectedDay === today
@@ -185,6 +224,9 @@ export function MyMessagesCalendarScreen({
           date: formatDayLabel(locale, selectedDay), messages: selectedCount,
         });
   const countedOnly = detail.status === "ready" ? Math.max(0, selectedCount - detail.rows.length) : 0;
+  const listRows = filterAgentId === null
+    ? detail.rows
+    : detail.rows.filter(row => row.agentId === filterAgentId);
   const notice = snapshot.notices.directoryPartial || snapshot.notices.cacheError || snapshot.notices.skippedDatabases.length > 0;
   const noticeFull = snapshot.notices.cacheFull.length > 0;
   const incomplete = detail.partial.length > 0 || detail.failed.length > 0 || detail.directoryFailed;
@@ -235,8 +277,10 @@ export function MyMessagesCalendarScreen({
         </Text>
       ) : null}
 
-      <View style={{ flex: 1, flexDirection: layout.compact ? "column" : "row", gap: 12 }}>
-        <View style={{ width: layout.compact ? undefined : 320, gap: 6 }}>
+      <View style={{ flex: 1, flexDirection: layout.compact ? "column" : "row", gap: 12, minHeight: 0 }}>
+        <View style={layout.compact
+          ? { gap: 6 }
+          : { width: 320, gap: 6, alignSelf: "stretch", minHeight: 0 }}>
           {daysFailed ? (
             <View testID="my-messages-calendar-days-failed" accessibilityRole="alert" style={{ gap: 6 }}>
               <Text style={warning}>{t("myMessages.calendar.readFailed")}</Text>
@@ -283,7 +327,7 @@ export function MyMessagesCalendarScreen({
                 platform={layout.platform}
                 weekMode
                 onSelect={selectDay}
-                onMonthChange={setVisibleMonth}
+                onMonthChange={showMonth}
                 onToday={goToday}
               />
             </View>
@@ -304,7 +348,7 @@ export function MyMessagesCalendarScreen({
               compact={layout.compact}
               platform={layout.platform}
               onSelect={selectDay}
-              onMonthChange={setVisibleMonth}
+              onMonthChange={showMonth}
               onToday={goToday}
             />
           )}
@@ -330,9 +374,62 @@ export function MyMessagesCalendarScreen({
             ))}
             <Text style={small}>{t("myMessages.calendar.more")}</Text>
           </View>
+          {showMonthPanel && layout.compact ? (
+            <MonthPanel
+              title={panelTitle}
+              summary={panelSummary}
+              conversations={topConversationsThisMonth}
+              filterAgentId={filterAgentId}
+              onToggleFilter={toggleFilter}
+              incomplete={monthIncomplete}
+              compact
+              locale={locale}
+              tokens={tokens}
+              t={t}
+            />
+          ) : null}
+          {showMonthPanel && !layout.compact ? (
+            <ScrollView
+              testID="my-messages-calendar-left-scroll"
+              style={{ flex: 1, minHeight: 0 }}
+              contentContainerStyle={{ gap: 8, paddingBottom: padding }}
+            >
+              <MonthPanel
+                title={panelTitle}
+                summary={panelSummary}
+                conversations={topConversationsThisMonth}
+                filterAgentId={filterAgentId}
+                onToggleFilter={toggleFilter}
+                incomplete={monthIncomplete}
+                compact={false}
+                locale={locale}
+                tokens={tokens}
+                t={t}
+              />
+            </ScrollView>
+          ) : null}
         </View>
 
-        <View style={{ flex: 1, gap: 6 }}>
+        <View style={{ flex: 1, gap: 6, minHeight: 0 }}>
+          {filterAgentId !== null ? (
+            <Pressable
+              testID="my-messages-calendar-filter"
+              accessibilityRole="button"
+              accessibilityLabel={t("myMessages.calendar.monthPanelFilterClear")}
+              onPress={() => setFilterAgentId(null)}
+              style={{
+                flexDirection: "row", alignItems: "center", gap: 6,
+                paddingVertical: 5, paddingHorizontal: 8,
+                borderRadius: 8, borderWidth: 1,
+                borderColor: tokens.accent, backgroundColor: tokens.accentBg,
+              }}
+            >
+              <Text style={{ ...body, fontSize: tokens.fs(12), flex: 1 }} numberOfLines={1}>
+                {t("myMessages.calendar.monthPanelFilter", { title: filterTitle })}
+              </Text>
+              <Text style={{ ...body, fontSize: tokens.fs(12) }}>×</Text>
+            </Pressable>
+          ) : null}
           <Text testID="my-messages-screen-summary" style={body}>{summary}</Text>
           {detail.status === "reading" ? (
             <Text testID="my-messages-screen-progress" style={muted}>
@@ -371,14 +468,18 @@ export function MyMessagesCalendarScreen({
                 : t("myMessages.calendar.countOnly", { count: countedOnly })}
             </Text>
           ) : null}
-          {detail.status === "ready" && detail.rows.length === 0 && countedOnly === 0 ? (
-            <Text style={muted}>{t("myMessages.calendar.dayEmpty")}</Text>
+          {detail.status === "ready" && listRows.length === 0 && countedOnly === 0 ? (
+            <Text style={muted}>
+              {filterAgentId === null
+                ? t("myMessages.calendar.dayEmpty")
+                : t("myMessages.calendar.monthPanelFilterEmpty")}
+            </Text>
           ) : null}
           <FlatList
             testID="my-messages-screen-list"
             style={{ flex: 1 }}
             contentContainerStyle={{ paddingBottom: padding, gap: 8 }}
-            data={detail.rows}
+            data={listRows}
             keyExtractor={(row, index) => `${row.agentId}:${row.at}:${row.seq}:${index}`}
             renderItem={({ item: row }) => {
               const title = row.title?.trim() ? row.title : t("myMessages.screenUntitled");

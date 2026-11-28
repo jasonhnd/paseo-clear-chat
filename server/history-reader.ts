@@ -42,6 +42,8 @@ export interface HistoryConversation {
   id: string;
   /** The provider-side session id (`runtimeInfo.sessionId`); null when the host has none. */
   sessionId: string | null;
+  /** The directory's display title, for the left panel's ranking. */
+  title?: string | null;
   /** Milliseconds since the epoch. Picks one conversation when several share a session. */
   lastActiveAt: number;
 }

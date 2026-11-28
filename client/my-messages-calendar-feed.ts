@@ -2,7 +2,7 @@ import type { PaseoApi } from "@getpaseo/client";
 import type { HistoryDayResult, HistoryDaysResult } from "../shared/history-rpc";
 import type { HistorySource } from "./history-source";
 import { startOfNextLocalDay, localDateKey } from "../shared/local-day";
-import { DayKey, parseDayKey } from "./my-messages-calendar";
+import { DayKey, parseDayKey, type ConversationMonthCount, type MonthKey } from "./my-messages-calendar";
 import { currentTimers, nowMs } from "./my-messages-clock";
 import {
   listAllConversations,
@@ -62,6 +62,12 @@ export interface MyMessagesCalendarSnapshot {
   days: Readonly<Record<DayKey, number>>;
   /** Extra rows the timeline fallback found, per day; overwritten, never accumulated. */
   extraDays: Readonly<Record<DayKey, number>>;
+  /**
+   * Per local month, the conversations that wrote anything that month and how much. Built
+   * from the same merged records as `days`, so the ranking agrees with the grid; empty when
+   * the host answered without the field.
+   */
+  conversationMonths: Readonly<Record<MonthKey, readonly ConversationMonthCount[]>>;
   firstDay: DayKey | null;
   lastDay: DayKey | null;
   selectedDay: DayKey;
@@ -107,7 +113,8 @@ function emptyDetail(day: DayKey): CalendarDetailSnapshot {
 
 export function emptyCalendarSnapshot(day: DayKey, timeZone = "UTC"): MyMessagesCalendarSnapshot {
   return {
-    mode: "calendar", daysStatus: "reading", days: {}, extraDays: {}, firstDay: null, lastDay: null,
+    mode: "calendar", daysStatus: "reading", days: {}, extraDays: {}, conversationMonths: {},
+    firstDay: null, lastDay: null,
     selectedDay: day, detail: emptyDetail(day), notices: { directoryPartial: false, cacheError: false, skippedDatabases: [], cacheFull: [] },
     slowConversationIds: [], timeZone,
   };
@@ -374,14 +381,18 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
     if (!isOpen()) return;
     if (state.status === "unsupported") {
       // The host has no history RPC at all: keep the previous today-only page.
-      publish(session, { mode: "fallback", daysStatus: "unsupported", detail: emptyDetail(session.snapshot.selectedDay) });
+      publish(session, {
+        mode: "fallback", daysStatus: "unsupported", conversationMonths: {},
+        detail: emptyDetail(session.snapshot.selectedDay),
+      });
       return;
     }
     if (state.status === "error") {
       // A failed read is not an old host. Keep the calendar shape while the day still reads,
       // and give both methods one automatic second try before deciding the host is unusable.
       publish(session, {
-        mode: "calendar", daysStatus: "error", days: {}, extraDays: {}, firstDay: null, lastDay: null,
+        mode: "calendar", daysStatus: "error", days: {}, extraDays: {}, conversationMonths: {},
+        firstDay: null, lastDay: null,
         slowConversationIds: [],
         notices: { directoryPartial: false, cacheError: false, skippedDatabases: [], cacheFull: [] },
       });
@@ -398,7 +409,8 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
       }
       // Neither method ever answered: the previous today-only page still reads the timeline.
       publish(session, {
-        mode: "fallback", daysStatus: "error", days: {}, extraDays: {}, firstDay: null, lastDay: null,
+        mode: "fallback", daysStatus: "error", days: {}, extraDays: {}, conversationMonths: {},
+        firstDay: null, lastDay: null,
         slowConversationIds: [], detail: emptyDetail(session.snapshot.selectedDay),
         notices: { directoryPartial: false, cacheError: false, skippedDatabases: [], cacheFull: [] },
       });
@@ -407,8 +419,19 @@ export function createMyMessagesCalendarFeed(now: () => number = nowMs) {
     const result = state.snapshot;
     const days: Record<DayKey, number> = {};
     for (const entry of result.days) if (entry.count > 0) days[entry.day] = entry.count;
+    const conversationMonths: Record<MonthKey, ConversationMonthCount[]> = {};
+    for (const entry of result.conversationMonths ?? []) {
+      if (entry.count <= 0) continue;
+      (conversationMonths[entry.month] ??= []).push({
+        agentId: entry.agentId,
+        title: entry.title,
+        count: entry.count,
+        lastAt: entry.lastAt,
+      });
+    }
     publish(session, {
-      mode: "calendar", daysStatus: "ready", days, extraDays: {}, firstDay: result.firstDay, lastDay: result.lastDay,
+      mode: "calendar", daysStatus: "ready", days, extraDays: {}, conversationMonths,
+      firstDay: result.firstDay, lastDay: result.lastDay,
       slowConversationIds: result.slowConversationIds, notices: noticesFromDays(result),
       timeZone: session.history.timeZone,
     });

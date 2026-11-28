@@ -111,7 +111,19 @@
       "countOnlyOne": "这天有 1 条只保留了数目，原文没有保留",
       "readFailed": "日历暂时读不到，可能有日子缺失。",
       "noticeCacheFull": "有些旧日子只保留了条数，原文已经不在了。",
-      "daySummarySingle": "{{date}} · 1 条 · 1 个对话"
+      "daySummarySingle": "{{date}} · 1 条 · 1 个对话",
+      "monthPanelTitle": "本月小结",
+      "monthPanelTotal": "消息数",
+      "monthPanelDays": "有消息的天数",
+      "monthPanelBusiest": "最多的一天",
+      "monthPanelAverage": "日均",
+      "monthPanelTop": "本月常聊的对话",
+      "monthPanelEmpty": "本月还没有消息",
+      "monthPanelPartial": "有些对话没读全，这些数字和排行可能不全。",
+      "monthPanelFilter": "只看：{{title}} · 清除",
+      "monthPanelFilterClear": "显示全部对话",
+      "monthPanelFilterHint": "只显示这个对话；再点一次显示全部对话。",
+      "monthPanelFilterEmpty": "这一天这个对话没有你的消息"
     }
   }
 }

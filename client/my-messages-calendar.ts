@@ -171,6 +171,83 @@ export function monthTotals(days: readonly { day: DayKey; count: number }[]): Re
   return totals;
 }
 
+/** One conversation's messages in one month, as the days RPC reports them. */
+export interface ConversationMonthCount {
+  agentId: string;
+  title: string | null;
+  count: number;
+  /** Milliseconds since the epoch of its newest counted message that month. */
+  lastAt: number;
+}
+
+/**
+ * The four numbers the left panel shows for one month.
+ *
+ * `total`, `daysWithMessages`, `busiestDay` and `busiestCount` are read from the same merged
+ * day map the cells are drawn from, so the panel can never disagree with the grid. A tie for
+ * the busiest day goes to the earlier date. The daily average divides by the days that have
+ * happened: today's date-of-month for the current month, the month's full length for a past
+ * month, and 0 for a future one (which cannot be opened).
+ */
+export interface MonthSummary {
+  month: MonthKey;
+  total: number;
+  daysWithMessages: number;
+  busiestDay: DayKey | null;
+  busiestCount: number;
+  elapsedDays: number;
+  dailyAverage: number;
+}
+
+export function monthSummary(
+  days: Readonly<Record<DayKey, number>>,
+  month: MonthKey,
+  today: DayKey,
+): MonthSummary {
+  const { year, month: monthNumber } = parseDayKey(`${month}-01`);
+  const todayMonth = monthKeyOfDay(today);
+  const elapsedDays = month > todayMonth ? 0
+    : month === todayMonth ? parseDayKey(today).day
+    : daysInMonth(year, monthNumber);
+  let total = 0;
+  let daysWithMessages = 0;
+  let busiestDay: DayKey | null = null;
+  let busiestCount = 0;
+  for (const [day, count] of Object.entries(days)) {
+    if (!day.startsWith(`${month}-`) || count <= 0) continue;
+    total += count;
+    daysWithMessages += 1;
+    if (count > busiestCount || (count === busiestCount && (busiestDay === null || day < busiestDay))) {
+      busiestDay = day;
+      busiestCount = count;
+    }
+  }
+  return {
+    month,
+    total,
+    daysWithMessages,
+    busiestDay,
+    busiestCount,
+    elapsedDays,
+    dailyAverage: elapsedDays > 0 ? total / elapsedDays : 0,
+  };
+}
+
+/**
+ * The five most talked-to conversations of a month: most messages first, then the one that
+ * spoke more recently, then the id so a full tie is still deterministic.
+ */
+export function topConversations(
+  entries: readonly ConversationMonthCount[],
+  limit = 5,
+): ConversationMonthCount[] {
+  return [...entries]
+    .sort((left, right) => right.count - left.count
+      || right.lastAt - left.lastAt
+      || (left.agentId < right.agentId ? -1 : left.agentId > right.agentId ? 1 : 0))
+    .slice(0, Math.max(0, limit));
+}
+
 /**
  * The twelve cells of a year view. Months before the first recorded day and months
  * after the current one are not selectable; without a first day only the future is.

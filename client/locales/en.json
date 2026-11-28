@@ -111,7 +111,19 @@
       "countOnlyOne": "1 message from this day was counted but its text was not kept",
       "readFailed": "The calendar could not be read right now. Some days may be missing.",
       "noticeCacheFull": "Some old days are stored as counts only; their message text is no longer available.",
-      "daySummarySingle": "{{date}} · 1 message · 1 conversation"
+      "daySummarySingle": "{{date}} · 1 message · 1 conversation",
+      "monthPanelTitle": "This month",
+      "monthPanelTotal": "Messages",
+      "monthPanelDays": "Days with messages",
+      "monthPanelBusiest": "Busiest day",
+      "monthPanelAverage": "Average per day",
+      "monthPanelTop": "Most talked-to conversations",
+      "monthPanelEmpty": "No messages this month",
+      "monthPanelPartial": "Some conversations could not be read, so these totals and this list may be incomplete.",
+      "monthPanelFilter": "Showing only {{title}} · Clear",
+      "monthPanelFilterClear": "Show all conversations",
+      "monthPanelFilterHint": "Shows only this conversation. Press again to show every conversation.",
+      "monthPanelFilterEmpty": "No messages from this conversation on this day"
     }
   }
 }

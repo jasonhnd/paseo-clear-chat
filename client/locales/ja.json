@@ -111,7 +111,19 @@
       "countOnlyOne": "この日の 1 件は件数のみ保存され、本文は残っていません",
       "readFailed": "カレンダーを読み込めませんでした。表示されない日がある可能性があります。",
       "noticeCacheFull": "古い日の一部は件数のみ保存されており、本文は残っていません。",
-      "daySummarySingle": "{{date}} · 1 件 · 1 会話"
+      "daySummarySingle": "{{date}} · 1 件 · 1 会話",
+      "monthPanelTitle": "今月のまとめ",
+      "monthPanelTotal": "メッセージ数",
+      "monthPanelDays": "発言した日",
+      "monthPanelBusiest": "最多の日",
+      "monthPanelAverage": "1日平均",
+      "monthPanelTop": "よく話した会話",
+      "monthPanelEmpty": "今月はまだメッセージがありません",
+      "monthPanelPartial": "一部の会話を読み取れていないため、この数字と一覧は不完全な可能性があります。",
+      "monthPanelFilter": "{{title}} のみ表示 · 解除",
+      "monthPanelFilterClear": "すべての会話を表示",
+      "monthPanelFilterHint": "この会話だけを表示します。もう一度押すとすべて表示します。",
+      "monthPanelFilterEmpty": "この日はこの会話にメッセージがありません"
     }
   }
 }

@@ -46,6 +46,7 @@ export async function listHistoryConversations(paseo: PaseoApi): Promise<History
       found.set(agent.id, {
         id: agent.id,
         sessionId: agent.runtimeInfo?.sessionId ?? null,
+        title: agent.title ?? null,
         lastActiveAt: lastActiveAt(agent),
       });
     }

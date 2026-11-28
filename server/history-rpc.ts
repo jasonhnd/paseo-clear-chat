@@ -7,6 +7,7 @@ import {
   type ArchiveMerge,
 } from "./history-archive";
 import { listHistoryConversations } from "./history-conversations";
+import { countByConversationMonth } from "./history-conversation-months";
 import { readHistoryData, zoneDayKey } from "./history-reader";
 
 /**
@@ -66,6 +67,11 @@ export function registerHistoryHandlers(
       const presentSessions = new Set(authoritative);
       return {
         ...countByDay(merged.messages, input.timeZone),
+        conversationMonths: countByConversationMonth(
+          merged.messages,
+          input.timeZone,
+          new Map(conversations.map(conversation => [conversation.id, conversation.title ?? null])),
+        ),
         fastConversations: fast.fastConversations,
         slowConversationIds: fast.slowConversationIds,
         skippedDatabases: fast.skippedDatabases,

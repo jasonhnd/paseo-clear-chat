@@ -12,6 +12,8 @@ import { z } from "zod";
 
 /** `YYYY-MM-DD`. The reader still filters rows by the zone day, so shape is all this checks. */
 const daySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+/** `YYYY-MM`, a local month. */
+const monthSchema = z.string().regex(/^\d{4}-\d{2}$/);
 
 export const historyDaysInputSchema = z.object({
   timeZone: z.string().min(1).max(64),
@@ -22,11 +24,29 @@ export const historyDayCountSchema = z.object({
   count: z.number().int().nonnegative(),
 });
 
+/**
+ * One conversation's messages in one local month, counted from the same merged records
+ * the day cells are drawn from. `lastAt` only breaks count ties in the "most talked-to"
+ * list: the conversation that spoke more recently comes first.
+ */
+export const historyConversationMonthSchema = z.object({
+  month: monthSchema,
+  agentId: z.string(),
+  title: z.string().nullable(),
+  count: z.number().int().nonnegative(),
+  lastAt: z.number().finite(),
+});
+
 export const historyDaysResultSchema = z.object({
   /** Only days with at least one message, oldest first. */
   days: z.array(historyDayCountSchema),
   firstDay: daySchema.nullable(),
   lastDay: daySchema.nullable(),
+  /**
+   * Per conversation, per month counts for the left panel. Optional so a host that
+   * predates the left panel still answers; the client then marks the ranking incomplete.
+   */
+  conversationMonths: z.array(historyConversationMonthSchema).optional(),
   /** Conversations the fast path could read, and the ones it could not. */
   fastConversations: z.number().int().nonnegative(),
   slowConversationIds: z.array(z.string()),
@@ -83,6 +103,7 @@ export const historyDayRpc = defineRpc({
 export type HistoryDaysInput = z.output<typeof historyDaysInputSchema>;
 export type HistoryDayInput = z.output<typeof historyDayInputSchema>;
 export type HistoryDayCount = z.output<typeof historyDayCountSchema>;
+export type HistoryConversationMonth = z.output<typeof historyConversationMonthSchema>;
 export type HistoryDaysResult = z.output<typeof historyDaysResultSchema>;
 export type HistoryDayRow = z.output<typeof historyDayRowSchema>;
 export type HistoryDayResult = z.output<typeof historyDayResultSchema>;
