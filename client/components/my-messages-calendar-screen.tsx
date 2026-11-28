@@ -27,7 +27,7 @@ import { nowMs } from "../my-messages-clock";
 import { useEnhancerPreferences } from "../preferences";
 import { isEmptyMessageText, messagePreview } from "../../shared/user-message-kind";
 import { CalendarMonthView, CalendarYearView, buildLevelPalette, emptyCellFill } from "./my-messages-calendar-views";
-import { MonthPanel } from "./my-messages-calendar-month-panel";
+import { MonthPanel, type RankingState } from "./my-messages-calendar-month-panel";
 import { MyMessagesRowActions } from "./my-messages-row-actions";
 import { buildThemeTokens } from "./theme-tokens";
 
@@ -64,6 +64,8 @@ const COMPACT_TOOLBAR_MAX = 104;
 export const COMPACT_LIST_ROW = 64;
 /** The summary line, the filter bar and the gaps above the list. */
 const COMPACT_LIST_CHROME = 56;
+/** Rows the narrow page keeps on screen before it shrinks the calendar column instead. */
+const COMPACT_LIST_MIN_ROWS = 2;
 
 /**
  * The room a page of `viewportHeight` leaves the calendar column and the list together.
@@ -84,12 +86,12 @@ export function compactCalendarMaxHeight(bodyHeight: number): number {
 }
 
 /**
- * Pixels the compact page leaves the message list under the bounded calendar column.
- * At 390×844 this is more than three rows, so the selected day's first row is on the first
- * screen even with the whole month open.
+ * Pixels the compact page keeps for the list column: its summary line, its filter bar, its
+ * gaps and two rows. The column carries this as a `minHeight`, so the calendar column above
+ * it shrinks rather than the list's first row leaving the screen.
  */
-export function compactMessageListHeight(bodyHeight: number): number {
-  return bodyHeight * (1 - COMPACT_CALENDAR_SHARE) - COMPACT_LIST_CHROME;
+export function compactListFloor(): number {
+  return COMPACT_LIST_ROW * COMPACT_LIST_MIN_ROWS + COMPACT_LIST_CHROME;
 }
 
 export function MyMessagesCalendarScreen({
@@ -192,6 +194,11 @@ export function MyMessagesCalendarScreen({
     || !snapshot.conversationMonthsKnown
     || panelSummary.total > monthRankedTotal;
   const showMonthPanel = view === "month" && snapshot.daysStatus === "ready";
+  // Three states, not two: the host never ranked the month, the month is ranked from a
+  // partial read, or the ranking is complete. An empty list reads differently in each.
+  const rankingState: RankingState = snapshot.daysStatus !== "ready" || !snapshot.conversationMonthsKnown
+    ? "unavailable"
+    : monthIncomplete ? "partial" : "complete";
   const panelTitle = visibleMonth === monthKeyOfDay(today)
     ? t("myMessages.calendar.monthPanelTitle")
     : formatMonthTitle(locale, visibleMonth);
@@ -306,7 +313,17 @@ export function MyMessagesCalendarScreen({
       : t("myMessages.calendar.daySummaryMessages", {
           date: formatDayLabel(locale, selectedDay), messages: selectedCount,
         });
-  const countedOnly = detail.status === "ready" ? Math.max(0, selectedCount - detail.rows.length) : 0;
+  // Messages the day counted but cannot list. The whole day's number and the filtered
+  // conversation's number are different questions: another conversation's count-only
+  // records must not stand in for "this conversation has nothing on this day".
+  const dayCountOnly = detail.status === "ready" ? Math.max(0, selectedCount - detail.rows.length) : 0;
+  const filterCountOnly = detail.status === "ready" && filterAgentId !== null
+    ? detail.countedRows.filter(row => row.agentId === filterAgentId).length
+    : 0;
+  // A day whose read failed cannot say which conversation a count-only record belongs to,
+  // so it shows neither that number nor an empty-day line.
+  const countOnly = detail.unreconciled ? 0
+    : filterAgentId === null ? dayCountOnly : filterCountOnly;
   const listRows = filterAgentId === null
     ? detail.rows
     : detail.rows.filter(row => row.agentId === filterAgentId);
@@ -488,7 +505,7 @@ export function MyMessagesCalendarScreen({
                 filterAgentId={filterAgentId}
                 onToggleFilter={toggleFilter}
                 incomplete={monthIncomplete}
-                rankingKnown={snapshot.conversationMonthsKnown}
+                rankingState={rankingState}
                 compact
                 locale={locale}
                 tokens={tokens}
@@ -512,7 +529,7 @@ export function MyMessagesCalendarScreen({
                   filterAgentId={filterAgentId}
                   onToggleFilter={toggleFilter}
                   incomplete={monthIncomplete}
-                  rankingKnown={snapshot.conversationMonthsKnown}
+                  rankingState={rankingState}
                   compact={false}
                   locale={locale}
                   tokens={tokens}
@@ -523,7 +540,7 @@ export function MyMessagesCalendarScreen({
           </View>
         )}
 
-        <View style={{ flex: 1, gap: 6, minHeight: 0 }}>
+        <View testID="my-messages-calendar-list-column" style={{ flex: 1, gap: 6, minHeight: compactListFloor() }}>
           {filterAgentId !== null ? (
             <Pressable
               testID="my-messages-calendar-filter"
@@ -574,14 +591,19 @@ export function MyMessagesCalendarScreen({
               <Text style={body}>{t("myMessages.retry")}</Text>
             </Pressable>
           ) : null}
-          {countedOnly > 0 ? (
-            <Text testID="my-messages-calendar-count-only" style={muted}>
-              {countedOnly === 1
-                ? t("myMessages.calendar.countOnlyOne")
-                : t("myMessages.calendar.countOnly", { count: countedOnly })}
+          {detail.unreconciled ? (
+            <Text testID="my-messages-calendar-unreconciled" accessibilityRole="alert" style={warning}>
+              {t("myMessages.calendar.dayUnreconciled")}
             </Text>
           ) : null}
-          {detail.status === "ready" && listRows.length === 0 && countedOnly === 0 ? (
+          {countOnly > 0 ? (
+            <Text testID="my-messages-calendar-count-only" style={muted}>
+              {countOnly === 1
+                ? t("myMessages.calendar.countOnlyOne")
+                : t("myMessages.calendar.countOnly", { count: countOnly })}
+            </Text>
+          ) : null}
+          {detail.status === "ready" && !detail.unreconciled && listRows.length === 0 && countOnly === 0 ? (
             <Text style={muted}>
               {filterAgentId === null
                 ? t("myMessages.calendar.dayEmpty")

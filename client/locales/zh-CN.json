@@ -125,7 +125,9 @@
       "monthPanelFilter": "只看：{{title}} · 清除",
       "monthPanelFilterClear": "显示全部对话",
       "monthPanelFilterHint": "只显示这个对话；再点一次显示全部对话。",
-      "monthPanelFilterEmpty": "这一天这个对话没有你的消息"
+      "monthPanelFilterEmpty": "这一天这个对话没有你的消息",
+      "dayUnreconciled": "这一天的条数和能列出的消息没能对上，列表可能不全，总数里也可能有列不出来的消息。",
+      "monthPanelPartialRanking": "只排了已经读到的部分，这个月的对话可能不止这些。"
     }
   }
 }

@@ -24,16 +24,21 @@ export interface MonthPanelProps {
   onToggleFilter(agentId: string): void;
   incomplete: boolean;
   /**
-   * The days answer carried per-conversation counts. False means the host did not rank the
-   * month at all: an empty list then reads "not available", never "no messages", and a list
-   * filled in by opening days is partial rather than complete.
+   * What the caller knows about this month's per-conversation counts:
+   * `complete` — the host ranked the whole month; an empty list is an empty month.
+   * `partial` — the ranking is the days the reader opened, or a conversation could not be
+   * read; an empty list is "nothing ranked yet", not an empty month.
+   * `unavailable` — the host sent no per-conversation counts at all; the list is not a
+   * ranking and nothing may be called empty on its strength.
    */
-  rankingKnown: boolean;
+  rankingState: RankingState;
   compact: boolean;
   locale: string;
   tokens: ExtendedThemeTokens;
   t: Translate;
 }
+
+export type RankingState = "complete" | "partial" | "unavailable";
 
 interface Stat {
   key: string;
@@ -51,7 +56,7 @@ function formatCount(locale: string, value: number): string {
 }
 
 export function MonthPanel({
-  title, summary, conversations, filterAgentId, onToggleFilter, incomplete, rankingKnown, compact, locale, tokens, t,
+  title, summary, conversations, filterAgentId, onToggleFilter, incomplete, rankingState, compact, locale, tokens, t,
 }: MonthPanelProps) {
   const body = { color: tokens.foreground, fontFamily: tokens.fontUi, fontSize: tokens.fs(14) };
   const muted = { color: tokens.foregroundMuted, fontFamily: tokens.fontUi, fontSize: tokens.fs(12) };
@@ -154,18 +159,26 @@ export function MonthPanel({
         {t("myMessages.calendar.monthPanelTop")}
       </Text>
       {top.length === 0 ? (
-        summary.total > 0 ? (
+        rankingState === "complete" ? (
+          // Only a complete ranking can call a month empty: no totals, no unread
+          // conversation, nothing missing from the list.
+          <Text testID="my-messages-calendar-month-empty" style={muted}>
+            {t("myMessages.calendar.monthPanelEmpty")}
+          </Text>
+        ) : rankingState === "partial" ? (
+          // The month was not read whole and nothing is ranked yet: that is not an empty
+          // month, and the may-be-incomplete line above is not a substitute for saying so.
+          <Text testID="my-messages-calendar-month-partial-ranking" style={muted}>
+            {t("myMessages.calendar.monthPanelPartialRanking")}
+          </Text>
+        ) : (
           // Totals with no per-conversation rows is a host that did not answer the ranking,
           // not a month with nothing in it: the two must not read the same.
           <Text testID="my-messages-calendar-month-no-ranking" style={muted}>
             {t("myMessages.calendar.monthPanelNoRanking")}
           </Text>
-        ) : (
-          <Text testID="my-messages-calendar-month-empty" style={muted}>
-            {t("myMessages.calendar.monthPanelEmpty")}
-          </Text>
         )
-      ) : !rankingKnown ? (
+      ) : rankingState === "unavailable" ? (
         // The rows exist only because days were opened; without the host's own counts this
         // is a partial ranking, and the may-be-incomplete line above says so.
         <Text testID="my-messages-calendar-month-no-ranking" style={muted}>

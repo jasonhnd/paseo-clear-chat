@@ -125,7 +125,9 @@
       "monthPanelFilter": "Showing only {{title}} · Clear",
       "monthPanelFilterClear": "Show all conversations",
       "monthPanelFilterHint": "Shows only this conversation. Press again to show every conversation.",
-      "monthPanelFilterEmpty": "No messages from this conversation on this day"
+      "monthPanelFilterEmpty": "No messages from this conversation on this day",
+      "dayUnreconciled": "This day’s count and the messages it can list were not matched, so the list may be short and the total may include messages it cannot show.",
+      "monthPanelPartialRanking": "Only what has been read is ranked. This month may have more conversations."
     }
   }
 }

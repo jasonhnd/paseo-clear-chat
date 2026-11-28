@@ -125,7 +125,9 @@
       "monthPanelFilter": "{{title}} のみ表示 · 解除",
       "monthPanelFilterClear": "すべての会話を表示",
       "monthPanelFilterHint": "この会話だけを表示します。もう一度押すとすべて表示します。",
-      "monthPanelFilterEmpty": "この日はこの会話にメッセージがありません"
+      "monthPanelFilterEmpty": "この日はこの会話にメッセージがありません",
+      "dayUnreconciled": "この日の件数と表示できるメッセージが突き合わせられていません。一覧が足りない場合や、件数に表示できないメッセージが含まれる場合があります。",
+      "monthPanelPartialRanking": "読み取れた分だけを並べています。この月は他にも会話がある可能性があります。"
     }
   }
 }
