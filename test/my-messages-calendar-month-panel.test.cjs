@@ -392,17 +392,34 @@ test("compact: the panel sits between the week strip and the message list", asyn
   // Both of the day's rows are in the list: a zero-row layout would pass a `<= 1` check too.
   assert.equal(all(view, "my-messages-screen-row").length, 2);
   assert.match(h.text(all(view, "my-messages-screen-row")[0]), /alpha today/);
+});
 
-  // The calendar column is bounded, and at 390x844 the list keeps more than two rows of it.
+test("compact: an expanded month leaves the day's list a visible first screen", async t => {
+  const history = historyFor(daysResult({ [dayKey(0)]: 2 }, {
+    conversationMonths: [monthCount("alpha", "Alpha conversation", 2, 0)],
+    slowConversationIds: ["alpha"],
+  }), { [dayKey(0)]: dayResult([
+    { agentId: "alpha", at: at(0, 9), text: "alpha today" },
+    { agentId: "alpha", at: at(0, 8), text: "alpha earlier" },
+  ]) });
+  const { draw, one, all, h } = fixture(t, { historyRpc: history, compact: true });
+  draw();
+  await flush();
   const screen = h.load("client/components/my-messages-calendar-screen.tsx");
-  one(view, "my-messages-calendar-expand").props.onPress();
+  one(draw(), "my-messages-calendar-expand").props.onPress();
   const expanded = draw();
+
+  // The calendar column is bounded and scrolls inside its share of the page.
   const scroll = one(expanded, "my-messages-calendar-compact-scroll");
   assert.ok(scroll, "the expanded compact month scrolls inside its share of the page");
   assert.equal(scroll.props.style.maxHeight, "58%");
   assert.equal(one(expanded, "my-messages-screen-list").props.style.flex, 1);
   assert.equal(all(expanded, "my-messages-screen-row").length, 2,
     "expanding the month does not drop the day's rows");
+  assert.ok(one(expanded, "my-messages-calendar-month-partial"),
+    "the may-be-incomplete note is on screen with the month open");
+
+  // At 390x844 the list keeps more than two rows under the bounded column.
   assert.ok(screen.compactMessageListHeight(844) >= screen.COMPACT_LIST_ROW * 2,
     `the list keeps ${screen.compactMessageListHeight(844)}px at 390x844`);
   assert.ok(screen.compactMessageListHeight(667) >= screen.COMPACT_LIST_ROW,
