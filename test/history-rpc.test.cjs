@@ -272,6 +272,32 @@ test("the handlers answer days and one day from the real reader against a tempor
   assert.equal(detail.fromCache, 0);
 });
 
+test("a count-only archive record is named so the client can drop the timeline's copy", async t => {
+  const hermes = createRoot(t);
+  const home = createHome(t);
+  const directory = join(home, "plugin-data", "clear-chat", "history");
+  fs.mkdirSync(directory, { recursive: true });
+  // 2026-11-20 01:00 in Tokyo; the day already counts it, but the record has no text to list.
+  const countedAt = Date.UTC(2026, 10, 19, 16, 0, 0);
+  fs.writeFileSync(join(directory, "messages-2026-11.json"), JSON.stringify({
+    version: 2,
+    messages: [{ key: "c0ffee0000000000", sessionId: "session-gone", agentId: "agent-a", at: countedAt }],
+  }));
+  const handlers = new Map();
+  rpcModule.registerHistoryHandlers(
+    { handle(contract, handler) { handlers.set(contract.name, handler); } },
+    { root: hermes, home },
+  );
+  const paseo = fakePaseo([{ entries: [agentEntry()], pageInfo: { hasMore: false, nextCursor: null } }]);
+  const days = await handlers.get("history.days")({ timeZone: "Asia/Tokyo" }, { paseo });
+  assert.deepEqual(days.days, [{ day: "2026-11-20", count: 2 }]);
+  const detail = await handlers.get("history.day")({ day: "2026-11-20", timeZone: "Asia/Tokyo" }, { paseo });
+  assert.deepEqual(detail.rows.map(row => row.text), ["a message from the person"],
+    "a record without text is not a row");
+  assert.deepEqual(detail.counted, [{ agentId: "agent-a", at: countedAt }],
+    "the day names the message it counted without listing");
+});
+
 test("a partial directory reaches both RPC results", async t => {
   const hermes = createRoot(t);
   const handlers = new Map();

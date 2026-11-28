@@ -1756,6 +1756,78 @@ test("a measured narrow row shortens the bubble label instead of clipping it", a
   assert.match(String(cell(draw(), "Mar 15 Sun").props.accessibilityLabel), /Mar 15 Sun, 30 messages/);
 });
 
+test("a measured narrow year row shortens the month bubble instead of clipping it", async t => {
+  const history = historyFor(daysResult({ "2026-03-02": 3 }, { firstDay: "2026-03-02" }),
+    { [dayKey(0)]: dayResult([]) });
+  const { draw, one, monthCell, h } = fixture(t, { historyRpc: history, compact: true });
+  draw();
+  await flush();
+  const views = h.load("client/components/my-messages-calendar-views.tsx");
+  one(draw(), "my-messages-calendar-title").props.onPress();
+  monthCell(draw(), "March 2026").props.onHoverIn();
+  const bubbleAt = width => {
+    const placed = layoutBox(draw, h, "my-messages-calendar-year", width);
+    const tip = h.nodes(placed, node => node.props.testID === "my-messages-calendar-tooltip")[0];
+    assert.ok(tip, `no month bubble on a ${width}px row`);
+    const text = h.nodes(tip, node => node.type === "Text")[0];
+    const label = h.text(tip);
+    const needed = views.bubbleTextWidth(label, text.props.style.fontSize) + 22;
+    assert.ok(needed <= tip.props.style.width + 0.5,
+      `"${label}" needs ${needed}px but the card on a ${width}px row is ${tip.props.style.width}px`);
+    return label;
+  };
+
+  // The whole month name fits a wide row and is dropped for the short one on a narrow row.
+  assert.equal(bubbleAt(900), "March 2026 · 3 messages");
+  assert.equal(bubbleAt(160), "Mar · 3 messages");
+  // The cell still reads the whole month and count aloud.
+  assert.match(String(monthCell(draw(), "March 2026").props.accessibilityLabel), /March 2026 · 3 messages/);
+});
+
+test("the narrow column opens a first-row bubble downward so its own scroll cannot clip it", async t => {
+  const history = historyFor(daysResult({ [dayKey(0)]: 2 }, { firstDay: "2026-03-09" }),
+    { [dayKey(0)]: dayResult([]) });
+  const narrow = fixture(t, { historyRpc: history, compact: true });
+  narrow.draw();
+  await flush();
+  narrow.one(narrow.draw(), "my-messages-calendar-expand").props.onPress();
+  const bubble = (tree) => ({
+    card: narrow.h.nodes(tree, node => node.props.testID === "my-messages-calendar-tooltip")[0],
+    arrow: narrow.h.nodes(tree, node => node.props.testID === "my-messages-calendar-tooltip-arrow")[0],
+  });
+
+  // March's first row is 23 February – 1 March.
+  narrow.cell(narrow.draw(), "Mar 1 Sun").props.onHoverIn();
+  const first = bubble(layoutBox(narrow.draw, narrow.h, "my-messages-calendar-row", 282));
+  assert.ok(first.card, "the first row draws its card");
+  assert.equal(first.card.props.style.top, "100%", "the card opens below the cell");
+  assert.equal(first.card.props.style.bottom, undefined);
+  assert.equal(first.card.props.style.marginTop, 6);
+  assert.equal(first.arrow.props.style.top, "100%");
+  assert.equal(first.arrow.props.style.marginTop, 2);
+  assert.equal(first.arrow.props.style.borderLeftWidth, 1, "the point closes on the side facing the reader");
+  assert.equal(first.arrow.props.style.borderTopWidth, 1);
+  assert.equal(first.arrow.props.style.borderRightWidth, undefined);
+  assert.equal(first.arrow.props.style.bottom, undefined);
+
+  // A middle row still opens above its cell, as the page was measured.
+  narrow.cell(narrow.draw(), "Mar 15 Sun").props.onHoverIn();
+  const middle = bubble(layoutBox(narrow.draw, narrow.h, "my-messages-calendar-row", 282));
+  assert.equal(middle.card.props.style.bottom, "100%");
+  assert.equal(middle.card.props.style.top, undefined);
+  assert.equal(middle.arrow.props.style.borderRightWidth, 1);
+  assert.equal(middle.arrow.props.style.borderBottomWidth, 1);
+
+  // The wide layout has no bounded column around the grid, so its first row keeps the card above.
+  const wide = fixture(t, { historyRpc: history, compact: false });
+  wide.draw();
+  await flush();
+  wide.cell(wide.draw(), "Mar 1 Sun").props.onHoverIn();
+  const widePlaced = layoutBox(wide.draw, wide.h, "my-messages-calendar-row", 288);
+  const wideCard = wide.h.nodes(widePlaced, node => node.props.testID === "my-messages-calendar-tooltip")[0];
+  assert.equal(wideCard.props.style.bottom, "100%", "the wide grid keeps the card above the cell");
+});
+
 test("rendered marks use the measured dot, outline, page seam and today weight", async t => {
   const zinc = {
     surface0: "#18181b", foreground: "#fafafa", foregroundMuted: "#a1a1aa",

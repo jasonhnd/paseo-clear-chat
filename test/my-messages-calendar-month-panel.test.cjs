@@ -409,21 +409,30 @@ test("compact: an expanded month leaves the day's list a visible first screen", 
   one(draw(), "my-messages-calendar-expand").props.onPress();
   const expanded = draw();
 
-  // The calendar column is bounded and scrolls inside its share of the page.
-  const scroll = one(expanded, "my-messages-calendar-compact-scroll");
-  assert.ok(scroll, "the expanded compact month scrolls inside its share of the page");
-  assert.equal(scroll.props.style.maxHeight, "58%");
-  assert.equal(one(expanded, "my-messages-screen-list").props.style.flex, 1);
-  assert.equal(all(expanded, "my-messages-screen-row").length, 2,
+  // The calendar column is bounded and scrolls inside its share of the page. The page measures
+  // the body and caps the column in pixels, so the list's room is fixed arithmetic: the same
+  // number the test reads is the number the page draws with.
+  const scrollBefore = one(expanded, "my-messages-calendar-compact-scroll");
+  assert.ok(scrollBefore, "the expanded compact month scrolls inside its share of the page");
+  assert.equal(scrollBefore.props.style.maxHeight, "58%", "the share stands in before the first measure");
+  const body = one(expanded, "my-messages-calendar-body");
+  const bodyHeight = 704; // 844 - 2*12 - 104: the room under the toolbar at 390x844
+  body.props.onLayout({ nativeEvent: { layout: { width: 390, height: bodyHeight } } });
+  const measured = draw();
+  const scroll = one(measured, "my-messages-calendar-compact-scroll");
+  assert.equal(scroll.props.style.maxHeight, screen.compactCalendarMaxHeight(bodyHeight));
+  assert.ok(scroll.props.style.maxHeight < bodyHeight, "the bound leaves the list most of the page");
+  assert.equal(one(measured, "my-messages-screen-list").props.style.flex, 1);
+  assert.equal(all(measured, "my-messages-screen-row").length, 2,
     "expanding the month does not drop the day's rows");
-  assert.ok(one(expanded, "my-messages-calendar-month-partial"),
+  assert.ok(one(measured, "my-messages-calendar-month-partial"),
     "the may-be-incomplete note is on screen with the month open");
 
   // At 390x844 the list keeps more than two rows under the bounded column.
-  assert.ok(screen.compactMessageListHeight(844) >= screen.COMPACT_LIST_ROW * 2,
-    `the list keeps ${screen.compactMessageListHeight(844)}px at 390x844`);
-  assert.ok(screen.compactMessageListHeight(667) >= screen.COMPACT_LIST_ROW,
-    `the list keeps ${screen.compactMessageListHeight(667)}px on a 667px-tall screen`);
+  const listRoom = screen.compactMessageListHeight(screen.compactBodyHeight(844));
+  assert.ok(listRoom >= screen.COMPACT_LIST_ROW * 2, `the list keeps ${listRoom}px at 390x844`);
+  const smallRoom = screen.compactMessageListHeight(screen.compactBodyHeight(667));
+  assert.ok(smallRoom >= screen.COMPACT_LIST_ROW, `the list keeps ${smallRoom}px on a 667px-tall screen`);
 });
 
 test("the panel's labels follow the interface language", async t => {
@@ -437,6 +446,10 @@ test("the panel's labels follow the interface language", async t => {
   h.setLocale("zh-CN");
   assert.equal(h.text(one(draw(), "my-messages-calendar-month-title")), "本月小结");
   assert.equal(h.text(one(draw(), "my-messages-calendar-month-days")), "1");
+  // A ranking heading that names the month would be wrong on a month that has ended; the
+  // Chinese heading names what the list is, not when it is.
+  assert.match(h.text(one(draw(), "my-messages-calendar-month-panel")), /消息最多的对话/);
+  assert.doesNotMatch(h.text(one(draw(), "my-messages-calendar-month-panel")), /本月常聊的对话/);
   h.setLocale("ja");
   assert.equal(h.text(one(draw(), "my-messages-calendar-month-title")), "今月のまとめ");
 });
@@ -580,6 +593,165 @@ test("a host that answers totals without the ranking says so instead of calling 
   assert.equal(second.h.text(second.one(february, "my-messages-calendar-month-empty")),
     "No messages in this month");
   assert.equal(second.all(february, "my-messages-calendar-month-no-ranking").length, 0);
+});
+
+test("collapsing the month keeps a filter chosen in the month the week strip shows", async t => {
+  const directory = [agent("alpha", "Alpha conversation"), agent("beta", "Beta conversation")];
+  const history = historyFor(daysResult({ [dayKey(0)]: 2 }, {
+    conversationMonths: [
+      { month: "2026-03", agentId: "alpha", title: "Alpha conversation", count: 1, lastAt: at(0, 9) },
+      { month: "2026-03", agentId: "beta", title: "Beta conversation", count: 1, lastAt: at(0, 8) },
+    ],
+  }), {
+    [dayKey(0)]: dayResult([
+      { agentId: "alpha", at: at(0, 9), text: "alpha today" },
+      { agentId: "beta", at: at(0, 8), text: "beta today" },
+    ]),
+  });
+  const { draw, all, one, h } = fixture(t, { historyRpc: history, compact: true, directory });
+  draw();
+  await flush();
+  one(draw(), "my-messages-calendar-expand").props.onPress();
+  all(draw(), "my-messages-calendar-top-conversation")[0].props.onPress();
+  assert.equal(all(draw(), "my-messages-calendar-filter").length, 1);
+  assert.equal(all(draw(), "my-messages-screen-row").length, 1);
+
+  // Collapsing inside the same month is not a month change: the filter still applies.
+  one(draw(), "my-messages-calendar-expand").props.onPress();
+  const collapsed = draw();
+  assert.ok(one(collapsed, "my-messages-calendar-week"));
+  assert.equal(h.text(one(collapsed, "my-messages-calendar-month-title")), "This month");
+  assert.equal(all(collapsed, "my-messages-calendar-filter").length, 1,
+    "a filter chosen in this month survives the collapse");
+  assert.equal(all(collapsed, "my-messages-screen-row").length, 1, "the list is still filtered");
+  all(collapsed, "my-messages-calendar-filter")[0].props.onPress();
+  assert.equal(all(draw(), "my-messages-screen-row").length, 2);
+});
+
+test("a failed day RPC still splits its fallback rows into the month's ranking", async t => {
+  const directory = [agent("hermes", "Hermes chat"), agent("other", "Other chat")];
+  const history = {
+    days: async () => daysResult({ [dayKey(0)]: 1 }, {
+      conversationMonths: [monthCount("hermes", "Hermes chat", 1, 0)],
+      slowConversationIds: ["other"],
+    }),
+    day: async () => { throw new Error("the day read failed"); },
+  };
+  const histories = new Map([
+    ["hermes", [timelineMessage("hermes today", at(0, 9), 1)]],
+    ["other", [
+      timelineMessage("other one", at(0, 8), 2),
+      timelineMessage("other two", at(0, 8, 30), 3),
+      timelineMessage("other three", at(0, 7), 4),
+    ]],
+  ]);
+  const { draw, all, one, h } = fixture(t, { historyRpc: history, directory, histories });
+  draw();
+  await flush();
+  const view = draw();
+  assert.equal(h.text(one(view, "my-messages-calendar-month-total")), "4");
+  assert.deepEqual(
+    all(view, "my-messages-calendar-top-conversation").map(node => node.props.accessibilityLabel),
+    ["Other chat, 3 messages", "Hermes chat, 1 message"],
+    "the ranking gains what the cell and the summary gained",
+  );
+  assert.equal(all(view, "my-messages-screen-row").length, 4, "the day lists every row it read");
+});
+
+test("a count-only archive message is not counted twice when the timeline finds it", async t => {
+  const countedAt = at(0, 9);
+  const directory = [agent("gone", "Gone chat")];
+  const history = historyFor(daysResult({ [dayKey(0)]: 1 }, {
+    conversationMonths: [monthCount("gone", "Gone chat", 1, 0)],
+    slowConversationIds: ["gone"],
+  }), {
+    // The archive kept this message as a count only: the day says it counted it, but has no
+    // row to show for it.
+    [dayKey(0)]: dayResult([], { counted: [{ agentId: "gone", at: countedAt }] }),
+  });
+  const histories = new Map([["gone", [timelineMessage("gone one", countedAt, 1)]]]);
+  const { draw, all, one, h } = fixture(t, { historyRpc: history, directory, histories });
+  draw();
+  await flush();
+  const view = draw();
+  assert.equal(h.text(one(view, "my-messages-calendar-month-total")), "1",
+    "the message the archive counted is not counted again from the timeline");
+  assert.deepEqual(
+    all(view, "my-messages-calendar-top-conversation").map(node => node.props.accessibilityLabel),
+    ["Gone chat, 1 message"],
+  );
+  assert.equal(all(view, "my-messages-calendar-count-only").length, 0, "nothing is counted without a row");
+  assert.equal(all(view, "my-messages-screen-row").length, 1);
+});
+
+test("re-reading a day that was not cached replaces its ranking rows instead of adding them", async t => {
+  const directory = [agent("hermes", "Hermes chat"), agent("other", "Other chat"), agent("silent", "Silent chat")];
+  const history = historyFor(daysResult({ "2026-02-10": 1, [dayKey(0)]: 1 }, {
+    conversationMonths: [monthCount("hermes", "Hermes chat", 1, 0)],
+    slowConversationIds: ["other", "silent"],
+  }), {
+    [dayKey(0)]: dayResult([{ agentId: "hermes", at: at(0, 9), text: "hermes today" }]),
+    "2026-02-10": dayResult([]),
+  });
+  let otherReads = 0;
+  const histories = {
+    get(id) {
+      // The silent conversation answers nothing, so its day is never cached and is read again.
+      if (id === "silent") return [];
+      if (id !== "other") return [];
+      otherReads += 1;
+      return otherReads === 1
+        ? [timelineMessage("other first", at(0, 8), 2)]
+        : [
+            timelineMessage("other one", at(0, 8), 2),
+            timelineMessage("other two", at(0, 8, 30), 3),
+            timelineMessage("other three", at(0, 7), 4),
+          ];
+    },
+  };
+  const { draw, all, one, h } = fixture(t, { historyRpc: history, directory, histories });
+  draw();
+  await flush();
+  assert.equal(h.text(one(draw(), "my-messages-calendar-month-total")), "2");
+
+  // Step away to February and back: the day is read again, and the second answer is larger.
+  one(draw(), "my-messages-calendar-prev").props.onPress();
+  all(draw(), "my-messages-calendar-cell")
+    .find(node => String(node.props.accessibilityLabel).startsWith("Feb 10")).props.onPress();
+  await flush();
+  one(draw(), "my-messages-calendar-next").props.onPress();
+  all(draw(), "my-messages-calendar-cell")
+    .find(node => String(node.props.accessibilityLabel).startsWith("Mar 15")).props.onPress();
+  await flush();
+  const second = draw();
+  assert.ok(otherReads >= 2, `the day was read again (${otherReads} reads)`);
+  assert.equal(h.text(one(second, "my-messages-calendar-month-total")), "4",
+    "the second read replaces the first day's rows instead of adding to them");
+  assert.deepEqual(
+    all(second, "my-messages-calendar-top-conversation").map(node => node.props.accessibilityLabel),
+    ["Other chat, 3 messages", "Hermes chat, 1 message"],
+  );
+});
+
+test("a host without per-conversation counts still says the ranking is unavailable after a day is opened", async t => {
+  const days = daysResult({ [dayKey(0)]: 1 }, { slowConversationIds: ["other"] });
+  delete days.conversationMonths;
+  const directory = [agent("hermes", "Hermes chat"), agent("other", "Other chat")];
+  const history = historyFor(days, {
+    [dayKey(0)]: dayResult([{ agentId: "hermes", at: at(0, 9), text: "hermes today" }]),
+  });
+  const histories = new Map([["other", [timelineMessage("other one", at(0, 8), 2)]]]);
+  const { draw, all, one, h } = fixture(t, { historyRpc: history, directory, histories });
+  draw();
+  await flush();
+  const view = draw();
+  assert.equal(h.text(one(view, "my-messages-calendar-month-total")), "2");
+  assert.equal(all(view, "my-messages-calendar-top-conversation").length, 1);
+  assert.equal(h.text(one(view, "my-messages-calendar-month-no-ranking")),
+    "The ranking for this month is not available from this host.",
+    "a ranking filled in by opening a day is not the host's ranking");
+  assert.equal(all(view, "my-messages-calendar-month-partial").length, 1);
+  assert.equal(all(view, "my-messages-calendar-month-empty").length, 0);
 });
 
 test("monthSummary counts only its own month and divides by elapsed days", () => {
